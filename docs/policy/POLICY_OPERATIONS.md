@@ -6,8 +6,8 @@ GitHub tracker: PR stack #859 through #922, closed by the campaign closeout.
 
 This was the focused Lane 2 tracker for policy operations after
 [Policy readiness](POLICY_READINESS.md). It is not the global active campaign
-manifest. `.ripr/goals/active.toml` remains on Campaign 27: Language Adapter
-Preview. This tracker records the policy-operations work that landed without
+manifest. `.ripr/goals/active.toml` now points at Campaign 28: First Useful PR
+Loop. This tracker records the policy-operations work that landed without
 changing analyzer behavior, editor behavior, generated tests, mutation
 execution, default CI blocking, config files, baselines, suppressions, or
 preview-language gate eligibility.
