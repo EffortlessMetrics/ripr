@@ -1698,6 +1698,7 @@ runtime execution.
       "command": "target/debug/ripr check --root . --mode instant --format repo-exposure-json",
       "timeout_ms": 1200000,
       "status": "pass",
+      "failure_reason": null,
       "duration_ms": 42000,
       "exit_code": 0,
       "stdout_bytes": 1048576,
@@ -2025,10 +2026,10 @@ Field contract:
 - `inputs.repo_exposure_schema_version` - schema version read from the generated
   repo exposure JSON, or `null` if absent.
 - `inputs.repo_exposure_generation` - bounded diagnostics for the live
-  repo-exposure subprocess, including timeout, status, duration, output byte
-  counts, and the last captured latency trace events. These diagnostics explain
-  long or pathological audit input generation without changing classifications,
-  gate policy, or score semantics.
+  repo-exposure subprocess, including timeout, status, nullable
+  `failure_reason`, duration, output byte counts, and the last captured latency
+  trace events. These diagnostics explain long or pathological audit input
+  generation without changing classifications, gate policy, or score semantics.
 - `run_limitations` - bounded report-level limitations. A timed-out
   repo-exposure subprocess produces a warning audit artifact with a
   `lane1_repo_exposure_timeout` row, phase/input context, timeout/duration
@@ -2037,8 +2038,10 @@ Field contract:
   successful exit with an empty or malformed output file, produces
   `lane1_repo_exposure_incomplete` with the same bounded diagnostics. Counts in
   such limited artifacts are not complete repo truth and downstream reports must
-  surface the limitation instead of treating zeros as absence of gaps. A
-  completed audit may also report
+  surface the limitation instead of treating zeros as absence of gaps. A runner
+  or capture failure before repo exposure can be started or read produces
+  `lane1_repo_exposure_runner_error` with `failure_reason`, command, timeout,
+  duration, phase/input context, and a repair route. A completed audit may also report
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
   seam cache store because the entry exceeded the bounded cache-store limit.

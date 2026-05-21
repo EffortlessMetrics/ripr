@@ -72,9 +72,12 @@ trace tail, and a repair route. If repo exposure generation exits before the
 captured artifact is complete, including a nominally successful exit that left
 an empty or malformed output file, the command writes bounded warning artifacts
 with a `lane1_repo_exposure_incomplete` run limitation instead of failing before
-the report surfaces the phase/input diagnostics. If repo exposure completes but
-skips the full classified seam cache store because the cache entry exceeds the
-bounded full-cache store limit, the audit records
+the report surfaces the phase/input diagnostics. If the runner cannot start or
+capture repo exposure at all, the command writes bounded warning artifacts with
+`lane1_repo_exposure_runner_error`, a captured `failure_reason`, phase/input
+context, and a repair route. If repo exposure completes but skips the full
+classified seam cache store because the cache entry exceeds the bounded
+full-cache store limit, the audit records
 `lane1_repo_exposure_cache_store_skipped_large_entry` with the cache-store phase,
 classified seam count/limit input, latency trace tail, and a repair route.
 
@@ -224,7 +227,10 @@ with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
 `phase = "repo_exposure_generation"`, phase/input diagnostics, the most recent
 latency trace entries, and a repair route. Downstream scorecards must surface
 that limitation and must not treat zero counts in the limited artifact as proof
-that no gaps exist.
+that no gaps exist. If generation fails before repo exposure can be started or
+captured, the audit still writes a limited artifact with
+`run_limitations[].category = "lane1_repo_exposure_runner_error"` and records
+the `failure_reason` under `inputs.repo_exposure_generation`.
 Best-effort cache writes are not allowed to turn a completed analysis into an
 unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as
