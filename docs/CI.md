@@ -278,6 +278,11 @@ runner-image/toolchain readiness label. If runner state cannot be read, or a
 runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
 rather than selecting a self-hosted runner by guesswork.
 
+The copyable self-hosted proof runbook is in
+[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook).
+Use it to record CX53 primary proof, CX43 fallback proof, or the bounded
+runner availability blocker without exposing runner tokens or secrets.
+
 The routed lane runs the existing Rust/product command surface without release
 package or publish dry-run steps. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.

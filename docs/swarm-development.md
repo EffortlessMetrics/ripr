@@ -64,6 +64,66 @@ runner is available but not image-ready, the workflow falls back to GitHub-hoste
 The VS Code lane should remain hosted until a separate Node 24 / VS Code / Xvfb
 runner image is proven.
 
+## Self-Hosted Proof Runbook
+
+An org-visible operator should use this runbook to close the remaining
+self-hosted cutover proof. Do not expose runner registration tokens, runner
+secret values, or signing/publish secrets in issue comments.
+
+Before running proof:
+
+- confirm `ripr-swarm` has access to runner group `em-ci-small`;
+- confirm `EM_RUNNER_READ_TOKEN` is available to this repository or the
+  workflow can otherwise read org runner state;
+- confirm one idle, online runner has labels `CX53` and `em-ci-rust-1.95`;
+- confirm one idle, online runner has labels `CX43` and `em-ci-rust-1.95`;
+- keep source/release/publish/signing secrets out of `ripr-swarm`.
+
+Prove CX53 primary:
+
+```bash
+gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
+gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --limit 1
+```
+
+The run must finish with:
+
+```text
+Ripr Rust Small Result: success
+target: cx53
+reason: cx53_idle
+cx53: success
+cx43: skipped
+github: skipped
+```
+
+Prove CX43 fallback by making CX53 unavailable or busy while CX43 is online,
+idle, and image-ready, then rerun the same workflow command. The run must
+finish with:
+
+```text
+Ripr Rust Small Result: success
+target: cx43
+reason: cx43_idle
+cx53: skipped
+cx43: success
+github: skipped
+```
+
+If neither self-hosted path can be selected, record the bounded blocker on the
+cutover tracker with the current run URL and the result summary:
+
+```text
+target: github
+reason: runner_api_failed | no_idle_runner | runner_image_unavailable
+cx53: skipped
+cx43: skipped
+github: success
+```
+
+Do not add conditional implementation jobs to branch protection while proving
+this. The protected gate remains `Ripr Rust Small Result`.
+
 ## Machine Cutover
 
 Development machines and orchestrators should clone this repository
