@@ -54,15 +54,11 @@ fn parse_options(args: &[String]) -> Result<ImpactedEvidenceOptions, String> {
             }
             "--label" => {
                 i += 1;
-                options
-                    .labels
-                    .push(non_empty_arg(args, i, "--label")?.to_string());
+                add_label_arg(args, i, "--label", &mut options.labels)?;
             }
             "--labels" => {
                 i += 1;
-                options
-                    .labels
-                    .extend(split_labels(non_empty_arg(args, i, "--labels")?));
+                add_labels_arg(args, i, "--labels", &mut options.labels)?;
             }
             "--check" => options.check = true,
             other => return Err(format!("unknown impacted-evidence argument {other:?}")),
@@ -71,6 +67,26 @@ fn parse_options(args: &[String]) -> Result<ImpactedEvidenceOptions, String> {
     }
     options.labels = normalize_labels(&options.labels);
     Ok(options)
+}
+
+fn add_label_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    labels: &mut Vec<String>,
+) -> Result<(), String> {
+    labels.push(non_empty_arg(args, index, flag)?.to_string());
+    Ok(())
+}
+
+fn add_labels_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    labels: &mut Vec<String>,
+) -> Result<(), String> {
+    labels.extend(split_labels(non_empty_arg(args, index, flag)?));
+    Ok(())
 }
 
 fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
@@ -459,6 +475,19 @@ fn repo_root() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_rejects_blank_label_values() -> Result<(), String> {
+        let err = match parse_options(&["--label".to_string(), "   ".to_string()]) {
+            Ok(_) => return Err("blank --label should fail".to_string()),
+            Err(err) => err,
+        };
+        assert_eq!(
+            err,
+            "impacted-evidence --label requires a non-empty value".to_string()
+        );
+        Ok(())
+    }
 
     #[test]
     fn parse_accepts_labels_and_check() -> Result<(), String> {
