@@ -2319,6 +2319,7 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
   "xtask::tests::evidence_quality_scorecard_does_not_treat_cache_store_skip_as_limited_audit",
   "xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure",
+  "xtask::tests::evidence_quality_scorecard_malformed_audit_writes_limited_reports",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
   "xtask::tests::evidence_quality_trend_missing_current_writes_limited_report",
   "xtask::tests::evidence_quality_trend_malformed_current_writes_limited_report",

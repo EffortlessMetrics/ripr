@@ -157,8 +157,12 @@ diagnostic scorecard with
 `unknowns[].kind = "evidence_quality_scorecard_audit_regeneration_failed"` and
 a matching audit `run_limitations[]` category. That limited scorecard must not
 claim complete repo truth, public badge readiness, or user test debt. If the
-audit or evidence-health artifact exists but carries `run_limitations[]`, the
-scorecard must surface that as an unknown and must not let the limited
+required audit input exists but is malformed or unreadable, the command must
+overwrite the stale audit with a bounded audit artifact, write scorecard
+JSON/Markdown, and add
+`unknowns[].kind = "evidence_quality_scorecard_audit_input_unavailable"`. If
+the audit or evidence-health artifact exists but carries `run_limitations[]`,
+the scorecard must surface that as an unknown and must not let the limited
 artifact's zero or partial counts masquerade as complete repo truth.
 
 Operators must run live Lane 1 report validation sequentially in a shared
@@ -301,8 +305,9 @@ actionable/static-limitation/unknown/unaligned/duplicate signals instead of a
 static roadmap guess. This queue does not change public badge semantics.
 
 Given a Lane 1 audit artifact with completeness-affecting limitations such as
-`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`, or
-`evidence_quality_scorecard_audit_regeneration_failed`, the scorecard adds
+`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`,
+`evidence_quality_scorecard_audit_regeneration_failed`, or
+`evidence_quality_scorecard_audit_input_unavailable`, the scorecard adds
 `lane1_evidence_audit_limited` to `unknowns` so downstream users can see that
 the report is bounded diagnostic evidence rather than complete repo truth.
 Non-completeness audit limitations, such as skipped full-cache storage after a
@@ -317,6 +322,11 @@ Given a failed attempt to regenerate a missing Lane 1 audit, the scorecard
 emits a bounded diagnostic scorecard and adds
 `evidence_quality_scorecard_audit_regeneration_failed` to `unknowns` instead of
 silently dropping the report.
+
+Given a malformed existing Lane 1 audit input, the scorecard emits bounded
+diagnostic audit and scorecard artifacts and adds
+`evidence_quality_scorecard_audit_input_unavailable` to `unknowns` instead of
+exiting before report evidence is written.
 
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
@@ -363,6 +373,9 @@ any gate behavior.
   limitations.
 - `xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure`
   pins the bounded diagnostic scorecard for failed missing-audit regeneration.
+- `xtask::tests::evidence_quality_scorecard_malformed_audit_writes_limited_reports`
+  pins bounded audit and scorecard artifacts when the required audit input is
+  stale or malformed.
 - `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
