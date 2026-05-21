@@ -42,11 +42,12 @@ the evidence less reviewable.
 ## Verification rule
 
 Agents must verify every named command, workflow, lint, path, feature, and
-policy before relying on it. In this repo, `cargo xtask check-goals` and
-`cargo xtask goals next` exist today. Planned commands such as
-`cargo xtask check-doc-artifacts`, `cargo xtask check-support-tiers`, and
-`cargo xtask repo-contract-report` must not be cited as passing proof until a
-later PR implements them and a run succeeds.
+policy before relying on it. In this repo, `cargo xtask check-goals`,
+`cargo xtask goals next`, `cargo xtask check-doc-artifacts`,
+`cargo xtask check-support-tiers`, and `cargo xtask repo-contract-report` exist
+today. `repo-contract-report` is advisory/report-only proof of the generated
+source-of-truth graph packet; it must not be cited as enforcement, support-tier
+promotion, or release authority.
 
 ## Policy rule
 

@@ -69,21 +69,24 @@ later PR changes the schema and documentation together.
 
 This docs slice defines doctrine only. It does not add validators or CI gates.
 
-Existing repo checks already cover parts of the model:
+Existing repo checks cover the model at different layers:
 
 ```bash
+cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-spec-format
 cargo xtask check-traceability
 cargo xtask check-capabilities
+cargo xtask check-support-tiers
 cargo xtask check-goals
 cargo xtask goals next
+cargo xtask repo-contract-report
 ```
 
-Later source-of-truth PRs may add narrower controls such as
-`cargo xtask check-doc-artifacts`, `cargo xtask check-support-tiers`, and
-`cargo xtask repo-contract-report`. Until those commands exist in `xtask`, docs
-must describe them as planned controls rather than available proof.
+`cargo xtask repo-contract-report` is advisory and report-only. It writes the
+source-of-truth graph packet under `target/ripr/reports/`; it does not add a CI
+gate, change support-tier claims, or replace the narrower validators listed
+above.
 
 ## Claim boundary
 
