@@ -36,6 +36,10 @@ are scoped or reviewed.
   is missing, malformed, or cannot be regenerated. The reports carry the named
   `evidence_quality_trend_current_scorecard_unavailable` unknown instead of
   exiting before producing trend evidence.
+- `cargo xtask evidence-quality-scorecard` now overwrites malformed
+  `lane1-evidence-audit.json` inputs with bounded diagnostic audit artifacts
+  and still writes scorecard JSON/Markdown carrying the named
+  `evidence_quality_scorecard_audit_input_unavailable` unknown.
 
 ## 0.7.0 - 2026-05-20
 

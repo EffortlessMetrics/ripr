@@ -16742,6 +16742,8 @@ const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOU
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
+const EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE: &str =
+    "evidence_quality_scorecard_audit_input_unavailable";
 const EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE: &str =
     "evidence_quality_trend_current_scorecard_unavailable";
 
@@ -22876,9 +22878,18 @@ pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
             &err,
         );
     }
-    let audit = read_json_value(&audit_path).map_err(|err| {
-        format!("evidence-quality-scorecard requires lane1-evidence-audit.json; {err}")
-    })?;
+    let audit = match read_json_value(&audit_path) {
+        Ok(audit) => audit,
+        Err(err) => {
+            return write_limited_evidence_quality_scorecard_for_audit_input_failure(
+                &audit_path,
+                &evidence_health_path,
+                &scorecard_path,
+                previous_scorecard.as_ref(),
+                &format!("evidence-quality-scorecard requires lane1-evidence-audit.json; {err}"),
+            );
+        }
+    };
 
     let evidence_health = scorecard_optional_json(&evidence_health_path)?;
     let inputs = evidence_quality_scorecard_inputs(
@@ -22965,6 +22976,56 @@ fn write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
     )
 }
 
+fn write_limited_evidence_quality_scorecard_for_audit_input_failure(
+    audit_path: &Path,
+    evidence_health_path: &Path,
+    scorecard_path: &Path,
+    previous_scorecard: Option<&Value>,
+    error: &str,
+) -> Result<(), String> {
+    let audit_report = evidence_quality_scorecard_audit_input_failure_report(error);
+    let audit_json = lane1_evidence_audit_json(&audit_report)?;
+    write_report("lane1-evidence-audit.json", &audit_json)?;
+    write_report(
+        "lane1-evidence-audit.md",
+        &lane1_evidence_audit_markdown(&audit_report),
+    )?;
+    write_report(
+        "actionable-gaps.json",
+        &lane1_actionable_gap_packets_json(&audit_report)?,
+    )?;
+    write_report(
+        "actionable-gaps.md",
+        &lane1_actionable_gap_packets_markdown(&audit_report),
+    )?;
+
+    let audit: Value = serde_json::from_str(&audit_json)
+        .map_err(|err| format!("failed to parse limited scorecard audit-input JSON: {err}"))?;
+    let evidence_health = scorecard_optional_json(evidence_health_path)?;
+    let inputs = evidence_quality_scorecard_inputs(
+        audit_path,
+        evidence_health_path,
+        scorecard_path,
+        previous_scorecard,
+    )?;
+    let report = evidence_quality_scorecard_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        &audit,
+        evidence_health.as_ref(),
+        previous_scorecard,
+    )?;
+
+    write_report(
+        "evidence-quality-scorecard.json",
+        &evidence_quality_scorecard_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-scorecard.md",
+        &evidence_quality_scorecard_markdown(&report),
+    )
+}
+
 fn evidence_quality_scorecard_audit_regeneration_failure_report(
     error: &str,
 ) -> Lane1EvidenceAuditReport {
@@ -22992,6 +23053,40 @@ fn evidence_quality_scorecard_audit_regeneration_failure_report(
         });
     report.static_limitation_category_counts.insert(
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED.to_string(),
+        1,
+    );
+    report.static_limitation_repair_route_counts.insert(
+        "report/evidence-quality-scorecard-bounded-diagnostics".to_string(),
+        1,
+    );
+    report
+}
+
+fn evidence_quality_scorecard_audit_input_failure_report(error: &str) -> Lane1EvidenceAuditReport {
+    let mut report = Lane1EvidenceAuditBuilder::default().finish(".".to_string(), None);
+    let summary = evidence_quality_scorecard_error_summary(error);
+    report
+        .run_limitations
+        .push(Lane1EvidenceAuditRunLimitation {
+            category: EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE.to_string(),
+            phase: "scorecard_audit_input".to_string(),
+            input: "lane1-evidence-audit.json".to_string(),
+            summary: format!(
+                "Evidence-quality scorecard could not load the required Lane 1 audit input: {summary}. No user test debt is claimed from this limited scorecard."
+            ),
+            repair_route:
+                "rerun cargo xtask lane1-evidence-audit and inspect the audit artifact before scorecard generation"
+                    .to_string(),
+            timeout_ms: None,
+            duration_ms: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            exit_code: None,
+            stdout_bytes: None,
+            stderr_bytes: None,
+            latency_trace_tail: Vec::new(),
+        });
+    report.static_limitation_category_counts.insert(
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE.to_string(),
         1,
     );
     report.static_limitation_repair_route_counts.insert(
@@ -24011,6 +24106,15 @@ fn evidence_quality_unknowns(
             Some("report/evidence-quality-scorecard-bounded-diagnostics"),
         );
     }
+    if report_has_run_limitation_category(audit, EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE)
+    {
+        scorecard_push_unknown(
+            &mut unknowns,
+            EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE,
+            "Evidence-quality scorecard could not load the required Lane 1 audit input, so this scorecard is a bounded diagnostic instead of complete repo truth.",
+            Some("report/evidence-quality-scorecard-bounded-diagnostics"),
+        );
+    }
     if evidence_health.is_none() {
         scorecard_push_unknown(
             &mut unknowns,
@@ -24112,6 +24216,7 @@ fn lane1_audit_has_completeness_limitation(value: &Value) -> bool {
         "lane1_repo_exposure_timeout",
         "lane1_repo_exposure_incomplete",
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE,
     ]
     .iter()
     .any(|category| report_has_run_limitation_category(value, category))
@@ -45069,6 +45174,7 @@ mod tests {
         DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
         DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
         DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
@@ -45111,23 +45217,23 @@ mod tests {
         evaluate_semantic_no_panic_policy, evidence_health_args,
         evidence_quality_scorecard_audit_regeneration_failure_audit,
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        evidence_quality_trend_report_impl, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
-        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
-        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
-        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, lane1_actionable_gap_packets_json,
+        evidence_quality_scorecard_markdown, evidence_quality_scorecard_report_impl,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, evidence_quality_trend_report_impl,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
+        is_campaign_path, is_dependency_surface_candidate, is_docs_path, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
+        is_policy_path, is_production_path, is_public_badge_basis_surface, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_actionable_gap_packets_json,
         lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
@@ -63945,6 +64051,62 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(0)
         );
         Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_malformed_audit_writes_limited_reports() -> Result<(), String> {
+        with_temp_cwd("scorecard-malformed-audit", |_root| {
+            write(
+                Path::new("target/ripr/reports/lane1-evidence-audit.json"),
+                "{not-json",
+            );
+            write(
+                Path::new("target/ripr/reports/evidence-quality-scorecard.json"),
+                "{}",
+            );
+
+            evidence_quality_scorecard_report_impl()?;
+
+            let audit_json = fs::read_to_string("target/ripr/reports/lane1-evidence-audit.json")
+                .map_err(|err| format!("read limited audit json: {err}"))?;
+            let audit: Value = serde_json::from_str(&audit_json).map_err(|err| err.to_string())?;
+            assert_eq!(
+                audit["run_limitations"][0]["category"],
+                EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE
+            );
+            assert_eq!(
+                audit["run_limitations"][0]["phase"],
+                "scorecard_audit_input"
+            );
+
+            let scorecard_json =
+                fs::read_to_string("target/ripr/reports/evidence-quality-scorecard.json")
+                    .map_err(|err| format!("read limited scorecard json: {err}"))?;
+            let scorecard: Value =
+                serde_json::from_str(&scorecard_json).map_err(|err| err.to_string())?;
+            let kinds = scorecard["unknowns"]
+                .as_array()
+                .ok_or("unknowns must be an array")?
+                .iter()
+                .filter_map(|unknown| unknown["kind"].as_str())
+                .collect::<BTreeSet<_>>();
+            assert!(kinds.contains("lane1_evidence_audit_limited"));
+            assert!(kinds.contains(EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE));
+            assert_eq!(
+                scorecard["headline"]["primary_metric"],
+                "finding_alignment_actionable_unresolved_canonical_gaps"
+            );
+            assert_eq!(scorecard["headline"]["primary_count"], 0);
+
+            let scorecard_markdown =
+                fs::read_to_string("target/ripr/reports/evidence-quality-scorecard.md")
+                    .map_err(|err| format!("read limited scorecard markdown: {err}"))?;
+            assert!(
+                scorecard_markdown.contains(EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE)
+            );
+            assert!(scorecard_markdown.contains("Unknowns And Unavailable Inputs"));
+            Ok(())
+        })
     }
 
     #[test]
