@@ -1,6 +1,7 @@
 mod agent;
 mod command;
 mod commands;
+mod commands_agent_support;
 mod commands_context;
 mod commands_options;
 mod commands_timestamps;
