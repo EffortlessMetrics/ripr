@@ -16718,6 +16718,8 @@ struct Lane1EvidenceAuditAlignmentClassCoverage {
     internal_no_action_items: usize,
     static_limitation_items: usize,
     unknown_items: usize,
+    static_limitation_categories: BTreeMap<String, usize>,
+    static_limitation_repair_routes: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16725,6 +16727,9 @@ struct Lane1EvidenceClassWorkItem {
     evidence_class: String,
     work_score: usize,
     dominant_signal: String,
+    dominant_static_limitation_category: Option<String>,
+    dominant_static_limitation_category_count: usize,
+    dominant_static_limitation_repair_route: Option<String>,
     raw_findings: usize,
     canonical_items: usize,
     duplicate_raw_signals: usize,
@@ -17575,6 +17580,7 @@ impl Lane1EvidenceAuditBuilder {
             .unwrap_or(raw_findings.len())
             .max(raw_findings.len())
             .max(1);
+        let static_limitation_rows = audit_static_limitation_category_rows(record);
         for raw in raw_findings {
             self.ingest_same_line_raw_finding(record, raw, &evidence_class);
         }
@@ -17590,6 +17596,12 @@ impl Lane1EvidenceAuditBuilder {
                     });
                 coverage.raw_findings += raw_signal_count;
                 coverage.unaligned_raw_findings += raw_signal_count;
+                audit_ingest_static_limitation_class_coverage(
+                    coverage,
+                    static_limitation_rows
+                        .iter()
+                        .map(|(category, repair_route)| (category.as_str(), repair_route.as_str())),
+                );
             }
             *self
                 .unaligned_raw_findings_by_class
@@ -17616,6 +17628,12 @@ impl Lane1EvidenceAuditBuilder {
             coverage.raw_findings += raw_signal_count;
             coverage.canonical_items += 1;
             coverage.aligned_raw_findings += raw_signal_count;
+            audit_ingest_static_limitation_class_coverage(
+                coverage,
+                static_limitation_rows
+                    .iter()
+                    .map(|(category, repair_route)| (category.as_str(), repair_route.as_str())),
+            );
             if item_kind == "gap" || gap_state == "actionable" {
                 coverage.actionable_items += 1;
             }
@@ -21583,6 +21601,8 @@ fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCov
         "internal_no_action_items": row.internal_no_action_items,
         "static_limitation_items": row.static_limitation_items,
         "unknown_items": row.unknown_items,
+        "static_limitation_categories": row.static_limitation_categories,
+        "static_limitation_repair_routes": row.static_limitation_repair_routes,
     })
 }
 
@@ -21591,6 +21611,9 @@ fn audit_evidence_class_work_item_json(row: &Lane1EvidenceClassWorkItem) -> Valu
         "evidence_class": row.evidence_class,
         "work_score": row.work_score,
         "dominant_signal": row.dominant_signal,
+        "dominant_static_limitation_category": row.dominant_static_limitation_category,
+        "dominant_static_limitation_category_count": row.dominant_static_limitation_category_count,
+        "dominant_static_limitation_repair_route": row.dominant_static_limitation_repair_route,
         "raw_findings": row.raw_findings,
         "canonical_items": row.canonical_items,
         "duplicate_raw_signals": row.duplicate_raw_signals,
@@ -22120,6 +22143,35 @@ fn audit_has_named_static_limitation(record: &Value, canonical_item: &Value) -> 
         })
 }
 
+fn audit_static_limitation_category_rows(record: &Value) -> Vec<(String, String)> {
+    audit_array(record, &["static_limitations"])
+        .iter()
+        .map(|limitation| {
+            let reason = audit_string(limitation, &["reason"])
+                .unwrap_or_else(|| "missing_reason".to_string());
+            let stage =
+                audit_string(limitation, &["stage"]).unwrap_or_else(|| "missing_stage".to_string());
+            let state =
+                audit_string(limitation, &["state"]).unwrap_or_else(|| "missing_state".to_string());
+            let category = audit_string(limitation, &["category"])
+                .unwrap_or_else(|| static_limitation_category(&stage, &state, &reason).to_string());
+            let repair_route = audit_string(limitation, &["repair_route"])
+                .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
+            (category, repair_route)
+        })
+        .collect()
+}
+
+fn audit_ingest_static_limitation_class_coverage<'a>(
+    coverage: &mut Lane1EvidenceAuditAlignmentClassCoverage,
+    rows: impl Iterator<Item = (&'a str, &'a str)>,
+) {
+    for (category, repair_route) in rows {
+        audit_increment(&mut coverage.static_limitation_categories, category);
+        audit_increment(&mut coverage.static_limitation_repair_routes, repair_route);
+    }
+}
+
 fn audit_static_limitation_category_is_named(category: &str) -> bool {
     !matches!(category.trim(), "" | "static_unknown" | "unknown")
 }
@@ -22623,14 +22675,24 @@ fn audit_push_evidence_class_work_queue_table(
         out.push_str("No evidence-class work queue rows were reported.\n\n");
         return;
     }
-    out.push_str("| Evidence class | Work score | Dominant signal | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
-    out.push_str("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    out.push_str("| Evidence class | Work score | Dominant signal | Static category | Static route | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
     for row in rows {
+        let static_category = row
+            .dominant_static_limitation_category
+            .as_deref()
+            .unwrap_or("n/a");
+        let static_route = row
+            .dominant_static_limitation_repair_route
+            .as_deref()
+            .unwrap_or("n/a");
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(&row.evidence_class),
             row.work_score,
             audit_markdown_cell(&row.dominant_signal),
+            audit_markdown_cell(static_category),
+            audit_markdown_cell(static_route),
             row.actionable_items,
             row.static_limitation_items,
             row.unknown_items,
@@ -23600,10 +23662,28 @@ fn audit_evidence_class_work_item(
         return None;
     }
     let dominant_signal = audit_evidence_class_dominant_signal(row, duplicate_raw_signals);
+    let dominant_static_limitation_category = audit_top_count(&row.static_limitation_categories);
+    let dominant_static_limitation_repair_route =
+        audit_top_count(&row.static_limitation_repair_routes).map(|(label, _count)| label);
+    let next_repair = if dominant_signal == "static_limitations" {
+        dominant_static_limitation_repair_route
+            .clone()
+            .unwrap_or_else(|| audit_evidence_class_next_repair(dominant_signal).to_string())
+    } else {
+        audit_evidence_class_next_repair(dominant_signal).to_string()
+    };
     Some(Lane1EvidenceClassWorkItem {
         evidence_class: row.evidence_class.clone(),
         work_score,
         dominant_signal: dominant_signal.to_string(),
+        dominant_static_limitation_category: dominant_static_limitation_category
+            .as_ref()
+            .map(|(category, _count)| category.clone()),
+        dominant_static_limitation_category_count: dominant_static_limitation_category
+            .as_ref()
+            .map(|(_category, count)| *count)
+            .unwrap_or(0),
+        dominant_static_limitation_repair_route,
         raw_findings: row.raw_findings,
         canonical_items: row.canonical_items,
         duplicate_raw_signals,
@@ -23611,8 +23691,17 @@ fn audit_evidence_class_work_item(
         static_limitation_items: row.static_limitation_items,
         unknown_items: row.unknown_items,
         unaligned_raw_findings: row.unaligned_raw_findings,
-        next_repair: audit_evidence_class_next_repair(dominant_signal).to_string(),
+        next_repair,
     })
+}
+
+fn audit_top_count(counts: &BTreeMap<String, usize>) -> Option<(String, usize)> {
+    let mut rows = counts
+        .iter()
+        .map(|(label, count)| (label.clone(), *count))
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    rows.into_iter().next()
 }
 
 fn audit_evidence_class_dominant_signal(
@@ -24628,20 +24717,26 @@ fn scorecard_push_evidence_class_work_queue_table(out: &mut String, value: &Valu
         out.push_str("No evidence-class work queue rows were reported.\n\n");
         return;
     }
-    out.push_str("| Evidence class | Work score | Dominant signal | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
-    out.push_str("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    out.push_str("| Evidence class | Work score | Dominant signal | Static category | Static route | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
     for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
         let evidence_class =
             audit_string(row, &["evidence_class"]).unwrap_or_else(|| "unknown".to_string());
         let dominant_signal =
             audit_string(row, &["dominant_signal"]).unwrap_or_else(|| "unknown".to_string());
+        let static_category = audit_string(row, &["dominant_static_limitation_category"])
+            .unwrap_or_else(|| "n/a".to_string());
+        let static_route = audit_string(row, &["dominant_static_limitation_repair_route"])
+            .unwrap_or_else(|| "n/a".to_string());
         let next_repair =
             audit_string(row, &["next_repair"]).unwrap_or_else(|| "unknown".to_string());
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(&evidence_class),
             audit_usize(row, &["work_score"]).unwrap_or(0),
             audit_markdown_cell(&dominant_signal),
+            audit_markdown_cell(&static_category),
+            audit_markdown_cell(&static_route),
             audit_usize(row, &["actionable_items"]).unwrap_or(0),
             audit_usize(row, &["static_limitation_items"]).unwrap_or(0),
             audit_usize(row, &["unknown_items"]).unwrap_or(0),
@@ -60274,6 +60369,14 @@ covered_by = ["cargo xtask check-file-policy"]
             call_presence["static_limitation_items"],
             serde_json::Value::from(1)
         );
+        assert_eq!(
+            call_presence["static_limitation_categories"]["opaque_helper_call"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            call_presence["static_limitation_repair_routes"]["analysis/oracle-semantics-audit-fixes"],
+            serde_json::Value::from(1)
+        );
         let work_queue = coverage["evidence_class_work_queue"]
             .as_array()
             .ok_or_else(|| "evidence class work queue should be an array".to_string())?;
@@ -60315,6 +60418,8 @@ covered_by = ["cargo xtask check-file-policy"]
                 already_observed_items: 0,
                 internal_no_action_items: 0,
                 static_limitation_items: 0,
+                static_limitation_categories: BTreeMap::new(),
+                static_limitation_repair_routes: BTreeMap::new(),
                 unknown_items: 0,
             },
             super::Lane1EvidenceAuditAlignmentClassCoverage {
@@ -60327,6 +60432,14 @@ covered_by = ["cargo xtask check-file-policy"]
                 already_observed_items: 0,
                 internal_no_action_items: 0,
                 static_limitation_items: 8,
+                static_limitation_categories: BTreeMap::from([(
+                    "activation_owner_call_unresolved".to_string(),
+                    8,
+                )]),
+                static_limitation_repair_routes: BTreeMap::from([(
+                    "analysis/related-test-ranking-audit-fixes".to_string(),
+                    8,
+                )]),
                 unknown_items: 0,
             },
         ];
@@ -60337,7 +60450,16 @@ covered_by = ["cargo xtask check-file-policy"]
             .ok_or_else(|| "work queue should contain scored rows".to_string())?;
         assert_eq!(top.evidence_class, "call_presence");
         assert_eq!(top.dominant_signal, "static_limitations");
-        assert_eq!(top.next_repair, "analysis/static-limitation-taxonomy");
+        assert_eq!(
+            top.dominant_static_limitation_category.as_deref(),
+            Some("activation_owner_call_unresolved")
+        );
+        assert_eq!(top.dominant_static_limitation_category_count, 8);
+        assert_eq!(
+            top.dominant_static_limitation_repair_route.as_deref(),
+            Some("analysis/related-test-ranking-audit-fixes")
+        );
+        assert_eq!(top.next_repair, "analysis/related-test-ranking-audit-fixes");
         assert!(
             queue
                 .iter()
@@ -63924,10 +64046,35 @@ covered_by = ["cargo xtask check-file-policy"]
             value["evidence_class_work_queue"][0]["next_repair"],
             "dogfood/actionable-gap-repair-loop"
         );
+        let call_presence = value["evidence_class_work_queue"]
+            .as_array()
+            .and_then(|rows| {
+                rows.iter()
+                    .find(|row| row["evidence_class"] == "call_presence")
+            })
+            .ok_or_else(|| "scorecard should carry call_presence work queue row".to_string())?;
+        assert_eq!(
+            call_presence["dominant_static_limitation_category"],
+            "opaque_helper_call"
+        );
+        assert_eq!(
+            call_presence["dominant_static_limitation_category_count"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            call_presence["dominant_static_limitation_repair_route"],
+            "analysis/oracle-semantics-audit-fixes"
+        );
+        assert_eq!(
+            call_presence["next_repair"],
+            "analysis/oracle-semantics-audit-fixes"
+        );
 
         let markdown = evidence_quality_scorecard_markdown(&report);
         assert!(markdown.contains("Evidence Class Work Queue"));
         assert!(markdown.contains("actionable_canonical_gaps"));
+        assert!(markdown.contains("opaque_helper_call"));
+        assert!(markdown.contains("analysis/oracle-semantics-audit-fixes"));
         Ok(())
     }
 

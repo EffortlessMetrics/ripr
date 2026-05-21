@@ -185,7 +185,8 @@ The Markdown output includes bounded sections for the same areas:
 - maturity by class;
 - actionable canonical gap top lists;
 - actionable-gap packet public-projection readiness;
-- evidence-class work queue;
+- evidence-class work queue, including dominant static limitation category and
+  repair route for static-dominated rows;
 - top evidence-quality risks;
 - recommended Lane 1 repairs;
 - duplicate-looking and canonical group signals;

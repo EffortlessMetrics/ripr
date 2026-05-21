@@ -2070,7 +2070,10 @@ Field contract:
 - `finding_alignment.coverage.alignment_coverage_by_class` - per-class raw
   finding, canonical item, state, and aligned/unaligned counts. The grain is
   `evidence_class`, using `canonical_item.evidence_class` when available and a
-  conservative seam/raw-finding fallback otherwise.
+  conservative seam/raw-finding fallback otherwise. Rows also carry
+  `static_limitation_categories` and `static_limitation_repair_routes` maps so
+  static-dominated classes keep their named analyzer limitation and repair
+  route instead of collapsing to a generic `static_unknown` bucket.
 - `finding_alignment.coverage.unaligned_raw_findings_by_class` - raw finding
   counts by class for evidence records that do not carry `canonical_item`.
 - `finding_alignment.coverage.top_unaligned_examples` - bounded examples of
@@ -2082,8 +2085,11 @@ Field contract:
 - `finding_alignment.coverage.evidence_class_work_queue` - ranked evidence
   classes that still need Lane 1 work, derived from alignment coverage rows.
   Rows include `work_score`, `dominant_signal`, raw/canonical/actionable/
-  limitation/unknown/unaligned/duplicate counts, and `next_repair`. This is the
-  audit-local "choose the next class from live output" queue.
+  limitation/unknown/unaligned/duplicate counts, dominant static limitation
+  category/count/repair route when present, and `next_repair`. When static
+  limitations dominate a class, `next_repair` is the dominant named limitation
+  repair route. This is the audit-local "choose the next class from live
+  output" queue.
 - `finding_alignment.coverage.static_unknown_without_named_limitation` -
   count of static-unknown or limitation-shaped canonical items without a named
   static limitation category plus repair route. Generic `static_unknown` or
@@ -2888,7 +2894,9 @@ Field contract:
 - `evidence_class_work_queue` - the audit-derived
   `finding_alignment.coverage.evidence_class_work_queue` section carried
   forward so the scorecard names the next evidence classes to burn down from
-  live output rather than static roadmap guesses.
+  live output rather than static roadmap guesses. Static-dominated rows retain
+  the dominant named limitation category and repair route, matching the audit
+  queue.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.

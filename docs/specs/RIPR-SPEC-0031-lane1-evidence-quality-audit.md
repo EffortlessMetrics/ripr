@@ -210,8 +210,11 @@ verification commands, or named static-limitation categories.
 Given alignment coverage rows, the audit reports bounded
 `evidence_class_work_queue` rows so the next class to improve is selected from
 live output. Rows must name the evidence class, dominant signal, work score,
-actionable/static-limitation/unknown/unaligned/duplicate counts, and next
-repair route.
+actionable/static-limitation/unknown/unaligned/duplicate counts, dominant
+static limitation category/count/repair route when present, and next repair
+route. Static-dominated rows must use the dominant named limitation repair route
+as `next_repair` so the queue points at a concrete analyzer slice instead of a
+generic static-limitation taxonomy bucket.
 
 Given a static-unknown or limitation-shaped canonical item, a limitation is
 named only when it carries a non-generic category and repair route. Generic
