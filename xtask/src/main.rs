@@ -16748,6 +16748,8 @@ const EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE: &str =
     "evidence_quality_scorecard_evidence_health_input_unavailable";
 const EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE: &str =
     "evidence_quality_trend_current_scorecard_unavailable";
+const EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE: &str =
+    "evidence_quality_trend_previous_artifact_unavailable";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Lane1EvidenceAuditReport {
@@ -25316,17 +25318,32 @@ pub(crate) fn evidence_quality_trend_report_impl(args: &[String]) -> Result<(), 
         .or_else(evidence_quality_trend_default_previous_path)
         .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.previous.json"));
     let previous = if previous_path.exists() {
-        Some(read_json_value(&previous_path).map_err(|err| {
-            format!(
-                "failed to read previous evidence-quality artifact at {}; {err}",
-                previous_path.display()
-            )
-        })?)
+        match read_json_value(&previous_path) {
+            Ok(previous) => Some(previous),
+            Err(err) => {
+                return write_limited_evidence_quality_trend_for_previous_input_failure(
+                    &current_path,
+                    &current,
+                    &previous_path,
+                    "malformed",
+                    &format!(
+                        "failed to read previous evidence-quality artifact at {}; {err}",
+                        previous_path.display()
+                    ),
+                );
+            }
+        }
     } else if explicit_previous {
-        return Err(format!(
-            "previous evidence-quality artifact not found: {}",
-            previous_path.display()
-        ));
+        return write_limited_evidence_quality_trend_for_previous_input_failure(
+            &current_path,
+            &current,
+            &previous_path,
+            "missing",
+            &format!(
+                "previous evidence-quality artifact not found: {}",
+                previous_path.display()
+            ),
+        );
     } else {
         None
     };
@@ -25407,6 +25424,64 @@ fn write_limited_evidence_quality_trend_for_current_input_failure(
         static_limitation_category_trends: Vec::new(),
         unknowns,
     };
+    write_report(
+        "evidence-quality-trend.json",
+        &evidence_quality_trend_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-trend.md",
+        &evidence_quality_trend_markdown(&report),
+    )
+}
+
+fn write_limited_evidence_quality_trend_for_previous_input_failure(
+    current_path: &Path,
+    current: &Value,
+    previous_path: &Path,
+    previous_status: &str,
+    error: &str,
+) -> Result<(), String> {
+    let inputs = EvidenceQualityTrendInputs {
+        current_scorecard: scorecard_input_artifact(
+            current_path,
+            "loaded",
+            Some(current),
+            "current evidence-quality scorecard",
+        )?,
+        previous_artifact: scorecard_input_artifact(
+            previous_path,
+            previous_status,
+            None,
+            "optional previous scorecard or audit snapshot unavailable; movement is diagnostic only",
+        )?,
+        capability_matrix: scorecard_input_artifact(
+            Path::new("docs/CAPABILITY_MATRIX.md"),
+            "loaded",
+            None,
+            "class-scoped capability maturity vocabulary",
+        )?,
+        traceability: scorecard_input_artifact(
+            Path::new(".ripr/traceability.toml"),
+            "loaded",
+            None,
+            "spec/test/code/output/metric linkage",
+        )?,
+    };
+    let mut report = evidence_quality_trend_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        current,
+        None,
+    )?;
+    trend_push_unknown(
+        &mut report.unknowns,
+        EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE,
+        &format!(
+            "Evidence-quality trend could not load the requested previous artifact: {}. No movement or badge-readiness delta claim is made from this limited trend.",
+            evidence_quality_scorecard_error_summary(error)
+        ),
+        Some("report/evidence-quality-trend"),
+    );
     write_report(
         "evidence-quality-trend.json",
         &evidence_quality_trend_json(&report)?,
@@ -45226,7 +45301,8 @@ mod tests {
         EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE,
-        EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE, EvidenceQualityScorecardInput,
+        EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE,
+        EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
         GENERATED_CI_FIRST_PR_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
@@ -64815,6 +64891,90 @@ covered_by = ["cargo xtask check-file-policy"]
                 .map_err(|err| format!("read trend markdown: {err}"))?;
             assert!(markdown.contains(EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE));
             assert!(markdown.contains("No movement or badge-readiness claim"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_quality_trend_missing_previous_writes_limited_report() -> Result<(), String> {
+        with_temp_cwd("trend-missing-previous", |_root| {
+            let current = scorecard_minimal_audit_value(0, 3, 1, 5, 4);
+            write(
+                Path::new("target/ripr/reports/evidence-quality-scorecard.json"),
+                &serde_json::to_string(&current).map_err(|err| err.to_string())?,
+            );
+            let args = vec![
+                "--previous".to_string(),
+                "target/ripr/reports/missing-previous-scorecard.json".to_string(),
+            ];
+
+            evidence_quality_trend_report_impl(&args)?;
+
+            let json = fs::read_to_string("target/ripr/reports/evidence-quality-trend.json")
+                .map_err(|err| format!("read trend json: {err}"))?;
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["summary"]["status"], "unknown");
+            assert_eq!(value["summary"]["no_history"], true);
+            assert_eq!(value["inputs"]["previous_artifact"]["status"], "missing");
+            assert!(
+                value["metric_trends"]
+                    .as_array()
+                    .is_some_and(|items| !items.is_empty())
+            );
+            assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+                unknowns.iter().any(|unknown| {
+                    unknown["kind"] == EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE
+                })
+            }));
+            let markdown = fs::read_to_string("target/ripr/reports/evidence-quality-trend.md")
+                .map_err(|err| format!("read trend markdown: {err}"))?;
+            assert!(markdown.contains(EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE));
+            assert!(markdown.contains("No movement or badge-readiness delta claim"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_quality_trend_malformed_previous_writes_limited_report() -> Result<(), String> {
+        with_temp_cwd("trend-malformed-previous", |_root| {
+            let current = scorecard_minimal_audit_value(0, 3, 1, 5, 4);
+            write(
+                Path::new("target/ripr/reports/evidence-quality-scorecard.json"),
+                &serde_json::to_string(&current).map_err(|err| err.to_string())?,
+            );
+            write(
+                Path::new("target/ripr/reports/previous-scorecard.json"),
+                "{not-json",
+            );
+            let args = vec![
+                "--previous".to_string(),
+                "target/ripr/reports/previous-scorecard.json".to_string(),
+            ];
+
+            evidence_quality_trend_report_impl(&args)?;
+
+            let json = fs::read_to_string("target/ripr/reports/evidence-quality-trend.json")
+                .map_err(|err| format!("read trend json: {err}"))?;
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["summary"]["status"], "unknown");
+            assert_eq!(value["summary"]["no_history"], true);
+            assert_eq!(value["inputs"]["previous_artifact"]["status"], "malformed");
+            assert!(
+                value["metric_trends"]
+                    .as_array()
+                    .is_some_and(|items| !items.is_empty())
+            );
+            assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+                unknowns.iter().any(|unknown| {
+                    unknown["kind"] == EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE
+                })
+            }));
+            let markdown = fs::read_to_string("target/ripr/reports/evidence-quality-trend.md")
+                .map_err(|err| format!("read trend markdown: {err}"))?;
+            assert!(markdown.contains(EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE));
+            assert!(markdown.contains("No movement or badge-readiness delta claim"));
             Ok(())
         })
     }
