@@ -75,7 +75,10 @@ outputs and writes warning JSON/Markdown with phase context such as
 of waiting forever or pretending missing counts mean no evidence debt. The
 limited `inputs.generation.status` is `timeout`, `fail`, or
 `pass_incomplete`; `pass_incomplete` means the child process exited zero but
-artifact validation failed.
+artifact validation failed. The xtask generation subprocess enables
+repo-exposure latency tracing; limited artifacts carry
+`latency_trace_events_total` and a bounded `latency_trace_tail` when the
+analyzer emits phase progress before timing out or failing.
 
 The command:
 
@@ -198,8 +201,9 @@ a `run_limitations[].category = "evidence_health_timeout"` or
 `"evidence_health_incomplete"` entry, phase/input context,
 timeout/duration/output byte counts, exit status when available, bounded
 stdout/stderr excerpts, an artifact-validation `failure_reason` when available,
-and a repair route. The limited artifact is diagnostic only and does not claim
-user test debt from missing health counts.
+repo-exposure latency trace counts/tail when available, and a repair route. The
+limited artifact is diagnostic only and does not claim user test debt from
+missing health counts.
 
 ## Test Mapping
 
@@ -214,7 +218,7 @@ user test debt from missing health counts.
   pins argument validation.
 - `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
   pins the bounded xtask timeout fallback, stale-output cleanup, named
-  limitation category, and repair route.
+  limitation category, repair route, and repo-exposure latency trace tail.
 - `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
   pins the bounded preflight build fallback, phase diagnostics, stale-output
   cleanup, named limitation category, and repair route.

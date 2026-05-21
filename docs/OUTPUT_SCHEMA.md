@@ -1412,11 +1412,14 @@ Markdown with `status = "warn"`, phase context such as
 `evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
 entry. Limited `inputs.generation.status` values are `timeout`, `fail`, or
 `pass_incomplete`; `pass_incomplete` means the child exited zero but the
-expected artifacts were missing or malformed. The default is deliberately
-below known pathological live-repo runtimes so the report produces bounded
-diagnostics before abnormal termination can drop the artifact. That limited
-artifact is diagnostic only; it does not claim user test debt from missing
-health counts.
+expected artifacts were missing or malformed. The xtask generation subprocess
+enables repo-exposure latency tracing, so limited reports also include
+`latency_trace_events_total` and `latency_trace_tail` under
+`inputs.generation` and `run_limitations[]` when the analyzer emitted phase
+progress. The default is deliberately below known pathological live-repo
+runtimes so the report produces bounded diagnostics before abnormal
+termination can drop the artifact. That limited artifact is diagnostic only; it
+does not claim user test debt from missing health counts.
 
 ```json
 {
@@ -1656,8 +1659,9 @@ Field contract:
   incomplete rows name `evidence_health_timeout` or
   `evidence_health_incomplete`, the `evidence_health_generation` phase,
   timeout/duration/output byte diagnostics, bounded stdout/stderr excerpts,
-  optional artifact-validation `failure_reason`, and a repair route for
-  inspecting runtime, stdout/stderr, malformed artifacts, or increasing
+  optional artifact-validation `failure_reason`, repo-exposure latency trace
+  counts/tail when available, and a repair route for inspecting runtime,
+  stdout/stderr, malformed artifacts, slow analyzer phases, or increasing
   `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
