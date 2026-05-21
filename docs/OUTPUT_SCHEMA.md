@@ -2918,6 +2918,13 @@ the command still writes bounded trend JSON/Markdown with
 `summary.status = "unknown"` and the named
 `evidence_quality_trend_current_scorecard_unavailable` unknown instead of
 exiting before producing a trend artifact.
+If an explicit `--previous <path>` artifact is missing or malformed, the command
+still writes bounded trend JSON/Markdown with
+`summary.status = "unknown"`, `inputs.previous_artifact.status = "missing"` or
+`"malformed"`, and the named
+`evidence_quality_trend_previous_artifact_unavailable` unknown instead of
+exiting before producing trend evidence. Metric rows may still carry current
+values, but movement and badge-readiness deltas remain unknown.
 
 ```json
 {
@@ -2984,7 +2991,8 @@ Field contract:
 - `inputs.current_scorecard` - current scorecard artifact identity. The
   command creates the default scorecard first if it is missing.
 - `inputs.previous_artifact` - optional previous scorecard or audit snapshot.
-  Missing history is an explicit unknown, not a failure.
+  Missing history is an explicit unknown, not a failure. Missing or malformed
+  explicit previous paths are bounded unavailable-input states.
 - `summary.status` - `improvement`, `regression`, `mixed`, `unchanged`, or
   `unknown`.
 - `metric_trends[]` - comparable Lane 1 evidence-quality metrics with
@@ -3002,7 +3010,9 @@ Field contract:
   unknowns are carried forward except `recent_delta_unavailable`, which the
   trend report replaces with its own history unknown. Missing or malformed
   current scorecards are reported as
-  `evidence_quality_trend_current_scorecard_unavailable`.
+  `evidence_quality_trend_current_scorecard_unavailable`. Missing or malformed
+  explicit previous artifacts are reported as
+  `evidence_quality_trend_previous_artifact_unavailable`.
 
 The Markdown sibling prints bounded sections for summary, metric trends,
 static limitation category trends, and unknowns.

@@ -44,6 +44,11 @@ are scoped or reviewed.
   `evidence-health.json` as bounded unavailable health context, writing
   scorecard JSON/Markdown with the named
   `evidence_quality_scorecard_evidence_health_input_unavailable` unknown.
+- `cargo xtask evidence-quality-trend --previous <path>` now writes bounded
+  trend JSON/Markdown when the explicit previous artifact is missing or
+  malformed, carrying
+  `evidence_quality_trend_previous_artifact_unavailable` instead of exiting
+  before producing trend evidence.
 
 ## 0.7.0 - 2026-05-20
 

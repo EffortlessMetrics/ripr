@@ -149,6 +149,11 @@ names the fixture or runtime evidence that supports that scope.
 `evidence-quality-trend` additionally accepts optional `--current <path>` and
 `--previous <path>` arguments so maintainers can compare checked scorecard or
 audit snapshots without inventing a new source of truth.
+If an explicit previous artifact path is missing or malformed, the trend
+command must still write bounded JSON/Markdown with
+`unknowns[].kind = "evidence_quality_trend_previous_artifact_unavailable"`,
+mark the previous input status as `missing` or `malformed`, and avoid movement
+or badge-readiness delta claims.
 
 Missing optional inputs must be reported as unknown or unavailable. Missing
 required audit input may be repaired by regenerating the audit; if regeneration
@@ -352,6 +357,11 @@ bounded diagnostic artifact with
 `evidence_quality_trend_current_scorecard_unavailable` instead of leaving stale
 or missing trend output.
 
+Given a missing or malformed explicit previous artifact input, the trend report
+emits a bounded diagnostic artifact with
+`evidence_quality_trend_previous_artifact_unavailable` instead of leaving stale
+or missing trend output.
+
 Given a previous scorecard with fewer calibrated records and more
 duplicate-looking groups, the trend report marks calibrated records and
 duplicate-looking groups as improvement.
@@ -399,6 +409,11 @@ any gate behavior.
   `xtask::tests::evidence_quality_trend_malformed_current_writes_limited_report`
   pin bounded diagnostic trend artifacts for unavailable current scorecard
   inputs.
+- `xtask::tests::evidence_quality_trend_missing_previous_writes_limited_report`
+  and
+  `xtask::tests::evidence_quality_trend_malformed_previous_writes_limited_report`
+  pin bounded diagnostic trend artifacts for unavailable explicit previous
+  artifacts.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
   pins metric direction semantics.
 - `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_movement_unknown`
