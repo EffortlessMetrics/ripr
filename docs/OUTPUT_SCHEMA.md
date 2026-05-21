@@ -2875,6 +2875,10 @@ Field contract:
   a bounded audit artifact, records
   `evidence_quality_scorecard_audit_input_unavailable`, and still writes
   scorecard JSON/Markdown instead of exiting without report evidence.
+  If an optional `evidence-health.json` exists but cannot be parsed, the
+  scorecard records `inputs.evidence_health.status = "malformed"` and adds
+  `evidence_quality_scorecard_evidence_health_input_unavailable` instead of
+  failing the scorecard or treating health-only fields as complete.
   Non-completeness audit limitations, such as skipped full-cache storage after a
   complete repo-exposure run, remain visible on the audit artifact but do not
   mark scorecard counts as partial.

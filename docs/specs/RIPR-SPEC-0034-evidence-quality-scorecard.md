@@ -164,6 +164,12 @@ JSON/Markdown, and add
 the audit or evidence-health artifact exists but carries `run_limitations[]`,
 the scorecard must surface that as an unknown and must not let the limited
 artifact's zero or partial counts masquerade as complete repo truth.
+If optional `evidence-health.json` exists but is malformed or unreadable, the
+scorecard must still write JSON/Markdown, mark
+`inputs.evidence_health.status = "malformed"`, and add
+`unknowns[].kind =
+"evidence_quality_scorecard_evidence_health_input_unavailable"` so health-only
+fields are visibly unavailable instead of silently blocking scorecard output.
 
 Operators must run live Lane 1 report validation sequentially in a shared
 worktree. `cargo xtask evidence-quality-scorecard` and
@@ -318,6 +324,11 @@ Given an evidence-health artifact with `run_limitations[]`, the scorecard adds
 `evidence_health_limited` to `unknowns` because evidence-health warning
 artifacts are intentionally diagnostic-only.
 
+Given a malformed evidence-health artifact, the scorecard emits bounded
+scorecard artifacts with
+`evidence_quality_scorecard_evidence_health_input_unavailable` instead of
+failing before scorecard evidence is written.
+
 Given a failed attempt to regenerate a missing Lane 1 audit, the scorecard
 emits a bounded diagnostic scorecard and adds
 `evidence_quality_scorecard_audit_regeneration_failed` to `unknowns` instead of
@@ -371,6 +382,9 @@ any gate behavior.
 - `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
   pins scorecard unknowns for bounded audit and evidence-health input
   limitations.
+- `xtask::tests::evidence_quality_scorecard_malformed_evidence_health_stays_bounded`
+  pins bounded scorecard artifacts when optional evidence-health input is stale
+  or malformed.
 - `xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure`
   pins the bounded diagnostic scorecard for failed missing-audit regeneration.
 - `xtask::tests::evidence_quality_scorecard_malformed_audit_writes_limited_reports`
