@@ -31,6 +31,11 @@ are scoped or reviewed.
   unknowns forward. If the current scorecard is limited because the Lane 1 audit
   input is incomplete or regeneration failed, metric and category movement stay
   `unknown` instead of comparing partial counts against previous history.
+- `cargo xtask evidence-quality-trend` now writes bounded diagnostic
+  `evidence-quality-trend.{json,md}` artifacts when the current scorecard input
+  is missing, malformed, or cannot be regenerated. The reports carry the named
+  `evidence_quality_trend_current_scorecard_unavailable` unknown instead of
+  exiting before producing trend evidence.
 
 ## 0.7.0 - 2026-05-20
 
