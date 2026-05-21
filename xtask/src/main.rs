@@ -16620,6 +16620,7 @@ struct Lane1EvidenceAuditRepoExposureGeneration {
     command: String,
     timeout_ms: u128,
     status: String,
+    failure_reason: Option<String>,
     duration_ms: u128,
     exit_code: Option<i32>,
     stdout_bytes: usize,
@@ -16892,6 +16893,7 @@ fn lane1_evidence_audit_report_from_complete_repo_exposure(
                 root,
                 Lane1EvidenceAuditRepoExposureGeneration {
                     status: status.to_string(),
+                    failure_reason: Some(err),
                     ..generation
                 },
             )
@@ -16961,11 +16963,20 @@ where
     F: FnMut(&Path, &[String], &Path, Duration) -> Result<TimedFileOutput, String>,
 {
     let args = lane1_evidence_audit_repo_exposure_args();
+    let started = Instant::now();
     let output = match run_repo_exposure(binary, &args, path, timeout) {
         Ok(output) => output,
         Err(err) => {
             let _ = fs::remove_file(path);
-            return Err(err);
+            return Ok(Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(
+                lane1_evidence_audit_repo_exposure_runner_error(
+                    binary,
+                    &args,
+                    timeout,
+                    started.elapsed(),
+                    err,
+                ),
+            ));
         }
     };
     if output.timed_out {
@@ -17102,10 +17113,38 @@ fn lane1_limited_repo_exposure_limitation(
             repair_route: "inspect repo-exposure latency trace, increase RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS for slower machines, or add fixture-backed analyzer narrowing for the slow phase",
         };
     }
+    if generation.status == "runner_error" {
+        return Lane1LimitedRepoExposureLimitation {
+            category: "lane1_repo_exposure_runner_error",
+            summary: "Lane 1 repo-exposure generation could not be started or captured; no partial repo-exposure JSON was accepted and no user test debt is claimed from this limited artifact.",
+            repair_route: "inspect repo-exposure command availability, report directory permissions, captured failure_reason, and runner environment; rerun lane1-evidence-audit after fixing the invocation or capture path",
+        };
+    }
     Lane1LimitedRepoExposureLimitation {
         category: "lane1_repo_exposure_incomplete",
         summary: "Lane 1 repo-exposure generation ended before producing complete repo-exposure JSON; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact.",
         repair_route: "inspect repo-exposure exit status, stderr, and latency trace; rerun lane1-evidence-audit; or add fixture-backed analyzer narrowing for the failing phase",
+    }
+}
+
+fn lane1_evidence_audit_repo_exposure_runner_error(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    duration: Duration,
+    err: String,
+) -> Lane1EvidenceAuditRepoExposureGeneration {
+    Lane1EvidenceAuditRepoExposureGeneration {
+        command: format!("{} {}", binary.display(), args.join(" ")),
+        timeout_ms: timeout.as_millis(),
+        status: "runner_error".to_string(),
+        failure_reason: Some(err),
+        duration_ms: duration.as_millis(),
+        exit_code: None,
+        stdout_bytes: 0,
+        stderr_bytes: 0,
+        latency_trace_events_total: 0,
+        latency_trace_tail: Vec::new(),
     }
 }
 
@@ -17129,6 +17168,7 @@ fn lane1_evidence_audit_repo_exposure_generation(
         } else {
             "fail".to_string()
         },
+        failure_reason: None,
         duration_ms: output.duration.as_millis(),
         exit_code: output.status.and_then(|status| status.code()),
         stdout_bytes: output.stdout_bytes,
@@ -18149,6 +18189,12 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
             "| Status | `{}` |\n",
             audit_markdown_cell(&generation.status)
         ));
+        if let Some(reason) = &generation.failure_reason {
+            out.push_str(&format!(
+                "| Failure reason | {} |\n",
+                audit_markdown_cell(reason)
+            ));
+        }
         out.push_str(&format!("| Duration | {} ms |\n", generation.duration_ms));
         out.push_str(&format!("| Timeout | {} ms |\n", generation.timeout_ms));
         let exit = generation
@@ -21245,6 +21291,7 @@ fn lane1_evidence_audit_repo_exposure_generation_json(
         "command": normalize_report_path(&generation.command),
         "timeout_ms": generation.timeout_ms,
         "status": generation.status,
+        "failure_reason": generation.failure_reason,
         "duration_ms": generation.duration_ms,
         "exit_code": generation.exit_code,
         "stdout_bytes": generation.stdout_bytes,
@@ -59169,6 +59216,7 @@ covered_by = ["cargo xtask check-file-policy"]
             command: "target/debug/ripr check --format repo-exposure-json".to_string(),
             timeout_ms: 1_200_000,
             status: "pass".to_string(),
+            failure_reason: None,
             duration_ms: 1_086_312,
             exit_code: Some(0),
             stdout_bytes: 1_234,
@@ -59228,6 +59276,7 @@ covered_by = ["cargo xtask check-file-policy"]
             command: "ripr check --format repo-exposure-json".to_string(),
             timeout_ms: 50,
             status: "pass".to_string(),
+            failure_reason: None,
             duration_ms: 218,
             exit_code: Some(0),
             stdout_bytes: 0,
@@ -59264,26 +59313,57 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
-    fn lane1_evidence_audit_repo_exposure_generation_removes_stale_file_on_runner_error() {
+    fn lane1_evidence_audit_repo_exposure_generation_limits_runner_error() -> Result<(), String> {
         let root = temp_dir("lane1-repo-exposure-runner-error");
         let output_path = root.join("repo-exposure.json");
         write(&output_path, "stale");
 
-        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
             |_binary, _args, _output_path_seen, _timeout_seen| {
                 Err("failed to spawn repo exposure".to_string())
             },
-        )
-        .expect_err("runner error should fail repo exposure generation");
+        )?;
 
-        assert!(err.contains("failed to spawn repo exposure"), "{err}");
+        let Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(diagnostics) = outcome else {
+            return Err("runner error should produce a bounded limitation".to_string());
+        };
+        assert_eq!(diagnostics.status, "runner_error");
+        assert_eq!(
+            diagnostics.failure_reason.as_deref(),
+            Some("failed to spawn repo exposure")
+        );
         assert!(
             !output_path.exists(),
             "runner errors should not leave stale repo exposure input"
         );
+
+        let report = lane1_evidence_audit_limited_report(".", diagnostics);
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["run_limitations"][0]["category"],
+            "lane1_repo_exposure_runner_error"
+        );
+        assert_eq!(
+            value["inputs"]["repo_exposure_generation"]["failure_reason"],
+            "failed to spawn repo exposure"
+        );
+        assert_eq!(
+            value["static_limitations"]["by_category"]["lane1_repo_exposure_runner_error"],
+            1
+        );
+
+        let packets_json = lane1_actionable_gap_packets_json(&report)?;
+        let packets: Value = serde_json::from_str(&packets_json).map_err(|err| err.to_string())?;
+        assert_eq!(packets["summary"]["actionable_gaps"], 0);
+
+        let markdown = lane1_evidence_audit_markdown(&report);
+        assert!(markdown.contains("lane1_repo_exposure_runner_error"));
+        assert!(markdown.contains("failed to spawn repo exposure"));
+        Ok(())
     }
 
     #[test]
@@ -59423,6 +59503,7 @@ covered_by = ["cargo xtask check-file-policy"]
             command: "ripr check --format repo-exposure-json".to_string(),
             timeout_ms: 12,
             status: "timeout".to_string(),
+            failure_reason: None,
             duration_ms: 13,
             exit_code: None,
             stdout_bytes: 0,
@@ -59468,6 +59549,7 @@ covered_by = ["cargo xtask check-file-policy"]
             command: "ripr check --format repo-exposure-json".to_string(),
             timeout_ms: 1200,
             status: "fail".to_string(),
+            failure_reason: None,
             duration_ms: 540,
             exit_code: Some(1),
             stdout_bytes: 0,
@@ -62834,6 +62916,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 .to_string(),
             timeout_ms: 60_000,
             status: "pass".to_string(),
+            failure_reason: None,
             duration_ms: 42_000,
             exit_code: Some(0),
             stdout_bytes: 1024,
