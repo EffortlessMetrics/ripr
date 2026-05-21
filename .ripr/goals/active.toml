@@ -37,6 +37,9 @@ id = "context/proof-stack-reconciliation"
 status = "done"
 branch = "context-proof-stack-reconciliation"
 stackable = false
+proposal = "RIPR-PROP-0015"
+spec = "RIPR-SPEC-0060"
+plan = "RIPR-PLAN-0028"
 acceptance = "Reconcile proof-stack language into RIPR's existing context system and accepted source-of-truth stack without adding a runner-local goals namespace or another operating namespace. `docs/source-of-truth/README.md` and `docs/agent-context/CONTEXT_SYSTEM.md` map proposal, spec, ADR, implementation plan, active manifest, support tiers, policy ledgers, and closeouts to the repo-native files users and agents already consume, and `docs/ROADMAP.md` states the product/control-plane end goal."
 commands = [
   "cargo xtask check-doc-index",
@@ -52,6 +55,9 @@ id = "goals/active-freshness-validation"
 status = "done"
 branch = "goals-active-freshness-validation"
 stackable = false
+proposal = "RIPR-PROP-0015"
+spec = "RIPR-SPEC-0060"
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "context/proof-stack-reconciliation",
 ]
@@ -68,6 +74,9 @@ id = "first-pr/front-door-polish"
 status = "ready"
 branch = "first-pr-front-door-polish"
 stackable = false
+proposal = "RIPR-PROP-0009"
+spec = "RIPR-SPEC-0051"
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "goals/active-freshness-validation",
 ]
@@ -85,6 +94,12 @@ id = "first-pr/one-screen-recommendation"
 status = "blocked"
 branch = "first-pr-one-screen-recommendation"
 stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
+]
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "first-pr/front-door-polish",
 ]
@@ -103,6 +118,12 @@ id = "outcome/reviewer-native-receipts"
 status = "blocked"
 branch = "outcome-reviewer-native-receipts"
 stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md",
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+]
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "first-pr/one-screen-recommendation",
 ]
@@ -120,6 +141,9 @@ id = "fixtures/first-pr-boundary-gap-demo"
 status = "blocked"
 branch = "fixtures-first-pr-boundary-gap-demo"
 stackable = false
+proposal = "RIPR-PROP-0009"
+spec = "RIPR-SPEC-0051"
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "outcome/reviewer-native-receipts",
 ]
@@ -137,6 +161,12 @@ id = "surfaces/one-screen-loop-convergence"
 status = "blocked"
 branch = "surfaces-one-screen-loop-convergence"
 stackable = false
+proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+]
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "fixtures/first-pr-boundary-gap-demo",
 ]
@@ -155,6 +185,12 @@ id = "campaign/first-useful-pr-loop-closeout"
 status = "blocked"
 branch = "campaign-first-useful-pr-loop-closeout"
 stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
+]
+plan = "RIPR-PLAN-0028"
 blocked_by = [
   "surfaces/one-screen-loop-convergence",
 ]

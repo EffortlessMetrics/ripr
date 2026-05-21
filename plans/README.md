@@ -64,6 +64,7 @@ safer.
 - [Editor first-pr bridge](editor-first-pr-bridge/implementation-plan.md)
 - [Editor first-run usability](editor-first-run-usability/implementation-plan.md)
 - [Editor gap cockpit](editor-gap-cockpit/implementation-plan.md)
+- [First Useful PR Loop](first-useful-pr-loop/implementation-plan.md)
 - [Lane 4 PR / CI review cockpit](lane4-pr-ci-review-cockpit/README.md)
 - [Rust usable gap projection](rust-usable-gap-projection/README.md)
 

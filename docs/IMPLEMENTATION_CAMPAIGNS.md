@@ -3094,6 +3094,7 @@ References:
 - [README](README.md)
 - [Quickstart](QUICKSTART.md)
 - [Context system](agent-context/CONTEXT_SYSTEM.md)
+- [First Useful PR Loop plan](../plans/first-useful-pr-loop/implementation-plan.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [Support tiers](status/SUPPORT_TIERS.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
