@@ -44,6 +44,16 @@ can answer these questions from the repository instead of from chat history:
 - [Agent operating model](agent-operating-model.md) defines how Codex and other
   workers consume the graph.
 
+## Templates
+
+- [Proposal template](../templates/proposal.md)
+- [Spec template](../templates/spec.md)
+- [ADR template](../templates/adr.md)
+- [Implementation plan template](../templates/implementation-plan.md)
+- [Plan item template](../templates/plan-item.md)
+- [Closeout template](../templates/closeout.md)
+- [PR body template](../templates/pr-body.md)
+
 ## Current repo path
 
 This repo uses `.ripr/goals/active.toml` as the active execution manifest.
