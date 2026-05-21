@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Evidence-health fallback artifacts now use the current evidence-health schema
+  version and carry explicit generation phase/status plus bounded stdout/stderr
+  excerpts for timeout and nonzero-exit warning reports. The output contract,
+  capability metadata, and traceability now document both
+  `evidence_health_timeout` and `evidence_health_incomplete` limited artifacts.
 - Added `RIPR-SPEC-0058` for the `ripr-swarm` external-agent handoff. The spec
   defines the packet-only input, operator review boundary, patch and receipt
   metadata response, outcome join, and hard non-goals for provider SDKs,

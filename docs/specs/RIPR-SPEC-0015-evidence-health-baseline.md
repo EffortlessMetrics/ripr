@@ -195,9 +195,11 @@ Given the xtask evidence-health child process times out or exits before a
 complete report is available, the command writes bounded warning artifacts with
 `status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"` or
 `"evidence_health_incomplete"` entry, phase/input context,
-timeout/duration/output byte counts, exit status when available, and a repair
-route. The limited artifact is diagnostic only and does not claim user test debt
-from missing health counts.
+timeout/duration/output byte counts, bounded stdout/stderr excerpts, exit
+status when available, and a repair route. The limited artifact records
+`inputs.generation.status = "timeout"` for timed-out children and `"fail"` for
+nonzero or missing status exits. The limited artifact is diagnostic only and
+does not claim user test debt from missing health counts.
 
 ## Test Mapping
 
@@ -221,6 +223,8 @@ from missing health counts.
   `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`
   pin incomplete-exit fallback artifacts, stale-output cleanup, exit-status
   diagnostics, named limitation category, and repair route.
+- `xtask::tests::evidence_health_output_excerpt_is_bounded` pins stdout/stderr
+  excerpt bounds for limited warning artifacts.
 
 ## Implementation Mapping
 

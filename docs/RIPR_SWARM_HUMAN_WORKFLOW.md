@@ -25,8 +25,18 @@ Generate or refresh Lane 1 evidence first:
 
 ```bash
 cargo xtask lane1-evidence-audit
+cargo xtask evidence-health
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
 cargo xtask ripr-swarm plan --top 10
+cargo xtask actionable-gap-outcomes
+cargo xtask ripr-swarm readiness
 ```
+
+Run these Cargo-backed report commands sequentially in one worktree. They share
+the Cargo target directory and `target/ripr/reports`; overlapping runs can cause
+lock contention or stale report reads. If parallel validation is necessary,
+isolate both `CARGO_TARGET_DIR` and report output paths.
 
 The workflow reads these artifacts:
 

@@ -1602,6 +1602,12 @@ Field contract:
 - `inputs.root` - the analyzed workspace root as supplied to the command.
 - `inputs.mutation_calibration` - optional imported calibration report path;
   `null` when not provided.
+- `inputs.generation` - present on bounded xtask fallback artifacts. It records
+  `phase` (`evidence_health_build` or `evidence_health_generation`), bounded
+  command, `status` (`fail` or `timeout`), timeout/duration, exit code when
+  available, output byte counts, and bounded stdout/stderr excerpts. Complete
+  `ripr evidence-health` reports omit this wrapper field and keep the normal
+  analyzer-health payload.
 - `metrics.grip_class_counts` - all `SeamGripClass` buckets, including zero
   counts.
 - `metrics.stage_state_counts` - per-stage `StageState` buckets for `reach`,
@@ -1658,9 +1664,9 @@ Field contract:
 - `run_limitations` - present on bounded xtask fallback artifacts. Timeout and
   incomplete rows name `evidence_health_timeout` or
   `evidence_health_incomplete`, the `evidence_health_generation` phase,
-  timeout/duration/output byte diagnostics, and a repair route for inspecting
-  runtime, stdout/stderr, or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on
-  slower machines.
+  timeout/duration/output byte diagnostics, bounded stdout/stderr excerpts,
+  and a repair route for inspecting runtime, stdout/stderr, or increasing
+  `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,

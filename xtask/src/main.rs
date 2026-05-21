@@ -16167,7 +16167,10 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
 }
 
 const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
+const EVIDENCE_HEALTH_SCHEMA_VERSION: &str = "0.2";
 const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
+const EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINES: usize = 8;
+const EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS: usize = 4_000;
 
 fn evidence_health_args() -> Vec<String> {
     let mut args = vec![
@@ -16320,14 +16323,14 @@ fn limited_evidence_health_json(
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
     let value = serde_json::json!({
-        "schema_version": "0.1",
+        "schema_version": EVIDENCE_HEALTH_SCHEMA_VERSION,
         "tool": "ripr",
         "scope": "repo",
         "status": "warn",
         "inputs": {
             "root": ".",
             "mutation_calibration": null,
-            "generation": evidence_health_generation_json(command, timeout, output),
+            "generation": evidence_health_generation_json(command, phase, timeout, output),
         },
         "metrics": {
             "seams_total": 0,
@@ -16408,6 +16411,8 @@ fn limited_evidence_health_json(
                 "exit_code": output.status.and_then(|status| status.code()),
                 "stdout_bytes": output.stdout.len(),
                 "stderr_bytes": output.stderr.len(),
+                "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
+                "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
             }
         ],
     });
@@ -16418,18 +16423,48 @@ fn limited_evidence_health_json(
 
 fn evidence_health_generation_json(
     command: &str,
+    phase: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> Value {
     serde_json::json!({
         "command": command,
+        "phase": phase,
         "timeout_ms": timeout.as_millis(),
         "status": if output.timed_out { "timeout" } else { "fail" },
         "duration_ms": output.duration.as_millis(),
         "exit_code": output.status.and_then(|status| status.code()),
         "stdout_bytes": output.stdout.len(),
         "stderr_bytes": output.stderr.len(),
+        "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
+        "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
     })
+}
+
+fn evidence_health_output_excerpt(text: &str) -> Option<String> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    let mut lines = text
+        .lines()
+        .rev()
+        .take(EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINES)
+        .collect::<Vec<_>>();
+    lines.reverse();
+    let joined = lines.join("\n");
+    let char_count = joined.chars().count();
+    if char_count <= EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS {
+        return Some(joined);
+    }
+    let tail = joined
+        .chars()
+        .rev()
+        .take(EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    Some(format!("[truncated]\n{tail}"))
 }
 
 fn evidence_health_limited_kind(output: &TimedOutput) -> &'static str {
@@ -59947,6 +59982,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
             let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
             let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["status"], "warn");
             assert_eq!(
                 value["run_limitations"][0]["category"],
@@ -59963,6 +59999,18 @@ covered_by = ["cargo xtask check-file-policy"]
             assert_eq!(
                 value["inputs"]["generation"]["command"],
                 "cargo build -p ripr"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["phase"],
+                "evidence_health_build"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("timeout")
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["stderr_excerpt"],
+                "Compiling ripr"
             );
             assert!(!json_text.contains("stale json"));
 
@@ -60003,10 +60051,23 @@ covered_by = ["cargo xtask check-file-policy"]
 
             let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
             let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["status"], "warn");
             assert_eq!(
                 value["run_limitations"][0]["category"],
                 "evidence_health_timeout"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["phase"],
+                "evidence_health_generation"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("timeout")
+            );
+            assert_eq!(
+                value["run_limitations"][0]["stderr_excerpt"],
+                "phase=inventory\nphase=evidence_health"
             );
             assert_eq!(
                 value["top_static_limitations"][0]["repair_route"],
@@ -60037,6 +60098,25 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_health_output_excerpt_is_bounded() -> Result<(), String> {
+        let text = (0..12)
+            .map(|line| format!("line-{line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            super::evidence_health_output_excerpt(&text).as_deref(),
+            Some("line-4\nline-5\nline-6\nline-7\nline-8\nline-9\nline-10\nline-11")
+        );
+
+        let long_line = "x".repeat(super::EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS + 8);
+        let excerpt = super::evidence_health_output_excerpt(&long_line)
+            .ok_or_else(|| "non-empty long line should produce excerpt".to_string())?;
+        assert!(excerpt.starts_with("[truncated]\n"));
+        assert!(excerpt.chars().count() <= super::EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS + 12);
+        Ok(())
+    }
+
+    #[test]
     fn evidence_health_incomplete_exit_writes_named_limitation_reports() -> Result<(), String> {
         with_temp_cwd("evidence-health-incomplete", |_root| {
             let timeout = Duration::from_mins(30);
@@ -60063,6 +60143,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
             let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
             let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["status"], "warn");
             assert_eq!(
                 value["run_limitations"][0]["category"],
@@ -60075,6 +60156,14 @@ covered_by = ["cargo xtask check-file-policy"]
             assert_eq!(
                 value["inputs"]["generation"]["status"],
                 serde_json::Value::from("fail")
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["phase"],
+                "evidence_health_generation"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["stdout_excerpt"],
+                "partial stdout"
             );
             assert!(!json_text.contains("stale json"));
 
@@ -60114,6 +60203,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
             let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
             let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["status"], "warn");
             assert_eq!(
                 value["run_limitations"][0]["category"],
@@ -60130,6 +60220,18 @@ covered_by = ["cargo xtask check-file-policy"]
             assert_eq!(
                 value["inputs"]["generation"]["status"],
                 serde_json::Value::from("fail")
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["phase"],
+                "evidence_health_generation"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["stderr_excerpt"],
+                "error: evidence health failed"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["stderr_excerpt"],
+                "error: evidence health failed"
             );
             assert!(!json_text.contains("stale json"));
 
