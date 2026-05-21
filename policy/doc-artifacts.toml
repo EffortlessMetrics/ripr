@@ -1,4 +1,20 @@
 schema_version = "1.0"
 
 # Document artifact ledger for source-of-truth links.
-# Populate with concrete proposal/spec/adr/plan entries as initiative slices land.
+# This PR only registers the initial control-plane proposal/spec pair. Later
+# validators should expand and enforce the schema before CI depends on it.
+
+[[artifact]]
+id = "RIPR-PROP-0015"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0015-source-of-truth-control-plane.md"
+status = "proposed"
+owner = "repo-infra"
+
+[[artifact]]
+id = "RIPR-SPEC-0060"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0060-source-of-truth-stack.md"
+status = "proposed"
+owner = "repo-infra"
+linked_proposal = "RIPR-PROP-0015"
