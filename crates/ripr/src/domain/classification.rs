@@ -11,36 +11,65 @@ pub enum ExposureClass {
 
 impl ExposureClass {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            ExposureClass::Exposed => "exposed",
-            ExposureClass::WeaklyExposed => "weakly_exposed",
-            ExposureClass::ReachableUnrevealed => "reachable_unrevealed",
-            ExposureClass::NoStaticPath => "no_static_path",
-            ExposureClass::InfectionUnknown => "infection_unknown",
-            ExposureClass::PropagationUnknown => "propagation_unknown",
-            ExposureClass::StaticUnknown => "static_unknown",
-        }
+        profile::for_class(self).label
     }
 
     pub fn severity(&self) -> &'static str {
-        match self {
-            ExposureClass::Exposed => "info",
-            ExposureClass::WeaklyExposed => "warning",
-            ExposureClass::ReachableUnrevealed => "warning",
-            ExposureClass::NoStaticPath => "warning",
-            ExposureClass::InfectionUnknown => "warning",
-            ExposureClass::PropagationUnknown => "note",
-            ExposureClass::StaticUnknown => "note",
-        }
+        profile::for_class(self).severity
     }
 
     pub fn requires_stop_reason(&self) -> bool {
-        matches!(
-            self,
-            ExposureClass::InfectionUnknown
-                | ExposureClass::PropagationUnknown
-                | ExposureClass::StaticUnknown
-        )
+        profile::for_class(self).requires_stop_reason
+    }
+}
+
+mod profile {
+    use super::ExposureClass;
+
+    pub(super) struct ExposureProfile {
+        pub(super) label: &'static str,
+        pub(super) severity: &'static str,
+        pub(super) requires_stop_reason: bool,
+    }
+
+    pub(super) fn for_class(class: &ExposureClass) -> ExposureProfile {
+        match class {
+            ExposureClass::Exposed => ExposureProfile {
+                label: "exposed",
+                severity: "info",
+                requires_stop_reason: false,
+            },
+            ExposureClass::WeaklyExposed => ExposureProfile {
+                label: "weakly_exposed",
+                severity: "warning",
+                requires_stop_reason: false,
+            },
+            ExposureClass::ReachableUnrevealed => ExposureProfile {
+                label: "reachable_unrevealed",
+                severity: "warning",
+                requires_stop_reason: false,
+            },
+            ExposureClass::NoStaticPath => ExposureProfile {
+                label: "no_static_path",
+                severity: "warning",
+                requires_stop_reason: false,
+            },
+            ExposureClass::InfectionUnknown => ExposureProfile {
+                label: "infection_unknown",
+                severity: "warning",
+                requires_stop_reason: true,
+            },
+            ExposureClass::PropagationUnknown => ExposureProfile {
+                label: "propagation_unknown",
+                severity: "note",
+                requires_stop_reason: true,
+            },
+            ExposureClass::StaticUnknown => ExposureProfile {
+                label: "static_unknown",
+                severity: "note",
+                requires_stop_reason: true,
+            },
+        }
     }
 }
 
