@@ -273,6 +273,32 @@ are fail-closed states. `preview-limited evidence` remains syntax-first and
 advisory. `verify command`, `receipt command`, and `receipt path` are the static
 movement proof rail, not runtime adequacy, mutation proof, or gate approval.
 
+### Lane 1 Report Validation
+
+Lane 1 report generators are Cargo-backed and share both Cargo build locks and
+`target/ripr/reports` output paths. Do not launch them concurrently in the same
+worktree with the same target/report directories. Parallel runs can make healthy
+commands appear slow or failed because one command is waiting on another
+command's Cargo lock while both are competing to write report artifacts.
+
+Run live Lane 1 validation sequentially:
+
+```bash
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-health
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
+cargo xtask ripr-swarm readiness
+```
+
+If parallel validation is necessary, isolate each command with its own
+`CARGO_TARGET_DIR` and report output directory so no process shares Cargo
+artifacts or `target/ripr/reports` files. Limited warning artifacts from
+`lane1-evidence-audit`, `evidence-health`, scorecard, trend, or swarm readiness
+are acceptable bounded diagnostics when they name the limitation, phase/input
+context, and repair route. They are not proof of complete repo truth and should
+not be summarized as passing evidence without the warning state.
+
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,
 and metrics runs. `receipts check` validates the required receipt files and

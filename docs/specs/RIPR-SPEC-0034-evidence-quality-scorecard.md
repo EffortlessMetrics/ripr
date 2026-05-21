@@ -152,6 +152,14 @@ audit or evidence-health artifact exists but carries `run_limitations[]`, the
 scorecard must surface that as an unknown and must not let the limited
 artifact's zero or partial counts masquerade as complete repo truth.
 
+Operators must run live Lane 1 report validation sequentially in a shared
+worktree. `cargo xtask evidence-quality-scorecard` and
+`cargo xtask evidence-quality-trend` should not run concurrently with
+`lane1-evidence-audit`, `evidence-health`, or `ripr-swarm readiness` unless
+each process has an isolated `CARGO_TARGET_DIR` and isolated report output
+paths. The operational runbook is documented in
+[PR_AUTOMATION.md](../PR_AUTOMATION.md#lane-1-report-validation).
+
 ## Outputs
 
 The JSON output includes:
@@ -360,6 +368,8 @@ any gate behavior.
 - `docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md` records the scorecard as
   the first implementation slice and the trend report as the audit-delta slice
   when those tracker updates land.
+- `docs/PR_AUTOMATION.md` defines the sequential live-report validation
+  runbook for shared Cargo target and report directories.
 
 ## Metrics
 
@@ -402,3 +412,8 @@ The implementation must be pinned by:
 - `cargo xtask check-traceability`;
 - `cargo xtask check-capabilities`;
 - `cargo xtask check-pr`.
+
+Live validation should run the Lane 1 report commands sequentially in the order
+documented by [PR automation](../PR_AUTOMATION.md#lane-1-report-validation) so
+Cargo locks and shared report outputs do not create false timeout/failure
+signals.
