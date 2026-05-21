@@ -61,6 +61,11 @@ runner is available but not image-ready, the workflow falls back to GitHub-hoste
 `router_reason=runner_image_unavailable`. Fork PRs route to GitHub-hosted with
 `router_reason=fork_or_untrusted_pr`.
 
+The route job summary reports count-only diagnostics for runner visibility:
+visible runner count, CX53/CX43 online counts, idle image-ready counts, and
+online-but-missing-image counts. It must not print runner names, registration
+tokens, secret values, or full runner label inventories.
+
 The VS Code lane should remain hosted until a separate Node 24 / VS Code / Xvfb
 runner image is proven.
 
@@ -116,6 +121,14 @@ cutover tracker with the current run URL and the result summary:
 ```text
 target: github
 reason: runner_api_failed | no_idle_runner | runner_image_unavailable
+runner query: ok | failed | skipped_untrusted_pr
+visible runners: <count>
+cx53 online: <count>
+cx53 idle image-ready: <count>
+cx53 online missing image: <count>
+cx43 online: <count>
+cx43 idle image-ready: <count>
+cx43 online missing image: <count>
 cx53: skipped
 cx43: skipped
 github: success
