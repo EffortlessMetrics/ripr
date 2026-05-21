@@ -250,6 +250,14 @@ can consume the operating packet as JSON instead of scraping prose. The command
 catalog check packet is included next to the catalog itself so catalog drift is
 visible in the same front-door index.
 
+The index also carries a Lane 1 Evidence Readiness section for the report chain
+that supports actionable canonical-gap counts and badge-readiness decisions:
+`evidence-health`, `lane1-evidence-audit`, `actionable-gaps`,
+`evidence-quality-scorecard`, `evidence-quality-trend`, and `badge-basis`.
+Missing, warning, or failing artifacts keep the index in a warning state and
+add the relevant regeneration command. The index only checks existing artifact
+paths; it does not run those expensive reports or infer evidence from source.
+
 `cockpit` writes `target/ripr/reports/cockpit.md` and
 `target/ripr/reports/cockpit.json`. It is the repo-level maintainer front door:
 it composes worktree doctor, command mutability, command-catalog coverage, spec

@@ -4580,8 +4580,9 @@ pub(crate) fn reports_index_impl() -> Result<(), String> {
     let reports = report_index_entries()?;
     let receipts = receipt_index_entries()?;
     let missing = report_index_missing_expected(&reports, &changes);
+    let lane1_packets = report_index_lane1_readiness_packets(&reports);
     let status = report_index_status(&reports, &missing, &campaign.issues);
-    let next_commands = report_index_next_commands(&missing);
+    let next_commands = report_index_next_commands(&missing, &lane1_packets);
 
     let markdown = report_index_markdown(
         status,
@@ -39818,6 +39819,160 @@ fn receipt_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
     file_index_entries(&receipts_dir(), &[])
 }
 
+fn report_index_lane1_readiness_packets(
+    reports: &[ReportIndexEntry],
+) -> Vec<ReportIndexRepoOpsPacket> {
+    lane1_readiness_packet_specs()
+        .iter()
+        .map(|spec| {
+            let artifacts = spec
+                .artifacts
+                .iter()
+                .map(|path| report_index_report_artifact(path, reports))
+                .collect::<Vec<_>>();
+            ReportIndexRepoOpsPacket {
+                id: spec.id,
+                label: spec.label,
+                status: report_index_lane1_readiness_status(&artifacts),
+                command: spec.command,
+                description: spec.description,
+                artifacts,
+            }
+        })
+        .collect()
+}
+
+fn lane1_readiness_packet_specs() -> &'static [RepoOpsPacketSpec] {
+    &[
+        RepoOpsPacketSpec {
+            id: "evidence_health",
+            label: "Evidence health",
+            command: "cargo xtask evidence-health",
+            description: "Checks Lane 1 evidence-health generation and bounded limited-artifact diagnostics.",
+            artifacts: &[
+                "target/ripr/reports/evidence-health.json",
+                "target/ripr/reports/evidence-health.md",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "lane1_evidence_audit",
+            label: "Lane 1 evidence audit",
+            command: "cargo xtask lane1-evidence-audit",
+            description: "Produces raw-to-canonical/actionability counts and actionable-gap packet inputs.",
+            artifacts: &[
+                "target/ripr/reports/lane1-evidence-audit.json",
+                "target/ripr/reports/lane1-evidence-audit.md",
+                "target/ripr/reports/actionable-gaps.json",
+                "target/ripr/reports/actionable-gaps.md",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "evidence_quality_scorecard",
+            label: "Evidence quality scorecard",
+            command: "cargo xtask evidence-quality-scorecard",
+            description: "Summarizes Lane 1 counts, unknowns, repair-route coverage, and verify-command coverage.",
+            artifacts: &[
+                "target/ripr/reports/evidence-quality-scorecard.json",
+                "target/ripr/reports/evidence-quality-scorecard.md",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "evidence_quality_trend",
+            label: "Evidence quality trend",
+            command: "cargo xtask evidence-quality-trend",
+            description: "Compares scorecard movement while keeping limited current inputs unknown.",
+            artifacts: &[
+                "target/ripr/reports/evidence-quality-trend.json",
+                "target/ripr/reports/evidence-quality-trend.md",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "badge_basis",
+            label: "Badge basis",
+            command: "cargo xtask badge-basis",
+            description: "Audits whether canonical actionable gaps are ready to support badge semantics.",
+            artifacts: &[
+                "target/ripr/reports/badge-basis.json",
+                "target/ripr/reports/badge-basis.md",
+            ],
+        },
+    ]
+}
+
+fn report_index_report_artifact(
+    path: &str,
+    reports: &[ReportIndexEntry],
+) -> ReportIndexRepoOpsArtifact {
+    let source = path
+        .strip_prefix("target/ripr/reports/")
+        .and_then(|file| reports.iter().find(|entry| entry.file == file));
+    let status = source
+        .map(|entry| entry.status.clone())
+        .unwrap_or_else(|| "missing".to_string());
+    ReportIndexRepoOpsArtifact {
+        path: path.to_string(),
+        available: source.is_some(),
+        status,
+    }
+}
+
+fn report_index_lane1_readiness_status(artifacts: &[ReportIndexRepoOpsArtifact]) -> String {
+    if artifacts.iter().all(|artifact| !artifact.available) {
+        return "missing".to_string();
+    }
+    if artifacts.iter().any(|artifact| artifact.status == "fail") {
+        return "fail".to_string();
+    }
+    if artifacts
+        .iter()
+        .any(|artifact| !artifact.available || is_warning_report_status(&artifact.status))
+    {
+        return "warn".to_string();
+    }
+    "present".to_string()
+}
+
+fn report_index_lane1_overall_status(packets: &[ReportIndexRepoOpsPacket]) -> String {
+    if packets.iter().any(|packet| packet.status == "fail") {
+        return "fail".to_string();
+    }
+    if packets.iter().any(|packet| packet.status != "present") {
+        return "warn".to_string();
+    }
+    "present".to_string()
+}
+
+fn report_index_missing_artifact_count(packets: &[ReportIndexRepoOpsPacket]) -> usize {
+    packets
+        .iter()
+        .flat_map(|packet| packet.artifacts.iter())
+        .filter(|artifact| !artifact.available)
+        .count()
+}
+
+fn report_index_warning_artifact_count(packets: &[ReportIndexRepoOpsPacket]) -> usize {
+    packets
+        .iter()
+        .flat_map(|packet| packet.artifacts.iter())
+        .filter(|artifact| artifact.available && is_warning_report_status(&artifact.status))
+        .count()
+}
+
+fn report_index_failing_artifact_count(packets: &[ReportIndexRepoOpsPacket]) -> usize {
+    packets
+        .iter()
+        .flat_map(|packet| packet.artifacts.iter())
+        .filter(|artifact| artifact.status == "fail")
+        .count()
+}
+
+fn is_warning_report_status(status: &str) -> bool {
+    matches!(
+        status,
+        "warn" | "timeout" | "incomplete" | "unreadable" | "stale" | "unknown"
+    )
+}
+
 fn report_index_repo_ops_packets(
     reports: &[ReportIndexEntry],
     receipts: &[ReportIndexEntry],
@@ -40200,8 +40355,12 @@ fn report_index_status(
     if reports.iter().any(|entry| entry.status == "fail") {
         return "fail";
     }
+    let lane1_packets = report_index_lane1_readiness_packets(reports);
     if !missing.is_empty()
         || !campaign_issues.is_empty()
+        || lane1_packets
+            .iter()
+            .any(|packet| packet.status != "present")
         || reports.iter().any(|entry| entry.status == "warn")
     {
         "warn"
@@ -40210,7 +40369,10 @@ fn report_index_status(
     }
 }
 
-fn report_index_next_commands(missing: &[String]) -> Vec<String> {
+fn report_index_next_commands(
+    missing: &[String],
+    lane1_packets: &[ReportIndexRepoOpsPacket],
+) -> Vec<String> {
     let mut commands = BTreeSet::<String>::new();
     if missing
         .iter()
@@ -40259,6 +40421,11 @@ fn report_index_next_commands(missing: &[String]) -> Vec<String> {
         .any(|path| path.ends_with("/capabilities.md") || path.ends_with("\\capabilities.md"))
     {
         commands.insert("cargo xtask check-capabilities".to_string());
+    }
+    for packet in lane1_packets {
+        if packet.status != "present" {
+            commands.insert(packet.command.to_string());
+        }
     }
     commands.insert("cargo xtask check-pr".to_string());
     commands.insert("cargo xtask reports index".to_string());
@@ -40444,6 +40611,15 @@ fn report_index_markdown(
             .filter(|entry| entry.status == "warn")
             .count()
     ));
+    let lane1_packets = report_index_lane1_readiness_packets(reports);
+    body.push_str(&format!(
+        "- lane1 readiness status: `{}`\n",
+        report_index_lane1_overall_status(&lane1_packets)
+    ));
+    body.push_str(&format!(
+        "- missing lane1 readiness artifacts: {}\n",
+        report_index_missing_artifact_count(&lane1_packets)
+    ));
 
     body.push_str("\n## Suggested Reviewer Path\n\n");
     body.push_str("1. Read `target/ripr/reports/pr-summary.md`.\n");
@@ -40473,6 +40649,20 @@ fn report_index_markdown(
         body.push_str(&format!(
             "- `{file}`: {}\n",
             status_for_report(reports, file)
+        ));
+    }
+
+    body.push_str("\n## Lane 1 Evidence Readiness\n\n");
+    body.push_str(
+        "| Artifact group | Status | Artifacts | Next command |\n| --- | --- | --- | --- |\n",
+    );
+    for packet in &lane1_packets {
+        body.push_str(&format!(
+            "| {} | `{}` | {} | `{}` |\n",
+            markdown_cell(packet.label),
+            markdown_cell(&packet.status),
+            markdown_cell(&repo_ops_artifacts_markdown(&packet.artifacts)),
+            markdown_cell(packet.command)
         ));
     }
 
@@ -40563,6 +40753,28 @@ fn report_index_json(
         &report_index_repo_ops_packets(reports, receipts),
     );
     body.push_str("  ],\n");
+    let lane1_packets = report_index_lane1_readiness_packets(reports);
+    body.push_str("  \"lane1_readiness\": {\n");
+    body.push_str(&format!(
+        "    \"status\": \"{}\",\n",
+        json_escape(&report_index_lane1_overall_status(&lane1_packets))
+    ));
+    body.push_str(&format!(
+        "    \"missing_artifacts\": {},\n",
+        report_index_missing_artifact_count(&lane1_packets)
+    ));
+    body.push_str(&format!(
+        "    \"warning_artifacts\": {},\n",
+        report_index_warning_artifact_count(&lane1_packets)
+    ));
+    body.push_str(&format!(
+        "    \"failing_artifacts\": {},\n",
+        report_index_failing_artifact_count(&lane1_packets)
+    ));
+    body.push_str("    \"packets\": [\n");
+    write_report_index_repo_ops_packet_array(&mut body, &lane1_packets);
+    body.push_str("    ]\n");
+    body.push_str("  },\n");
     body.push_str("  \"missing_expected_reports\": [");
     write_json_string_array(&mut body, missing);
     body.push_str("],\n");
@@ -45212,16 +45424,17 @@ mod tests {
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
         lane1_evidence_audit_report_from_complete_repo_exposure,
-        lane1_evidence_audit_timeout_error, limited_badge_artifacts_json,
-        limited_badge_artifacts_markdown, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
-        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        panic_family_from_pattern, parse_actionable_gap_outcomes_args, parse_campaign_manifest,
-        parse_file_policy_allowlist, parse_gh_pr_status_args, parse_gh_pr_status_pull_request,
-        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        lane1_evidence_audit_timeout_error, lane1_readiness_packet_specs,
+        limited_badge_artifacts_json, limited_badge_artifacts_markdown,
+        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
+        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
+        mutation_calibration_report_json, mutation_calibration_report_markdown,
+        next_checkpoints_from_capabilities, next_spec_id_from_ids, no_panic_toml_string,
+        non_rust_programming_retention_reason, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
+        parse_actionable_gap_outcomes_args, parse_campaign_manifest, parse_file_policy_allowlist,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
         parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
@@ -45239,26 +45452,28 @@ mod tests {
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
-        report_index_json, report_index_markdown, report_index_missing_expected,
-        report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
-        ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
-        ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
-        ripr_swarm_plan_blocked_packets, ripr_swarm_plan_blocked_report,
-        ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
-        ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
-        ripr_swarm_read_optional_json, ripr_swarm_readiness_from_values, ripr_swarm_readiness_json,
-        ripr_swarm_readiness_markdown, ripr_swarm_readiness_next_actions,
-        ripr_swarm_readiness_summary, run_ci_full_evidence_gates, sarif_policy_report_json,
-        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
-        should_skip_path, sorted_allowlist_content, sorted_capability_blocks_content,
-        sorted_command_catalog_content, sorted_markdown_index_table_content,
-        sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
-        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
-        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_actionable_gap_outcomes_fixture_case,
+        report_index_json, report_index_lane1_overall_status, report_index_lane1_readiness_packets,
+        report_index_markdown, report_index_missing_artifact_count, report_index_missing_expected,
+        report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
+        report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
+        ripr_pre_commit_hook, ripr_swarm_attempt_dry_run_from_actionable_gaps_value,
+        ripr_swarm_attempt_dry_run_markdown, ripr_swarm_plan_blocked_packets,
+        ripr_swarm_plan_blocked_report, ripr_swarm_plan_from_actionable_gaps_value,
+        ripr_swarm_plan_json, ripr_swarm_plan_markdown, ripr_swarm_plan_packet_is_high_confidence,
+        ripr_swarm_plan_ready_packets, ripr_swarm_read_optional_json,
+        ripr_swarm_readiness_from_values, ripr_swarm_readiness_json, ripr_swarm_readiness_markdown,
+        ripr_swarm_readiness_next_actions, ripr_swarm_readiness_summary,
+        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
+        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
+        sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
+        sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
+        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
+        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message,
+        validate_actionable_gap_outcomes_fixture_case,
         validate_actionable_gap_outcomes_fixture_corpus, validate_local_context_allowlist,
         validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
@@ -51405,9 +51620,59 @@ jobs:
         assert!(body.contains("# ripr report index"));
         assert!(body.contains("output/unknown-stop-reason-invariant"));
         assert!(body.contains("Suggested Reviewer Path"));
+        assert!(body.contains("Lane 1 Evidence Readiness"));
+        assert!(body.contains("cargo xtask lane1-evidence-audit"));
         assert!(body.contains("Repo-Ops Packets"));
         assert_eq!(status_for_report(&reports, "pr-summary.md"), "pass");
         assert_eq!(status_for_report(&reports, "missing.md"), "missing");
+    }
+
+    #[test]
+    fn report_index_tracks_lane1_readiness_artifacts() {
+        let missing_packets = report_index_lane1_readiness_packets(&[]);
+
+        assert_eq!(report_index_lane1_overall_status(&missing_packets), "warn");
+        assert_eq!(report_index_missing_artifact_count(&missing_packets), 12);
+        assert!(
+            missing_packets
+                .iter()
+                .all(|packet| packet.status == "missing")
+        );
+
+        let complete_reports = lane1_readiness_packet_specs()
+            .iter()
+            .flat_map(|spec| spec.artifacts.iter())
+            .filter_map(|path| path.strip_prefix("target/ripr/reports/"))
+            .map(|file| ReportIndexEntry {
+                file: file.to_string(),
+                path: format!("target/ripr/reports/{file}"),
+                status: "advisory".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let complete_packets = report_index_lane1_readiness_packets(&complete_reports);
+
+        assert_eq!(
+            report_index_lane1_overall_status(&complete_packets),
+            "present"
+        );
+        assert_eq!(report_index_missing_artifact_count(&complete_packets), 0);
+        assert!(
+            complete_packets
+                .iter()
+                .all(|packet| packet.status == "present")
+        );
+    }
+
+    #[test]
+    fn report_index_next_commands_include_missing_lane1_readiness() {
+        let packets = report_index_lane1_readiness_packets(&[]);
+        let commands = report_index_next_commands(&[], &packets);
+
+        assert!(commands.contains(&"cargo xtask evidence-health".to_string()));
+        assert!(commands.contains(&"cargo xtask lane1-evidence-audit".to_string()));
+        assert!(commands.contains(&"cargo xtask evidence-quality-scorecard".to_string()));
+        assert!(commands.contains(&"cargo xtask evidence-quality-trend".to_string()));
+        assert!(commands.contains(&"cargo xtask badge-basis".to_string()));
     }
 
     #[test]
@@ -51513,6 +51778,9 @@ jobs:
         let packets = value["repo_ops_packets"]
             .as_array()
             .ok_or_else(|| "repo_ops_packets must be an array".to_string())?;
+        let lane1 = value["lane1_readiness"]
+            .as_object()
+            .ok_or_else(|| "lane1_readiness must be an object".to_string())?;
 
         assert!(packets.iter().any(|packet| {
             packet["id"] == "command_mutability_catalog"
@@ -51522,6 +51790,16 @@ jobs:
         assert!(packets.iter().any(|packet| packet["id"] == "pr_ready"));
         assert!(packets.iter().any(|packet| packet["id"] == "repo_cockpit"));
         assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
+        assert_eq!(lane1["status"], "warn");
+        assert_eq!(lane1["missing_artifacts"], 12);
+        assert!(
+            lane1["packets"]
+                .as_array()
+                .ok_or_else(|| "lane1_readiness.packets must be an array".to_string())?
+                .iter()
+                .any(|packet| packet["id"] == "lane1_evidence_audit"
+                    && packet["next_command"] == "cargo xtask lane1-evidence-audit")
+        );
         Ok(())
     }
 

@@ -7051,6 +7051,33 @@ JSON shape:
       ]
     }
   ],
+  "lane1_readiness": {
+    "status": "warn",
+    "missing_artifacts": 2,
+    "warning_artifacts": 0,
+    "failing_artifacts": 0,
+    "packets": [
+      {
+        "id": "lane1_evidence_audit",
+        "label": "Lane 1 evidence audit",
+        "status": "missing",
+        "next_command": "cargo xtask lane1-evidence-audit",
+        "description": "Produces raw-to-canonical/actionability counts and actionable-gap packet inputs.",
+        "artifacts": [
+          {
+            "path": "target/ripr/reports/lane1-evidence-audit.json",
+            "status": "missing",
+            "available": false
+          },
+          {
+            "path": "target/ripr/reports/lane1-evidence-audit.md",
+            "status": "missing",
+            "available": false
+          }
+        ]
+      }
+    ]
+  },
   "missing_expected": [
     {
       "id": "assistant_loop_health",
@@ -7107,12 +7134,26 @@ Field contract:
   receipts, suggested-fixes, and `check-pr` artifacts with status, known output
   paths, and regeneration commands. It is advisory front-door metadata only and
   never becomes gate authority.
+- `lane1_readiness` is the Lane 1 evidence packet index used by
+  `cargo xtask reports index`. It records whether evidence-health, Lane 1
+  evidence-audit/actionable-gap, evidence-quality scorecard, evidence-quality
+  trend, and badge-basis packets are present and healthy. Missing, warning, or
+  failing Lane 1 readiness artifacts add advisory next commands, but do not
+  create gate authority, badge authority, runtime mutation proof, or coverage
+  adequacy claims.
 
 Report packet index field contract:
 
 - `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
   `actionable`, `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
   `unreadable`, or `not_applicable`.
+- `lane1_readiness.status` is `present`, `warn`, or `fail`.
+- `lane1_readiness.missing_artifacts`,
+  `lane1_readiness.warning_artifacts`, and
+  `lane1_readiness.failing_artifacts` are counts over the packet artifacts.
+- `lane1_readiness.packets[]` uses the same packet shape as
+  `repo_ops_packets[]`: id, label, status, next command, description, and
+  artifact availability.
 - `missing_expected[].reason` is `not_generated`, `input_not_available`,
   `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
 - `missing_expected[]` keeps absent expected surfaces visible with a bounded

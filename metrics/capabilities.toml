@@ -1096,6 +1096,7 @@ evidence = [
   "ripr reports index writes advisory target/ripr/reports/index.{json,md} from explicit artifact directories without rerunning analysis or changing gate authority",
   "crates/ripr/src/output/report_packet_index.rs groups artifacts by reviewer use, identifies the start-here front panel, preserves gate-decision authority, records missing expected surfaces, and emits regeneration commands when known",
   "docs/OUTPUT_SCHEMA.md documents the implemented report_packet_index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
+  "cargo xtask reports index adds repo-local lane1_readiness for evidence-health, lane1-evidence-audit, actionable-gaps, evidence-quality-scorecard, evidence-quality-trend, and badge-basis artifacts without running those expensive reports",
   "generated GitHub CI runs ripr reports index only when indexed artifacts exist, uploads target/ripr/reports/index.{json,md} with the normal report packet, and appends packet-index status, start-here, gate-authority, missing-surface, and warning summaries without changing pass/fail authority",
   "docs/REPORT_PACKET_INDEX_WORKFLOW.md documents reviewer, maintainer, developer, and coding-agent use of the grouped packet map, missing-surface regeneration, and advisory gate boundary",
   "fixtures/boundary_gap/expected/report-packet-index/ pins complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and coverage/grip-present packet cases",
