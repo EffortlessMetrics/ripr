@@ -9,6 +9,9 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Evidence-quality trend now treats current scorecards with limited input
+  unknowns as `current_scorecard_limited`, preserving rows for diagnostics while
+  refusing improvement or regression claims from bounded diagnostic counts.
 - Evidence-health fallback artifacts now use the current evidence-health schema
   version and carry explicit generation phase/status plus bounded stdout/stderr
   excerpts for timeout and nonzero-exit warning reports. The output contract,

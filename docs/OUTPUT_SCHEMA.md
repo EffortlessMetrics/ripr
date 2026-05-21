@@ -3022,11 +3022,19 @@ Field contract:
   items, and internal no-action items. Finding-alignment and presentation-text
   metrics track raw-to-canonical quality, duplicate groups, actionability,
   static limitations, visibility unknowns, no-action/observed outcomes, and
-  actionable-gap packet public-projection readiness.
+  actionable-gap packet public-projection readiness. If the current scorecard
+  carries limited input unknowns such as `lane1_evidence_audit_limited`,
+  `evidence_health_limited`, or
+  `evidence_quality_scorecard_audit_regeneration_failed`, metric rows remain
+  present for diagnostics but their direction is `unknown` and `delta` is null.
 - `static_limitation_category_trends[]` - bounded category-level deltas for
-  normalized static limitation classes.
+  normalized static limitation classes. Current limited scorecards also force
+  these category trend directions to `unknown`.
 - `unknowns[]` - missing history or missing current metric fields that must
-  stay visible until later audit or scorecard inputs exist.
+  stay visible until later audit or scorecard inputs exist. A
+  `current_scorecard_limited` unknown means the current scorecard is itself a
+  bounded diagnostic artifact, so the trend must not claim improvement or
+  regression from its counts.
 
 The Markdown sibling prints bounded sections for summary, metric trends,
 static limitation category trends, and unknowns.

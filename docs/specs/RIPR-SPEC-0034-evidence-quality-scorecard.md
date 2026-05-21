@@ -151,6 +151,13 @@ claim complete repo truth, public badge readiness, or user test debt. If the
 audit or evidence-health artifact exists but carries `run_limitations[]`, the
 scorecard must surface that as an unknown and must not let the limited
 artifact's zero or partial counts masquerade as complete repo truth.
+If the current scorecard carries limited-input unknowns such as
+`lane1_evidence_audit_limited`, `evidence_health_limited`, or
+`evidence_quality_scorecard_audit_regeneration_failed`,
+`evidence-quality-trend` must keep metric rows visible for diagnostics but mark
+their directions unknown, leave deltas null, and emit
+`unknowns[].kind = "current_scorecard_limited"` instead of claiming
+improvement or regression.
 
 ## Outputs
 
@@ -333,6 +340,9 @@ any gate behavior.
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
   no-history state.
+- `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_unknown`
+  pins the current-limited scorecard state so bounded diagnostic scorecards do
+  not produce improvement or regression claims.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
   pins metric direction semantics.
 - `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
@@ -378,6 +388,7 @@ The trend report feeds these Lane 1 metrics:
 - `lane1_evidence_trend_unchanged_metrics`;
 - `lane1_evidence_trend_unknown_metrics`;
 - `lane1_evidence_trend_no_history`;
+- `lane1_evidence_trend_current_scorecard_limited`;
 - `lane1_evidence_trend_static_limitation_category_rows`.
 - `lane1_evidence_trend_actionable_packet_projection_eligible`;
 - `lane1_evidence_trend_actionable_packet_projection_excluded`.

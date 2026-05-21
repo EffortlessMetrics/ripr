@@ -2321,6 +2321,7 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
   "xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
+  "xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_unknown",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
 ]
@@ -2374,6 +2375,7 @@ metrics = [
   "lane1_evidence_trend_unchanged_metrics",
   "lane1_evidence_trend_unknown_metrics",
   "lane1_evidence_trend_no_history",
+  "lane1_evidence_trend_current_scorecard_limited",
   "lane1_evidence_trend_static_limitation_category_rows",
   "lane1_evidence_trend_actionable_packet_projection_eligible",
   "lane1_evidence_trend_actionable_packet_projection_excluded",

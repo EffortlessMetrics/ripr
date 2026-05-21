@@ -706,13 +706,14 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-trend writes target/ripr/reports/evidence-quality-trend.json and evidence-quality-trend.md",
   "trend consumes the current evidence-quality scorecard and optional previous scorecard or audit snapshot, reporting missing history as an explicit no-history unknown",
+  "trend treats current scorecards with limited input unknowns as current_scorecard_limited, preserving metric rows for diagnostics while refusing improvement/regression claims",
   "xtask/src/main.rs distinguishes improvement, regression, unchanged, mixed, and unknown states for Lane 1 evidence-quality metrics and normalized static limitation categories",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Trend JSON and Markdown contract",
-  "xtask unit tests pin no-history output, metric direction semantics, and static limitation category deltas"
+  "xtask unit tests pin no-history output, current-limited scorecards, metric direction semantics, and static limitation category deltas"
 ]
 fixtures = []
 next = "maintenance"
-metric = "lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_static_limitation_category_rows"
+metric = "lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_current_scorecard_limited, lane1_evidence_trend_static_limitation_category_rows"
 
 [[capability]]
 id = "evidence_quality_benchmark_corpus"
