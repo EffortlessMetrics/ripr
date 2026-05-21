@@ -2932,7 +2932,9 @@ Field contract:
   A scorecard generated after failed missing-audit regeneration includes
   `evidence_quality_scorecard_audit_regeneration_failed` and the generic
   `lane1_evidence_audit_limited` unknown so downstream consumers can explain
-  the bounded diagnostic state.
+  the bounded diagnostic state. Non-completeness audit limitations, such as
+  skipped full-cache storage after a complete repo-exposure run, remain visible
+  on the audit artifact but do not mark scorecard counts as partial.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
 presentation-text quality, actionable canonical gap top lists, actionable-gap

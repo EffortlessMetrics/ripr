@@ -2330,6 +2330,8 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit",
   "xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness",
   "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
+  "xtask::tests::evidence_quality_scorecard_does_not_treat_cache_store_skip_as_limited_audit",
+  "xtask::tests::evidence_quality_scorecard_treats_incomplete_audit_as_limited",
   "xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
   "xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_unknown",
