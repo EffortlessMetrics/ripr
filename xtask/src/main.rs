@@ -228,6 +228,8 @@ struct CampaignManifest {
     status: Option<String>,
     issue: Option<String>,
     lane: Option<String>,
+    successor: Option<String>,
+    no_current_goal: Option<bool>,
     end_state: Vec<String>,
     hard_rules: Vec<String>,
     non_goals: Vec<String>,
@@ -37400,6 +37402,36 @@ fn validate_campaign_manifest(
                 unfinished.join(", ")
             ));
         }
+
+        let successor = manifest
+            .successor
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let has_no_current_goal_marker = manifest.no_current_goal == Some(true);
+        if successor.is_none() && !has_no_current_goal_marker {
+            violations.push(
+                "closed active campaign must declare `successor = \"<campaign-id>\"` or `no_current_goal = true` before it can remain in `.ripr/goals/active.toml`"
+                    .to_string(),
+            );
+        }
+        if let Some(successor) = successor {
+            if !is_kebab_case_id(successor) {
+                violations.push(format!(
+                    "campaign successor `{successor}` must use kebab-case"
+                ));
+            }
+            if successor == id {
+                violations.push(format!(
+                    "campaign successor `{successor}` must not match the closed campaign id"
+                ));
+            }
+            if !docs.contains(successor) {
+                violations.push(format!(
+                    "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention campaign successor `{successor}`"
+                ));
+            }
+        }
     }
 
     for item in &manifest.work_items {
@@ -38043,6 +38075,12 @@ fn assign_campaign_scalar(
                 manifest.issue = Some(parsed);
             }),
             "lane" => manifest.lane = Some(value.trim_matches('"').to_string()),
+            "successor" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.successor = Some(parsed);
+            }),
+            "no_current_goal" => {
+                manifest.no_current_goal = parse_campaign_bool(value, line_number, violations);
+            }
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
             )),
@@ -51729,6 +51767,8 @@ jobs:
         let source = r#"id = "agentic-devex-foundation"
 title = "Agentic DevEx Foundation"
 status = "active"
+successor = "next-campaign"
+no_current_goal = false
 
 objective = """
 Build the repo operating system.
@@ -51757,6 +51797,8 @@ commands = [
 
         assert!(violations.is_empty());
         assert_eq!(manifest.id, Some("agentic-devex-foundation".to_string()));
+        assert_eq!(manifest.successor, Some("next-campaign".to_string()));
+        assert_eq!(manifest.no_current_goal, Some(false));
         assert_eq!(manifest.work_items.len(), 1);
         assert_eq!(
             manifest.work_items[0].id,
@@ -55847,8 +55889,92 @@ stackable = true
     }
 
     #[test]
-    fn campaign_manifest_accepts_closed_when_all_work_items_are_done() {
+    fn campaign_manifest_accepts_closed_when_all_work_items_are_done_with_successor() {
         with_temp_cwd("campaign-closed", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\nnext-campaign\n\n| `docs/test` | done |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+successor = "next-campaign"
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(violations.is_empty(), "{violations:?}");
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_accepts_closed_with_no_current_goal_marker() {
+        with_temp_cwd("campaign-closed-no-current-goal", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\n\n| `docs/test` | done |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+no_current_goal = true
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(violations.is_empty(), "{violations:?}");
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_rejects_closed_without_successor_or_no_current_goal_marker() {
+        with_temp_cwd("campaign-closed-stale", |root| {
             write(
                 &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
                 "closed-campaign\n\n| `docs/test` | done |\n",
@@ -55883,7 +56009,12 @@ commands = ["cargo xtask check-pr"]
             let validation = super::validate_campaign_manifest(&manifest, &mut violations);
             assert!(validation.is_ok(), "{validation:?}");
 
-            assert!(violations.is_empty(), "{violations:?}");
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains("closed active campaign must declare")),
+                "{violations:?}"
+            );
         });
     }
 

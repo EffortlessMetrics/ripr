@@ -49,7 +49,7 @@ commands = [
 
 [[work_item]]
 id = "goals/active-freshness-validation"
-status = "ready"
+status = "done"
 branch = "goals-active-freshness-validation"
 stackable = false
 blocked_by = [
@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "first-pr/front-door-polish"
-status = "blocked"
+status = "ready"
 branch = "first-pr-front-door-polish"
 stackable = false
 blocked_by = [
