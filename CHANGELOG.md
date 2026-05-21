@@ -19,6 +19,10 @@ are scoped or reviewed.
   the child report generation path and includes bounded trace counts/tails in
   limited warning reports, so live timeouts point at the slow analyzer phase
   instead of returning an empty stderr excerpt.
+- Evidence-quality scorecards now reserve the `lane1_evidence_audit_limited`
+  unknown for completeness-affecting audit limitations. A completed audit that
+  only skipped full classified seam cache storage keeps that limitation visible
+  in the audit without marking scorecard counts as partial.
 
 ## 0.7.0 - 2026-05-20
 
