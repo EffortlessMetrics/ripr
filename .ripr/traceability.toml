@@ -2872,6 +2872,7 @@ tests = [
   "crates/ripr/src/output/json/finding_alignment.rs::tests::actionable_canonical_items_require_repair_routes",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::visible_report_text_with_golden_observer_is_already_observed",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::internal_only_label_is_no_action",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::config_policy_route_coverage_requires_top_level_structured_route",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::help_named_text_without_supported_sink_stays_visibility_unknown",
   "crates/ripr/src/output/json/mod.rs::tests::render_adds_presentation_text_finding_alignment_when_supported",
   "crates/ripr/src/output/json/mod.rs::tests::render_projects_presentation_text_visibility_and_observer_states",

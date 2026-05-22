@@ -211,6 +211,13 @@ Lane 1-owned states:
 | `static_limitation` | RIPR cannot make the stronger claim because a named static limitation blocks it. |
 | `unknown` | RIPR lacks enough evidence to classify actionability or limitation precisely. |
 
+`actionable` means the canonical item has a concrete user repair. Supported
+classes must provide a normalized top-level structured `repair_route` with
+`repair_kind`, `target_test_type`, and `suggested_assertion`; class-local prose
+or repair metadata alone is supporting context, not repair-route coverage.
+Already-observed, internal-only, static-limitation, and unknown states must not
+fake user repair routes.
+
 Policy and adoption lanes may overlay these states:
 
 | Policy state | Owner |

@@ -697,13 +697,7 @@ fn config_policy_counts(items: &[&FindingAlignmentItem]) -> ConfigPolicyCounts {
     let repair_route_coverage = items
         .iter()
         .filter(|item| item.gap_state == "actionable")
-        .filter(|item| {
-            !item.recommended_repair.is_empty()
-                && item
-                    .config_policy
-                    .as_ref()
-                    .is_some_and(|config| config.repair_kind != "unknown")
-        })
+        .filter(|item| item_has_repair_route(item))
         .count();
     let verify_command_coverage = items
         .iter()
@@ -2520,6 +2514,43 @@ mod tests {
         assert!(item.related_test.is_none());
         assert!(!item.recommended_repair.contains("mutation"));
         Ok(())
+    }
+
+    #[test]
+    fn config_policy_route_coverage_requires_top_level_structured_route() {
+        let finding = finding_in_file(
+            "src/policy_report.rs",
+            "decl",
+            22,
+            ExposureClass::Exposed,
+            ProbeFamily::FieldConstruction,
+            "pub const REPORT_POLICY_LABEL: &str =",
+        );
+        let classification = super::actionable_config_policy_classification(
+            super::ConfigPolicySink {
+                role: "rendered_policy_label",
+                repair_target: "report-render or golden-output test",
+                description: "rendered report output",
+                actionability: "add_output_observer",
+                repair_kind: "output_observer",
+                target_test_type: "report_render_or_golden",
+                assertion_subject: "the rendered report output",
+            },
+            "REPORT_POLICY_LABEL",
+        );
+        let mut item = super::config_policy_item(
+            "REPORT_POLICY_LABEL",
+            vec![super::raw_finding_for(&finding)],
+            classification,
+        );
+        item.repair_route = None;
+
+        let counts = super::config_policy_counts(&[&item]);
+
+        assert_eq!(counts.actionable_output_observer, 1);
+        assert_eq!(counts.repair_route_coverage, 0);
+        assert_eq!(counts.verify_command_coverage, 1);
+        assert!(!super::item_has_repair_route(&item));
     }
 
     #[test]

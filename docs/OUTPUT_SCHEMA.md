@@ -242,7 +242,9 @@ Field contract:
   counts for visibility, observer or discriminator status, duplicate grouping,
   no-action states, static limitations, output-observer repairs,
   behavior-discriminator repairs, repair-route coverage, and verify-command
-  coverage.
+  coverage. Config/policy repair-route coverage uses the same normalized
+  top-level structured `repair_route` contract as the overall summary; prose
+  `recommended_repair` or class-local repair metadata alone does not count.
 - `finding_alignment.items[]` - canonical evidence items. Downstream surfaces
   should prefer these items as the user-facing unit and show raw findings as
   supporting evidence.
