@@ -3838,8 +3838,8 @@ Work items:
 | `receipt/lifecycle-state-convergence` | done | #204 standardizes receipt found/missing/stale/mismatch/improved/unchanged/not-applicable states across agent receipt, first-pr, PR evidence, front-panel, actionable-gap outcome, and editor projection fixtures. |
 | `output/no-output-fail-closed-states` | done | #205 standardizes clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, and unsafe output states outside the editor. |
 | `policy/preview-promotion-proof-criteria` | done | #206 defines proof criteria before preview evidence can claim a stronger tier and keeps TypeScript, JavaScript, and Python preview evidence advisory until a policy-owned packet closes the criteria. |
-| `dogfood/external-style-start-here-receipts` | ready | #207 records normal-repo and failure-state receipts for the converged path. |
-| `campaign/start-here-surface-convergence-closeout` | blocked | #208 closes only after the issue burn-down is closed or explicitly superseded. |
+| `dogfood/external-style-start-here-receipts` | done | #207 records normal-repo and failure-state receipts for the converged path in [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md). |
+| `campaign/start-here-surface-convergence-closeout` | ready | #208 closes only after the issue burn-down is closed or explicitly superseded. |
 
 Commands:
 

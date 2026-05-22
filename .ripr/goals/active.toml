@@ -145,7 +145,7 @@ acceptance = "Preview promotion criteria include fixtures, dogfood, related-test
 
 [[work_item]]
 id = "dogfood/external-style-start-here-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-external-style-start-here-receipts"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
@@ -160,13 +160,19 @@ acceptance = "Receipts cover small Rust crate, Rust workspace, no actionable gap
 
 [[work_item]]
 id = "campaign/start-here-surface-convergence-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-start-here-surface-convergence-closeout"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
 spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
 plan = "plans/start-here-surface-convergence/implementation-plan.md"
-blocked_by = [
-  "dogfood/external-style-start-here-receipts",
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-traceability",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
 ]
 acceptance = "Close the campaign only after all swarm issues #201-#208 are closed or explicitly superseded and the closeout maps requirements to artifacts, validation commands, remaining limits, and claim boundaries."
