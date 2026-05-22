@@ -796,9 +796,11 @@ struct DogfoodEditorFirstPrBridgeRun {
 struct DogfoodFindingAlignmentScenario {
     name: String,
     source_pr: String,
+    canonical_gap_id: String,
     evidence_class: String,
     raw_findings_total: usize,
     canonical_items_total: usize,
+    raw_finding_summary: String,
     gap_state: String,
     actionability: String,
     user_outcome: String,
@@ -809,6 +811,7 @@ struct DogfoodFindingAlignmentScenario {
     static_limitation_repair_route: Option<String>,
     raw_findings_supporting_only: bool,
     recommended_repair: String,
+    before_after_context: String,
     must_not_claim: Vec<String>,
     reason: String,
 }
@@ -817,9 +820,11 @@ struct DogfoodFindingAlignmentScenario {
 struct DogfoodFindingAlignmentRun {
     name: String,
     source_pr: String,
+    canonical_gap_id: String,
     evidence_class: String,
     raw_findings_total: usize,
     canonical_items_total: usize,
+    raw_finding_summary: String,
     gap_state: String,
     actionability: String,
     user_outcome: String,
@@ -830,6 +835,7 @@ struct DogfoodFindingAlignmentRun {
     static_limitation_repair_route: Option<String>,
     raw_findings_supporting_only: bool,
     recommended_repair: String,
+    before_after_context: String,
     must_not_claim: Vec<String>,
     reason: String,
     errors: Vec<String>,
@@ -34297,9 +34303,11 @@ fn dogfood_finding_alignment_scenarios() -> Vec<DogfoodFindingAlignmentScenario>
         vec![DogfoodFindingAlignmentScenario {
             name: "corpus".to_string(),
             source_pr: "unknown".to_string(),
+            canonical_gap_id: "unknown".to_string(),
             evidence_class: "unknown".to_string(),
             raw_findings_total: 0,
             canonical_items_total: 0,
+            raw_finding_summary: reason.clone(),
             gap_state: "missing".to_string(),
             actionability: "missing".to_string(),
             user_outcome: "missing".to_string(),
@@ -34310,6 +34318,7 @@ fn dogfood_finding_alignment_scenarios() -> Vec<DogfoodFindingAlignmentScenario>
             static_limitation_repair_route: None,
             raw_findings_supporting_only: false,
             recommended_repair: reason.clone(),
+            before_after_context: reason.clone(),
             must_not_claim: Vec::new(),
             reason,
         }]
@@ -34338,10 +34347,14 @@ fn dogfood_finding_alignment_scenarios() -> Vec<DogfoodFindingAlignmentScenario>
             name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
             source_pr: json_string_field(case, "source_pr")
                 .unwrap_or_else(|| "unknown".to_string()),
+            canonical_gap_id: json_string_field(case, "canonical_gap_id")
+                .unwrap_or_else(|| "unknown".to_string()),
             evidence_class: json_string_field(case, "evidence_class")
                 .unwrap_or_else(|| "unknown".to_string()),
             raw_findings_total: json_usize_field(case, "raw_findings_total").unwrap_or(0),
             canonical_items_total: json_usize_field(case, "canonical_items_total").unwrap_or(0),
+            raw_finding_summary: json_string_field(case, "raw_finding_summary")
+                .unwrap_or_else(|| "missing raw finding summary".to_string()),
             gap_state: json_string_field(case, "gap_state")
                 .unwrap_or_else(|| "unknown".to_string()),
             actionability: json_string_field(case, "actionability")
@@ -34363,6 +34376,8 @@ fn dogfood_finding_alignment_scenarios() -> Vec<DogfoodFindingAlignmentScenario>
                 .unwrap_or(false),
             recommended_repair: json_string_field(case, "recommended_repair")
                 .unwrap_or_else(|| "missing recommended repair".to_string()),
+            before_after_context: json_string_field(case, "before_after_context")
+                .unwrap_or_else(|| "missing before/after context".to_string()),
             must_not_claim: json_string_array_field(case, "must_not_claim"),
             reason: json_string_field(case, "reason")
                 .unwrap_or_else(|| "missing finding-alignment dogfood reason".to_string()),
@@ -34378,15 +34393,22 @@ fn dogfood_finding_alignment_run(
     if scenario.name.trim().is_empty() || scenario.name == "unknown" {
         errors.push("case id must be present".to_string());
     }
-    if !scenario.source_pr.starts_with("EffortlessMetrics/ripr#") {
+    if !scenario.source_pr.starts_with("EffortlessMetrics/ripr#")
+        && !scenario
+            .source_pr
+            .starts_with("EffortlessMetrics/ripr-swarm#")
+    {
         errors.push(format!(
             "source_pr should name a real RIPR PR, got {}",
             scenario.source_pr
         ));
     }
+    if scenario.canonical_gap_id.trim().is_empty() || scenario.canonical_gap_id == "unknown" {
+        errors.push("canonical_gap_id must be present".to_string());
+    }
     if !matches!(
         scenario.evidence_class.as_str(),
-        "presentation_text" | "config_or_policy_constant"
+        "presentation_text" | "config_or_policy_constant" | "predicate_boundary" | "call_presence"
     ) {
         errors.push(format!(
             "unsupported evidence class for dogfood receipt: {}",
@@ -34405,10 +34427,20 @@ fn dogfood_finding_alignment_run(
     if !scenario.raw_findings_supporting_only {
         errors.push("raw findings must be marked supporting-only".to_string());
     }
+    if scenario.raw_finding_summary.trim().is_empty()
+        || scenario.raw_finding_summary == "missing raw finding summary"
+    {
+        errors.push("raw_finding_summary must be present".to_string());
+    }
     if scenario.recommended_repair.trim().is_empty()
         || scenario.recommended_repair == "missing recommended repair"
     {
         errors.push("recommended_repair must be present".to_string());
+    }
+    if scenario.before_after_context.trim().is_empty()
+        || scenario.before_after_context == "missing before/after context"
+    {
+        errors.push("before_after_context must be present".to_string());
     }
     if scenario
         .recommended_repair
@@ -34505,9 +34537,11 @@ fn dogfood_finding_alignment_run(
     DogfoodFindingAlignmentRun {
         name: scenario.name.clone(),
         source_pr: scenario.source_pr.clone(),
+        canonical_gap_id: scenario.canonical_gap_id.clone(),
         evidence_class: scenario.evidence_class.clone(),
         raw_findings_total: scenario.raw_findings_total,
         canonical_items_total: scenario.canonical_items_total,
+        raw_finding_summary: scenario.raw_finding_summary.clone(),
         gap_state: scenario.gap_state.clone(),
         actionability: scenario.actionability.clone(),
         user_outcome: scenario.user_outcome.clone(),
@@ -34518,6 +34552,7 @@ fn dogfood_finding_alignment_run(
         static_limitation_repair_route: scenario.static_limitation_repair_route.clone(),
         raw_findings_supporting_only: scenario.raw_findings_supporting_only,
         recommended_repair: scenario.recommended_repair.clone(),
+        before_after_context: scenario.before_after_context.clone(),
         must_not_claim: scenario.must_not_claim.clone(),
         reason: scenario.reason.clone(),
         errors,
@@ -35717,13 +35752,14 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     body.push_str("These receipts validate real RIPR PR examples of the raw-finding -> canonical-item -> user-outcome model. They keep raw findings as supporting evidence, require canonical item counts and user outcomes, and check that actionable items have repair and verification routes while static limitations name analyzer repair routes. They do not change PR/CI rendering, LSP/editor behavior, gates, public scores, generated tests, provider calls, source edits, or mutation execution.\n\n");
     body.push_str("- Default CI blocking: no\n");
     body.push_str("- Receipt input: `fixtures/finding-alignment-dogfood/corpus.json`\n\n");
-    body.push_str("| Case | PR | Class | Raw -> canonical | State | Actionability | Outcome | Repair | Verify | Static limitation |\n");
-    body.push_str("| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- |\n");
+    body.push_str("| Case | PR | Gap ID | Class | Raw -> canonical | State | Actionability | Outcome | Repair | Verify | Static limitation |\n");
+    body.push_str("| --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- |\n");
     for run in finding_alignment_runs {
         body.push_str(&format!(
-            "| `{}` | `{}` | `{}` | {} -> {} | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            "| `{}` | `{}` | `{}` | `{}` | {} -> {} | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
             markdown_cell(&run.name),
             markdown_cell(&run.source_pr),
+            markdown_cell(&run.canonical_gap_id),
             markdown_cell(&run.evidence_class),
             run.raw_findings_total,
             run.canonical_items_total,
@@ -35743,12 +35779,20 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
             markdown_cell(&run.source_pr)
         ));
         body.push_str(&format!(
+            "- Canonical gap ID: `{}`\n",
+            markdown_cell(&run.canonical_gap_id)
+        ));
+        body.push_str(&format!(
             "- Evidence class: `{}`\n",
             markdown_cell(&run.evidence_class)
         ));
         body.push_str(&format!(
             "- Counts: {} raw finding(s) -> {} canonical item(s)\n",
             run.raw_findings_total, run.canonical_items_total
+        ));
+        body.push_str(&format!(
+            "- Raw finding summary: {}\n",
+            markdown_cell(&run.raw_finding_summary)
         ));
         body.push_str(&format!(
             "- Gap state: `{}`\n",
@@ -35765,6 +35809,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "- Recommended repair: {}\n",
             markdown_cell(&run.recommended_repair)
+        ));
+        body.push_str(&format!(
+            "- Before/after context: {}\n",
+            markdown_cell(&run.before_after_context)
         ));
         body.push_str(&format!(
             "- Repair kind: `{}` / target `{}`\n",
@@ -36781,6 +36829,10 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
             json_escape(&run.source_pr)
         ));
         body.push_str(&format!(
+            "        \"canonical_gap_id\": \"{}\",\n",
+            json_escape(&run.canonical_gap_id)
+        ));
+        body.push_str(&format!(
             "        \"evidence_class\": \"{}\",\n",
             json_escape(&run.evidence_class)
         ));
@@ -36791,6 +36843,10 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"canonical_items_total\": {},\n",
             run.canonical_items_total
+        ));
+        body.push_str(&format!(
+            "        \"raw_finding_summary\": \"{}\",\n",
+            json_escape(&run.raw_finding_summary)
         ));
         body.push_str(&format!(
             "        \"gap_state\": \"{}\",\n",
@@ -36831,6 +36887,10 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"recommended_repair\": \"{}\",\n",
             json_escape(&run.recommended_repair)
+        ));
+        body.push_str(&format!(
+            "        \"before_after_context\": \"{}\",\n",
+            json_escape(&run.before_after_context)
         ));
         body.push_str("        \"must_not_claim\": [");
         write_json_string_array(&mut body, &run.must_not_claim);
@@ -56310,9 +56370,13 @@ fn exact_owner_call_has_external_expected_value() {
         let finding_alignment_run = DogfoodFindingAlignmentRun {
             name: "config_policy_rendered_label_unobserved".to_string(),
             source_pr: "EffortlessMetrics/ripr#1016".to_string(),
+            canonical_gap_id: "gap:config_policy_rendered_label_unobserved".to_string(),
             evidence_class: "config_or_policy_constant".to_string(),
             raw_findings_total: 2,
             canonical_items_total: 1,
+            raw_finding_summary:
+                "A rendered policy label aligns into one canonical output-observer item."
+                    .to_string(),
             gap_state: "actionable".to_string(),
             actionability: "add_output_observer".to_string(),
             user_outcome: "actionable_gap".to_string(),
@@ -56323,6 +56387,8 @@ fn exact_owner_call_has_external_expected_value() {
             static_limitation_repair_route: None,
             raw_findings_supporting_only: true,
             recommended_repair: "Add or update a report-render or golden observer.".to_string(),
+            before_after_context:
+                "Before/after context is pinned by finding-alignment dogfood receipts.".to_string(),
             must_not_claim: vec![
                 "Do not infer actionability from raw static class.".to_string(),
                 "Do not recommend mutation testing first.".to_string(),
@@ -56591,6 +56657,15 @@ fn exact_owner_call_has_external_expected_value() {
                     "config_policy_opaque_lookup_limitation",
                     "static_limitation",
                 ),
+                (
+                    "config_policy_opaque_lookup_supported_observer",
+                    "actionable",
+                ),
+                ("predicate_boundary_actionable_scorecard_lead", "actionable"),
+                (
+                    "call_presence_runtime_static_only_trend",
+                    "static_limitation",
+                ),
             ] {
                 assert!(
                     scenarios.iter().any(|scenario| {
@@ -56623,9 +56698,12 @@ fn exact_owner_call_has_external_expected_value() {
         DogfoodFindingAlignmentScenario {
             name: name.to_string(),
             source_pr: "EffortlessMetrics/ripr#1016".to_string(),
+            canonical_gap_id: format!("gap:{name}"),
             evidence_class: "presentation_text".to_string(),
             raw_findings_total: 2,
             canonical_items_total: 1,
+            raw_finding_summary:
+                "Declaration and literal raw findings align into one canonical item.".to_string(),
             gap_state: gap_state.to_string(),
             actionability: "add_output_observer".to_string(),
             user_outcome: "actionable_gap".to_string(),
@@ -56636,6 +56714,8 @@ fn exact_owner_call_has_external_expected_value() {
             static_limitation_repair_route: None,
             raw_findings_supporting_only: true,
             recommended_repair: "Add or update an output observer.".to_string(),
+            before_after_context:
+                "Before and after scorecard context is pinned by this dogfood case.".to_string(),
             must_not_claim: vec![
                 "Do not infer actionability from raw static class.".to_string(),
                 "Do not recommend mutation testing first.".to_string(),
@@ -56651,6 +56731,8 @@ fn exact_owner_call_has_external_expected_value() {
         scenario.evidence_class = "unknown".to_string();
         scenario.raw_findings_total = 0;
         scenario.canonical_items_total = 1;
+        scenario.canonical_gap_id = "unknown".to_string();
+        scenario.raw_finding_summary = "missing raw finding summary".to_string();
         scenario.user_outcome = "no_action".to_string();
         scenario.repair_kind = "unknown".to_string();
         scenario.target_test_type = "none".to_string();
@@ -56659,16 +56741,20 @@ fn exact_owner_call_has_external_expected_value() {
             Some("presentation_text_visibility_unknown".to_string());
         scenario.raw_findings_supporting_only = false;
         scenario.recommended_repair = "Escalate to mutation testing first.".to_string();
+        scenario.before_after_context = "missing before/after context".to_string();
         scenario.must_not_claim = vec!["Keep advisory.".to_string()];
 
         let report = dogfood_finding_alignment_run(&scenario).errors.join("\n");
 
         assert!(report.contains("case id must be present"));
         assert!(report.contains("source_pr should name a real RIPR PR"));
+        assert!(report.contains("canonical_gap_id must be present"));
         assert!(report.contains("unsupported evidence class"));
         assert!(report.contains("raw findings 0 must be >= canonical items 1"));
         assert!(report.contains("raw findings must be marked supporting-only"));
+        assert!(report.contains("raw_finding_summary must be present"));
         assert!(report.contains("must not route first to mutation testing"));
+        assert!(report.contains("before_after_context must be present"));
         assert!(report.contains("must_not_claim guards should preserve"));
         assert!(report.contains("actionable case should have actionable_gap outcome"));
         assert!(report.contains("actionable case must carry a concrete repair kind"));

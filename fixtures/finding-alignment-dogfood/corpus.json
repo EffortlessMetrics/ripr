@@ -13,9 +13,11 @@
     {
       "id": "presentation_text_actionable_output_observer",
       "source_pr": "EffortlessMetrics/ripr#947",
+      "canonical_gap_id": "gap:presentation_text_actionable_output_observer",
       "evidence_class": "presentation_text",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A changed presentation-text declaration and literal align into one canonical output-observer item.",
       "gap_state": "actionable",
       "actionability": "add_output_observer",
       "user_outcome": "actionable_gap",
@@ -26,6 +28,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "Add or update a help-output snapshot assertion for the changed presentation text.",
+      "before_after_context": "Before finding alignment, the declaration and literal could look like separate raw gaps; after alignment they are one actionable canonical output-observer repair.",
       "must_not_claim": [
         "Do not count the declaration and literal as two user actions.",
         "Do not infer actionability from raw static class.",
@@ -36,9 +39,11 @@
     {
       "id": "presentation_text_already_observed_output",
       "source_pr": "EffortlessMetrics/ripr#947",
+      "canonical_gap_id": "gap:presentation_text_already_observed_output",
       "evidence_class": "presentation_text",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A changed presentation-text declaration and literal align into one canonical item with an existing output observer.",
       "gap_state": "already_observed",
       "actionability": "already_observed",
       "user_outcome": "no_action",
@@ -49,6 +54,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "No new RIPR action; the existing golden observer covers the rendered output.",
+      "before_after_context": "Before alignment, raw text changes stayed visible but ambiguous; after alignment the existing golden keeps the canonical item no-action.",
       "must_not_claim": [
         "Do not emit an actionable gap when a supported output observer exists.",
         "Do not hide the raw findings.",
@@ -59,9 +65,11 @@
     {
       "id": "config_policy_internal_metadata_no_action",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_internal_metadata_no_action",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A changed policy metadata declaration and literal align into one internal-only canonical item.",
       "gap_state": "internal_only",
       "actionability": "no_action_internal",
       "user_outcome": "no_action",
@@ -72,6 +80,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "No user test action; the constant is internal policy metadata in fixture-backed scope.",
+      "before_after_context": "Before config/policy alignment, internal metadata could resemble user-facing debt; after alignment it remains counted but no-action.",
       "must_not_claim": [
         "Do not create user test debt from internal policy metadata alone.",
         "Do not hide the raw declaration and literal findings.",
@@ -82,9 +91,11 @@
     {
       "id": "config_policy_rendered_label_unobserved",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_rendered_label_unobserved",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A rendered policy-label declaration and literal align into one canonical output-observer item.",
       "gap_state": "actionable",
       "actionability": "add_output_observer",
       "user_outcome": "actionable_gap",
@@ -95,6 +106,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+      "before_after_context": "Before structured repair-route checks, prose or class-local metadata could look sufficient; after the burn-down this actionable item requires a concrete repair and verify command.",
       "must_not_claim": [
         "Do not count declaration and literal findings as separate user actions.",
         "Do not infer actionability from raw static class.",
@@ -105,9 +117,11 @@
     {
       "id": "config_policy_behavior_selector_unobserved",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_behavior_selector_unobserved",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A changed behavior selector declaration and literal align into one canonical behavior-discriminator item.",
       "gap_state": "actionable",
       "actionability": "add_behavior_discriminator",
       "user_outcome": "actionable_gap",
@@ -118,6 +132,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "Add or update a validation or routing behavior discriminator for the changed selector.",
+      "before_after_context": "Before verify-command coverage, actionable selector examples could omit concrete movement proof; after the burn-down they carry the verify route explicitly.",
       "must_not_claim": [
         "Do not treat behavior selectors as output labels.",
         "Do not count declaration and literal findings as separate user actions.",
@@ -129,9 +144,11 @@
     {
       "id": "config_policy_behavior_selector_observed",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_behavior_selector_observed",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A behavior selector declaration and literal align into one canonical item with a supported discriminator.",
       "gap_state": "already_observed",
       "actionability": "already_observed",
       "user_outcome": "no_action",
@@ -142,6 +159,7 @@
       "static_limitation_repair_route": null,
       "raw_findings_supporting_only": true,
       "recommended_repair": "No new RIPR action; the existing validation behavior test covers the selector.",
+      "before_after_context": "Before alignment, selector raw findings could overstate repair work; after alignment the existing behavior discriminator keeps the item already observed.",
       "must_not_claim": [
         "Do not emit an actionable behavior-discriminator gap when a supported behavior observer exists.",
         "Do not hide the raw selector findings.",
@@ -152,9 +170,11 @@
     {
       "id": "config_policy_flow_unknown_limitation",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_flow_unknown_limitation",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A config constant declaration and literal align into one canonical item whose flow is not traceable by the current analyzer.",
       "gap_state": "static_limitation",
       "actionability": "inspect_config_flow",
       "user_outcome": "static_limitation",
@@ -165,6 +185,7 @@
       "static_limitation_repair_route": "trace_constant_to_output_schema_validation_or_behavior_sink",
       "raw_findings_supporting_only": true,
       "recommended_repair": "Trace the config constant to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+      "before_after_context": "Before named static limitations, generic unknowns could hide analyzer work; after the burn-down this remains a named analyzer repair route, not user test debt.",
       "must_not_claim": [
         "Do not treat generic static_unknown as user test debt.",
         "Do not hide the raw findings.",
@@ -175,9 +196,11 @@
     {
       "id": "config_policy_opaque_lookup_limitation",
       "source_pr": "EffortlessMetrics/ripr#1016",
+      "canonical_gap_id": "gap:config_policy_opaque_lookup_limitation",
       "evidence_class": "config_or_policy_constant",
       "raw_findings_total": 2,
       "canonical_items_total": 1,
+      "raw_finding_summary": "A config constant declaration and literal align into one canonical item blocked by an opaque lookup path.",
       "gap_state": "static_limitation",
       "actionability": "inspect_config_flow",
       "user_outcome": "static_limitation",
@@ -188,12 +211,91 @@
       "static_limitation_repair_route": "add_fixture_backed_support_for_opaque_config_lookup",
       "raw_findings_supporting_only": true,
       "recommended_repair": "Inspect the opaque config lookup path or add fixture-backed analyzer support before claiming output-observer debt.",
+      "before_after_context": "Before opaque lookup support, this class stayed static-only; after later fixture-backed support, only supported lookup shapes can leave this limitation bucket.",
       "must_not_claim": [
         "Do not treat opaque lookup static_unknown as user test debt.",
         "Do not infer user-visible config output through an opaque helper.",
         "Do not hide the raw declaration and literal findings."
       ],
       "reason": "An opaque config lookup should stay a named static limitation until the analyzer can trace the lookup shape."
+    },
+    {
+      "id": "config_policy_opaque_lookup_supported_observer",
+      "source_pr": "EffortlessMetrics/ripr-swarm#252",
+      "canonical_gap_id": "gap:config_policy_opaque_lookup_supported_observer",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "raw_finding_summary": "A fixture-backed opaque config lookup declaration and literal align into one canonical output-observer item.",
+      "gap_state": "actionable",
+      "actionability": "add_output_observer",
+      "user_outcome": "actionable_gap",
+      "repair_kind": "output_observer",
+      "target_test_type": "report_render_or_golden",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add or update a report-render, snapshot, or golden observer for the supported opaque lookup output.",
+      "before_after_context": "Before swarm #252, opaque config lookup examples stayed in `opaque_config_lookup`; after fixture-backed support, supported lookup shapes can become actionable output-observer repairs while unsupported lookup shapes stay limited.",
+      "must_not_claim": [
+        "Do not promote all opaque config lookups out of static limitation.",
+        "Do not count declaration and literal raw findings as separate user actions.",
+        "Do not recommend mutation testing before output-observer work."
+      ],
+      "reason": "A supported opaque config lookup with a rendered output sink should become one actionable canonical output-observer repair while unsupported lookup shapes remain named limitations."
+    },
+    {
+      "id": "predicate_boundary_actionable_scorecard_lead",
+      "source_pr": "EffortlessMetrics/ripr-swarm#266",
+      "canonical_gap_id": "gap:predicate_boundary_actionable_scorecard_lead",
+      "evidence_class": "predicate_boundary",
+      "raw_findings_total": 1,
+      "canonical_items_total": 1,
+      "raw_finding_summary": "A changed predicate boundary becomes one actionable canonical gap with a boundary-value discriminator repair.",
+      "gap_state": "actionable",
+      "actionability": "add_boundary_discriminator",
+      "user_outcome": "actionable_gap",
+      "repair_kind": "add_boundary_assertion",
+      "target_test_type": "boundary_value_test",
+      "verify_command": "cargo xtask evidence-quality-trend",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add or update a focused boundary-value assertion for the changed predicate.",
+      "before_after_context": "Before swarm #266, trend output did not lead with actionable canonical gaps; after #266, actionable predicate-boundary gaps lead the scorecard and trend while raw findings remain diagnostic.",
+      "must_not_claim": [
+        "Do not treat the raw predicate finding as the user-facing count.",
+        "Do not infer coverage adequacy from the static boundary repair route.",
+        "Do not recommend mutation testing before the boundary assertion work."
+      ],
+      "reason": "The top actionable class should be represented as one canonical repair packet with a concrete verify route, not as raw finding volume."
+    },
+    {
+      "id": "call_presence_runtime_static_only_trend",
+      "source_pr": "EffortlessMetrics/ripr-swarm#272",
+      "canonical_gap_id": "gap:call_presence_runtime_static_only_trend",
+      "evidence_class": "call_presence",
+      "raw_findings_total": 1,
+      "canonical_items_total": 1,
+      "raw_finding_summary": "A call-presence canonical item remains static-only in runtime confidence trend output.",
+      "gap_state": "static_limitation",
+      "actionability": "expand_runtime_calibration",
+      "user_outcome": "static_limitation",
+      "repair_kind": "calibration_fixture_expansion",
+      "target_test_type": "runtime_fixture_import",
+      "verify_command": "cargo xtask evidence-quality-trend",
+      "static_limitation_category": "runtime_confidence_static_only",
+      "static_limitation_repair_route": "calibration/runtime-fixtures-v3",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add imported runtime calibration fixture support for the selected call-presence class before claiming runtime confidence.",
+      "before_after_context": "Before swarm #272, static-only runtime confidence classes were visible only in the scorecard table; after #272, the trend report names top static-only classes such as `call_presence` without creating user test debt.",
+      "must_not_claim": [
+        "Do not treat static-only runtime confidence as mutation proof.",
+        "Do not create user test debt from calibration availability alone.",
+        "Do not change gate or badge authority from this advisory trend row."
+      ],
+      "reason": "The runtime-confidence trend should make static-only canonical evidence classes visible as calibration work, not user-facing repair gaps."
     }
   ]
 }

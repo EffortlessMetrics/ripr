@@ -546,7 +546,9 @@ Planned Lane 1 slices:
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
 - `dogfood/finding-alignment-examples` checks repo-local receipts under
   `fixtures/finding-alignment-dogfood/` so real RIPR PR examples preserve the
-  raw-finding -> canonical-item -> user-outcome split.
+  raw-finding -> canonical-item -> user-outcome split, canonical gap identity,
+  repair or limitation route, concrete verify route, and before/after scorecard
+  or audit context.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
 

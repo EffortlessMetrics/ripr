@@ -9427,8 +9427,10 @@ report-packet index receipts are read from
 `fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
 alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
 record real RIPR PR examples where raw findings remain supporting evidence,
-canonical items are the countable unit, actionable items have repair and
-verification routes, and static limitations name analyzer repair routes.
+canonical items are the countable unit, canonical gap identities and raw
+finding summaries are explicit, actionable items have repair and verification
+routes, static limitations name analyzer repair routes, and runtime-confidence
+static-only class examples stay calibration work rather than user test debt.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -9624,9 +9626,11 @@ JSON shape:
       {
         "name": "config_policy_rendered_label_unobserved",
         "source_pr": "EffortlessMetrics/ripr#1016",
+        "canonical_gap_id": "gap:config_policy_rendered_label_unobserved",
         "evidence_class": "config_or_policy_constant",
         "raw_findings_total": 2,
         "canonical_items_total": 1,
+        "raw_finding_summary": "A rendered policy-label declaration and literal align into one canonical output-observer item.",
         "gap_state": "actionable",
         "actionability": "add_output_observer",
         "user_outcome": "actionable_gap",
@@ -9637,6 +9641,7 @@ JSON shape:
         "static_limitation_repair_route": null,
         "raw_findings_supporting_only": true,
         "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "before_after_context": "Before structured repair-route checks, prose or class-local metadata could look sufficient; after the burn-down this actionable item requires a concrete repair and verify command.",
         "must_not_claim": [
           "Do not count declaration and literal findings as separate user actions.",
           "Do not infer actionability from raw static class.",
