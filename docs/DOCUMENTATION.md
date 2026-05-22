@@ -99,6 +99,7 @@ Current how-to docs:
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)
+- [Start-here convergence closeout](handoffs/2026-05-22-start-here-surface-convergence-closeout.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md)

@@ -3839,7 +3839,7 @@ Work items:
 | `output/no-output-fail-closed-states` | done | #205 standardizes clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, and unsafe output states outside the editor. |
 | `policy/preview-promotion-proof-criteria` | done | #206 defines proof criteria before preview evidence can claim a stronger tier and keeps TypeScript, JavaScript, and Python preview evidence advisory until a policy-owned packet closes the criteria. |
 | `dogfood/external-style-start-here-receipts` | done | #207 records normal-repo and failure-state receipts for the converged path in [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md). |
-| `campaign/start-here-surface-convergence-closeout` | ready | #208 closes only after the issue burn-down is closed or explicitly superseded. |
+| `campaign/start-here-surface-convergence-closeout` | done | #208 closes the campaign in [Start-here surface convergence closeout](handoffs/2026-05-22-start-here-surface-convergence-closeout.md), archives the active goal, and records `no_current_goal = true`. |
 
 Commands:
 
