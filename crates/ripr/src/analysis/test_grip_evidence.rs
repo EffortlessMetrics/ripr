@@ -586,10 +586,61 @@ impl OwnerContext {
 fn assertion_target_tokens(seam: &RepoSeam) -> BTreeSet<String> {
     let discriminator_tokens = required_discriminator_tokens(seam);
     let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
+    let filters_generic_call_tokens = seam.kind() == SeamKind::CallPresence;
     discriminator_tokens
         .into_iter()
         .chain(sink_tokens)
+        .filter(|token| {
+            !filters_generic_call_tokens
+                || call_presence_assertion_affinity_token_is_specific_enough(token)
+        })
         .collect()
+}
+
+fn call_presence_assertion_affinity_token_is_specific_enough(token: &str) -> bool {
+    if matches!(
+        token,
+        "arg"
+            | "args"
+            | "class"
+            | "clone"
+            | "count"
+            | "counts"
+            | "data"
+            | "dedup"
+            | "entry"
+            | "evidence"
+            | "file"
+            | "files"
+            | "input"
+            | "iter"
+            | "item"
+            | "items"
+            | "kind"
+            | "line"
+            | "lines"
+            | "missing"
+            | "model"
+            | "name"
+            | "owner"
+            | "output"
+            | "path"
+            | "paths"
+            | "result"
+            | "results"
+            | "side_effect"
+            | "sort"
+            | "summary"
+            | "target"
+            | "test"
+            | "tests"
+            | "text"
+            | "value"
+            | "values"
+    ) {
+        return false;
+    }
+    true
 }
 
 fn match_direct_owner_call(
@@ -3384,6 +3435,65 @@ fn wrapper_mentions_owner_only_in_non_code() {
                  assertion_target_affinity; got {grip:?}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity()
+    -> Result<(), String> {
+        // Live Lane 1 audit showed many call_presence limitations where
+        // assertion-target affinity came from generic argument names
+        // such as `path`. That is not enough evidence that the test
+        // reaches the owner or observes the call site.
+        assert!(!call_presence_assertion_affinity_token_is_specific_enough(
+            "path"
+        ));
+        assert!(!call_presence_assertion_affinity_token_is_specific_enough(
+            "side_effect"
+        ));
+        assert!(call_presence_assertion_affinity_token_is_specific_enough(
+            "zq_quote_target_token"
+        ));
+        let prod_src = "pub fn zq_call_presence_owner(path: &std::path::Path) -> String { \
+                            zq_quote_target_token(&zq_render_target_token(path)) \
+                        }\n\
+                        fn zq_render_target_token(path: &std::path::Path) -> String { \
+                            path.display().to_string() \
+                        }\n\
+                        fn zq_quote_target_token(input: &str) -> String { input.to_string() }\n";
+        let test = (
+            "tests/unrelated.rs",
+            "#[test] fn unrelated_path_assertion() { \
+                let path = \"target/ripr\"; \
+                assert_eq!(path, \"target/ripr\"); \
+            }\n\
+            #[test] fn unrelated_side_effect_assertion() { \
+                let side_effect = \"target/ripr\"; \
+                assert_eq!(side_effect, \"target/ripr\"); \
+            }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/agent_paths.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/agent_paths.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.expression().contains("zq_render_target_token")
+            })
+            .ok_or_else(|| "zq_render_target_token call_presence seam present".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            evidence.related_tests.is_empty(),
+            "generic argument token `path` must not create assertion-target affinity; got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.reach.state, StageState::No);
         Ok(())
     }
 

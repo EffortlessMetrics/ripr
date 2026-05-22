@@ -7422,6 +7422,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
+    "call_presence",
     "runtime_only_signal",
     "ambiguous_runtime_join",
 ];
