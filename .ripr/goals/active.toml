@@ -91,7 +91,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/top-static-limitation-bucket-burndown"
-status = "ready"
+status = "done"
 branch = "analysis-top-static-limitation-bucket-burndown"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -105,5 +105,23 @@ commands = [
   "cargo xtask lane1-evidence-audit",
   "cargo xtask evidence-quality-scorecard",
   "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/spec-config-policy-unsupported-flow-expansion"
+status = "ready"
+branch = "docs-spec-config-policy-unsupported-flow-expansion"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Refine the config/policy evidence contract for the next unsupported-flow expansion, identify the next unsupported flow, require benchmark and audit deltas before analyzer changes, and keep internal policy/config metadata alone as no-action."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
