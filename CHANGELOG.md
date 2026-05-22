@@ -13,6 +13,11 @@ are scoped or reviewed.
   more explicit for repairable top gaps: current static evidence strength,
   missing discriminator, focused proof intent, receipt command, and receipt path
   are rendered in JSON and Markdown instead of being implied by prose.
+- `cargo xtask lane1-evidence-audit` now uses a 120-second default
+  repo-exposure generation budget, still configurable through
+  `RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS`, so cold live audits fail closed into a
+  named `lane1_repo_exposure_timeout` artifact before platform abort behavior
+  can leave no Lane 1 report.
 - Lane 1 repo-exposure capture now streams child stdout through the xtask
   runner into `lane1-evidence-audit.repo-exposure.json`, counting bytes from the
   writer path and overwriting stale capture files deterministically. This keeps

@@ -16998,7 +16998,7 @@ const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
 const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
-const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
+const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 120_000;
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
 
@@ -64431,6 +64431,11 @@ covered_by = ["cargo xtask check-file-policy"]
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_default_timeout_preempts_live_abort_window() {
+        assert_eq!(super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS, 120_000);
     }
 
     #[test]

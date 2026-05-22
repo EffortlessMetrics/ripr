@@ -32,6 +32,10 @@ The command:
 - records bounded repo-exposure generation diagnostics in the audit input block,
   including timeout, status, duration, output byte counts, and the tail of the
   latency trace;
+- uses a 120-second default repo-exposure generation budget, configurable with
+  `RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS`, so cold or pathological live analysis
+  reaches a named limited artifact before platform-specific abort behavior can
+  leave no report;
 - emits named run limitations when repo-exposure generation is too slow or
   pathological instead of silently dropping evidence or waiting forever;
 - writes deterministic JSON and Markdown reports under `target/ripr/reports`;
@@ -338,6 +342,9 @@ movement remains static evidence movement rather than mutation proof.
 - `xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation`
   pins the bounded timeout artifact, named run limitation, repair route, and
   latency trace tail.
+- `xtask::tests::lane1_evidence_audit_default_timeout_preempts_live_abort_window`
+  pins the default repo-exposure generation budget used to reach bounded Lane 1
+  diagnostics before observed cold live abort behavior.
 - `xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact`
   pins bounded diagnostics when a successful repo-exposure subprocess leaves an
   incomplete captured JSON artifact.

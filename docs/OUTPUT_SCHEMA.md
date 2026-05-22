@@ -1731,7 +1731,7 @@ runtime execution.
     "repo_exposure_schema_version": "0.3",
     "repo_exposure_generation": {
       "command": "target/debug/ripr check --root . --mode instant --format repo-exposure-json",
-      "timeout_ms": 1200000,
+      "timeout_ms": 120000,
       "status": "pass",
       "failure_reason": null,
       "duration_ms": 42000,

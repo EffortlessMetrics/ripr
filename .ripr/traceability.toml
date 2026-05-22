@@ -2197,6 +2197,7 @@ tests = [
   "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation",
+  "xtask::tests::lane1_evidence_audit_default_timeout_preempts_live_abort_window",
   "xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact",
   "xtask::tests::lane1_evidence_audit_repo_exposure_generation_limits_incomplete_success_json",
   "xtask::tests::lane1_evidence_audit_repo_exposure_generation_limits_missing_success_json",
