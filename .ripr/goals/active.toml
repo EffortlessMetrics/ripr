@@ -147,7 +147,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/config-policy-unsupported-flow-support"
-status = "ready"
+status = "done"
 branch = "analysis-config-policy-unsupported-flow-support"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -158,6 +158,23 @@ specs = [
 acceptance = "Move one selected config/policy unsupported-flow category from named limitation to observed, actionable, or no-action only when fixture-backed; keep other unsupported flows named; keep raw findings as supporting evidence; record scorecard or audit before/after delta; do not create user test debt from policy/config metadata alone."
 commands = [
   "cargo test -p ripr config_policy --lib",
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/actionable-repair-route-completeness"
+status = "ready"
+branch = "analysis-actionable-repair-route-completeness"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Preserve the invariant that actionable canonical items include recommended_repair, repair_kind, and target test type, assertion shape, or output observer shape when applicable; non-action states must not fake repair routes; advisory/static boundaries remain explicit."
+commands = [
   "cargo xtask lane1-evidence-audit",
   "cargo xtask evidence-quality-scorecard",
   "cargo xtask check-output-contracts",

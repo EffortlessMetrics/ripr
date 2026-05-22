@@ -332,7 +332,7 @@ git diff --check
 Issue: [swarm #246](https://github.com/EffortlessMetrics/ripr-swarm/issues/246)
 / [source #1143](https://github.com/EffortlessMetrics/ripr/issues/1143)
 
-Status: ready.
+Status: done in swarm #246 / #249 proof on 2026-05-22.
 
 ### Goal
 
@@ -361,7 +361,7 @@ git diff --check
 Issue: [swarm #250](https://github.com/EffortlessMetrics/ripr-swarm/issues/250)
 / [source #1144](https://github.com/EffortlessMetrics/ripr/issues/1144)
 
-Status: ready.
+Status: done in swarm #250 / #252 proof on 2026-05-22.
 
 ### Goal
 
@@ -390,6 +390,10 @@ git diff --check
 ## Work Item 8: analysis: require repair routes for actionable canonical items
 
 Issue: [#1145](https://github.com/EffortlessMetrics/ripr/issues/1145)
+
+Swarm issue: [#254](https://github.com/EffortlessMetrics/ripr-swarm/issues/254)
+
+Status: ready.
 
 ### Goal
 
