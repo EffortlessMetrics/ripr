@@ -1179,6 +1179,8 @@ export interface RiprFirstPrPacketStatus {
   selectedState?: string;
   selectedKind?: string;
   changedBehavior?: string;
+  missingDiscriminator?: string;
+  focusedProofIntent?: string;
   why?: string;
   gapId?: string;
   canonicalGapId?: string;
@@ -1186,6 +1188,7 @@ export interface RiprFirstPrPacketStatus {
   suggestedAssertion?: string;
   verifyCommand?: string;
   receiptCommand?: string;
+  receiptPath?: string;
   relatedTest?: string;
   repairTarget?: string;
   repoRoot?: string;
@@ -2153,6 +2156,12 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
   }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
+  }
   if (packet.why) {
     lines.push(`Why this matters: ${packet.why}`);
   }
@@ -2167,6 +2176,9 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   }
   if (packet.receiptCommand) {
     lines.push(`Receipt command: ${packet.receiptCommand}`);
+  }
+  if (packet.receiptPath) {
+    lines.push(`Receipt path: ${packet.receiptPath}`);
   }
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
   lines.push('');
@@ -2190,6 +2202,12 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
   }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
+  }
   if (packet.why) {
     lines.push(`Why this matters: ${packet.why}`);
   }
@@ -2211,6 +2229,11 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   lines.push('');
   lines.push('Receipt command:');
   lines.push(packet.receiptCommand ?? 'not available');
+  if (packet.receiptPath) {
+    lines.push('');
+    lines.push('Receipt path:');
+    lines.push(packet.receiptPath);
+  }
   lines.push('');
   lines.push('Instructions:');
   lines.push('- Add one focused test for this gap.');
@@ -2285,6 +2308,15 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
   if (packet.canonicalGapId ?? packet.gapId) {
     lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
   }
+  if (packet.changedBehavior) {
+    lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
+  }
   if (packet.relatedTest) {
     lines.push(`Related test: ${packet.relatedTest}`);
   }
@@ -2296,6 +2328,9 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
   }
   if (packet.receiptCommand) {
     lines.push(`Receipt: ${packet.receiptCommand}`);
+  }
+  if (packet.receiptPath) {
+    lines.push(`Receipt path: ${packet.receiptPath}`);
   }
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
   lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
@@ -3182,7 +3217,8 @@ function validateFirstPrPacket(
     relatedTest,
     repairTarget,
     anchor ? stringField(anchor, 'file') : undefined,
-    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined
+    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined,
+    stringField(selected, 'receipt_path')
   ].filter((value): value is string => value !== undefined);
   if (packetPaths.some((packetPath) => !firstPrPathIsWorkspaceLocal(packetPath))) {
     return {
@@ -3197,6 +3233,8 @@ function validateFirstPrPacket(
     selectedState,
     selectedKind: stringField(selected, 'kind'),
     changedBehavior: stringField(selected, 'changed_behavior'),
+    missingDiscriminator: stringField(selected, 'missing_discriminator'),
+    focusedProofIntent: stringField(selected, 'focused_proof_intent'),
     why: stringField(selected, 'why'),
     gapId: stringField(selected, 'gap_id'),
     canonicalGapId: stringField(selected, 'canonical_gap_id'),
@@ -3204,6 +3242,7 @@ function validateFirstPrPacket(
     suggestedAssertion: repair ? stringField(repair, 'suggested_assertion') : undefined,
     verifyCommand: stringField(selected, 'verify_command'),
     receiptCommand: stringField(selected, 'receipt_command'),
+    receiptPath: stringField(selected, 'receipt_path'),
     relatedTest,
     repairTarget,
     repoRoot,

@@ -1343,11 +1343,15 @@ jobs:
               start_language="$(jq -r 'if .selected.language then (.selected.language + " (" + (.selected.language_status // "unknown") + ")") else "not_available" end' "$start_json" 2>/dev/null || echo unknown)"
               start_kind="$(jq -r '.selected.kind // "none"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_changed="$(jq -r '.selected.changed_behavior // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_missing="$(jq -r '.selected.missing_discriminator // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_focused="$(jq -r '.selected.focused_proof_intent // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_limit="$(jq -r 'if .selected.static_limit_kind then (.selected.static_limit_kind + (if .selected.static_limit_detail then ": " + .selected.static_limit_detail else "" end)) else "none" end' "$start_json" 2>/dev/null || echo unknown)"
               start_verify="$(jq -r '.selected.verify_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_receipt="$(jq -r '.selected.receipt_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_receipt_path="$(jq -r '.selected.receipt_path // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_receipt_state="$(jq -r '.selected.receipt_state // "receipt_missing"' "$start_json" 2>/dev/null || echo unknown)"
               start_next="$(jq -r '.selected.next_command // .selected.regeneration_command // "none"' "$start_json" 2>/dev/null || echo unknown)"
               start_warnings="$(jq -r '(.warnings // [] | length)' "$start_json" 2>/dev/null || echo 0)"
@@ -1357,11 +1361,15 @@ jobs:
               start_language="$(markdown_inline "$start_language")"
               start_kind="$(markdown_inline "$start_kind")"
               start_repair="$(markdown_inline "$start_repair")"
+              start_changed="$(markdown_inline "$start_changed")"
+              start_missing="$(markdown_inline "$start_missing")"
+              start_focused="$(markdown_inline "$start_focused")"
               start_target="$(markdown_inline "$start_target")"
               start_related="$(markdown_inline "$start_related")"
               start_limit="$(markdown_inline "$start_limit")"
               start_verify="$(markdown_inline "$start_verify")"
               start_receipt="$(markdown_inline "$start_receipt")"
+              start_receipt_path="$(markdown_inline "$start_receipt_path")"
               start_receipt_state="$(markdown_inline "$start_receipt_state")"
               start_next="$(markdown_inline "$start_next")"
               start_warnings="$(markdown_inline "$start_warnings")"
@@ -1371,11 +1379,15 @@ jobs:
               echo "- Language: \`$start_language\`"
               echo "- Top gap/no-action: \`$start_kind\`"
               echo "- Repair: \`$start_repair\`"
+              echo "- Changed behavior: \`$start_changed\`"
+              echo "- Missing discriminator: \`$start_missing\`"
+              echo "- Focused proof intent: \`$start_focused\`"
               echo "- Repair target: \`$start_target\`"
               echo "- Related test: \`$start_related\`"
               echo "- Static limit: \`$start_limit\`"
               echo "- Verify: \`$start_verify\`"
               echo "- Receipt: \`$start_receipt\`"
+              echo "- Receipt path: \`$start_receipt_path\`"
               echo "- Receipt state: \`$start_receipt_state\`"
               echo "- Next command: \`$start_next\`"
               echo "- Warnings: \`$start_warnings\`"
@@ -10836,15 +10848,23 @@ language = "rust"
         assert!(summary.contains(".selected.state // \"unknown\""));
         assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
         assert!(summary.contains(".selected.language + \" (\""));
+        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.missing_discriminator // \"not_available\""));
+        assert!(summary.contains(".selected.focused_proof_intent // \"not_available\""));
         assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
         assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
         assert!(summary.contains(".selected.static_limit_kind"));
+        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
         assert!(summary.contains(".selected.receipt_state // \"receipt_missing\""));
         assert!(summary.contains("Canonical gap: \\`$start_gap\\`"));
         assert!(summary.contains("Language: \\`$start_language\\`"));
+        assert!(summary.contains("Changed behavior: \\`$start_changed\\`"));
+        assert!(summary.contains("Missing discriminator: \\`$start_missing\\`"));
+        assert!(summary.contains("Focused proof intent: \\`$start_focused\\`"));
         assert!(summary.contains("Repair target: \\`$start_target\\`"));
         assert!(summary.contains("Related test: \\`$start_related\\`"));
         assert!(summary.contains("Static limit: \\`$start_limit\\`"));
+        assert!(summary.contains("Receipt path: \\`$start_receipt_path\\`"));
         assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
         assert!(
             summary
@@ -11526,8 +11546,12 @@ language = "rust"
         assert!(summary.contains(
             ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
         ));
+        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.missing_discriminator // \"not_available\""));
+        assert!(summary.contains(".selected.focused_proof_intent // \"not_available\""));
         assert!(summary.contains(".selected.verify_command // \"not_available\""));
         assert!(summary.contains(".selected.receipt_command // \"not_available\""));
+        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
         assert!(
             summary
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
