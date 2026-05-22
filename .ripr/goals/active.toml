@@ -253,7 +253,7 @@ commands = [
 
 [[work_item]]
 id = "docs/canonical-alignment-contract-refresh"
-status = "ready"
+status = "done"
 branch = "docs-canonical-alignment-contract-refresh"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -262,6 +262,25 @@ specs = [
 ]
 acceptance = "Refresh the existing v2 downstream handoff after material burn-down deltas; reflect the refreshed dogfood receipt fields and config/policy opaque report lookup delta; preserve raw findings as supporting evidence and canonical items as the countable unit; do not change analyzer, PR/CI, editor, gate, generated-test, provider, source-edit, or mutation behavior."
 commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/finding-alignment-burndown-closeout"
+status = "ready"
+branch = "campaign-finding-alignment-burndown-closeout"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Close the Lane 1 finding-alignment burn-down after the downstream handoff refresh; record improved evidence classes, remaining unknowns, moved counts, open follow-up issues, downstream consumers, and the next evidence class to repair; do not change analyzer, PR/CI, editor, gate, generated-test, provider, source-edit, or mutation behavior."
+commands = [
+  "cargo xtask goals status",
+  "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
