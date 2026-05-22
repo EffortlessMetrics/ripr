@@ -423,6 +423,8 @@ Issue: [#1146](https://github.com/EffortlessMetrics/ripr/issues/1146)
 
 Swarm issue: [#258](https://github.com/EffortlessMetrics/ripr-swarm/issues/258)
 
+Status: done in swarm #261 proof on 2026-05-22.
+
 ### Goal
 
 Give humans and agents a proof step for each actionable canonical item when
@@ -448,6 +450,8 @@ git diff --check
 ## Work Item 10: report: preserve scorecard lead with actionable canonical gaps
 
 Issue: [#1147](https://github.com/EffortlessMetrics/ripr/issues/1147)
+
+Swarm issue: [#262](https://github.com/EffortlessMetrics/ripr-swarm/issues/262)
 
 ### Goal
 

@@ -183,7 +183,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/actionable-verify-command-coverage"
-status = "ready"
+status = "done"
 branch = "analysis-actionable-verify-command-coverage"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -194,6 +194,23 @@ acceptance = "Preserve and expand verification command coverage for actionable c
 commands = [
   "cargo xtask lane1-evidence-audit",
   "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/actionable-canonical-gaps-scorecard-lead"
+status = "ready"
+branch = "report-actionable-canonical-gaps-scorecard-lead"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Preserve scorecard-leading actionable canonical gaps as new evidence classes land; already-observed, internal/no-action, static limitation, raw-finding, canonical-item, raw-to-canonical, repair-route, and verify-command coverage remain visible; public badge semantics do not change."
+commands = [
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask evidence-quality-trend",
   "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
