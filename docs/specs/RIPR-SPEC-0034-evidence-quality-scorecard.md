@@ -104,6 +104,9 @@ Each scorecard must include:
 - top actionable canonical gap lists copied from the Lane 1 audit so the
   scorecard shows the live shape of user work without reconstructing it from
   raw findings;
+- audit-derived evidence-class work queue rows promoted into recommended
+  repairs before generic roadmap risks, so the first repair class reflects live
+  unaligned, actionable, duplicate, unknown, or named-limitation pressure;
 - actionable-gap packet public-projection readiness copied from the Lane 1
   audit so badge-readiness work can trend packet completeness without changing
   public badge behavior;
@@ -206,8 +209,8 @@ The Markdown output includes bounded sections for the same areas:
 - actionable-gap packet public-projection readiness;
 - evidence-class work queue, including dominant static limitation category and
   repair route for static-dominated rows;
-- top evidence-quality risks;
-- recommended Lane 1 repairs;
+- top evidence-quality risks and recommended Lane 1 repairs led by
+  audit-derived evidence-class work queue rows before generic scorecard risks;
 - duplicate-looking and canonical group signals;
 - static limitations and missing discriminators;
 - static limitation categories and repair routes;

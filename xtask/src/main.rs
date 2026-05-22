@@ -23490,6 +23490,7 @@ fn audit_markdown_cell(value: &str) -> String {
 
 const EVIDENCE_QUALITY_SCORECARD_SCHEMA_VERSION: &str = "0.1";
 const EVIDENCE_QUALITY_SCORECARD_REPAIR_LIMIT: usize = 5;
+const EVIDENCE_QUALITY_SCORECARD_WORK_QUEUE_REPAIR_LIMIT: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct EvidenceQualityScorecardInput {
@@ -24543,6 +24544,7 @@ fn evidence_quality_recommended_repairs(
     audit: &Value,
 ) -> Vec<EvidenceQualityRepair> {
     let mut repairs = Vec::new();
+    scorecard_push_work_queue_repairs(&mut repairs, audit);
     scorecard_push_repair(
         &mut repairs,
         ScorecardRepairSpec {
@@ -24649,6 +24651,109 @@ fn evidence_quality_recommended_repairs(
             .then_with(|| left.slice.cmp(&right.slice))
     });
     repairs
+}
+
+fn scorecard_push_work_queue_repairs(repairs: &mut Vec<EvidenceQualityRepair>, audit: &Value) {
+    let Some(rows) = audit_get(
+        audit,
+        &["finding_alignment", "coverage", "evidence_class_work_queue"],
+    )
+    .and_then(Value::as_array) else {
+        return;
+    };
+
+    for (idx, row) in rows
+        .iter()
+        .take(EVIDENCE_QUALITY_SCORECARD_WORK_QUEUE_REPAIR_LIMIT)
+        .enumerate()
+    {
+        let Some(evidence_class) = row.get("evidence_class").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(dominant_signal) = row.get("dominant_signal").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(slice) = row.get("next_repair").and_then(Value::as_str) else {
+            continue;
+        };
+        if slice.is_empty() {
+            continue;
+        }
+        let signal_count = scorecard_work_queue_signal_count(row, dominant_signal);
+        if signal_count == 0 {
+            continue;
+        }
+        let (risk_kind, why, expected_impact) =
+            scorecard_work_queue_repair_text(row, evidence_class, dominant_signal);
+        scorecard_push_repair(
+            repairs,
+            ScorecardRepairSpec {
+                slice,
+                priority: 120usize.saturating_sub(idx),
+                evidence_class,
+                risk_kind: &risk_kind,
+                signal_count,
+                why: &why,
+                expected_impact: &expected_impact,
+            },
+        );
+    }
+}
+
+fn scorecard_work_queue_signal_count(row: &Value, dominant_signal: &str) -> usize {
+    match dominant_signal {
+        "unaligned_raw_findings" => scorecard_row_count(row, "unaligned_raw_findings"),
+        "actionable_canonical_gaps" => scorecard_row_count(row, "actionable_items"),
+        "static_limitations" => {
+            let category_count =
+                scorecard_row_count(row, "dominant_static_limitation_category_count");
+            if category_count > 0 {
+                category_count
+            } else {
+                scorecard_row_count(row, "static_limitation_items")
+            }
+        }
+        "unknown_items" => scorecard_row_count(row, "unknown_items"),
+        "duplicate_raw_signals" => scorecard_row_count(row, "duplicate_raw_signals"),
+        _ => scorecard_row_count(row, "work_score"),
+    }
+}
+
+fn scorecard_row_count(row: &Value, key: &str) -> usize {
+    row.get(key)
+        .and_then(Value::as_u64)
+        .map(|count| count as usize)
+        .unwrap_or(0)
+}
+
+fn scorecard_work_queue_repair_text(
+    row: &Value,
+    evidence_class: &str,
+    dominant_signal: &str,
+) -> (String, String, String) {
+    if dominant_signal == "static_limitations" {
+        let category = row
+            .get("dominant_static_limitation_category")
+            .and_then(Value::as_str)
+            .unwrap_or("static_limitation");
+        return (
+            format!("static_limitations:{category}"),
+            format!(
+                "Audit work queue ranks `{evidence_class}` because `{category}` dominates its named static limitations."
+            ),
+            "Use the named repair route fixture-first; do not count the limitation as user test debt until the analyzer support is proven."
+                .to_string(),
+        );
+    }
+
+    (
+        dominant_signal.to_string(),
+        format!(
+            "Audit work queue ranks `{evidence_class}` because `{dominant_signal}` is the dominant live signal."
+        ),
+        "Use the audit-derived class row to choose the next fixture-backed analyzer or counting repair."
+            .to_string(),
+    )
 }
 
 struct ScorecardRepairSpec<'a> {
@@ -70799,6 +70904,52 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("actionable_canonical_gaps"));
         assert!(markdown.contains("opaque_helper_call"));
         assert!(markdown.contains("analysis/oracle-semantics-audit-fixes"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_recommended_repairs_follow_evidence_class_work_queue()
+    -> Result<(), String> {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        let first = report
+            .recommended_repairs
+            .first()
+            .ok_or_else(|| "expected work-queue recommended repair".to_string())?;
+        assert_eq!(first.slice, "dogfood/actionable-gap-repair-loop");
+        assert_eq!(first.evidence_class, "predicate_boundary");
+        assert_eq!(first.risk_kind, "actionable_canonical_gaps");
+        assert_eq!(first.signal_count, 2);
+        assert!(
+            first
+                .why
+                .contains("Audit work queue ranks `predicate_boundary`"),
+            "work-queue repair should explain the class-specific live signal: {first:?}"
+        );
+
+        let call_presence = report
+            .recommended_repairs
+            .iter()
+            .find(|repair| repair.evidence_class == "call_presence")
+            .ok_or_else(|| "expected call_presence work-queue repair".to_string())?;
+        assert_eq!(call_presence.slice, "analysis/oracle-semantics-audit-fixes");
+        assert_eq!(
+            call_presence.risk_kind,
+            "static_limitations:opaque_helper_call"
+        );
+        assert_eq!(call_presence.signal_count, 1);
+        assert!(call_presence.why.contains("opaque_helper_call"));
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Audit work queue ranks `predicate_boundary`"));
+        assert!(markdown.contains("Audit work queue ranks `call_presence`"));
         Ok(())
     }
 

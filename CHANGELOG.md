@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask evidence-quality-scorecard` now promotes the audit-derived
+  evidence-class work queue into `recommended_repairs` before generic roadmap
+  risks. The scorecard's top repair rows now point at the live dominant class
+  and named limitation, such as `call_presence` /
+  `activation_owner_call_unresolved`, instead of leading with stale broad
+  categories.
 - `ripr outcome` receipts now include a reviewer-native `review_receipt`
   section in JSON and a matching Markdown section that summarizes what changed,
   what RIPR flagged before, which focused proof signals moved, what remains

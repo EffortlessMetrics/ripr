@@ -695,9 +695,9 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-scorecard writes target/ripr/reports/evidence-quality-scorecard.json and evidence-quality-scorecard.md",
   "scorecard consumes the current Lane 1 evidence-quality audit, optional evidence-health JSON, previous scorecard when present, capability metadata, and traceability metadata",
-  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage including runtime confidence rows by evidence class, actionable gap top lists, recommended Lane 1 repair slices, recent deltas, limited-input unknowns, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
+  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage including runtime confidence rows by evidence class, actionable gap top lists, evidence-class work queue rows, recommended Lane 1 repair slices led by live work-queue rows, recent deltas, limited-input unknowns, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Scorecard JSON and Markdown contract",
-  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
+  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, audit work-queue repair promotion, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
 ]
 fixtures = []
 next = "maintenance"

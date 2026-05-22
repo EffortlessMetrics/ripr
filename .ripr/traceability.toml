@@ -2337,6 +2337,7 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
   "xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps",
   "xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit",
+  "xtask::tests::evidence_quality_scorecard_recommended_repairs_follow_evidence_class_work_queue",
   "xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness",
   "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
   "xtask::tests::evidence_quality_scorecard_does_not_treat_cache_store_skip_as_limited_audit",

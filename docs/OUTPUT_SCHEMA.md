@@ -2954,9 +2954,11 @@ Field contract:
   live output rather than static roadmap guesses. Static-dominated rows retain
   the dominant named limitation category and repair route, matching the audit
   queue.
-- `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
-  priority first, then signal count. These are advisory next steps, not policy
-  decisions.
+- `recommended_repairs` - bounded Lane 1 repair slices. The scorecard promotes
+  the audit-derived `evidence_class_work_queue` rows first so the next repair
+  class comes from live evidence-class counts rather than static roadmap
+  guesses; remaining generic risks are ordered by product risk priority and
+  signal count. These are advisory next steps, not policy decisions.
 - `recent_audit_deltas` - before/after summary deltas when a previous
   scorecard artifact is available; otherwise an explicit unavailable reason.
 - `unknowns` - unavailable inputs and evidence-quality unknowns that should
