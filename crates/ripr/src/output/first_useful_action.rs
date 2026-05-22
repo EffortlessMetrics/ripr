@@ -1169,20 +1169,15 @@ fn selected_acknowledged(
     if !matches!(u64_path(ledger, &["movement", "acknowledged"]), Some(count) if count > 0) {
         return None;
     }
-    Some(ActionSelected {
-        source: "ledger".to_string(),
-        source_artifact: input.ledger_path.clone()?,
-        seam_id: string_path(ledger, &["top_repair_route", "seam_id"])
+    Some(weakly_exposed_boundary_selected(
+        "ledger",
+        input.ledger_path.clone()?,
+        string_path(ledger, &["top_repair_route", "seam_id"])
             .or_else(|| Some("acknowledged-boundary-0001".to_string())),
-        seam_kind: Some("predicate_boundary".to_string()),
-        path: string_path(ledger, &["top_repair_route", "path"]),
-        line: u64_path(ledger, &["top_repair_route", "line"]),
-        classification: Some("weakly_exposed".to_string()),
-        missing_discriminator: string_path(ledger, &["top_repair_route", "missing_discriminator"]),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+        string_path(ledger, &["top_repair_route", "path"]),
+        u64_path(ledger, &["top_repair_route", "line"]),
+        string_path(ledger, &["top_repair_route", "missing_discriminator"]),
+    ))
 }
 
 fn selected_waived(
@@ -1193,19 +1188,14 @@ fn selected_waived(
     if !gate_has_waiver(gate) {
         return None;
     }
-    Some(ActionSelected {
-        source: "gate_decision".to_string(),
-        source_artifact: input.gate_decision_path.clone()?,
-        seam_id: first_gate_seam(gate).or_else(|| Some("waived-boundary-0001".to_string())),
-        seam_kind: Some("predicate_boundary".to_string()),
-        path: first_gate_path(gate),
-        line: first_gate_line(gate),
-        classification: Some("weakly_exposed".to_string()),
-        missing_discriminator: first_gate_missing_discriminator(gate),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+    Some(weakly_exposed_boundary_selected(
+        "gate_decision",
+        input.gate_decision_path.clone()?,
+        first_gate_seam(gate).or_else(|| Some("waived-boundary-0001".to_string())),
+        first_gate_path(gate),
+        first_gate_line(gate),
+        first_gate_missing_discriminator(gate),
+    ))
 }
 
 fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value) -> ActionSelected {
@@ -1221,6 +1211,29 @@ fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value)
             (Some(item), &["static_class"]),
         ]),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
+    }
+}
+
+fn weakly_exposed_boundary_selected(
+    source: &str,
+    source_artifact: String,
+    seam_id: Option<String>,
+    path: Option<String>,
+    line: Option<u64>,
+    missing_discriminator: Option<String>,
+) -> ActionSelected {
+    ActionSelected {
+        source: source.to_string(),
+        source_artifact,
+        seam_id,
+        seam_kind: Some("predicate_boundary".to_string()),
+        path,
+        line,
+        classification: Some("weakly_exposed".to_string()),
+        missing_discriminator,
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
