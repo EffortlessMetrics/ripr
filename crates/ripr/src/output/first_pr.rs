@@ -1811,7 +1811,10 @@ mod tests {
             root: missing.display().to_string(),
             ..FirstPrOptions::default()
         };
-        let err = write_first_pr(&repo, &options).expect_err("missing root should fail");
+        let err = match write_first_pr(&repo, &options) {
+            Ok(()) => return Err("missing root should fail".to_string()),
+            Err(err) => err,
+        };
         assert!(err.contains("first-pr root is not a directory"));
         assert!(err.contains("ripr doctor --root"));
         assert!(err.contains("Then rerun:"));
@@ -1827,7 +1830,10 @@ mod tests {
             out_dir: out_file.display().to_string(),
             ..FirstPrOptions::default()
         };
-        let err = write_first_pr(&repo, &options).expect_err("file output path should fail");
+        let err = match write_first_pr(&repo, &options) {
+            Ok(()) => return Err("file output path should fail".to_string()),
+            Err(err) => err,
+        };
         assert!(err.contains("first-pr could not create artifact directory"));
         assert!(err.contains("--out-dir <writable-path>"));
         cleanup(&repo)
