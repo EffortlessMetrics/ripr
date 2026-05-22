@@ -6,82 +6,22 @@ use super::path::{parse_new_path_marker, parse_old_path_marker};
 
 pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
-    let mut current_path: Option<PathBuf> = None;
-    let mut old_line = 0usize;
-    let mut new_line = 0usize;
-    let mut in_hunk = false;
-    let mut saw_old_path_marker = false;
+    let mut state = parser_state::ParserState::default();
 
     for raw in input.lines() {
-        if raw.starts_with("diff --git ") {
-            current_path = None;
-            in_hunk = false;
-            saw_old_path_marker = false;
+        if state.handle_diff_boundary(raw) {
             continue;
         }
 
-        if !in_hunk {
-            if parse_old_path_marker(raw) {
-                saw_old_path_marker = true;
-                continue;
-            }
-
-            if let Some(path) = parse_new_path_marker(raw) {
-                if current_path.is_none() || saw_old_path_marker {
-                    current_path = Some(path.clone());
-                    files.entry(path.clone()).or_insert_with(|| ChangedFile {
-                        path,
-                        ..ChangedFile::default()
-                    });
-                }
-                saw_old_path_marker = false;
-                continue;
-            }
-        }
-
-        if raw.starts_with("@@") {
-            saw_old_path_marker = false;
-            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
-                old_line = old_start;
-                new_line = new_start;
-                in_hunk = true;
-            } else {
-                in_hunk = false;
-            }
+        if state.register_path_marker(raw, &mut files) {
             continue;
         }
 
-        if !in_hunk {
-            saw_old_path_marker = false;
-        }
-
-        let Some(path) = current_path.clone() else {
-            continue;
-        };
-        let Some(file) = files.get_mut(&path) else {
-            continue;
-        };
-
-        if !in_hunk {
+        if state.handle_hunk_header(raw) {
             continue;
         }
 
-        if let Some(text) = raw.strip_prefix('+') {
-            file.added_lines.push(ChangedLine {
-                line: new_line,
-                text: text.to_string(),
-            });
-            new_line = new_line.saturating_add(1);
-        } else if let Some(text) = raw.strip_prefix('-') {
-            file.removed_lines.push(ChangedLine {
-                line: old_line,
-                text: text.to_string(),
-            });
-            old_line = old_line.saturating_add(1);
-        } else if raw.starts_with(' ') || raw.is_empty() {
-            old_line = old_line.saturating_add(1);
-            new_line = new_line.saturating_add(1);
-        }
+        state.consume_hunk_line(raw, &mut files);
     }
 
     files.into_values().collect()
@@ -102,6 +42,113 @@ fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
 fn parse_start(segment: &str) -> Option<usize> {
     let start = segment.split(',').next()?;
     start.parse::<usize>().ok()
+}
+
+mod parser_state {
+    use super::{
+        ChangedFile, ChangedLine, parse_hunk_header, parse_new_path_marker, parse_old_path_marker,
+    };
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    #[derive(Default)]
+    pub(super) struct ParserState {
+        current_path: Option<PathBuf>,
+        old_line: usize,
+        new_line: usize,
+        in_hunk: bool,
+        saw_old_path_marker: bool,
+    }
+
+    impl ParserState {
+        pub(super) fn register_path_marker(
+            &mut self,
+            raw: &str,
+            files: &mut BTreeMap<PathBuf, ChangedFile>,
+        ) -> bool {
+            if self.in_hunk {
+                return false;
+            }
+
+            if parse_old_path_marker(raw) {
+                self.saw_old_path_marker = true;
+                return true;
+            }
+
+            let Some(path) = parse_new_path_marker(raw) else {
+                return false;
+            };
+            if self.current_path.is_none() || self.saw_old_path_marker {
+                self.current_path = Some(path.clone());
+                files.entry(path.clone()).or_insert_with(|| ChangedFile {
+                    path,
+                    ..ChangedFile::default()
+                });
+            }
+            self.saw_old_path_marker = false;
+            true
+        }
+
+        pub(super) fn handle_diff_boundary(&mut self, raw: &str) -> bool {
+            if !raw.starts_with("diff --git ") {
+                return false;
+            }
+            self.current_path = None;
+            self.in_hunk = false;
+            self.saw_old_path_marker = false;
+            true
+        }
+
+        pub(super) fn handle_hunk_header(&mut self, raw: &str) -> bool {
+            if !raw.starts_with("@@") {
+                return false;
+            }
+            self.saw_old_path_marker = false;
+            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+                self.old_line = old_start;
+                self.new_line = new_start;
+                self.in_hunk = true;
+            } else {
+                self.in_hunk = false;
+            }
+            true
+        }
+
+        pub(super) fn consume_hunk_line(
+            &mut self,
+            raw: &str,
+            files: &mut BTreeMap<PathBuf, ChangedFile>,
+        ) {
+            if !self.in_hunk {
+                self.saw_old_path_marker = false;
+                return;
+            }
+
+            let Some(path) = self.current_path.clone() else {
+                return;
+            };
+            let Some(file) = files.get_mut(&path) else {
+                return;
+            };
+
+            if let Some(text) = raw.strip_prefix('+') {
+                file.added_lines.push(ChangedLine {
+                    line: self.new_line,
+                    text: text.to_string(),
+                });
+                self.new_line = self.new_line.saturating_add(1);
+            } else if let Some(text) = raw.strip_prefix('-') {
+                file.removed_lines.push(ChangedLine {
+                    line: self.old_line,
+                    text: text.to_string(),
+                });
+                self.old_line = self.old_line.saturating_add(1);
+            } else if raw.starts_with(' ') || raw.is_empty() {
+                self.old_line = self.old_line.saturating_add(1);
+                self.new_line = self.new_line.saturating_add(1);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
