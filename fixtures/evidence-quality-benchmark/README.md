@@ -29,6 +29,9 @@ promote any capability globally.
   no-argument calls, calls with opaque arguments, and one-hop same-file helpers
   that directly call the owner, while predicate-boundary checks still require
   concrete activation values.
+- Same-test struct field projections are source-order scoped: literals are
+  concrete only when visible before the owner call and not shadowed or mutated
+  before the call.
 - Oracle cases must distinguish clear exact-value helpers from opaque helpers
   and must keep tautological equality assertions from claiming strong
   exact-value grip.
