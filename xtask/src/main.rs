@@ -41029,6 +41029,21 @@ fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String])
         .collect::<Vec<_>>();
     if ready.is_empty() {
         body.push_str("No ready work items.\n\n");
+        if manifest.status.as_deref() == Some("closed") && manifest.no_current_goal == Some(true) {
+            body.push_str("## No Current Goal\n\n");
+            body.push_str(
+                "The active manifest intentionally records `no_current_goal = true`; do not continue the closed campaign or infer a successor from chat history.\n\n",
+            );
+            body.push_str("To select new work, inspect repo-owned sources in this order:\n\n");
+            body.push_str("- open pull requests and required checks\n");
+            body.push_str("- `docs/IMPLEMENTATION_CAMPAIGNS.md`\n");
+            body.push_str("- `docs/IMPLEMENTATION_PLAN.md`\n");
+            body.push_str("- accepted proposals, specs, ADRs, and campaign plans\n");
+            body.push_str("- open issues that cite those repo artifacts\n\n");
+            body.push_str(
+                "Record the selected successor in `.ripr/goals/active.toml` before starting behavior work.\n\n",
+            );
+        }
     } else {
         for item in ready {
             body.push_str(&format!(
@@ -61399,6 +61414,43 @@ commands = ["cargo xtask check-pr"]
 
             assert!(violations.is_empty(), "{violations:?}");
         });
+    }
+
+    #[test]
+    fn goals_next_reports_no_current_goal_guidance() {
+        let manifest = CampaignManifest {
+            status: Some("closed".to_string()),
+            no_current_goal: Some(true),
+            ..Default::default()
+        };
+
+        let body = super::campaign_next_report_body(&manifest, &[]);
+
+        assert!(body.contains("No ready work items."));
+        assert!(body.contains("## No Current Goal"));
+        assert!(body.contains(
+            "do not continue the closed campaign or infer a successor from chat history"
+        ));
+        assert!(body.contains("Record the selected successor in `.ripr/goals/active.toml`"));
+    }
+
+    #[test]
+    fn goals_next_omits_no_current_goal_guidance_without_marker() {
+        for no_current_goal in [None, Some(false)] {
+            let manifest = CampaignManifest {
+                status: Some("closed".to_string()),
+                no_current_goal,
+                ..Default::default()
+            };
+
+            let body = super::campaign_next_report_body(&manifest, &[]);
+
+            assert!(body.contains("No ready work items."));
+            assert!(!body.contains("## No Current Goal"));
+            assert!(!body.contains(
+                "do not continue the closed campaign or infer a successor from chat history"
+            ));
+        }
     }
 
     #[test]
