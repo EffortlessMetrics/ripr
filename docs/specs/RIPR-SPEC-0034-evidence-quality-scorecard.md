@@ -422,6 +422,7 @@ The scorecard feeds these Lane 1 metrics:
 
 The trend report feeds these Lane 1 metrics:
 
+- `lane1_evidence_trend_actionable_canonical_gaps`;
 - `lane1_evidence_trend_compared_metrics`;
 - `lane1_evidence_trend_improved_metrics`;
 - `lane1_evidence_trend_regressed_metrics`;

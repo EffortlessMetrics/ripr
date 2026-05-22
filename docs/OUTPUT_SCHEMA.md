@@ -3056,13 +3056,13 @@ values, but movement and badge-readiness deltas remain unknown.
     "improved_metrics": 0,
     "regressed_metrics": 0,
     "unchanged_metrics": 0,
-    "unknown_metrics": 26,
+    "unknown_metrics": 27,
     "no_history": true
   },
   "metric_trends": [
     {
-      "metric": "duplicate_looking_groups_total",
-      "label": "Duplicate-looking groups",
+      "metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+      "label": "Actionable canonical gaps",
       "before": null,
       "after": 926,
       "delta": null,
@@ -3102,8 +3102,10 @@ Field contract:
   nullable `before`, `after`, and `delta` values plus a direction. Lower counts
   are better for debt and uncertainty metrics; higher counts are better for
   calibrated records, calibrated-supported canonical items, already-observed
-  items, and internal no-action items. Finding-alignment and presentation-text
-  metrics track raw-to-canonical quality, duplicate groups, actionability,
+  items, and internal no-action items. The first trend row is the actionable
+  canonical gap count, matching the scorecard headline and keeping raw findings
+  diagnostic rather than user work. Finding-alignment and presentation-text
+  metrics also track raw-to-canonical quality, duplicate groups, actionability,
   static limitations, visibility unknowns, no-action/observed outcomes, and
   actionable-gap packet public-projection readiness. If the current scorecard
   carries limited input unknowns such as `lane1_evidence_audit_limited`,

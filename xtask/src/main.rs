@@ -26440,6 +26440,19 @@ fn evidence_quality_metric_trends(
 ) -> Vec<EvidenceQualityTrendMetric> {
     let mut trends = [
         EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_unresolved_canonical_gaps",
+            label: "Actionable canonical gaps",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_actionable_unresolved_canonical_gaps",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_actionable_unresolved_canonical_gaps",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
             metric: "raw_headline_gaps",
             label: "Raw headline gaps",
             lower_is_better: true,
@@ -26682,8 +26695,19 @@ fn evidence_quality_metric_trends(
     .into_iter()
     .map(|spec| evidence_quality_metric_trend(current, previous, spec))
     .collect::<Vec<_>>();
-    trends.sort_by(|left, right| left.metric.cmp(&right.metric));
+    trends.sort_by(|left, right| {
+        evidence_quality_trend_metric_order(&left.metric)
+            .cmp(&evidence_quality_trend_metric_order(&right.metric))
+            .then_with(|| left.metric.cmp(&right.metric))
+    });
     trends
+}
+
+fn evidence_quality_trend_metric_order(metric: &str) -> u8 {
+    match metric {
+        "finding_alignment_actionable_unresolved_canonical_gaps" => 0,
+        _ => 1,
+    }
 }
 
 fn evidence_quality_metric_trend(
@@ -71754,6 +71778,16 @@ covered_by = ["cargo xtask check-file-policy"]
         let mut previous = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
         set_summary_count(&mut current, "finding_alignment_duplicate_groups_total", 1)?;
         set_summary_count(&mut previous, "finding_alignment_duplicate_groups_total", 3)?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_actionable_unresolved_canonical_gaps",
+            2,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_actionable_unresolved_canonical_gaps",
+            5,
+        )?;
         set_summary_count(&mut current, "presentation_text_observed", 4)?;
         set_summary_count(&mut previous, "presentation_text_observed", 2)?;
         set_summary_count(&mut current, "presentation_text_visibility_unknown", 1)?;
@@ -71816,6 +71850,16 @@ covered_by = ["cargo xtask check-file-policy"]
             Some(&previous),
         )?;
 
+        let first_metric = report
+            .metric_trends
+            .first()
+            .ok_or_else(|| "expected metric trends".to_string())?;
+        assert_eq!(
+            first_metric.metric,
+            "finding_alignment_actionable_unresolved_canonical_gaps"
+        );
+        assert_eq!(first_metric.label, "Actionable canonical gaps");
+        assert_eq!(first_metric.direction, "improvement");
         assert_eq!(
             trend_direction_for(&report, "finding_alignment_duplicate_groups_total")?,
             "improvement"
@@ -71870,6 +71914,15 @@ covered_by = ["cargo xtask check-file-policy"]
         let metric_trends = value["metric_trends"]
             .as_array()
             .ok_or_else(|| "metric_trends should be an array".to_string())?;
+        assert_eq!(
+            metric_trends
+                .first()
+                .and_then(|trend| trend["metric"].as_str()),
+            Some("finding_alignment_actionable_unresolved_canonical_gaps")
+        );
+        assert!(metric_trends.iter().any(
+            |trend| trend["metric"] == "finding_alignment_actionable_unresolved_canonical_gaps"
+        ));
         assert!(metric_trends.iter().any(
             |trend| trend["metric"] == "finding_alignment_canonical_items_without_repair_route"
         ));
@@ -71887,6 +71940,7 @@ covered_by = ["cargo xtask check-file-policy"]
             == "finding_alignment_actionable_gap_packet_public_projection_excluded_packets"));
 
         let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("Actionable canonical gaps"));
         assert!(markdown.contains("Finding-alignment canonical items without repair route"));
         assert!(markdown.contains("Finding-alignment canonical items without verify command"));
         assert!(markdown.contains("Finding-alignment static unknown without named limitation"));
