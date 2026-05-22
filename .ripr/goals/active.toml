@@ -155,7 +155,7 @@ specs = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
   "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
 ]
-acceptance = "Move one selected config/policy unsupported-flow category from named limitation to observed, actionable, or no-action only when fixture-backed; keep other unsupported flows named; keep raw findings as supporting evidence; record scorecard or audit before/after delta; do not create user test debt from policy/config metadata alone."
+acceptance = "Move one selected config/policy unsupported-flow category from named limitation to observed, actionable, or no-action only when fixture-backed; keep other unsupported flows named; preserve raw findings as supporting evidence; report before/after scorecard or audit delta; do not create user test debt from policy/config metadata alone."
 commands = [
   "cargo test -p ripr config_policy --lib",
   "cargo xtask lane1-evidence-audit",
