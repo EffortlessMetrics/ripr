@@ -67,10 +67,11 @@ stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
 spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
 plan = "plans/start-here-surface-convergence/implementation-plan.md"
-acceptance = "Generated CI and PR evidence first screens name the same gap identity, repair route, verify command, receipt command, receipt state, limits, and non-claims as the first-pr packet when a canonical repair unit exists; raw finding counts remain supporting evidence."
+acceptance = "Generated CI and PR evidence first screens name the same gap identity, repair route, verify command, receipt command, receipt state, limits, and non-claims as the first-pr packet when a canonical repair unit exists; raw finding counts remain supporting evidence. PR #202 teaches the PR evidence summary appended by CI to lead with typed start-here state from target/ripr/reports/start-here.json when present."
 commands = [
   "cargo test -p ripr --lib output",
   "cargo test -p xtask first_pr",
+  "cargo test -p xtask pr_evidence_summary --bin xtask",
   "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
@@ -85,6 +86,8 @@ spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
 plan = "plans/start-here-surface-convergence/implementation-plan.md"
 acceptance = "CLI surfaces distinguish safe next action, missing artifacts, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence, verify command, receipt command, and receipt path using the converged start-here vocabulary."
 commands = [
+  "cargo test -p ripr --lib first_pr",
+  "cargo test -p ripr --lib help",
   "cargo test -p ripr --lib cli",
   "cargo test -p ripr --test cli_smoke",
   "cargo xtask check-output-contracts",

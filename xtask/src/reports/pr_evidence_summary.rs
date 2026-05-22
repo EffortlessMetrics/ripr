@@ -14,6 +14,8 @@ const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
 const REVIEW_COMMENTS_JSON: &str = "target/ripr/review/comments.json";
 const REVIEW_COMMENTS_MD: &str = "target/ripr/review/comments.md";
+const START_HERE_JSON: &str = "target/ripr/reports/start-here.json";
+const START_HERE_MD: &str = "target/ripr/reports/start-here.md";
 const PR_SUMMARY_MD: &str = "target/ripr/pr/summary.md";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,15 +42,19 @@ pub(crate) fn ripr_pr_summary(args: &[String]) -> Result<(), String> {
 fn summary_text(repo: &Path) -> String {
     let pr_evidence = load_json(repo, PR_EVIDENCE_JSON);
     let review_comments = load_json(repo, REVIEW_COMMENTS_JSON);
+    let start_here = load_json(repo, START_HERE_JSON);
     render_pr_evidence_summary(&SummaryRenderInput {
         repo,
         pr_evidence_json: PR_EVIDENCE_JSON,
         review_comments_json: REVIEW_COMMENTS_JSON,
+        start_here_json: START_HERE_JSON,
         pr_evidence_md: PR_EVIDENCE_MD,
         review_comments_md: REVIEW_COMMENTS_MD,
+        start_here_md: START_HERE_MD,
         pr_summary_md: PR_SUMMARY_MD,
         pr_evidence: &pr_evidence,
         review_comments: &review_comments,
+        start_here: &start_here,
     })
 }
 
@@ -138,6 +144,38 @@ mod tests {
         )?;
         write_json(
             &repo,
+            START_HERE_JSON,
+            &json!({
+                "status": "actionable",
+                "posture": "advisory",
+                "selected": {
+                    "state": "top_gap",
+                    "gap_id": "gap:pr:pricing",
+                    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "kind": "MissingBoundaryAssertion",
+                    "changed_behavior": "amount == threshold",
+                    "missing_discriminator": "Add an exact assertion for amount == threshold.",
+                    "focused_proof_intent": "Add a boundary assertion in tests/pricing.rs.",
+                    "repair": {
+                        "route": "AddBoundaryAssertion",
+                        "target_file": "tests/pricing.rs",
+                        "related_test": "tests/pricing.rs::discount_boundary"
+                    },
+                    "verify_command": "cargo xtask fixtures boundary_gap",
+                    "receipt_command": "ripr agent receipt --gap gap:pr:pricing",
+                    "receipt_state": "receipt_missing",
+                    "static_limit_kind": null
+                },
+                "limits": [
+                    "Composes explicit RIPR artifacts only.",
+                    "Does not run mutation testing."
+                ]
+            }),
+        )?;
+        write_json(
+            &repo,
             REVIEW_COMMENTS_JSON,
             &json!({
                 "status": "advisory",
@@ -152,9 +190,20 @@ mod tests {
             .map_err(|err| format!("write PR md: {err}"))?;
         fs::write(repo.join(REVIEW_COMMENTS_MD), "# Guidance\n")
             .map_err(|err| format!("write review md: {err}"))?;
+        fs::write(repo.join(START_HERE_MD), "# Start Here\n")
+            .map_err(|err| format!("write start-here md: {err}"))?;
 
         let summary = summary_text(&repo);
         assert!(summary.contains("# PR Evidence Summary"));
+        assert!(summary.contains("## Start Here"));
+        assert!(
+            summary.contains("- canonical gap: `gap:rust:pricing:discount:threshold-boundary`")
+        );
+        assert!(summary.contains("- repair route: `AddBoundaryAssertion`"));
+        assert!(summary.contains("- verify: `cargo xtask fixtures boundary_gap`"));
+        assert!(summary.contains("- receipt: `ripr agent receipt --gap gap:pr:pricing`"));
+        assert!(summary.contains("- receipt state: `receipt_missing`"));
+        assert!(summary.contains("- boundary: static advisory evidence only; gate decision remains separate pass/fail authority when configured."));
         assert!(summary.contains("## Fast Gate"));
         assert!(summary.contains("## RIPR"));
         assert!(summary.contains("## Targeted Mutation"));

@@ -3833,7 +3833,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `docs/start-here-surface-convergence-stack` | done | #201 accepted the proposal/spec/ADR stack, replaced source issue numbers with swarm issue rails, and activated the campaign manifest. |
-| `report/pr-ci-start-here-canonical-unit` | done | #202 made PR evidence ledger and PR review front-panel Markdown lead with `Start here` canonical repair fields before raw counts. |
+| `report/pr-ci-start-here-canonical-unit` | done | #202 made PR evidence ledger, PR review front-panel Markdown, and the CI-appended PR evidence summary lead with `Start here` canonical repair fields before raw counts. |
 | `cli/start-here-command-language` | ready | #203 aligns CLI front-door command language and recovery states after PR/CI first-screen convergence. |
 | `receipt/lifecycle-state-convergence` | blocked | #204 standardizes receipt found/missing/stale/mismatch/improved/unchanged states. |
 | `output/no-output-fail-closed-states` | blocked | #205 standardizes clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, and unsafe states outside the editor. |
