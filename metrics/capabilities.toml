@@ -651,7 +651,7 @@ evidence = [
   "ripr evidence-health writes advisory JSON and Markdown",
   "CLI parser/help tests pin the evidence-health command surface",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
-  "cargo xtask evidence-health bounds the child process and writes named evidence_health_timeout or evidence_health_incomplete run limitations instead of leaving stale or partial artifacts when the live report times out or exits nonzero",
+  "cargo xtask evidence-health bounds the child process and writes named evidence_health_timeout, evidence_health_incomplete, or evidence_health_runner_error run limitations instead of leaving stale or partial artifacts when the live report times out, exits nonzero, or the runner cannot start/capture/poll/read the child with inputs.generation.status = runner_error",
   "limited evidence-health artifacts carry bounded repo-exposure latency trace totals and tail rows so slow live-repo phases remain inspectable without treating the limitation as user test debt",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
   "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation reason/stage/category distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
@@ -660,7 +660,7 @@ evidence = [
 ]
 fixtures = []
 next = "maintenance"
-metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks, evidence_health_timeout_limitations, evidence_health_incomplete_limitations"
+metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks, evidence_health_timeout_limitations, evidence_health_incomplete_limitations, evidence_health_runner_error_limitations"
 
 [[capability]]
 id = "lane1_evidence_quality_audit"

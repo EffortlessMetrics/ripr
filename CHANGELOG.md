@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask evidence-health` now converts build/report runner failures into
+  bounded warning artifacts instead of returning without
+  `evidence-health.json` / `.md`. These limited reports overwrite stale
+  artifacts, use
+  `run_limitations[].category = "evidence_health_runner_error"`, and record
+  `inputs.generation.status = "runner_error"` with a bounded failure reason.
 - Limited `cargo xtask evidence-health` warning artifacts now expose structured
   repo-exposure latency diagnostics. Timeout and incomplete reports carry
   bounded `latency_trace_events_total` and `latency_trace_tail` fields on

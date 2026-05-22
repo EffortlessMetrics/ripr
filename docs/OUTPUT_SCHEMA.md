@@ -1409,14 +1409,18 @@ without changing analyzer behavior. The same report lands at
 
 The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
 live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
-(default 20 minutes). If either phase times out or exits before a complete
-report is available, xtask discards stale or partial outputs and writes warning
-JSON and Markdown with `status = "warn"`, phase context such as
+(default 20 minutes). If either phase times out, exits before a complete report
+is available, or the xtask runner cannot start, capture, poll, or read the
+child process, xtask discards stale or partial outputs and writes warning JSON
+and Markdown with `status = "warn"`, phase context such as
 `evidence_health_build` or `evidence_health_generation`, and a named
-`evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
-entry. The default matches the Lane 1 audit live-repo budget so normal dogfood
-runs can complete useful health counts, while pathological runs still produce
-bounded diagnostics before abnormal termination can drop the artifact. During
+`evidence_health_timeout`, `evidence_health_incomplete`, or
+`evidence_health_runner_error` `run_limitations[]` entry. Runner/capture errors
+use `inputs.generation.status = "runner_error"` and the limitation category
+`evidence_health_runner_error`. The default matches the Lane 1 audit live-repo
+budget so normal dogfood runs can complete useful health counts,
+while pathological runs still produce bounded diagnostics before abnormal
+termination can drop the artifact. During
 generation, xtask enables repo-exposure latency tracing so timeout artifacts can
 include analyzer phase breadcrumbs when available. Limited artifacts expose those
 breadcrumbs as bounded `latency_trace_events_total` and `latency_trace_tail`
@@ -1608,7 +1612,7 @@ Field contract:
   `null` when not provided.
 - `inputs.generation` - present on bounded xtask fallback artifacts. It records
   `phase` (`evidence_health_build` or `evidence_health_generation`), bounded
-  command, `status` (`fail`, `timeout`, or `pass_incomplete`),
+  command, `status` (`fail`, `timeout`, `pass_incomplete`, or `runner_error`),
   timeout/duration, exit code when available, output byte counts, optional
   `failure_reason`, bounded stdout/stderr excerpts,
   `latency_trace_events_total`, and `latency_trace_tail` repo-exposure phase
@@ -1668,10 +1672,10 @@ Field contract:
   run mutation testing, infer thresholds, or change static classification.
 - `top_static_limitations` - the largest static evidence gaps by count, capped
   to 10 rows and carrying one example seam ID for inspection.
-- `run_limitations` - present on bounded xtask fallback artifacts. Timeout and
-  incomplete rows name `evidence_health_timeout` or
-  `evidence_health_incomplete`, the `evidence_health_build` or
-  `evidence_health_generation` phase,
+- `run_limitations` - present on bounded xtask fallback artifacts. Timeout,
+  incomplete, and runner-error rows name `evidence_health_timeout`,
+  `evidence_health_incomplete`, or `evidence_health_runner_error`, the
+  `evidence_health_build` or `evidence_health_generation` phase,
   timeout/duration/output byte diagnostics, bounded stdout/stderr excerpts,
   optional `failure_reason`, bounded `latency_trace_events_total` and
   `latency_trace_tail` repo-exposure phase diagnostics when available, and a
@@ -1680,7 +1684,11 @@ Field contract:
   successfully but the expected JSON/Markdown artifacts are missing or
   incomplete, the fallback uses
   `inputs.generation.status = "pass_incomplete"` and overwrites stale prior
-  artifacts.
+artifacts. If the build or generation runner cannot start, capture, poll, or
+read the child process, the fallback uses
+`inputs.generation.status = "runner_error"`,
+`run_limitations[].category = "evidence_health_runner_error"`, and still
+overwrites stale prior artifacts.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,

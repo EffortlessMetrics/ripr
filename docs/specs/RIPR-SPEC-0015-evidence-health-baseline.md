@@ -74,8 +74,9 @@ them.
 On timeout or incomplete child-process exit it removes stale or partial
 outputs and writes warning JSON/Markdown with phase context such as
 `evidence_health_build` or `evidence_health_generation` plus the named
-`evidence_health_timeout` or `evidence_health_incomplete` run limitation instead
-of waiting forever or pretending missing counts mean no evidence debt.
+`evidence_health_timeout`, `evidence_health_incomplete`, or
+`evidence_health_runner_error` run limitation instead of waiting forever or
+pretending missing counts mean no evidence debt.
 
 The command:
 
@@ -194,15 +195,21 @@ still succeeds.
 Given the xtask evidence-health child process times out, exits nonzero, exits
 without status, or exits successfully before complete JSON and Markdown reports
 are available, the command writes bounded warning artifacts with
-`status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"` or
-`"evidence_health_incomplete"` entry, phase/input context,
+`status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"`,
+`"evidence_health_incomplete"`, or `"evidence_health_runner_error"` entry,
+phase/input context,
 timeout/duration/output byte counts, bounded stdout/stderr excerpts, exit
 status when available, and a repair route. The limited artifact records
 `inputs.generation.status = "timeout"` for timed-out children and `"fail"` for
-nonzero or missing status exits. When the child exits successfully but the
-artifacts are missing, malformed, or incomplete, the limited artifact records
-`inputs.generation.status = "pass_incomplete"` and a bounded
-`failure_reason`. Limited artifacts also carry bounded
+nonzero or missing status exits. If xtask cannot start, capture, poll, or read
+the build/report child process, the limited artifact records
+`inputs.generation.status = "runner_error"`,
+`run_limitations[].category = "evidence_health_runner_error"`, and a bounded
+`failure_reason`.
+When the child exits successfully but the artifacts are missing, malformed, or
+incomplete, the limited artifact records
+`inputs.generation.status = "pass_incomplete"` and a bounded `failure_reason`.
+Limited artifacts also carry bounded
 `latency_trace_events_total` and `latency_trace_tail` fields on
 `inputs.generation` and `run_limitations[]` when repo-exposure latency trace
 lines were captured, so the active analyzer phase remains visible without
@@ -229,6 +236,12 @@ diagnostic only and does not claim user test debt from missing health counts.
 - `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
   pins the bounded preflight build fallback, phase diagnostics, stale-output
   cleanup, named limitation category, and repair route.
+- `xtask::tests::evidence_health_build_runner_error_writes_named_limitation_reports`
+  and
+  `xtask::tests::evidence_health_generation_runner_error_writes_named_limitation_reports`
+  pin build/report runner errors as bounded warning artifacts with
+  `inputs.generation.status = "runner_error"` and
+  `run_limitations[].category = "evidence_health_runner_error"`.
 - `xtask::tests::evidence_health_success_accepts_complete_report_artifacts`,
   `xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports`,
   and
@@ -251,8 +264,8 @@ diagnostic only and does not claim user test debt from missing health counts.
   command.
 - `xtask/src/command.rs`, `dispatch.rs`, `main.rs`, and `reports/repo.rs`
   expose `cargo xtask evidence-health`; `xtask/src/main.rs` also bounds the
-  child process and writes timeout or incomplete-exit limitation fallback
-  artifacts.
+  child process and writes timeout, incomplete-exit, and runner-error
+  limitation fallback artifacts.
 - `docs/OUTPUT_SCHEMA.md` defines the public JSON and Markdown contract.
 
 ## Metrics
@@ -272,7 +285,8 @@ The evidence-health baseline feeds these Lane 1 metrics:
 - `evidence_health_calibration_not_imported`;
 - `evidence_health_top_evidence_quality_risks`;
 - `evidence_health_timeout_limitations`;
-- `evidence_health_incomplete_limitations`.
+- `evidence_health_incomplete_limitations`;
+- `evidence_health_runner_error_limitations`.
 
 ## Non-Goals
 

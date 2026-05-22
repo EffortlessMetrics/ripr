@@ -16244,7 +16244,19 @@ where
     BuildRunner: FnMut(Duration) -> Result<TimedOutput, String>,
     ReportRunner: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
 {
-    let build_output = build_ripr(timeout)?;
+    let build_started = Instant::now();
+    let build_output = match build_ripr(timeout) {
+        Ok(output) => output,
+        Err(err) => {
+            return write_limited_evidence_health_reports_for_runner_error(
+                "cargo build -p ripr",
+                "evidence_health_build",
+                timeout,
+                build_started.elapsed(),
+                err,
+            );
+        }
+    };
     if build_output.timed_out {
         return write_limited_evidence_health_reports_for_command(
             "cargo build -p ripr",
@@ -16276,7 +16288,19 @@ where
     F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
 {
     remove_evidence_health_report_artifacts();
-    let output = run_evidence_health(binary, args, timeout)?;
+    let started = Instant::now();
+    let output = match run_evidence_health(binary, args, timeout) {
+        Ok(output) => output,
+        Err(err) => {
+            return write_limited_evidence_health_reports_for_runner_error(
+                &normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+                "evidence_health_generation",
+                timeout,
+                started.elapsed(),
+                err,
+            );
+        }
+    };
     if output.timed_out {
         return write_limited_evidence_health_reports(binary, args, timeout, &output);
     }
@@ -16334,6 +16358,31 @@ fn write_limited_evidence_health_reports_for_command(
     )
 }
 
+fn write_limited_evidence_health_reports_for_runner_error(
+    command: &str,
+    phase: &str,
+    timeout: Duration,
+    duration: Duration,
+    err: String,
+) -> Result<(), String> {
+    let output = TimedOutput {
+        status: None,
+        stdout: String::new(),
+        stderr: err.clone(),
+        duration,
+        timed_out: false,
+    };
+    write_limited_evidence_health_reports_for_command_with_status_and_kind(
+        command,
+        phase,
+        timeout,
+        &output,
+        Some("runner_error"),
+        Some(&err),
+        Some("evidence_health_runner_error"),
+    )
+}
+
 fn write_limited_evidence_health_reports_for_command_with_status(
     command: &str,
     phase: &str,
@@ -16341,6 +16390,26 @@ fn write_limited_evidence_health_reports_for_command_with_status(
     output: &TimedOutput,
     generation_status: Option<&str>,
     failure_reason: Option<&str>,
+) -> Result<(), String> {
+    write_limited_evidence_health_reports_for_command_with_status_and_kind(
+        command,
+        phase,
+        timeout,
+        output,
+        generation_status,
+        failure_reason,
+        None,
+    )
+}
+
+fn write_limited_evidence_health_reports_for_command_with_status_and_kind(
+    command: &str,
+    phase: &str,
+    timeout: Duration,
+    output: &TimedOutput,
+    generation_status: Option<&str>,
+    failure_reason: Option<&str>,
+    limitation_kind: Option<&str>,
 ) -> Result<(), String> {
     remove_evidence_health_report_artifacts();
     write_report(
@@ -16352,11 +16421,19 @@ fn write_limited_evidence_health_reports_for_command_with_status(
             output,
             generation_status,
             failure_reason,
+            limitation_kind,
         )?,
     )?;
     write_report(
         "evidence-health.md",
-        &limited_evidence_health_markdown(command, phase, timeout, output, failure_reason),
+        &limited_evidence_health_markdown(
+            command,
+            phase,
+            timeout,
+            output,
+            failure_reason,
+            limitation_kind,
+        ),
     )
 }
 
@@ -16409,13 +16486,27 @@ fn evidence_health_report_artifacts_are_complete() -> Result<(), String> {
             md_path.display()
         ));
     }
-    if !markdown.contains("Status: advisory") {
+    if !evidence_health_markdown_reports_advisory(&markdown) {
         return Err(format!(
             "evidence-health Markdown artifact {} did not report advisory status",
             md_path.display()
         ));
     }
     Ok(())
+}
+
+fn evidence_health_markdown_reports_advisory(markdown: &str) -> bool {
+    if markdown.contains("Status: advisory") {
+        return true;
+    }
+    markdown.lines().any(|line| {
+        let cells = line
+            .split('|')
+            .map(str::trim)
+            .filter(|cell| !cell.is_empty())
+            .collect::<Vec<_>>();
+        cells.len() >= 2 && cells[0] == "Status" && cells[1] == "advisory"
+    })
 }
 
 fn validate_complete_evidence_health_json(value: &Value, json_path: &Path) -> Result<(), String> {
@@ -16595,8 +16686,9 @@ fn limited_evidence_health_json(
     output: &TimedOutput,
     generation_status: Option<&str>,
     failure_reason: Option<&str>,
+    limitation_kind: Option<&str>,
 ) -> Result<String, String> {
-    let limitation = evidence_health_limited_kind(output);
+    let limitation = limitation_kind.unwrap_or_else(|| evidence_health_limited_kind(output));
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
     let (latency_trace_events_total, latency_trace_tail) =
@@ -16795,6 +16887,9 @@ fn evidence_health_limited_summary(kind: &str) -> &'static str {
         "evidence_health_incomplete" => {
             "Evidence-health generation ended before producing a complete report."
         }
+        "evidence_health_runner_error" => {
+            "Evidence-health runner failed before producing a complete report."
+        }
         _ => "Evidence-health generation did not produce a complete report.",
     }
 }
@@ -16807,6 +16902,9 @@ fn evidence_health_limited_repair_route(kind: &str) -> &'static str {
         "evidence_health_incomplete" => {
             "inspect evidence-health exit status, stdout/stderr, and live repo size; rerun with RIPR_EVIDENCE_HEALTH_TIMEOUT_MS or add a bounded fixture-backed analyzer path"
         }
+        "evidence_health_runner_error" => {
+            "inspect local runner process setup, temp/output capture, and child process permissions; rerun evidence-health after the runner can start, capture, poll, and read the child"
+        }
         _ => "inspect evidence-health runtime and rerun with bounded diagnostics",
     }
 }
@@ -16817,8 +16915,9 @@ fn limited_evidence_health_markdown(
     timeout: Duration,
     output: &TimedOutput,
     failure_reason: Option<&str>,
+    limitation_kind: Option<&str>,
 ) -> String {
-    let limitation = evidence_health_limited_kind(output);
+    let limitation = limitation_kind.unwrap_or_else(|| evidence_health_limited_kind(output));
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
     let mut out = String::new();
@@ -65022,6 +65121,62 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_health_build_runner_error_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-build-runner-error", |_root| {
+            let timeout = Duration::from_millis(7);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runners(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_timeout| Err("failed to spawn cargo build".to_string()),
+                |_binary, _args, _timeout| {
+                    Err(
+                        "evidence-health generation should not run after build runner error"
+                            .to_string(),
+                    )
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_runner_error"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["phase"],
+                "evidence_health_build"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("runner_error")
+            );
+            assert!(
+                value["inputs"]["generation"]["failure_reason"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("failed to spawn cargo build")
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_runner_error"));
+            assert!(markdown.contains("failed to spawn cargo build"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn evidence_health_timeout_writes_named_limitation_reports() -> Result<(), String> {
         with_temp_cwd("evidence-health-timeout", |_root| {
             let timeout = Duration::from_millis(7);
@@ -65108,6 +65263,59 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_health_generation_runner_error_writes_named_limitation_reports()
+    -> Result<(), String> {
+        with_temp_cwd("evidence-health-generation-runner-error", |_root| {
+            let timeout = Duration::from_millis(7);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    Err("failed to read evidence-health child stdout".to_string())
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_runner_error"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["phase"],
+                "evidence_health_generation"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("runner_error")
+            );
+            assert!(
+                value["inputs"]["generation"]["failure_reason"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("failed to read evidence-health child stdout")
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_runner_error"));
+            assert!(markdown.contains("failed to read evidence-health child stdout"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn evidence_health_default_timeout_is_bounded_for_live_repo_pathologies() {
         assert_eq!(super::EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS, 1_200_000);
     }
@@ -65155,7 +65363,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     );
                     write(
                         Path::new("target/ripr/reports/evidence-health.md"),
-                        "# RIPR evidence health report\n\nStatus: advisory\n",
+                        "# RIPR evidence health report\n\n| Field | Value |\n| --- | --- |\n| Status | advisory |\n",
                     );
                     Ok(TimedOutput {
                         status: Some(success_exit_status()),
@@ -65176,7 +65384,7 @@ covered_by = ["cargo xtask check-file-policy"]
             assert!(value["top_static_limitations"].is_array());
             let markdown = fs::read_to_string("target/ripr/reports/evidence-health.md")
                 .map_err(|err| err.to_string())?;
-            assert!(markdown.contains("Status: advisory"));
+            assert!(markdown.contains("| Status | advisory |"));
             Ok(())
         })
     }

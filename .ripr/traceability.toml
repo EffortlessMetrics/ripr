@@ -1068,6 +1068,8 @@ tests = [
   "xtask::tests::evidence_health_output_excerpt_is_bounded",
   "xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports",
   "xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_build_runner_error_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_generation_runner_error_writes_named_limitation_reports",
 ]
 fixtures = []
 code = [
@@ -1105,6 +1107,7 @@ metrics = [
   "evidence_health_top_evidence_quality_risks",
   "evidence_health_timeout_limitations",
   "evidence_health_incomplete_limitations",
+  "evidence_health_runner_error_limitations",
 ]
 
 [[behavior]]
