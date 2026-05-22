@@ -15,6 +15,12 @@ const CONFIG_POLICY_FLOW_UNKNOWN_REPAIR_ROUTE: &str =
 const OPAQUE_CONFIG_LOOKUP_CATEGORY: &str = "opaque_config_lookup";
 const OPAQUE_CONFIG_LOOKUP_REPAIR_ROUTE: &str =
     "add_fixture_backed_support_for_opaque_config_lookup";
+const MACRO_GENERATED_CONFIG_OUTPUT_CATEGORY: &str = "macro_generated_config_output";
+const MACRO_GENERATED_CONFIG_OUTPUT_REPAIR_ROUTE: &str =
+    "add_fixture_backed_support_for_generated_config_schema_output";
+const DYNAMIC_CONFIG_DISPATCH_CATEGORY: &str = "dynamic_config_dispatch";
+const DYNAMIC_CONFIG_DISPATCH_REPAIR_ROUTE: &str =
+    "add_fixture_backed_support_for_dynamic_config_dispatch";
 
 pub(super) struct FindingAlignmentReport {
     summary: FindingAlignmentSummary,
@@ -215,6 +221,16 @@ struct ConfigPolicySink {
     repair_kind: &'static str,
     target_test_type: &'static str,
     assertion_subject: &'static str,
+}
+
+struct ConfigPolicyLimitation {
+    category: &'static str,
+    repair_route: &'static str,
+    why: &'static str,
+    recommended_repair: &'static str,
+    user_actionability: &'static str,
+    role: &'static str,
+    suggested_assertion: &'static str,
 }
 
 #[derive(Clone)]
@@ -1037,14 +1053,48 @@ fn classify_config_policy_constant(
         return internal_config_policy_classification();
     }
 
+    if is_macro_generated_config_policy_output(constant_name, &source_file) {
+        return config_policy_limitation_classification(ConfigPolicyLimitation {
+            category: MACRO_GENERATED_CONFIG_OUTPUT_CATEGORY,
+            repair_route: MACRO_GENERATED_CONFIG_OUTPUT_REPAIR_ROUTE,
+            why: "Changed schema label may be emitted through macro-generated output, but RIPR cannot trace the generated output path in supported scope.",
+            recommended_repair: "Add fixture-backed support for the generated schema output path before claiming visibility or observer debt.",
+            user_actionability: "unknown_until_generated_output_supported",
+            role: "schema_field_label",
+            suggested_assertion: "Add generated-output fixture support before recommending schema or golden observer work.",
+        });
+    }
+
+    if is_dynamic_config_policy_dispatch(constant_name, &source_file) {
+        return config_policy_limitation_classification(ConfigPolicyLimitation {
+            category: DYNAMIC_CONFIG_DISPATCH_CATEGORY,
+            repair_route: DYNAMIC_CONFIG_DISPATCH_REPAIR_ROUTE,
+            why: "Changed config selector is routed through dynamic dispatch, but RIPR cannot resolve the target or output sink in supported scope.",
+            recommended_repair: "Add fixture-backed support for the dispatch shape before claiming visibility or behavior-observer debt.",
+            user_actionability: "unknown_until_dispatch_supported",
+            role: "behavior_selector",
+            suggested_assertion: "Resolve the dispatch target and supported sink before recommending behavior-discriminator tests.",
+        });
+    }
+
+    if let Some(sink) = opaque_config_policy_lookup_sink_for(constant_name, &source_file) {
+        if let Some((observer, related_test)) = observer_for_findings(raw_findings) {
+            return observed_config_policy_classification(sink, observer, related_test);
+        }
+
+        return actionable_config_policy_classification(sink, constant_name);
+    }
+
     if is_opaque_config_policy_lookup(constant_name, &source_file) {
-        return config_policy_limitation_classification(
-            OPAQUE_CONFIG_LOOKUP_CATEGORY,
-            OPAQUE_CONFIG_LOOKUP_REPAIR_ROUTE,
-            "Changed config or policy constant is routed through an unsupported lookup helper.",
-            "Add fixture-backed support for this lookup shape before claiming visibility or observer debt.",
-            "unknown_until_lookup_supported",
-        );
+        return config_policy_limitation_classification(ConfigPolicyLimitation {
+            category: OPAQUE_CONFIG_LOOKUP_CATEGORY,
+            repair_route: OPAQUE_CONFIG_LOOKUP_REPAIR_ROUTE,
+            why: "Changed config or policy constant is routed through an unsupported lookup helper.",
+            recommended_repair: "Add fixture-backed support for this lookup shape before claiming visibility or observer debt.",
+            user_actionability: "unknown_until_lookup_supported",
+            role: "unknown",
+            suggested_assertion: "Inspect the lookup path or add analyzer support before adding output-observer tests.",
+        });
     }
 
     if let Some(sink) = config_policy_visible_sink_for(constant_name, &source_file) {
@@ -1055,13 +1105,15 @@ fn classify_config_policy_constant(
         return actionable_config_policy_classification(sink, constant_name);
     }
 
-    config_policy_limitation_classification(
-        CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY,
-        CONFIG_POLICY_FLOW_UNKNOWN_REPAIR_ROUTE,
-        "Changed config or policy constant could not be traced to or away from a supported output, schema, validation, or behavior sink.",
-        "Trace the constant to a supported output, schema, validation, or behavior sink before claiming user test debt.",
-        "unknown_until_config_flow_known",
-    )
+    config_policy_limitation_classification(ConfigPolicyLimitation {
+        category: CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY,
+        repair_route: CONFIG_POLICY_FLOW_UNKNOWN_REPAIR_ROUTE,
+        why: "Changed config or policy constant could not be traced to or away from a supported output, schema, validation, or behavior sink.",
+        recommended_repair: "Trace the constant to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+        user_actionability: "unknown_until_config_flow_known",
+        role: "unknown",
+        suggested_assertion: "Trace the constant to a supported output or behavior sink before adding tests.",
+    })
 }
 
 fn internal_config_policy_classification() -> ConfigPolicyClassification {
@@ -1167,23 +1219,19 @@ fn observed_config_policy_classification(
 }
 
 fn config_policy_limitation_classification(
-    category: &str,
-    repair_route: &str,
-    why: &str,
-    recommended_repair: &str,
-    user_actionability: &str,
+    limitation: ConfigPolicyLimitation,
 ) -> ConfigPolicyClassification {
     ConfigPolicyClassification {
         canonical_item_kind: "limitation".to_string(),
         gap_state: "static_limitation".to_string(),
         actionability: "inspect_config_flow".to_string(),
-        why: why.to_string(),
-        recommended_repair: recommended_repair.to_string(),
+        why: limitation.why.to_string(),
+        recommended_repair: limitation.recommended_repair.to_string(),
         related_test: None,
         static_limitations: vec![FindingAlignmentStaticLimitation {
-            category: category.to_string(),
-            repair_route: repair_route.to_string(),
-            user_actionability: user_actionability.to_string(),
+            category: limitation.category.to_string(),
+            repair_route: limitation.repair_route.to_string(),
+            user_actionability: limitation.user_actionability.to_string(),
         }],
         confidence: FindingAlignmentConfidence {
             basis: "fixture_backed".to_string(),
@@ -1191,15 +1239,13 @@ fn config_policy_limitation_classification(
                 "Config/policy unknowns are benchmark-pinned as named limitations; no user test debt is claimed without supported sink evidence.".to_string(),
             ],
         },
-        role: "unknown".to_string(),
+        role: limitation.role.to_string(),
         visibility: "unknown".to_string(),
         observer: "unknown".to_string(),
         config_actionability: "inspect_config_flow".to_string(),
         repair_kind: "inspect_config_flow".to_string(),
         target_test_type: "unknown".to_string(),
-        suggested_assertion:
-            "Trace the constant to a supported output or behavior sink before adding tests."
-                .to_string(),
+        suggested_assertion: limitation.suggested_assertion.to_string(),
     }
 }
 
@@ -1308,6 +1354,31 @@ fn config_policy_visible_sink_for(constant_name: &str, file: &str) -> Option<Con
     None
 }
 
+fn opaque_config_policy_lookup_sink_for(
+    constant_name: &str,
+    file: &str,
+) -> Option<ConfigPolicySink> {
+    let file = normalize_token_text(file);
+
+    if name_has_token(constant_name, "OPAQUE")
+        && name_has_token(constant_name, "REPORT")
+        && file.contains("lookup")
+        && file.contains("report")
+    {
+        return Some(ConfigPolicySink {
+            role: "rendered_policy_label",
+            repair_target: "report-render or golden-output test",
+            description: "fixture-backed opaque lookup report output",
+            actionability: "add_output_observer",
+            repair_kind: "output_observer",
+            target_test_type: "report_render_or_golden",
+            assertion_subject: "the rendered report output reached through the lookup",
+        });
+    }
+
+    None
+}
+
 fn is_internal_only_text(constant_name: &str, file: &str) -> bool {
     let file = normalize_token_text(file);
     name_has_token(constant_name, "INTERNAL")
@@ -1332,12 +1403,22 @@ fn is_internal_only_config_policy(constant_name: &str, file: &str) -> bool {
         || file.contains("proof")
 }
 
+fn is_macro_generated_config_policy_output(constant_name: &str, file: &str) -> bool {
+    let file = normalize_token_text(file);
+    (name_has_token(constant_name, "GENERATED") || file.contains("generated"))
+        && (name_has_token(constant_name, "SCHEMA")
+            || name_has_token(constant_name, "CONFIG")
+            || file.contains("schema"))
+}
+
+fn is_dynamic_config_policy_dispatch(constant_name: &str, file: &str) -> bool {
+    let file = normalize_token_text(file);
+    name_has_token(constant_name, "DYNAMIC") || file.contains("dispatch")
+}
+
 fn is_opaque_config_policy_lookup(constant_name: &str, file: &str) -> bool {
     let file = normalize_token_text(file);
-    name_has_token(constant_name, "OPAQUE")
-        || file.contains("registry")
-        || file.contains("lookup")
-        || file.contains("dynamic")
+    name_has_token(constant_name, "OPAQUE") || file.contains("registry") || file.contains("lookup")
 }
 
 fn observer_for_findings(
@@ -2984,6 +3065,188 @@ mod tests {
             Some("unknown_until_lookup_supported")
         );
         assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_backed_opaque_report_lookup_becomes_actionable() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/report_lookup.rs",
+                "decl",
+                62,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const OPAQUE_REPORT_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/report_lookup.rs",
+                "literal",
+                63,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"Opaque report label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "fixture-backed opaque lookup should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+        let repair_route = repair_route_for_item(item)?;
+
+        assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.static_limitations, 0);
+        assert_eq!(report.summary.config_policy_actionable_output_observer, 1);
+        assert_eq!(report.summary.config_policy_static_limitations, 0);
+        assert_eq!(item.canonical_item_kind, "gap");
+        assert_eq!(item.gap_state, "actionable");
+        assert_eq!(item.actionability, "add_output_observer");
+        assert!(item.static_limitations.is_empty());
+        assert_eq!(config_policy.role, "rendered_policy_label");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "none");
+        assert_eq!(config_policy.repair_kind, "output_observer");
+        assert_eq!(repair_route.repair_kind, "output_observer");
+        assert_eq!(repair_route.target_test_type, "report_render_or_golden");
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_backed_opaque_report_lookup_can_be_observed() -> Result<(), String> {
+        let golden = related_test(
+            "opaque_lookup_report_golden_observes_label",
+            "tests/report_lookup_golden.rs",
+            21,
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/report_lookup.rs",
+                "decl",
+                62,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const OPAQUE_REPORT_LABEL: &str =",
+                vec![golden],
+            ),
+            finding_in_file(
+                "src/report_lookup.rs",
+                "literal",
+                63,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"Opaque report label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "observed opaque lookup should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.already_observed, 1);
+        assert_eq!(report.summary.static_limitations, 0);
+        assert_eq!(report.summary.config_policy_observed, 1);
+        assert_eq!(item.canonical_item_kind, "observed");
+        assert_eq!(item.gap_state, "already_observed");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "golden");
+        assert_eq!(
+            item.related_test.as_ref().map(|test| test.name.as_str()),
+            Some("opaque_lookup_report_golden_observes_label")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn macro_generated_config_output_stays_named_limitation() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/generated_schema.rs",
+                "decl",
+                72,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const GENERATED_SCHEMA_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/generated_schema.rs",
+                "literal",
+                73,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"Generated schema label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "macro-generated config output should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.static_limitations, 1);
+        assert_eq!(item.gap_state, "static_limitation");
+        assert_eq!(config_policy.role, "schema_field_label");
+        assert_eq!(config_policy.visibility, "unknown");
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.category.as_str()),
+            Some("macro_generated_config_output")
+        );
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.repair_route.as_str()),
+            Some("add_fixture_backed_support_for_generated_config_schema_output")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dynamic_config_dispatch_stays_named_limitation() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/config_dispatch.rs",
+                "decl",
+                86,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const DYNAMIC_CONFIG_SELECTOR: &str =",
+            ),
+            finding_in_file(
+                "src/config_dispatch.rs",
+                "literal",
+                87,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"dynamic\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "dynamic config dispatch should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.static_limitations, 1);
+        assert_eq!(item.gap_state, "static_limitation");
+        assert_eq!(config_policy.role, "behavior_selector");
+        assert_eq!(config_policy.visibility, "unknown");
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.category.as_str()),
+            Some("dynamic_config_dispatch")
+        );
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.repair_route.as_str()),
+            Some("add_fixture_backed_support_for_dynamic_config_dispatch")
+        );
         Ok(())
     }
 

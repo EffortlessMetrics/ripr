@@ -7452,6 +7452,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES: &[&str] = &[
     "config_policy_behavior_selector_observed",
     "config_policy_schema_label_observed",
     "config_policy_cross_file_flow_unknown",
+    "config_policy_opaque_lookup_report_unobserved",
     "config_policy_opaque_lookup_unknown",
 ];
 

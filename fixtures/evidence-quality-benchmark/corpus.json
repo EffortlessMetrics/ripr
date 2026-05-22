@@ -2168,6 +2168,81 @@
       "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },
     {
+      "id": "config_policy_opaque_lookup_report_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A report label routed through the selected opaque lookup shape becomes an actionable output-observer gap when no observer is found.",
+      "fixture_reference": "crates/ripr/src/output/json/finding_alignment.rs::tests::fixture_backed_opaque_report_lookup_becomes_actionable",
+      "sample": {
+        "file": "src/report_lookup.rs",
+        "declaration_line": 62,
+        "literal_line": 63,
+        "constant": "OPAQUE_REPORT_LABEL",
+        "sink": "fixture_backed_lookup_report_output",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-opaque-report-lookup",
+          "canonical_gap_id": "config_or_policy_constant::OPAQUE_REPORT_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "OPAQUE_REPORT_LABEL",
+          "location": {
+            "file": "src/report_lookup.rs",
+            "line": 62
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed config or policy constant flows to fixture-backed opaque lookup report output and no supported observer or discriminator is found.",
+          "recommended_repair": "Add or update a report-render or golden-output test for OPAQUE_REPORT_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report_lookup.rs",
+              "line": 62,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report_lookup.rs",
+              "line": 63,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "OPAQUE_REPORT_LABEL",
+            "role": "rendered_policy_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "repair_kind": "output_observer",
+            "target_test_type": "report_render_or_golden",
+            "suggested_assertion": "Assert the rendered report output reached through the lookup includes the OPAQUE_REPORT_LABEL value or selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_output_observer",
+        "value": 1
+      },
+      "expected_claim": "Fixture-backed opaque report lookups can become actionable output-observer gaps without widening generic lookup support.",
+      "must_not_claim": [
+        "Do not infer user-visible output from helper names alone.",
+        "Do not apply this route to registry, macro-generated, dynamic-dispatch, or cross-file lookup shapes.",
+        "Do not treat the actionable gap as runtime mutation proof."
+      ],
+      "repair_route": "analysis/config-policy-unsupported-flow-support"
+    },
+    {
       "id": "config_policy_opaque_lookup_unknown",
       "case_kind": "static_limitation",
       "evidence_class": "config_or_policy_constant",
