@@ -1,6 +1,6 @@
 # RIPR-PLAN-0028: First Useful PR Loop Implementation Plan
 
-Status: active
+Status: closed
 
 Owner: repo-infra / first-useful-pr-loop
 
@@ -49,9 +49,9 @@ Non-goals:
 
 Claim boundary:
 
-- This plan makes the active Campaign 28 sequence easier for humans and agents
-  to follow from repo artifacts. It does not complete any Campaign 28 product
-  behavior by itself.
+- This plan records the closed Campaign 28 sequence for humans and agents to
+  audit from repo artifacts. It does not select the next campaign or promote
+  any support-tier claim by itself.
 
 Rollback:
 
@@ -60,15 +60,15 @@ Rollback:
 
 ## Current state
 
-Campaign 28 is active. The source-of-truth control-plane doctrine, templates,
-artifact ledger, validators, support-tier row, advisory workflow, graph report,
-PR-body generator, and closeout generator already exist.
+Campaign 28 is closed and archived. The source-of-truth control-plane doctrine,
+templates, artifact ledger, validators, support-tier row, advisory workflow,
+graph report, PR-body generator, and closeout generator already exist.
 
-The next product gap is first-useful-PR adoption, not another standalone
-doctrine layer. The active manifest already names the ready and blocked work
-items. This plan gives those work items a repo-native plan artifact so generated
-PR bodies can cite the proposal, spec, plan, proof commands, claim boundary, and
-rollback path without relying on chat history.
+The closed product gap was first-useful-PR adoption, not another standalone
+doctrine layer. The active manifest now records `no_current_goal = true` until a
+successor campaign is selected. This plan remains the repo-native record for
+the proposal, spec, plan, proof commands, claim boundary, and rollback path that
+Campaign 28 used without relying on chat history.
 
 ## Work items
 

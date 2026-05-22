@@ -3034,7 +3034,7 @@ cargo xtask check-pr
 Next:
 
 - Campaign 27 is closed and archived. Campaign 28 (First Useful PR Loop) is
-  the explicit next product lane. Keep TypeScript and Python preview evidence
+  also closed and archived. Keep TypeScript and Python preview evidence
   opt-in, visibly preview/advisory, and outside default gate authority until a
   later promotion policy explicitly changes that boundary.
 
@@ -3130,9 +3130,9 @@ Next:
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
-Status: closed in documented scope. Campaign 28 is active in
-`.ripr/goals/active.toml`; this focused Lane 1 tracker is not the active
-execution manifest.
+Status: closed in documented scope. Campaign 28 is also closed and archived;
+`.ripr/goals/active.toml` records `no_current_goal = true` until a successor is
+selected. This focused Lane 1 tracker is not the active execution manifest.
 
 Sources of truth:
 
@@ -3171,8 +3171,9 @@ tests, provider calls, mutation execution, or score redefinition.
 
 ## Focused Lane 1 Tracker: User-Visible Output Evidence
 
-Status: closed as a focused Lane 1 tracker. Campaign 28 is active in
-`.ripr/goals/active.toml`; this focused tracker is not the active execution
+Status: closed as a focused Lane 1 tracker. Campaign 28 is also closed and
+archived; `.ripr/goals/active.toml` records `no_current_goal = true` until a
+successor is selected. This focused tracker is not the active execution
 campaign.
 
 Sources of truth:
@@ -3345,9 +3346,10 @@ Status: tracker
 
 GitHub issue: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
 
-Campaign 28 is active in the machine-readable manifest. This focused Lane 2
-tracker is not a replacement for `.ripr/goals/active.toml`; it records the
-policy boundary that Campaign 27 and later policy work must not cross.
+Campaign 28 is closed and archived in the machine-readable manifest. This
+focused Lane 2 tracker is not a replacement for `.ripr/goals/active.toml`; it
+records the policy boundary that Campaign 27 and later policy work must not
+cross.
 
 Objective:
 
@@ -3425,8 +3427,8 @@ cargo xtask check-pr
 
 ## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
 
-Status: closed as a focused Lane 2 tracker. Campaign 28 is active in the
-machine-readable manifest.
+Status: closed as a focused Lane 2 tracker. Campaign 28 is closed and archived
+in the machine-readable manifest.
 
 Sources of truth:
 
