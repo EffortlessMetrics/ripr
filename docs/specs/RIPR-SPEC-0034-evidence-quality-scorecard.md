@@ -150,7 +150,10 @@ a matching audit `run_limitations[]` category. That limited scorecard must not
 claim complete repo truth, public badge readiness, or user test debt. If the
 audit or evidence-health artifact exists but carries `run_limitations[]`, the
 scorecard must surface that as an unknown and must not let the limited
-artifact's zero or partial counts masquerade as complete repo truth.
+artifact's zero or partial counts masquerade as complete repo truth. Named
+audit run limitations that appear in `static_limitations.by_category` must
+contribute to the scorecard static-limitation headline even when an older or
+partial audit summary left `summary.static_limitations_total` at zero.
 If the current scorecard carries limited-input unknowns such as
 `lane1_evidence_audit_limited`, `evidence_health_limited`, or
 `evidence_quality_scorecard_audit_regeneration_failed`,

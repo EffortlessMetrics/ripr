@@ -37,6 +37,10 @@ are scoped or reviewed.
   malformed, carrying
   `evidence_quality_trend_previous_artifact_unavailable` instead of exiting
   before producing trend evidence.
+- Lane 1 audit run limitations now contribute to static-limitation headline
+  counts. Bounded audit artifacts and scorecards no longer show
+  `Static limitations: 0` while also carrying named timeout or incomplete
+  repo-exposure limitation rows.
 - Evidence-health fallback artifacts now use the current evidence-health schema
   version and carry explicit generation phase/status plus bounded stdout/stderr
   excerpts for timeout and nonzero-exit warning reports. The output contract,
