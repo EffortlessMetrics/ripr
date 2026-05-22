@@ -8199,6 +8199,23 @@ fn validate_evidence_quality_benchmark_case(
                 violations.push(format!(
                     "Lane 1 evidence-quality benchmark case {case_id} expected_repo_exposure.evidence_record must be an object"
                 ));
+            } else if record
+                .and_then(|record| audit_string(record, &["gap_state"]))
+                .as_deref()
+                == Some("actionable")
+            {
+                let verify_command = record.and_then(|record| audit_string(record, &["verify_command"]));
+                if verify_command
+                    .as_deref()
+                    .is_none_or(|command| {
+                        audit_guidance_field_is_missing(command)
+                            || command.trim() == "verify_command_unknown"
+                    })
+                {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality benchmark actionable case {case_id} must include a concrete expected_repo_exposure.evidence_record.verify_command"
+                    ));
+                }
             }
         }
         _ => violations.push(format!(
@@ -50945,6 +50962,25 @@ mod tests {
 
         assert!(report.contains(
             "Lane 1 evidence-quality case broad_vs_exact_error_oracle must_not_claim must be a non-empty string array"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_requires_verify_command_for_actionable_cases()
+    -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case = evidence_quality_benchmark_case_mut(
+            &mut corpus,
+            "config_policy_rendered_label_unobserved",
+        )?;
+        case["expected_repo_exposure"]["evidence_record"]["verify_command"] =
+            serde_json::json!("verify_command_unknown");
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "actionable case config_policy_rendered_label_unobserved must include a concrete expected_repo_exposure.evidence_record.verify_command"
         ));
         Ok(())
     }

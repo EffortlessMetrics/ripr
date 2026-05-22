@@ -218,6 +218,11 @@ or repair metadata alone is supporting context, not repair-route coverage.
 Already-observed, internal-only, static-limitation, and unknown states must not
 fake user repair routes.
 
+Supported classes should attach a concrete `verify_command` to actionable
+canonical items when a safe command is known. Empty, `unknown`, and
+`verify_command_unknown` are explicit missing-command sentinels; they must stay
+counted as missing verify-command coverage instead of satisfying coverage.
+
 Policy and adoption lanes may overlay these states:
 
 | Policy state | Owner |

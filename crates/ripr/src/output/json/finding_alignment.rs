@@ -702,7 +702,7 @@ fn config_policy_counts(items: &[&FindingAlignmentItem]) -> ConfigPolicyCounts {
     let verify_command_coverage = items
         .iter()
         .filter(|item| item.gap_state == "actionable")
-        .filter(|item| !item.verify_command.is_empty() && item.verify_command != "unknown")
+        .filter(|item| item_has_verify_command(item))
         .count();
 
     ConfigPolicyCounts {
@@ -2551,6 +2551,43 @@ mod tests {
         assert_eq!(counts.repair_route_coverage, 0);
         assert_eq!(counts.verify_command_coverage, 1);
         assert!(!super::item_has_repair_route(&item));
+    }
+
+    #[test]
+    fn config_policy_verify_coverage_rejects_unknown_sentinel() {
+        let finding = finding_in_file(
+            "src/policy_report.rs",
+            "decl",
+            22,
+            ExposureClass::Exposed,
+            ProbeFamily::FieldConstruction,
+            "pub const REPORT_POLICY_LABEL: &str =",
+        );
+        let classification = super::actionable_config_policy_classification(
+            super::ConfigPolicySink {
+                role: "rendered_policy_label",
+                repair_target: "report-render or golden-output test",
+                description: "rendered report output",
+                actionability: "add_output_observer",
+                repair_kind: "output_observer",
+                target_test_type: "report_render_or_golden",
+                assertion_subject: "the rendered report output",
+            },
+            "REPORT_POLICY_LABEL",
+        );
+        let mut item = super::config_policy_item(
+            "REPORT_POLICY_LABEL",
+            vec![super::raw_finding_for(&finding)],
+            classification,
+        );
+        item.verify_command = "verify_command_unknown".to_string();
+
+        let counts = super::config_policy_counts(&[&item]);
+
+        assert_eq!(counts.actionable_output_observer, 1);
+        assert_eq!(counts.repair_route_coverage, 1);
+        assert_eq!(counts.verify_command_coverage, 0);
+        assert!(!super::item_has_verify_command(&item));
     }
 
     #[test]
