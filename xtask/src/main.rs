@@ -26119,6 +26119,7 @@ struct EvidenceQualityTrendReport {
     summary: EvidenceQualityTrendSummary,
     metric_trends: Vec<EvidenceQualityTrendMetric>,
     static_limitation_category_trends: Vec<EvidenceQualityTrendMetric>,
+    runtime_confidence_static_only_class_trends: Vec<EvidenceQualityTrendMetric>,
     unknowns: Vec<EvidenceQualityTrendUnknown>,
 }
 
@@ -26365,6 +26366,8 @@ fn evidence_quality_trend_from_values(
     let mut metric_trends = evidence_quality_metric_trends(current, previous);
     let mut static_limitation_category_trends =
         evidence_quality_static_limitation_category_trends(current, previous);
+    let mut runtime_confidence_static_only_class_trends =
+        evidence_quality_runtime_confidence_static_only_class_trends(current, previous);
     if !current_limited_kinds.is_empty() {
         evidence_quality_mark_limited_current_trends_unknown(
             &mut metric_trends,
@@ -26372,6 +26375,10 @@ fn evidence_quality_trend_from_values(
         );
         evidence_quality_mark_limited_current_trends_unknown(
             &mut static_limitation_category_trends,
+            &current_limited_kinds,
+        );
+        evidence_quality_mark_limited_current_trends_unknown(
+            &mut runtime_confidence_static_only_class_trends,
             &current_limited_kinds,
         );
     }
@@ -26386,6 +26393,7 @@ fn evidence_quality_trend_from_values(
         summary,
         metric_trends,
         static_limitation_category_trends,
+        runtime_confidence_static_only_class_trends,
         unknowns,
     })
 }
@@ -26909,6 +26917,72 @@ fn evidence_quality_static_category_counts(value: &Value) -> BTreeMap<String, us
     .unwrap_or_default()
 }
 
+fn evidence_quality_runtime_confidence_static_only_class_trends(
+    current: &Value,
+    previous: Option<&Value>,
+) -> Vec<EvidenceQualityTrendMetric> {
+    let current_counts = evidence_quality_runtime_confidence_static_only_class_counts(current);
+    let previous_counts = previous
+        .map(evidence_quality_runtime_confidence_static_only_class_counts)
+        .unwrap_or_default();
+    let classes = current_counts
+        .keys()
+        .chain(previous_counts.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut rows = classes
+        .iter()
+        .map(|class| {
+            let after = current_counts.get(class).copied();
+            let before = previous_counts.get(class).copied();
+            let (delta, direction) = evidence_quality_trend_direction(before, after, true);
+            EvidenceQualityTrendMetric {
+                metric: format!("runtime_confidence_static_only_class:{class}"),
+                label: class.clone(),
+                before,
+                after,
+                delta,
+                direction,
+                interpretation:
+                    "Lower static-only counts mean more canonical items in this class have runtime context."
+                        .to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .after
+            .unwrap_or(0)
+            .cmp(&left.after.unwrap_or(0))
+            .then_with(|| right.before.unwrap_or(0).cmp(&left.before.unwrap_or(0)))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rows.truncate(EVIDENCE_QUALITY_TREND_CATEGORY_LIMIT);
+    rows
+}
+
+fn evidence_quality_runtime_confidence_static_only_class_counts(
+    value: &Value,
+) -> BTreeMap<String, usize> {
+    [
+        &["calibration_coverage", "by_evidence_class"][..],
+        &["calibration_availability", "runtime_confidence_by_class"][..],
+        &["finding_alignment", "runtime_confidence_by_class"][..],
+    ]
+    .into_iter()
+    .find_map(|path| audit_get(value, path).and_then(Value::as_array))
+    .map(|rows| {
+        rows.iter()
+            .filter_map(|row| {
+                let class = audit_string(row, &["evidence_class"])?;
+                let count = audit_usize(row, &["static_only"]).unwrap_or(0);
+                (count > 0).then_some((class, count))
+            })
+            .collect::<BTreeMap<_, _>>()
+    })
+    .unwrap_or_default()
+}
+
 fn evidence_quality_trend_summary(
     previous: Option<&Value>,
     metric_trends: &[EvidenceQualityTrendMetric],
@@ -27041,6 +27115,7 @@ fn evidence_quality_trend_json(report: &EvidenceQualityTrendReport) -> Result<St
         },
         "metric_trends": evidence_quality_trend_metrics_json(&report.metric_trends),
         "static_limitation_category_trends": evidence_quality_trend_metrics_json(&report.static_limitation_category_trends),
+        "runtime_confidence_static_only_class_trends": evidence_quality_trend_metrics_json(&report.runtime_confidence_static_only_class_trends),
         "unknowns": report.unknowns.iter().map(|unknown| {
             serde_json::json!({
                 "kind": unknown.kind,
@@ -27112,6 +27187,19 @@ fn evidence_quality_trend_markdown(report: &EvidenceQualityTrendReport) -> Strin
         out.push_str("No static limitation category trend rows were reported.\n\n");
     } else {
         trend_push_metric_table(&mut out, &report.static_limitation_category_trends);
+    }
+
+    out.push_str("## Runtime Confidence Static-Only Class Trends\n\n");
+    if report
+        .runtime_confidence_static_only_class_trends
+        .is_empty()
+    {
+        out.push_str("No runtime confidence static-only class trend rows were reported.\n\n");
+    } else {
+        trend_push_metric_table(
+            &mut out,
+            &report.runtime_confidence_static_only_class_trends,
+        );
     }
 
     out.push_str("## Unknowns\n\n");
@@ -71772,6 +71860,62 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_quality_trend_reports_runtime_confidence_static_only_classes() -> Result<(), String>
+    {
+        let mut current = scorecard_minimal_audit_value(0, 2, 0, 1, 1);
+        let mut previous = scorecard_minimal_audit_value(0, 5, 0, 1, 1);
+        set_runtime_confidence_class_counts(&mut current, "call_presence", 7, 0, 7)?;
+        set_runtime_confidence_class_counts(&mut current, "predicate_boundary", 3, 2, 1)?;
+        set_runtime_confidence_class_counts(&mut previous, "call_presence", 12, 0, 12)?;
+        set_runtime_confidence_class_counts(&mut previous, "predicate_boundary", 4, 1, 3)?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        let first = report
+            .runtime_confidence_static_only_class_trends
+            .first()
+            .ok_or_else(|| "missing runtime confidence static-only class trend".to_string())?;
+        assert_eq!(
+            first.metric,
+            "runtime_confidence_static_only_class:call_presence"
+        );
+        assert_eq!(first.label, "call_presence");
+        assert_eq!(first.before, Some(12));
+        assert_eq!(first.after, Some(7));
+        assert_eq!(first.direction, "improvement");
+        let predicate = report
+            .runtime_confidence_static_only_class_trends
+            .iter()
+            .find(|row| row.label == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary runtime trend".to_string())?;
+        assert_eq!(predicate.before, Some(3));
+        assert_eq!(predicate.after, Some(1));
+
+        let json = evidence_quality_trend_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let rows = value["runtime_confidence_static_only_class_trends"]
+            .as_array()
+            .ok_or_else(|| {
+                "runtime_confidence_static_only_class_trends should be an array".to_string()
+            })?;
+        assert!(
+            rows.iter()
+                .any(|row| row["metric"] == "runtime_confidence_static_only_class:call_presence")
+        );
+
+        let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("Runtime Confidence Static-Only Class Trends"));
+        assert!(markdown.contains("call_presence"));
+        Ok(())
+    }
+
+    #[test]
     fn evidence_quality_trend_reports_finding_alignment_presentation_text_deltas()
     -> Result<(), String> {
         let mut current = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
@@ -72096,6 +72240,40 @@ covered_by = ["cargo xtask check-file-policy"]
             .and_then(serde_json::Value::as_object_mut)
             .ok_or_else(|| "missing static_limitations.by_category object".to_string())?;
         by_category.insert(category.to_string(), serde_json::json!(count));
+        Ok(())
+    }
+
+    fn set_runtime_confidence_class_counts(
+        value: &mut serde_json::Value,
+        evidence_class: &str,
+        canonical_items: usize,
+        calibrated_supported: usize,
+        static_only: usize,
+    ) -> Result<(), String> {
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "scorecard value should be an object".to_string())?;
+        let calibration_coverage = object
+            .entry("calibration_coverage".to_string())
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .ok_or_else(|| "calibration_coverage should be an object".to_string())?;
+        let rows = calibration_coverage
+            .entry("by_evidence_class".to_string())
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .ok_or_else(|| "by_evidence_class should be an array".to_string())?;
+        rows.push(serde_json::json!({
+            "evidence_class": evidence_class,
+            "canonical_items": canonical_items,
+            "calibrated_supported": calibrated_supported,
+            "fixture_backed": 0,
+            "static_only": static_only,
+            "unknown_confidence": 0,
+            "uncalibrated": canonical_items.saturating_sub(calibrated_supported),
+            "actionable_items": 0,
+            "static_limitation_items": 0,
+        }));
         Ok(())
     }
 

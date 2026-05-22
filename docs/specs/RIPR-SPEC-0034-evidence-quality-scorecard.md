@@ -233,10 +233,12 @@ The evidence-quality trend JSON includes:
 - `summary`;
 - `metric_trends`;
 - `static_limitation_category_trends`;
+- `runtime_confidence_static_only_class_trends`;
 - `unknowns`.
 
 The trend Markdown output includes bounded sections for summary, metric trends,
-static limitation category trends, and unknowns.
+static limitation category trends, runtime confidence static-only class trends,
+and unknowns.
 
 ## Non-Goals
 
@@ -347,6 +349,12 @@ Given a previous scorecard with fewer static limitations than the current
 scorecard, the trend report marks that metric as regression without changing
 any gate behavior.
 
+Given a current scorecard with runtime confidence by-class rows, the trend
+report emits a bounded `runtime_confidence_static_only_class_trends` list so the
+top static-only canonical evidence classes stay visible as calibration
+expansion targets. These rows are advisory and do not imply mutation execution,
+badge movement, or gate authority.
+
 ## Test Mapping
 
 - `xtask::tests::evidence_quality_scorecard_renders_required_json_sections`
@@ -387,6 +395,8 @@ any gate behavior.
   pins metric direction semantics.
 - `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
   pins normalized static-limitation category deltas.
+- `xtask::tests::evidence_quality_trend_reports_runtime_confidence_static_only_classes`
+  pins runtime-confidence static-only class trend rows.
 - `xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas`
   pins finding-alignment and packet-readiness metric deltas.
 

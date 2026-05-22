@@ -3071,6 +3071,17 @@ values, but movement and badge-readiness deltas remain unknown.
     }
   ],
   "static_limitation_category_trends": [],
+  "runtime_confidence_static_only_class_trends": [
+    {
+      "metric": "runtime_confidence_static_only_class:call_presence",
+      "label": "call_presence",
+      "before": null,
+      "after": 2567,
+      "delta": null,
+      "direction": "unknown",
+      "interpretation": "No comparable previous value was available."
+    }
+  ],
   "unknowns": [
     {
       "kind": "trend_history_unavailable",
@@ -3115,6 +3126,13 @@ Field contract:
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes. Current limited scorecards also force
   these category trend directions to `unknown`.
+- `runtime_confidence_static_only_class_trends[]` - bounded evidence-class
+  deltas derived from `calibration_coverage.by_evidence_class[].static_only`.
+  Rows make the top static-only canonical evidence classes visible so runtime
+  confidence work can pick calibrated fixture expansion targets. They remain
+  advisory trend evidence and do not imply mutation execution or gate authority.
+  Current limited scorecards also force these class trend directions to
+  `unknown`.
 - `unknowns[]` - missing history or missing current metric fields that must
   stay visible until later audit or scorecard inputs exist. A
   `current_scorecard_limited` unknown means the current scorecard is itself a
@@ -3123,7 +3141,8 @@ Field contract:
   are reported as `evidence_quality_trend_previous_artifact_unavailable`.
 
 The Markdown sibling prints bounded sections for summary, metric trends,
-static limitation category trends, and unknowns.
+static limitation category trends, runtime confidence static-only class trends,
+and unknowns.
 
 ## Repo Exposure Latency Report
 

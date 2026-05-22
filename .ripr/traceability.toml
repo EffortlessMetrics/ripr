@@ -2354,6 +2354,7 @@ tests = [
   "xtask::tests::evidence_quality_trend_malformed_previous_writes_limited_report",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
+  "xtask::tests::evidence_quality_trend_reports_runtime_confidence_static_only_classes",
   "xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas",
 ]
 fixtures = []
@@ -2711,6 +2712,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports",
   "xtask/src/main.rs::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask/src/main.rs::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
+  "xtask/src/main.rs::tests::evidence_quality_trend_reports_runtime_confidence_static_only_classes",
 ]
 fixtures = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v3",
