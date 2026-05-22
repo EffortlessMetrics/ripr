@@ -10,6 +10,8 @@ ripr gap: missing output contract
 Evidence boundary:
 - Canonical gap: `gap:rust:output:device-label`
 - Language: `rust` (stable)
+- Current evidence: `reachable_unrevealed`
+- Missing discriminator: `APPLE_M3_AIR_DEVICE_LABELS_TEXT appears in golden output`
 - Receipt state: `receipt_missing`
 
 Changed behavior:
@@ -22,9 +24,13 @@ Repair:
 - Route: `AddOutputGolden`
 - Target: `fixtures/device-labels/expected/human.txt`
 - Assertion: `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`
+- Focused proof intent: Add or update the device-label golden output so the visible label is checked.
 
 Verify:
 `cargo xtask goldens check`
+
+Receipt:
+Not available: No receipt command was supplied by the gap ledger; run the verify command first, then regenerate first-pr after an agent receipt command is available.
 
 Agent packet:
 `ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json`

@@ -10,6 +10,8 @@ ripr gap: missing boundary assertion
 Evidence boundary:
 - Canonical gap: `gap:rust:pricing:discount:threshold-boundary`
 - Language: `rust` (stable)
+- Current evidence: `weakly_exposed`
+- Missing discriminator: `amount == threshold`
 - Receipt state: `receipt_missing`
 
 Changed behavior:
@@ -22,9 +24,13 @@ Repair:
 - Route: `AddBoundaryAssertion`
 - Target: `tests/pricing.rs`
 - Assertion: `assert_eq!(discount(100, 100), 90)`
+- Focused proof intent: Add a focused equality-boundary assertion in `tests/pricing.rs` for the threshold edge.
 
 Verify:
 `cargo xtask fixtures boundary_gap`
+
+Receipt:
+Not available: No receipt command was supplied by the gap ledger; run the verify command first, then regenerate first-pr after an agent receipt command is available.
 
 Agent packet:
 `ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json`

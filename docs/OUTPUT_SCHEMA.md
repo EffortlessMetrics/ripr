@@ -7458,15 +7458,22 @@ Field contract:
   canonical gap id when present.
 - `selected.language` and `selected.language_status` keep Rust stable evidence
   distinct from preview evidence when a top gap is selected.
+- `selected.current_evidence_strength` names the conservative static evidence
+  strength for the selected top gap.
+- `selected.missing_discriminator` names the exact discriminator the current
+  evidence does not show.
 - `selected.repair.route`, `selected.repair.target_file`,
   `selected.repair.related_test`, and `selected.repair.suggested_assertion`
   describe the bounded repair route when present.
+- `selected.repair.focused_proof_intent` states the one focused test or output
+  proof intent for the selected repair.
 - `selected.static_limit_kind` and `selected.static_limit_detail` are optional;
   surfaces must show them before suggested action language when they are
   present.
-- `selected.verify_command`, `selected.receipt_command`, and
-  `selected.receipt_state` are the static movement proof path. A missing
-  receipt is not failure, merge approval, mutation proof, or runtime adequacy.
+- `selected.verify_command`, `selected.receipt_command`,
+  `selected.receipt_unavailable_reason`, and `selected.receipt_state` are the
+  static movement proof path. A missing receipt command must be explicit and is
+  not failure, merge approval, mutation proof, or runtime adequacy.
 - `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
   `blocked_artifact`, and `timeout` require `status = "blocked"` and a
   bounded next command when one is known.

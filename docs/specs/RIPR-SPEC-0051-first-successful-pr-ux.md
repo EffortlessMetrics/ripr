@@ -118,12 +118,15 @@ A repairable top gap should include:
 
 - gap ID and source artifact path;
 - gap kind;
+- current static evidence strength;
+- missing discriminator text;
 - changed behavior text when safe to display;
 - why the gap matters;
 - repair route;
+- focused test or output-proof intent;
 - likely related test or output proof location when known;
 - verification command;
-- receipt command or receipt path when known;
+- receipt command or explicit reason the command is not available yet;
 - advisory and authority boundary;
 - stable dedupe or anchor identity when available.
 
@@ -254,8 +257,9 @@ When the start-here packet selects a repairable gap, generated CI and report
 navigation should use its typed fields as the first-screen unit:
 `canonical_gap_id` or `gap_id`, `language`, `language_status`, repair route,
 repair target, related test, static limit when present, verify command, receipt
-command, receipt state, and advisory non-claims. Raw finding counts remain
-supporting evidence.
+command or unavailable reason, receipt state, current evidence strength,
+missing discriminator, focused proof intent, and advisory non-claims. Raw
+finding counts remain supporting evidence.
 
 ## Outputs
 

@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `ripr first-pr` start-here packets now make the one-screen recommendation
+  more explicit for repairable top gaps: current static evidence strength,
+  missing discriminator, focused proof intent, and receipt-command availability
+  are rendered in JSON and Markdown instead of being implied by prose.
 - Lane 1 repo-exposure capture now streams child stdout through the xtask
   runner into `lane1-evidence-audit.repo-exposure.json`, counting bytes from the
   writer path and overwriting stale capture files deterministically. This keeps
