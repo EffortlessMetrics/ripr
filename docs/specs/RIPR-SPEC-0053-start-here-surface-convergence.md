@@ -141,6 +141,30 @@ promotion packet says otherwise. Promotion criteria must include:
 
 Routing, parser compilation, or fixture existence alone is not promotion.
 
+Promotion criteria are owned by policy surfaces, not by the editor, generated
+CI, or the language adapters. A start-here surface may show preview evidence,
+but it must keep the language status visible and must not turn advisory routing
+into a repair, gate, or merge decision.
+
+Required proof before a preview language or adapter-family class can even be
+reviewed for stronger status:
+
+| Proof area | Required evidence | Failure mode if missing |
+| --- | --- | --- |
+| Fixture matrix | The candidate language/class has fixtures for emitted evidence, no-output states, static limits, malformed inputs, and disabled or unavailable adapter states. | Keep the evidence preview/advisory. |
+| Dogfood receipts | External-style receipts exercise the start-here loop on a normal repository shape and at least one fail-closed state. | Do not claim the loop is adopter-ready. |
+| Related-test accuracy | Maintainer-reviewed samples show related-test routing does not send repair packets to the wrong proof surface. | Suppress stronger repair authority. |
+| Static-limit taxonomy | Known parser, adapter, import-graph, dynamic dispatch, and unsupported-syntax limits are labeled or excluded. | Keep static-limit states visible before action language. |
+| False-positive review | Maintainer-reviewed samples document over-reporting risk for the narrow class. | Do not use the class for policy eligibility. |
+| False repair packet review | Maintainer-reviewed samples show preview packets do not invent safe repairs or overstate confidence. | Do not expose stable repair authority. |
+| Surface consistency | PR/CI, CLI, editor, receipts, docs, and report packets show the same preview/advisory boundary. | Treat inconsistent surfaces as promotion blockers. |
+| Policy signoff | A policy owner signs off on the narrow language/class and rollback path. | No promotion review can close. |
+
+JavaScript evidence that flows through the TypeScript preview adapter family is
+still JavaScript preview evidence. A TypeScript packet does not automatically
+promote JavaScript unless a later policy-owned packet explicitly names that
+scope.
+
 ## Required Evidence
 
 Follow-up implementation PRs should provide evidence appropriate to the changed

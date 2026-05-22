@@ -250,9 +250,10 @@ RIPR_GATE_MODE=baseline-check
 
 ## 6. Preview Evidence Promotion Packet
 
-Preview TypeScript and Python evidence stays visible and advisory by default.
-It is not gate-eligible, not RIPR Zero blocking debt, and not calibrated
-confidence unless a later explicit policy promotes a narrow language/class.
+Preview TypeScript, JavaScript, and Python evidence stays visible and advisory
+by default. It is not gate-eligible, not RIPR Zero blocking debt, and not
+calibrated confidence unless a later explicit policy promotes a narrow
+language/class.
 
 Generate a preview packet when a maintainer wants to understand what evidence
 would be required:
@@ -302,6 +303,25 @@ Required receipts include:
 
 Mutation calibration is optional evidence; it is not inferred from stable Rust
 calibration.
+
+Preview promotion review is intentionally stricter than "the adapter runs".
+Before a maintainer can review a stronger status, the packet must account for:
+
+| Proof area | What reviewers need |
+| --- | --- |
+| Fixture matrix | Emitted evidence, no-output states, fail-closed states, malformed inputs, disabled languages, unavailable adapters, and static-limit examples for the narrow class. |
+| Dogfood receipts | External-style start-here receipts for normal repository shapes and at least one fail-closed state. |
+| Related-test accuracy | Reviewed samples showing repair packets route to the intended test or proof surface. |
+| Static-limit taxonomy | Language-specific parser, adapter, import-graph, dynamic-dispatch, metaprogramming, and unsupported-syntax limits that stay visible. |
+| False-positive review | Reviewed over-reporting samples and the accepted advisory boundary. |
+| False repair packet review | Reviewed cases where the packet should stay advisory or static-limited. |
+| Surface consistency | Generated CI, PR evidence, CLI, editor, receipts, docs, and report indexes repeat the same preview/advisory boundary. |
+| Policy signoff | Policy-owner approval of the exact language/class scope and rollback path. |
+
+JavaScript evidence that flows through the TypeScript-family preview adapter is
+still JavaScript preview evidence. A TypeScript packet does not automatically
+cover JavaScript unless a later policy-owned packet explicitly names
+JavaScript, JavaScript React, or the adapter-family scope.
 
 ## 7. Manual Config Review
 

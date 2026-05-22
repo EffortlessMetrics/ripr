@@ -203,6 +203,9 @@ tier than preview.
 - TypeScript, JavaScript, and Python remain preview until a policy-owned
   promotion packet closes the criteria.
 - Generated CI, editor, and CLI docs keep preview evidence advisory by default.
+- JavaScript evidence that shares the TypeScript-family preview adapter remains
+  JavaScript preview evidence unless a policy-owned packet explicitly names
+  JavaScript or an adapter-family promotion scope.
 
 ### Proof Commands
 

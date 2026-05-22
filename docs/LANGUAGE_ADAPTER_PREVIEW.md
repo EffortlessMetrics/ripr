@@ -114,6 +114,13 @@ In human output, preview language/status and static-limit lines appear before
 the evidence narrative. In review artifacts, preview evidence remains advisory
 unless a later policy explicitly promotes it.
 
+Promotion requires a policy-owned preview promotion packet, not just adapter
+routing. The proof criteria include fixture matrix coverage, dogfood receipts,
+related-test accuracy review, static-limit taxonomy coverage, false-positive
+review, false repair packet review, surface consistency, and policy-owner
+signoff. JavaScript evidence shares the TypeScript-family adapter, but it stays
+JavaScript preview evidence unless a later packet explicitly names that scope.
+
 Useful references:
 
 - [Output schema](OUTPUT_SCHEMA.md) for field contracts.

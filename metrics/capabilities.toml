@@ -1619,7 +1619,8 @@ evidence = [
   "crates/ripr/src/cli/commands.rs wires ripr policy preview-promote with parser and write-path tests",
   "generated GitHub CI writes, uploads, indexes, and summarizes preview-promotion packets only when TypeScript or Python preview adapters are configured",
   "docs/OUTPUT_SCHEMA.md documents the implemented preview_evidence_promotion_packet JSON and Markdown shape",
-  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript and Python evidence advisory by default",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript, JavaScript, and Python evidence advisory by default",
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md defines proof criteria for fixture matrix coverage, dogfood receipts, related-test accuracy, static-limit taxonomy, false-positive review, false repair packet review, surface consistency, and policy-owner signoff before preview evidence can claim stronger status",
   "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep preview promotion split from later operator workflow and CI projection without actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview-eligibility mutation"
 ]
