@@ -7430,8 +7430,9 @@ Field contract:
   only, not gate authority.
 - `posture` is always `advisory`.
 - `selected.state` is `top_gap` for a selected repairable gap,
-  `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
-  `blocked_artifact` or `timeout` for blocked recovery states, and
+  `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`
+  (including selected-root preflight failures), `blocked_artifact`, or `timeout`
+  for blocked recovery states, and
   `empty_diff` or `no_action` for no-action states.
 - `top_gap` requires `status = "actionable"`.
 - `selected.canonical_gap_id` and `selected.gap_id` identify the repair unit

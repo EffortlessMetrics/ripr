@@ -1,3 +1,4 @@
+use crate::agent::loop_commands::shell_arg;
 use serde_json::{Map, Value, json};
 use std::env;
 use std::fs;
@@ -137,8 +138,13 @@ fn first_pr_help_text() -> &'static str {
 
 fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     let root = resolve_path(repo, &options.root);
-    let packet = render_start_here_packet(&root, options);
-    let out_dir = resolve_path(&root, &options.out_dir);
+    let root_recovery = root_preflight_recovery(&root, options);
+    let output_root = if root_recovery.is_some() { repo } else { &root };
+    let packet = match root_recovery {
+        Some(selection) => render_start_here_recovery_packet(&root, options, selection),
+        None => render_start_here_packet(&root, options),
+    };
+    let out_dir = resolve_path(output_root, &options.out_dir);
     fs::create_dir_all(&out_dir)
         .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
     let json_path = out_dir.join(START_HERE_JSON);
@@ -157,7 +163,12 @@ fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
 
 fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     let root = resolve_path(repo, &options.root);
-    let out_dir = resolve_path(&root, &options.out_dir);
+    let output_root = if root_preflight_recovery(&root, options).is_some() {
+        repo
+    } else {
+        &root
+    };
+    let out_dir = resolve_path(output_root, &options.out_dir);
     let json_path = out_dir.join(START_HERE_JSON);
     let markdown_path = out_dir.join(START_HERE_MD);
     validate_start_here_packet(&json_path, &markdown_path)?;
@@ -189,6 +200,24 @@ fn render_start_here_packet(root: &Path, options: &FirstPrOptions) -> Value {
         warnings.push(warning);
     }
 
+    render_start_here_packet_with_selection(root, options, selection, warnings)
+}
+
+fn render_start_here_recovery_packet(
+    root: &Path,
+    options: &FirstPrOptions,
+    selection: Selection,
+) -> Value {
+    let warnings = selection.warning().into_iter().collect();
+    render_start_here_packet_with_selection(root, options, selection, warnings)
+}
+
+fn render_start_here_packet_with_selection(
+    root: &Path,
+    options: &FirstPrOptions,
+    selection: Selection,
+    warnings: Vec<String>,
+) -> Value {
     let artifacts = vec![
         artifact_status(
             root,
@@ -284,6 +313,30 @@ fn render_start_here_packet(root: &Path, options: &FirstPrOptions) -> Value {
             "Does not change CI blocking or gate policy."
         ]
     })
+}
+
+fn root_preflight_recovery(root: &Path, options: &FirstPrOptions) -> Option<Selection> {
+    if !root.is_dir() {
+        return Some(Selection::blocked(
+            "wrong_root",
+            format!(
+                "The first-pr root `{}` is not a directory. Pass an existing Rust/Cargo workspace with `--root` before assigning repair work.",
+                options.root
+            ),
+            Some(doctor_command(&options.root)),
+        ));
+    }
+    if !root.join("Cargo.toml").is_file() {
+        return Some(Selection::blocked(
+            "wrong_root",
+            format!(
+                "The first-pr root `{}` is not a Rust/Cargo workspace because Cargo.toml is missing. Pass the repository root with `--root` before assigning repair work.",
+                options.root
+            ),
+            Some(doctor_command(&options.root)),
+        ));
+    }
+    None
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -798,6 +851,10 @@ fn regenerate_gap_ledger_command(out: &str) -> String {
     )
 }
 
+fn doctor_command(root: &str) -> String {
+    format!("ripr doctor --root {}", shell_arg(root))
+}
+
 fn with_extension(path: &str, extension: &str) -> String {
     let mut path = PathBuf::from(path);
     path.set_extension(extension);
@@ -1164,6 +1221,65 @@ mod tests {
     }
 
     #[test]
+    fn missing_root_writes_recovery_packet_without_creating_root() -> Result<(), String> {
+        let repo = temp_repo("first-pr-missing-root")?;
+        let options = FirstPrOptions {
+            root: "missing-workspace".to_string(),
+            ..FirstPrOptions::default()
+        };
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "wrong_root");
+        assert!(
+            packet["selected"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("is not a directory"))
+        );
+        assert_eq!(
+            packet["selected"]["next_command"],
+            "ripr doctor --root missing-workspace"
+        );
+        assert!(
+            !repo.join("missing-workspace").exists(),
+            "first-pr must not create a typo root while writing a recovery packet"
+        );
+        check_first_pr(&repo, &options)?;
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn non_cargo_root_writes_workspace_recovery_packet_to_invocation_root() -> Result<(), String> {
+        let repo = temp_repo("first-pr-not-cargo-root")?;
+        let non_workspace = repo.join("not-workspace");
+        fs::create_dir_all(&non_workspace)
+            .map_err(|err| format!("mkdir {}: {err}", non_workspace.display()))?;
+        let options = FirstPrOptions {
+            root: "not-workspace".to_string(),
+            ..FirstPrOptions::default()
+        };
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "wrong_root");
+        assert!(
+            packet["selected"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("Cargo.toml is missing"))
+        );
+        assert_eq!(
+            packet["selected"]["next_command"],
+            "ripr doctor --root not-workspace"
+        );
+        assert!(
+            !non_workspace.join(DEFAULT_OUT_DIR).exists(),
+            "first-pr must not write recovery artifacts under a non-Cargo root"
+        );
+        check_first_pr(&repo, &options)?;
+        cleanup(&repo)
+    }
+
+    #[test]
     fn malformed_gap_ledger_writes_blocked_packet() -> Result<(), String> {
         let repo = temp_repo("first-pr-malformed")?;
         let ledger = repo.join(DEFAULT_GAP_LEDGER);
@@ -1433,6 +1549,11 @@ mod tests {
             .as_nanos();
         let path = env::temp_dir().join(format!("ripr-{name}-{}-{stamp}", std::process::id()));
         fs::create_dir_all(&path).map_err(|err| format!("mkdir {}: {err}", path.display()))?;
+        fs::write(
+            path.join("Cargo.toml"),
+            "[package]\nname = \"first-pr-test\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write temp Cargo.toml: {err}"))?;
         Ok(path)
     }
 
