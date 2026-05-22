@@ -92,7 +92,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/value-resolution-supported-subshape"
-status = "ready"
+status = "done"
 branch = "analysis-value-resolution-supported-subshape"
 stackable = false
 plan = "plans/lane1-value-resolution-audit-fixes/implementation-plan.md"
@@ -115,7 +115,7 @@ commands = [
 
 [[work_item]]
 id = "report/value-resolution-audit-delta"
-status = "blocked"
+status = "ready"
 branch = "report-value-resolution-audit-delta"
 stackable = false
 plan = "plans/lane1-value-resolution-audit-fixes/implementation-plan.md"
@@ -126,6 +126,13 @@ blocked_by = [
   "analysis/value-resolution-supported-subshape",
 ]
 acceptance = "Record before/after Lane 1 audit, evidence-quality scorecard, and trend movement for the selected value-resolution bucket without changing public badge semantics or downstream projection behavior."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask evidence-quality-trend",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "dogfood/value-resolution-receipts"

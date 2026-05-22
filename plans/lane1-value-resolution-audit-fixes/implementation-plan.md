@@ -166,7 +166,7 @@ leave unsupported shapes as future work.
 
 ## Work Item: `analysis/value-resolution-supported-subshape`
 
-Status: ready
+Status: done
 Blocks:
 - `report/value-resolution-audit-delta`
 Blocked by:
@@ -179,14 +179,18 @@ Move only the fixture-backed supported value-resolution sub-shape out of
 
 ### Production Delta
 
-Add the narrow analyzer support needed by the selected fixture-backed shape.
-Keep unsupported value flows named as limitations and do not infer concrete
+No production analyzer delta was needed in this slice: the current
+value-resolution path already supports the fixture-backed same-test struct
+literal projection shape with source-order and mutation guards. Unsupported
+value flows remain named limitations and RIPR still does not infer concrete
 activation values from presentation text or opaque helper behavior.
 
 ### Evidence Delta
 
-Before/after tests and the scorecard should show movement for the selected
-bucket without changing downstream projection authority.
+Focused value-resolution tests, the Lane 1 audit, and the evidence-quality
+scorecard confirm the existing implementation satisfies the pinned fixtures.
+The follow-up audit-delta slice records whether the sampled scorecard moved or
+whether the selected sub-shape was already accounted for.
 
 ### Non-Goals
 
@@ -198,7 +202,7 @@ bucket without changing downstream projection authority.
 
 ### Acceptance
 
-- Supported fixtures move out of `activation_value_unresolved`.
+- Supported fixtures are not reported as `activation_value_unresolved`.
 - Negative guards stay limited.
 - Raw findings remain supporting evidence.
 - Canonical items remain the countable evidence unit.
@@ -221,12 +225,14 @@ should remain only if they still express the limitation as expected behavior.
 
 ### Notes
 
-Do not broaden the slice after seeing nearby unsupported shapes. Open a follow
-up if the audit reveals a second safe sub-shape.
+This was dispositioned as a proof/status PR because the fixture-backed
+sub-shape was already implemented before the fixture corpus landed. Do not
+broaden the slice after seeing nearby unsupported shapes. Open a follow-up if
+the audit reveals a second safe sub-shape.
 
 ## Work Item: `report/value-resolution-audit-delta`
 
-Status: blocked
+Status: ready
 Blocks:
 - `dogfood/value-resolution-receipts`
 Blocked by:
