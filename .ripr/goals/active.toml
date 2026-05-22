@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "first-pr/front-door-polish"
-status = "ready"
+status = "done"
 branch = "first-pr-front-door-polish"
 stackable = false
 blocked_by = [
@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "first-pr/one-screen-recommendation"
-status = "blocked"
+status = "ready"
 branch = "first-pr-one-screen-recommendation"
 stackable = false
 blocked_by = [

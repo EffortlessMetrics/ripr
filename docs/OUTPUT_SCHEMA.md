@@ -7315,6 +7315,17 @@ Field contract:
 - `status` is `actionable`, `blocked`, or `no_action`. It is reviewer context
   only, not gate authority.
 - `posture` is always `advisory`.
+- `preflight` is additive setup context written by the public `ripr first-pr`
+  command. It records root, Git refs, PR diff availability, Cargo workspace,
+  config/default state, artifact output writability, and composition mode. Its
+  `status` is `pass` or `warn`; warnings provide recovery commands but do not
+  create analyzer truth.
+- `preflight.checks[]` entries carry `id`, `label`, `status`, `state`,
+  `message`, optional `path`, and optional `next_command`. Consumers may render
+  them as setup guidance. They must not infer repair actionability from
+  preflight text.
+- `commands.doctor` and optional `commands.preflight_next` give the user a
+  setup recovery path when preflight warnings are present.
 - `selected.state` is `top_gap` for a selected repairable gap,
   `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
   `blocked_artifact` or `timeout` for blocked recovery states, and

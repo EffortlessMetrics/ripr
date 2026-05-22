@@ -10,6 +10,8 @@
 crates/ripr/src/analysis/diff/load.rs|Command::new|1|analysis/diff|Git diff adapter shells out to git.
 crates/ripr/src/analysis/diff/load.rs|use std::process::Command|1|analysis/diff|Git diff adapter imports Command for the git fallback.
 crates/ripr/src/cli/commands.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
+crates/ripr/src/output/first_pr.rs|Command::new|2|output/first-pr|First-pr preflight validates Git refs and diff availability without running analyzer truth.
+crates/ripr/src/output/first_pr.rs|use std::process::Command|1|output/first-pr|First-pr preflight imports Command for bounded Git setup checks.
 crates/ripr/tests/cli_smoke.rs|Command::new|2|cli-tests|Smoke tests run version and help commands.
 crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
