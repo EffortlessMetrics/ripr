@@ -269,7 +269,7 @@ git diff --check
 Issue: [swarm #241](https://github.com/EffortlessMetrics/ripr-swarm/issues/241)
 / [source #1142](https://github.com/EffortlessMetrics/ripr/issues/1142)
 
-Status: ready.
+Status: done in swarm #246 / #249 proof on 2026-05-22.
 
 ### Goal
 
@@ -330,7 +330,10 @@ git diff --check
 
 ## Work Item 7: analysis: expand config/policy unsupported-flow support
 
-Issue: [#1144](https://github.com/EffortlessMetrics/ripr/issues/1144)
+Issue: [swarm #250](https://github.com/EffortlessMetrics/ripr-swarm/issues/250)
+/ [source #1144](https://github.com/EffortlessMetrics/ripr/issues/1144)
+
+Status: ready.
 
 ### Goal
 

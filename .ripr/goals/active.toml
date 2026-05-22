@@ -129,7 +129,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/config-policy-unsupported-flow-burndown"
-status = "ready"
+status = "done"
 branch = "fixtures-config-policy-unsupported-flow-burndown"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -141,6 +141,25 @@ acceptance = "Add benchmark cases for at least two selected config/policy unsupp
 commands = [
   "cargo test -p xtask evidence_quality_benchmark",
   "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/config-policy-unsupported-flow-support"
+status = "ready"
+branch = "analysis-config-policy-unsupported-flow-support"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Move one selected config/policy unsupported-flow category from named limitation to observed, actionable, or no-action only when fixture-backed; keep other unsupported flows named; keep raw findings as supporting evidence; record scorecard or audit before/after delta; do not create user test debt from policy/config metadata alone."
+commands = [
+  "cargo test -p ripr config_policy --lib",
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
   "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
