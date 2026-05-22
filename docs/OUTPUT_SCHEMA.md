@@ -1409,7 +1409,7 @@ without changing analyzer behavior. The same report lands at
 
 The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
 live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
-(default 20 minutes). If either phase times out, exits before a complete report
+(default 4 minutes). If either phase times out, exits before a complete report
 is available, or the xtask runner cannot start, capture, poll, or read the
 child process, xtask discards stale or partial outputs and writes warning JSON
 and Markdown with `status = "warn"`, phase context such as
@@ -1417,8 +1417,9 @@ and Markdown with `status = "warn"`, phase context such as
 `evidence_health_timeout`, `evidence_health_incomplete`, or
 `evidence_health_runner_error` `run_limitations[]` entry. Runner/capture errors
 use `inputs.generation.status = "runner_error"` and the limitation category
-`evidence_health_runner_error`. The default matches the Lane 1 audit live-repo
-budget so normal dogfood runs can complete useful health counts,
+`evidence_health_runner_error`. The default is intentionally below common
+5-minute validation shells so pathological live runs can write bounded warning
+artifacts instead of being killed before `evidence-health.json` / `.md` exist.
 while pathological runs still produce bounded diagnostics before abnormal
 termination can drop the artifact. During
 generation, xtask enables repo-exposure latency tracing so timeout artifacts can
@@ -2058,6 +2059,12 @@ Field contract:
 - `inputs.repo_exposure_mode` - currently `"instant"`; this keeps the
   repo-local audit bounded while preserving the existing repo-exposure
   `evidence_record` contract.
+- `inputs.repo_exposure_generation.latency_trace_tail` - includes the
+  preserved `repo_exposure_seam_limit` trace row when the default sampled
+  repo-exposure input path is used. `cargo xtask lane1-evidence-audit` samples
+  5,000 seams by default via the internal `RIPR_REPO_EXPOSURE_SEAM_LIMIT`
+  handoff; operators can set `RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0` for an
+  unsampled full-repo attempt, or a positive integer to change the sample size.
 - `inputs.repo_exposure_schema_version` - schema version read from the generated
   repo exposure JSON, or `null` if absent.
 - `inputs.repo_exposure_generation` - bounded diagnostics for the live
@@ -2080,6 +2087,10 @@ Field contract:
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
   seam cache store because the entry exceeded the bounded cache-store limit.
+  The default sampled repo-exposure path records
+  `lane1_repo_exposure_sampled` with input such as
+  `repo-exposure-json:limit_5000_of_39685`; sampled counts are useful work-queue
+  evidence, not full-repo debt totals.
   Named `run_limitations[]` entries also contribute to
   `summary.static_limitations_total` and `static_limitations.by_category`, so a
   limited audit cannot look like a clean zero-limitation run in headline

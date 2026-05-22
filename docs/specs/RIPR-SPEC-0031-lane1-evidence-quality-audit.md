@@ -29,6 +29,11 @@ The command:
   stale capture files are overwritten before completeness checks run;
 - streams `seams[].evidence_record` from the generated repo exposure JSON so
   the audit does not need to retain the full repo-exposure artifact in memory;
+- analyzes a bounded repo-exposure seam sample by default
+  (`RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS`, default `5000`), records the
+  preserved `repo_exposure_seam_limit` trace row, and emits a named
+  `lane1_repo_exposure_sampled` run limitation so sampled counts cannot be
+  mistaken for full-repo debt totals;
 - records bounded repo-exposure generation diagnostics in the audit input block,
   including timeout, status, duration, output byte counts, and the tail of the
   latency trace;
@@ -72,7 +77,12 @@ target/ripr/reports/actionable-gap-outcomes.md
 It exits successfully after both artifacts are written. If repo exposure
 generation exits non-zero after writing a complete repo-exposure JSON document
 with a top-level `seams` array, the audit may continue from that captured
-artifact with a warning. If repo exposure generation times out before a
+artifact with a warning. By default, successful repo exposure is sampled to
+5,000 seams and the audit records `lane1_repo_exposure_sampled` with an input
+such as `repo-exposure-json:limit_5000_of_39685`; operators may set
+`RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0` for an unsampled full-repo attempt,
+or a positive integer to change the sample size. If repo exposure generation
+times out before a
 complete artifact exists, the command writes bounded warning artifacts with a
 `lane1_repo_exposure_timeout` run limitation, phase/input context, the latency
 trace tail, and a repair route. If repo exposure generation exits before the
@@ -231,9 +241,14 @@ work instead of becoming vague user test debt.
 
 Given a long-running repo-wide audit, the command prints latency-trace progress
 from the repo-exposure subprocess and records the bounded diagnostics in
-`inputs.repo_exposure_generation`. If generation times out before a complete
-repo-exposure JSON document exists, the audit still writes a limited artifact
-with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
+`inputs.repo_exposure_generation`. Given the default sampled repo-exposure
+path, the command preserves the `repo_exposure_seam_limit` latency trace row,
+records `run_limitations[].category = "lane1_repo_exposure_sampled"`, and keeps
+the sampled raw/canonical/actionable counts available as partial work-queue
+evidence. Downstream scorecards must surface that named limitation and must not
+treat sampled counts as full-repo debt totals. If generation times out before a
+complete repo-exposure JSON document exists, the audit still writes a limited
+artifact with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
 `phase = "repo_exposure_generation"`, phase/input diagnostics, the most recent
 latency trace entries, and a repair route. Downstream scorecards must surface
 that limitation and must not treat zero counts in the limited artifact as proof
@@ -339,6 +354,14 @@ movement remains static evidence movement rather than mutation proof.
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_json_reports_generation_diagnostics` pins
   the repo-exposure generation diagnostics carried in the audit JSON.
+- `xtask::tests::lane1_evidence_audit_sample_limit_parser_accepts_positive_integer_only`
+  pins the sampled audit seam-limit environment parser, where `0` disables the
+  sample and positive integers override the default.
+- `xtask::tests::lane1_evidence_audit_sampled_report_keeps_counts_and_names_limits`
+  pins that sampled completed repo-exposure input keeps canonical/actionable
+  counts while recording `lane1_repo_exposure_sampled`.
+- `crates/ripr/src/analysis/seam_inventory.rs::tests::repo_exposure_seam_limit_parser_accepts_positive_integer_only`
+  pins the repo-exposure seam-limit parser used by the generated input path.
 - `xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation`
   pins the bounded timeout artifact, named run limitation, repair route, and
   latency trace tail.

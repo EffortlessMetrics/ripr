@@ -22,6 +22,12 @@ are scoped or reviewed.
   `RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS`, so cold live audits fail closed into a
   named `lane1_repo_exposure_timeout` artifact before platform abort behavior
   can leave no Lane 1 report.
+- `cargo xtask lane1-evidence-audit` now samples 5,000 repo-exposure seams by
+  default, records `lane1_repo_exposure_sampled` with the preserved
+  `repo_exposure_seam_limit` trace row, and keeps sampled raw/canonical/actionable
+  counts available as partial work-queue evidence instead of producing an
+  all-zero limited report. Set `RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0` for an
+  unsampled full-repo attempt.
 - Lane 1 repo-exposure capture now streams child stdout through the xtask
   runner into `lane1-evidence-audit.repo-exposure.json`, counting bytes from the
   writer path and overwriting stale capture files deterministically. This keeps
@@ -109,7 +115,7 @@ are scoped or reviewed.
   prevents cold or pathological builds from consuming the outer shell timeout
   without producing `evidence-health.json` / `.md`; the fallback artifact names
   a limitation and does not claim user test debt.
-- `cargo xtask evidence-health` now uses a 5-minute default bounded runtime for
+- `cargo xtask evidence-health` now uses a 4-minute default bounded runtime for
   both build and report-generation phases so pathological live-repo evidence
   health runs degrade to `evidence_health_timeout` warning artifacts before
   abnormal termination can silently drop `evidence-health.json` / `.md`.

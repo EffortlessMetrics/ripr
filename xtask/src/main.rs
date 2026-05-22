@@ -16230,7 +16230,7 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
 
 const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
 const EVIDENCE_HEALTH_SCHEMA_VERSION: &str = "0.2";
-const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
+const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 240_000;
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINES: usize = 8;
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS: usize = 4_000;
 const EVIDENCE_HEALTH_LATENCY_TRACE_TAIL_LIMIT: usize = 12;
@@ -17056,6 +17056,9 @@ const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 120_000;
+const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS";
+const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT: usize = 5_000;
+const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
 
@@ -17413,6 +17416,9 @@ fn lane1_evidence_audit_report_from_complete_repo_exposure(
             if let Some(limitation) = lane1_repo_exposure_cache_store_limitation(&generation) {
                 lane1_evidence_audit_record_run_limitation(&mut report, limitation);
             }
+            if let Some(limitation) = lane1_repo_exposure_sample_limit_limitation(&generation) {
+                lane1_evidence_audit_record_run_limitation(&mut report, limitation);
+            }
             report.repo_exposure_generation = Some(generation);
             report
         }
@@ -17473,6 +17479,23 @@ fn lane1_evidence_audit_timeout_ms() -> u64 {
         .unwrap_or(LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS)
 }
 
+fn lane1_evidence_audit_sample_seam_limit() -> Option<usize> {
+    match std::env::var(LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS_ENV) {
+        Ok(value) if value.trim() == "0" => None,
+        Ok(value) => parse_lane1_evidence_audit_sample_seam_limit(&value)
+            .or(Some(LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT)),
+        Err(_) => Some(LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT),
+    }
+}
+
+fn parse_lane1_evidence_audit_sample_seam_limit(value: &str) -> Option<usize> {
+    value
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .and_then(|limit| (limit > 0).then_some(limit))
+}
+
 fn lane1_evidence_audit_run_repo_exposure(
     binary: &Path,
     args: &[String],
@@ -17480,7 +17503,11 @@ fn lane1_evidence_audit_run_repo_exposure(
     timeout: Duration,
 ) -> Result<TimedFileOutput, String> {
     let binary_text = binary.display().to_string();
-    let envs = [(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
+    let seam_limit = lane1_evidence_audit_sample_seam_limit().map(|limit| limit.to_string());
+    let mut envs = vec![(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
+    if let Some(seam_limit) = seam_limit.as_deref() {
+        envs.push((REPO_EXPOSURE_SEAM_LIMIT_ENV, seam_limit));
+    }
     capture_stdout_to_file_with_timeout(
         &binary_text,
         args,
@@ -17604,26 +17631,61 @@ fn lane1_evidence_audit_limited_report(
     generation: Lane1EvidenceAuditRepoExposureGeneration,
 ) -> Lane1EvidenceAuditReport {
     let mut report = Lane1EvidenceAuditBuilder::default().finish(root.to_string(), None);
-    let limitation = lane1_limited_repo_exposure_limitation(&generation);
     report.repo_exposure_generation = Some(generation.clone());
     lane1_evidence_audit_record_run_limitation(
         &mut report,
-        Lane1EvidenceAuditRunLimitation {
-            category: limitation.category.to_string(),
-            phase: "repo_exposure_generation".to_string(),
-            input: "repo-exposure-json".to_string(),
-            summary: limitation.summary.to_string(),
-            repair_route: limitation.repair_route.to_string(),
-            timeout_ms: Some(generation.timeout_ms),
-            duration_ms: Some(generation.duration_ms),
-            command: Some(generation.command.clone()),
-            exit_code: generation.exit_code,
-            stdout_bytes: Some(generation.stdout_bytes),
-            stderr_bytes: Some(generation.stderr_bytes),
-            latency_trace_tail: generation.latency_trace_tail,
-        },
+        lane1_limited_repo_exposure_run_limitation(&generation),
     );
     report
+}
+
+fn lane1_limited_repo_exposure_run_limitation(
+    generation: &Lane1EvidenceAuditRepoExposureGeneration,
+) -> Lane1EvidenceAuditRunLimitation {
+    let limitation = lane1_limited_repo_exposure_limitation(generation);
+    Lane1EvidenceAuditRunLimitation {
+        category: limitation.category.to_string(),
+        phase: "repo_exposure_generation".to_string(),
+        input: "repo-exposure-json".to_string(),
+        summary: limitation.summary.to_string(),
+        repair_route: limitation.repair_route.to_string(),
+        timeout_ms: Some(generation.timeout_ms),
+        duration_ms: Some(generation.duration_ms),
+        command: Some(generation.command.clone()),
+        exit_code: generation.exit_code,
+        stdout_bytes: Some(generation.stdout_bytes),
+        stderr_bytes: Some(generation.stderr_bytes),
+        latency_trace_tail: generation.latency_trace_tail.clone(),
+    }
+}
+
+fn lane1_repo_exposure_sample_limit_limitation(
+    generation: &Lane1EvidenceAuditRepoExposureGeneration,
+) -> Option<Lane1EvidenceAuditRunLimitation> {
+    let trace = generation
+        .latency_trace_tail
+        .iter()
+        .rev()
+        .find(|trace| trace.phase == "repo_exposure_seam_limit")?;
+    Some(Lane1EvidenceAuditRunLimitation {
+        category: "lane1_repo_exposure_sampled".to_string(),
+        phase: "repo_exposure_generation".to_string(),
+        input: format!("repo-exposure-json:{}", trace.status),
+        summary: format!(
+            "Lane 1 repo-exposure analyzed the bounded seam sample recorded as {}; counts are useful partial evidence and must not be treated as full-repo debt totals.",
+            trace.status
+        ),
+        repair_route:
+            "use the sampled work queue for the next analyzer narrowing slice; set RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0 only when full-repo counts are required and the run can be allowed to take longer"
+                .to_string(),
+        timeout_ms: Some(generation.timeout_ms),
+        duration_ms: Some(generation.duration_ms),
+        command: Some(generation.command.clone()),
+        exit_code: generation.exit_code,
+        stdout_bytes: Some(generation.stdout_bytes),
+        stderr_bytes: Some(generation.stderr_bytes),
+        latency_trace_tail: generation.latency_trace_tail.clone(),
+    })
 }
 
 fn lane1_evidence_audit_record_run_limitation(
@@ -17734,6 +17796,18 @@ fn lane1_evidence_audit_repo_exposure_generation(
     let trace_tail_start = trace
         .len()
         .saturating_sub(LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT);
+    let mut latency_trace_tail = trace[trace_tail_start..].to_vec();
+    for sampled in trace
+        .iter()
+        .filter(|trace| trace.phase == "repo_exposure_seam_limit")
+    {
+        if !latency_trace_tail
+            .iter()
+            .any(|tail| tail.phase == sampled.phase && tail.status == sampled.status)
+        {
+            latency_trace_tail.insert(0, sampled.clone());
+        }
+    }
     Lane1EvidenceAuditRepoExposureGeneration {
         command: format!("{} {}", binary.display(), args.join(" ")),
         timeout_ms: timeout.as_millis(),
@@ -17750,7 +17824,7 @@ fn lane1_evidence_audit_repo_exposure_generation(
         stdout_bytes: output.stdout_bytes,
         stderr_bytes: output.stderr.len(),
         latency_trace_events_total: trace.len(),
-        latency_trace_tail: trace[trace_tail_start..].to_vec(),
+        latency_trace_tail,
     }
 }
 
@@ -65304,6 +65378,26 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_sample_limit_parser_accepts_positive_integer_only() {
+        assert_eq!(
+            super::parse_lane1_evidence_audit_sample_seam_limit("5000"),
+            Some(5000)
+        );
+        assert_eq!(
+            super::parse_lane1_evidence_audit_sample_seam_limit(" 7 "),
+            Some(7)
+        );
+        assert_eq!(
+            super::parse_lane1_evidence_audit_sample_seam_limit("0"),
+            None
+        );
+        assert_eq!(
+            super::parse_lane1_evidence_audit_sample_seam_limit("not-a-number"),
+            None
+        );
+    }
+
+    #[test]
     fn lane1_evidence_audit_repo_exposure_generation_writes_success_json() -> Result<(), String> {
         let root = temp_dir("lane1-repo-exposure-success");
         let output_path = root.join("repo-exposure.json");
@@ -65593,6 +65687,63 @@ covered_by = ["cargo xtask check-file-policy"]
             value["inputs"]["repo_exposure_generation"]["status"],
             "pass"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_sampled_report_keeps_counts_and_names_limits() -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-sampled-report");
+        let output_path = root.join("repo-exposure.json");
+        write(
+            &output_path,
+            r#"{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {
+      "evidence_record": {"schema_version":"0.1","seam_id":"seam-sampled","canonical_gap_id":"gap-sampled","canonical_gap_group_size":1,"raw_findings":[{"file":"src/lib.rs","line":10,"kind":"reachable_unrevealed","expression":"amount >= threshold","probe_kind":"predicate_boundary","source_id":"seam-sampled","evidence_record_ref":"seam-sampled"}],"canonical_item":{"canonical_gap_id":"gap-sampled","raw_group_size":1,"canonical_item_kind":"gap","evidence_class":"predicate_boundary","gap_state":"actionable","actionability":"add_boundary_assertion","primary_anchor":{"file":"src/lib.rs","line":10,"kind":"reachable_unrevealed","source_id":"seam-sampled","reason":"record_location"},"raw_spans":[{"file":"src/lib.rs","start_line":10,"end_line":10,"kind":"reachable_unrevealed","source_id":"seam-sampled"}],"why":"Missing equality boundary assertion.","recommended_repair":"Add exact boundary assertion.","repair_route":{"repair_kind":"add_boundary_assertion","target_test_type":"boundary_discriminator","suggested_assertion":"assert_eq!(price(100, 100), 90)"},"related_test":null,"verify_command":"ripr agent verify --root . --json","receipt_command":"cargo xtask receipts emit --kind lane1-actionable-gap","confidence":{"basis":"static_only","notes":[]}},"owner":"pricing::price","location":{"file":"src/lib.rs","line":10},"seam_kind":"predicate_boundary","grip_class":"reachable_unrevealed","headline_eligible":true,"evidence_path":{"reach":{"state":"yes","confidence":"high","summary":"related owner reachable"},"activate":{"state":"unknown","confidence":"low","summary":"missing equality"},"propagate":{"state":"yes","confidence":"medium","summary":"return value"},"observe":{"state":"yes","confidence":"medium","summary":"assertion exists"},"discriminate":{"state":"no","confidence":"medium","summary":"equality missing"}},"missing_discriminators":[{"value":"100","reason":"missing_boundary_equality","flow_sink":{"kind":"return_value","text":"amount - 10","line":11}}],"related_tests_total":0,"related_tests":[],"recommendation":{"action":"add_or_strengthen_test","reason":"missing boundary","assertion_shape":{"kind":"exact_return_value","example":"assert_eq!(price(100, 100), 90)"},"verify_command":"ripr agent verify --root . --json"},"static_limitations":[]}
+    }
+  ]
+}"#,
+        );
+        let generation = Lane1EvidenceAuditRepoExposureGeneration {
+            command: "target/debug/ripr check --format repo-exposure-json".to_string(),
+            timeout_ms: 120_000,
+            status: "pass".to_string(),
+            failure_reason: None,
+            duration_ms: 65_000,
+            exit_code: Some(0),
+            stdout_bytes: 4_096,
+            stderr_bytes: 512,
+            latency_trace_events_total: 1,
+            latency_trace_tail: vec![RepoExposureLatencyTrace {
+                phase: "repo_exposure_seam_limit".to_string(),
+                status: "limit_5000_of_39663".to_string(),
+                duration_ms: 0,
+            }],
+        };
+
+        let report =
+            lane1_evidence_audit_report_from_complete_repo_exposure(".", &output_path, generation);
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["inputs"]["repo_exposure_generation"]["status"],
+            "pass"
+        );
+        assert_eq!(value["finding_alignment"]["summary"]["actionable_gaps"], 1);
+        assert_eq!(
+            value["run_limitations"][0]["category"],
+            "lane1_repo_exposure_sampled"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["input"],
+            "repo-exposure-json:limit_5000_of_39663"
+        );
+        assert!(lane1_evidence_audit_markdown(&report).contains("lane1_repo_exposure_sampled"));
+
+        let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 
@@ -66187,7 +66338,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
     #[test]
     fn evidence_health_default_timeout_is_bounded_for_live_repo_pathologies() {
-        assert_eq!(super::EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS, 1_200_000);
+        assert_eq!(super::EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS, 240_000);
     }
 
     #[test]
