@@ -547,7 +547,7 @@ cargo xtask check-pr
 
 ### Work item: campaign/first-useful-pr-loop-closeout
 
-Status: ready
+Status: done
 
 Linked proposal: `RIPR-PROP-0009`
 
@@ -570,9 +570,9 @@ PR: n/a
 
 #### Goal
 
-Close Campaign 28 only after one command, one top gap or no-action state, one
+Closed Campaign 28 after one command, one top gap or no-action state, one
 focused repair intent, one verification command, one receipt, one demo, one
-generated-CI summary, one editor handoff, and one agent packet tell the same
+generated-CI summary, one editor handoff, and one agent packet told the same
 static-advisory repair story.
 
 #### Production delta

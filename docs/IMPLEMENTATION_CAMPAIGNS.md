@@ -3042,7 +3042,7 @@ Next:
 
 Campaign ID: `first-useful-pr-loop`
 
-Status: active
+Status: closed
 
 RIPR now has the structural repair loop: first-pr packets, actionable gaps,
 ranked repair packets, dry-run attempt context, receipts, outcomes, generated
@@ -3087,7 +3087,7 @@ Work items:
 | `outcome/reviewer-native-receipts` | done | `ripr outcome` now writes reviewer-native JSON/Markdown receipt sections covering before flags, focused proof signals, movement after verification, remaining weak/unknown seams, and reviewer claim boundaries. |
 | `fixtures/first-pr-boundary-gap-demo` | done | Added a checked boundary-gap demo story for before -> `ripr first-pr` -> focused external proof -> `ripr outcome` -> reviewer receipt. |
 | `surfaces/one-screen-loop-convergence` | done | Generated CI, VS Code/editor handoff, and agent packet surfaces now mirror changed behavior, missing discriminator, focused proof intent, verify and receipt commands, receipt artifacts, and the static-advisory boundary. |
-| `campaign/first-useful-pr-loop-closeout` | ready | Close Campaign 28 now that the one-command, one-gap, one-repair, one-verification, one-receipt loop is proven across CLI, CI, editor, agent packet, and demo surfaces. |
+| `campaign/first-useful-pr-loop-closeout` | done | Closed Campaign 28 with a handoff, archived active goal manifest, proof commands, claim and policy boundary, remaining limits, and no selected successor goal. |
 
 References:
 
@@ -3124,9 +3124,9 @@ cargo xtask check-pr
 
 Next:
 
-- Add active-goal freshness validation next, then move into the first-pr
-  front-door and receipt product loop. Do not spend the campaign only on
-  doctrine, templates, or validators.
+- Campaign 28 is closed and archived. `.ripr/goals/active.toml` records
+  `no_current_goal = true` until a successor campaign is selected from the
+  roadmap or a new accepted source-of-truth stack.
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
