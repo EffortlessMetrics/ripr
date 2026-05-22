@@ -67404,13 +67404,57 @@ covered_by = ["cargo xtask check-file-policy"]
             "config_or_policy_constant"
         );
         assert_eq!(
+            coverage["top_unaligned_examples"][0]["file"],
+            "src/policy.rs"
+        );
+        assert_eq!(
+            coverage["top_unaligned_examples"][0]["line"],
+            serde_json::Value::from(10)
+        );
+        assert_eq!(coverage["top_unaligned_examples"][0]["kind"], "exposed");
+        assert_eq!(
+            coverage["top_unaligned_examples"][0]["expression"],
+            "pub const POLICY_LABEL: &str ="
+        );
+        assert_eq!(
+            coverage["top_unaligned_examples"][0]["reason"],
+            "missing canonical_item"
+        );
+        assert_eq!(
             coverage["same_line_duplicate_groups"][0]["raw_findings"],
             serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["file"],
+            "src/policy.rs"
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["line"],
+            serde_json::Value::from(10)
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["evidence_classes"][0],
+            "config_or_policy_constant"
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["example_expression"],
+            "pub const POLICY_LABEL: &str ="
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["kinds"][0],
+            "exposed"
         );
         assert_eq!(
             coverage["same_line_duplicate_groups"][0]["kinds"][1],
             "static_unknown"
         );
+
+        let markdown = lane1_evidence_audit_markdown(&report);
+        assert!(markdown.contains("Unaligned raw finding class"));
+        assert!(markdown.contains("| Evidence class | File | Line | Kind | Reason | Expression |"));
+        assert!(markdown.contains(
+            "| File | Line | Raw findings | Evidence classes | Kinds | Example expression |"
+        ));
         Ok(())
     }
 

@@ -2248,6 +2248,8 @@ metrics = [
   "finding_alignment_static_limitation_total",
   "finding_alignment_coverage_by_class",
   "finding_alignment_unaligned_raw_findings_by_class",
+  "finding_alignment_top_unaligned_examples",
+  "finding_alignment_same_line_duplicate_groups",
   "finding_alignment_static_unknown_without_named_limitation",
   "finding_alignment_canonical_items_without_repair_route",
   "finding_alignment_canonical_items_without_verify_command",

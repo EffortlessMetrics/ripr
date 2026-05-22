@@ -83,7 +83,10 @@ calls, generated tests, source edits, or mutation execution.
 
 ## Work Item 1: report: audit finding alignment coverage by evidence class
 
-Issue: [#1140](https://github.com/EffortlessMetrics/ripr/issues/1140)
+Issue: [swarm #229](https://github.com/EffortlessMetrics/ripr-swarm/issues/229)
+/ [source #1140](https://github.com/EffortlessMetrics/ripr/issues/1140)
+
+Status: done in swarm #229 proof on 2026-05-22.
 
 ### Goal
 
@@ -108,6 +111,20 @@ missing repair routes, missing verify commands, and top examples.
 - `canonical_items_without_verify_command` is reported.
 - `raw_to_canonical_ratio` remains visible.
 
+### Current Proof
+
+The 2026-05-22 live sampled audit reports:
+
+- `alignment_coverage_by_class`: 7 evidence classes;
+- `unaligned_raw_findings_by_class`: empty;
+- `top_unaligned_examples`: empty because no unaligned raw findings remain in
+  the sampled audit;
+- `same_line_duplicate_groups`: 10 groups;
+- `static_unknown_without_named_limitation`: 0;
+- `canonical_items_without_repair_route`: 0;
+- `canonical_items_without_verify_command`: 0;
+- `raw_to_canonical_ratio`: 1.1392.
+
 ### Proof Commands
 
 ```bash
@@ -120,7 +137,10 @@ git diff --check
 
 ## Work Item 2: analysis: keep static_unknown canonical items named
 
-Issue: [#1141](https://github.com/EffortlessMetrics/ripr/issues/1141)
+Issue: [swarm #233](https://github.com/EffortlessMetrics/ripr-swarm/issues/233)
+/ [source #1141](https://github.com/EffortlessMetrics/ripr/issues/1141)
+
+Status: ready.
 
 ### Goal
 

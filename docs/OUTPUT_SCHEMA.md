@@ -2126,10 +2126,13 @@ Field contract:
   counts by class for evidence records that do not carry `canonical_item`.
 - `finding_alignment.coverage.top_unaligned_examples` - bounded examples of
   raw findings that did not align to a canonical item, for fixture-first
-  follow-up selection.
+  follow-up selection. Each example includes `evidence_class`, `file`, `line`,
+  `kind`, `expression`, and `reason` so the next fixture can be selected from
+  typed raw-finding context instead of Markdown prose.
 - `finding_alignment.coverage.same_line_duplicate_groups` - bounded raw
   finding groups sharing one file and line so maintainers can spot remaining
-  duplicate user-action risks.
+  duplicate user-action risks. Each group includes `file`, `line`,
+  `raw_findings`, `evidence_classes`, `kinds`, and `example_expression`.
 - `finding_alignment.coverage.evidence_class_work_queue` - ranked evidence
   classes that still need Lane 1 work, derived from alignment coverage rows.
   Rows include `work_score`, `dominant_signal`, raw/canonical/actionable/
