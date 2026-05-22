@@ -148,6 +148,24 @@ fn json_pointer_bool(
         .ok_or_else(|| format!("expected bool at JSON pointer `{pointer}`").into())
 }
 
+fn preflight_check_state(
+    value: &serde_json::Value,
+    id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    value
+        .pointer("/preflight/checks")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|checks| {
+            checks.iter().find_map(|check| {
+                (check.get("id").and_then(serde_json::Value::as_str) == Some(id))
+                    .then(|| check.get("state").and_then(serde_json::Value::as_str))
+                    .flatten()
+            })
+        })
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("expected preflight check state for `{id}`").into())
+}
+
 fn agent_brief_sample_workspace(
     label: &str,
 ) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
@@ -480,6 +498,58 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         "--check",
     ])?;
     assert_success(&check_output);
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
+fn first_pr_cli_writes_preflight_recovery_for_empty_workspace()
+-> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("first-pr-preflight");
+    let reports = workspace.join("target/ripr/reports");
+    std::fs::create_dir_all(&workspace)?;
+    let root_arg = workspace.display().to_string();
+    let reports_arg = reports.display().to_string();
+    let output = run_ripr(&[
+        "first-pr",
+        "--root",
+        &root_arg,
+        "--base",
+        "origin/main",
+        "--head",
+        "HEAD",
+        "--out-dir",
+        &reports_arg,
+    ]);
+    assert_success(&output);
+
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(reports.join("start-here.json"))?)?;
+    assert_eq!(json_pointer_str(&report, "/status")?, "blocked");
+    assert_eq!(
+        json_pointer_str(&report, "/selected/state")?,
+        "missing_artifact"
+    );
+    assert_eq!(json_pointer_str(&report, "/preflight/status")?, "warn");
+    assert_eq!(
+        preflight_check_state(&report, "cargo_workspace")?,
+        "missing_cargo_toml"
+    );
+    assert_eq!(
+        preflight_check_state(&report, "git_refs")?,
+        "not_git_worktree"
+    );
+    assert_eq!(preflight_check_state(&report, "artifacts")?, "writable");
+    assert_eq!(
+        json_pointer_str(&report, "/commands/doctor")?,
+        format!("ripr doctor --root {root_arg}")
+    );
+    let markdown = std::fs::read_to_string(reports.join("start-here.md"))?;
+    assert!(markdown.contains("## Preflight"));
+    assert!(markdown.contains("Cargo workspace: `missing_cargo_toml`"));
+    assert!(markdown.contains("Git refs: `not_git_worktree`"));
+    assert!(markdown.contains("Regenerate missing Gap decision ledger"));
+
     std::fs::remove_dir_all(workspace)?;
     Ok(())
 }
