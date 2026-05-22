@@ -1,179 +1,71 @@
-id = "start-here-surface-convergence"
-title = "Start-Here Surface Convergence"
-status = "closed"
-no_current_goal = true
-issue = "201"
+id = "lane1-finding-alignment-burndown"
+title = "Lane 1 Finding Alignment Burn-Down"
+status = "active"
+lane = "1"
+issue = "228"
 
-# This is the next active campaign after Campaign 28 closed the First Useful
-# PR Loop and intentionally left `no_current_goal = true`. This campaign makes
-# the existing start-here, PR/CI, CLI, receipt, policy, dogfood, and docs
-# surfaces converge on the same canonical repair unit without changing
-# analyzer truth or advisory defaults.
+# This manifest selects the existing Lane 1 finding-alignment burn-down rail
+# after Start-Here Surface Convergence closed with `no_current_goal = true`.
+# The durable sources of truth remain:
+#
+# - docs/lanes/LANE_1_FINDING_ALIGNMENT_BURNDOWN.md
+# - plans/lane1-finding-alignment-burndown/implementation-plan.md
+#
+# This activation PR is routing-only. Behavior work begins with the first ready
+# work item below.
 
 objective = """
-Make every start-here surface answer the same user question: what is the one
-repairable gap or no-action state, why does it matter, where should the
-focused proof go, what verifies movement, what receipt records it, and what
-remains limited or advisory?
+Keep RIPR operating on canonical evidence items instead of raw findings as new
+alignment gaps are measured, without reopening completed presentation-text,
+config/policy base scope, editor adoption, release control, or gate authority.
 """
 
 end_state = [
-  "PR/CI summaries and report packets lead with a canonical gap or no-action state instead of raw finding counts",
-  "CLI front-door commands use the same safe-next-action and recovery-state vocabulary",
-  "receipt lifecycle state is consistent across CLI, PR/CI, editor projection, first-pr packets, and docs",
-  "no-output and fail-closed states are explicit outside the editor",
-  "preview-language promotion criteria are visible and policy-owned",
-  "external-style dogfood proves the converged path on normal repo shapes and failure states",
+  "alignment coverage by evidence class is auditable",
+  "raw findings stay diagnostic and canonical items remain the countable unit",
+  "actionable canonical gaps preserve repair-route and verify-command coverage",
+  "named static limitation buckets become audit-driven, fixture-backed repair queues",
+  "runtime confidence coverage is visible by canonical evidence class without adding mutation execution",
 ]
 
 hard_rules = [
-  "typed fields over prose",
-  "canonical gap and repair route before raw finding count",
-  "advisory by default",
-  "gate authority stays with explicit gate artifacts",
+  "fixture first",
+  "audit-driven repairs before heuristics",
+  "raw findings remain supporting evidence",
+  "canonical items are the countable evidence unit",
+  "actionable canonical gaps require repair routes",
+  "named limitations are analyzer work, not user test debt",
+  "runtime-only signal does not create static gaps",
+  "policy/adoption overlays stay separate from Lane 1 evidence state",
 ]
 
 non_goals = [
-  "no analyzer behavior changes in the docs/issue setup PR",
-  "no output schema changes without a scoped spec-test-code PR",
-  "no generated CI blocking or default gate behavior changes",
-  "no PR comment publishing changes",
-  "no preview-language promotion without a policy-owned promotion packet",
-  "no source edits, generated tests, provider/model calls, mutation execution, or editor UI-sprawl work",
+  "no PR or CI rendering changes",
+  "no inline PR comment publishing",
+  "no LSP or editor polish",
+  "no gate-policy changes or default blocking",
+  "no public badge or score redefinition",
+  "no generated tests",
+  "no automatic source edits",
+  "no provider/model calls",
+  "no mutation execution",
 ]
 
 [[work_item]]
-id = "docs/start-here-surface-convergence-stack"
-status = "done"
-branch = "campaign-start-here-surface-convergence"
+id = "report/finding-alignment-coverage-audit"
+status = "ready"
+branch = "report-finding-alignment-coverage-audit"
 stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-acceptance = "Accept and activate the Start-Here Surface Convergence stack in ripr-swarm, replace source-repo issue numbers with swarm issues #201-#208, and leave the next PR/CI first-screen slice ready without behavior changes."
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-doc-roles",
-  "cargo xtask check-traceability",
-  "cargo xtask check-pr",
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
 ]
-
-[[work_item]]
-id = "report/pr-ci-start-here-canonical-unit"
-status = "done"
-branch = "report-pr-ci-start-here-canonical-unit"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-acceptance = "Generated CI and PR evidence first screens name the same gap identity, repair route, verify command, receipt command, receipt state, limits, and non-claims as the first-pr packet when a canonical repair unit exists; raw finding counts remain supporting evidence. PR #202 teaches the PR evidence summary appended by CI to lead with typed start-here state from target/ripr/reports/start-here.json when present."
+acceptance = "Add the class-by-class audit map that reports alignment coverage, unaligned raw findings, top unaligned examples, same-line duplicate groups, unnamed static unknowns, missing repair routes, missing verify commands, and raw-to-canonical ratio while preserving advisory/static claim boundaries."
 commands = [
-  "cargo test -p ripr --lib output",
-  "cargo test -p xtask first_pr",
-  "cargo test -p xtask pr_evidence_summary --bin xtask",
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
   "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
-
-[[work_item]]
-id = "cli/start-here-command-language"
-status = "done"
-branch = "cli-start-here-command-language"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-acceptance = "CLI surfaces distinguish safe next action, missing artifacts, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence, verify command, receipt command, and receipt path using the converged start-here vocabulary."
-commands = [
-  "cargo test -p ripr --lib first_pr",
-  "cargo test -p ripr --lib help",
-  "cargo test -p ripr --lib cli",
-  "cargo test -p ripr --test cli_smoke",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "receipt/lifecycle-state-convergence"
-status = "done"
-branch = "receipt-lifecycle-state-convergence"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-acceptance = "Surfaces distinguish found, missing, stale, gap mismatch, improved, unchanged, and not-applicable receipt states while keeping receipts static movement proof only."
-commands = [
-  "cargo test -p ripr --lib receipt",
-  "cargo test -p xtask dogfood",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "output/no-output-fail-closed-states"
-status = "done"
-branch = "output-no-output-fail-closed-states"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-commands = [
-  "cargo test -p ripr --lib output",
-  "cargo test -p ripr --test cli_smoke",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-acceptance = "CLI and report outputs distinguish clean, no actionable gap, missing artifacts, stale evidence, wrong root, disabled language, unavailable adapter, preview disabled, preview limited, malformed artifact, timeout partial, unsupported schema, unsafe path, and unsafe command where data is available."
-
-[[work_item]]
-id = "policy/preview-promotion-proof-criteria"
-status = "done"
-branch = "policy-preview-promotion-proof-criteria"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-pr",
-]
-acceptance = "Preview promotion criteria include fixtures, dogfood, related-test accuracy, static-limit taxonomy, false-positive review, false repair packet review, surface consistency, and policy signoff; TypeScript, JavaScript, and Python remain preview until a policy-owned promotion packet closes the criteria."
-
-[[work_item]]
-id = "dogfood/external-style-start-here-receipts"
-status = "done"
-branch = "dogfood-external-style-start-here-receipts"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-commands = [
-  "cargo xtask first-pr",
-  "cargo xtask dogfood",
-  "cargo xtask check-pr",
-]
-acceptance = "Receipts cover small Rust crate, Rust workspace, no actionable gap, stale artifacts, disabled preview languages, preview-limited evidence, and malformed or missing artifacts with commands, artifact paths, state labels, known limits, and receipt outcomes."
-
-[[work_item]]
-id = "campaign/start-here-surface-convergence-closeout"
-status = "done"
-branch = "campaign-start-here-surface-convergence-closeout"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
-spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-plan = "plans/start-here-surface-convergence/implementation-plan.md"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-doc-roles",
-  "cargo xtask check-traceability",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-acceptance = "Close the campaign only after all swarm issues #201-#208 are closed or explicitly superseded and the closeout maps requirements to artifacts, validation commands, remaining limits, and claim boundaries."
