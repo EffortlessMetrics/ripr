@@ -3800,7 +3800,7 @@ Blocking conditions:
 
 Campaign ID: `start-here-surface-convergence`
 
-Status: active.
+Status: complete.
 
 The editor, CLI, generated CI, PR evidence, report packet index, receipts,
 preview-language reports, and install/release docs are useful independently.
