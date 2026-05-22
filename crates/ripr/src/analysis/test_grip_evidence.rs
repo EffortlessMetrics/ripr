@@ -228,13 +228,20 @@ type HelperOwnerCallsByFile = BTreeMap<PathBuf, BTreeMap<String, BTreeSet<String
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
+    let function_names_by_file = local_function_names_by_file(index);
     for function in index.functions.iter().filter(|function| !function.is_test) {
         let helper_name_lower = function.name.to_ascii_lowercase();
+        let local_function_names = function_names_by_file.get(&function.file);
         let owner_calls = function
             .calls
             .iter()
             .filter(|call| {
-                helper_name_carries_owner_token(&helper_name_lower, &call.name)
+                (helper_name_carries_owner_token(&helper_name_lower, &call.name)
+                    || helper_directly_delegates_to_specific_owner(
+                        function,
+                        call,
+                        local_function_names,
+                    ))
                     && call.text.contains(&format!("{}(", call.name))
             })
             .map(|call| call.name.clone())
@@ -248,6 +255,65 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
             .insert(function.name.clone(), owner_calls);
     }
     helpers
+}
+
+fn local_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet<String>> {
+    let mut names_by_file: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
+    for function in index.functions.iter().filter(|function| !function.is_test) {
+        names_by_file
+            .entry(function.file.clone())
+            .or_default()
+            .insert(function.name.clone());
+    }
+    names_by_file
+}
+
+fn helper_directly_delegates_to_specific_owner(
+    function: &FunctionSummary,
+    call: &CallFact,
+    local_function_names: Option<&BTreeSet<String>>,
+) -> bool {
+    if call.name == function.name {
+        return false;
+    }
+    let Some(local_function_names) = local_function_names else {
+        return false;
+    };
+    let owner_name_lower = call.name.to_ascii_lowercase();
+    if !owner_token_is_specific_enough(&owner_name_lower)
+        || !local_function_names.contains(&call.name)
+    {
+        return false;
+    }
+
+    let mut direct_local_owner_call_count = 0usize;
+    let mut delegates_to_call = false;
+    let mut has_disallowed_extra_call = false;
+    for candidate in &function.calls {
+        if candidate.name == function.name {
+            continue;
+        }
+        if local_function_names.contains(&candidate.name)
+            && candidate.text.contains(&format!("{}(", candidate.name))
+            && owner_token_is_specific_enough(&candidate.name.to_ascii_lowercase())
+        {
+            direct_local_owner_call_count += 1;
+            delegates_to_call |= candidate.name == call.name
+                && candidate.line == call.line
+                && candidate.text == call.text;
+        } else if !direct_delegate_extra_call_is_inert(&candidate.name) {
+            has_disallowed_extra_call = true;
+        }
+    }
+
+    direct_local_owner_call_count == 1 && delegates_to_call && !has_disallowed_extra_call
+}
+
+fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
+    matches!(
+        call_name,
+        "clone" | "default" | "from" | "into" | "new" | "to_string"
+    )
 }
 
 fn helper_name_carries_owner_token(helper_name_lower: &str, owner_name: &str) -> bool {
@@ -3540,13 +3606,10 @@ fn emit_receipt_sends_value() {
         assert_eq!(evidence.reach.state, StageState::Yes);
         assert_eq!(evidence.activate.state, StageState::Yes);
         assert!(
-            evidence
-                .related_tests
-                .iter()
-                .any(
-                    |test| test.relation_reason == RelationReason::DirectOwnerCall
-                        && test.oracle_kind == OracleKind::MockExpectation
-                ),
+            evidence.related_tests.iter().any(|test| {
+                test.relation_reason == RelationReason::DirectOwnerCall
+                    && test.oracle_kind == OracleKind::MockExpectation
+            }),
             "expected direct owner-call related mock expectation, got {:?}",
             evidence.related_tests
         );
@@ -3614,6 +3677,198 @@ fn emit_receipt_sends_value() {
         assert!(
             evidence.observed_values.is_empty(),
             "call_presence affinity-only activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_wrapper_directly_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_exercises_pipeline() {
+        let output = exercise_pipeline();
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected same-file wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("one-hop helper owner call for value-insensitive seam"),
+            "activation summary should explain the wrapper owner-call route: {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn render_pipeline_fixture() -> String {
+    format_output("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_mentions_pipeline_name_without_calling_owner() {
+        let output = render_pipeline_fixture();
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "wrapper that skips the owner must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("No direct owner call observed for value-insensitive seam"),
+            "activation summary should keep owner-call limitation, got {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn outer_pipeline() -> String {
+    exercise_pipeline()
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outer_wrapper_reaches_pipeline_indirectly() {
+        let output = outer_pipeline();
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "two-hop wrapper must not get one-hop helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "two-hop wrapper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())

@@ -195,10 +195,18 @@ affinity.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_calls_owner_then_value_insensitive_activation_is_yes`
   pins same-file one-hop helper owner-call activation for value-insensitive
   seams without synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_directly_calls_owner_then_activation_is_yes`
+  pins the `call_presence` same-file direct-wrapper activation sub-shape without
+  synthetic observed values.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown`
   pins the helper-name-only must-not-claim guard.
 - `test_grip_evidence::tests::given_full_evidence_when_generic_helper_name_mentions_owner_then_activation_stays_unknown`
   pins the generic-owner helper guard for names such as `parse`.
+- `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown`
+  pins that wrapper names cannot activate `call_presence` when the wrapper body
+  skips the owner.
+- `test_grip_evidence::tests::given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown`
+  pins that two-hop wrappers remain outside the one-hop activation contract.
 
 ## Implementation Mapping
 

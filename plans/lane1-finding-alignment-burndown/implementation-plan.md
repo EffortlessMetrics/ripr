@@ -214,6 +214,35 @@ turn it into a fixture-backed analyzer repair.
 
 ### Current Selected Slice
 
+The 2026-05-22 sampled audit selected `call_presence` /
+`activation_owner_call_unresolved` as the top named static limitation bucket.
+This slice supports the direct owner-call plus same-file direct-wrapper
+sub-shapes:
+
+- a related test directly calls the owner and carries an explicit mock
+  expectation; or
+- a non-test wrapper in the same file directly calls exactly one specific local
+  owner;
+- a test calls that wrapper;
+- the owner contains a value-insensitive `call_presence` seam.
+
+The supported case moves activation to `yes` without inventing observed values.
+Wrappers that skip the owner, two-hop wrapper chains, assertion-target affinity
+alone, generated tests, provider calls, PR/CI rendering, gate policy, public
+score semantics, and mutation execution remain out of scope.
+
+Sampled audit delta for this slice:
+
+- before: `call_presence` had 770 static-limitation items, including 719
+  `activation_owner_call_unresolved` limitations;
+- after: `call_presence` has 715 static-limitation items, including 663
+  `activation_owner_call_unresolved` limitations;
+- delta: -55 `call_presence` static limitations and -56
+  `activation_owner_call_unresolved` limitations;
+- current `call_presence` scorecard work score: 4,554.
+
+### Historical Proof
+
 The 2026-05-18 live audit selected `activation_value_unresolved` as the top
 named static limitation bucket. The first merged slice burned down the
 value-insensitive no-argument owner-call sub-shape:
@@ -231,16 +260,15 @@ Predicate-boundary value checks, non-direct owner affinity, helper-only flows,
 generated tests, provider calls, PR/CI rendering, gate policy, public score
 semantics, and mutation execution remain out of scope.
 
-The current follow-up keeps the same audit-selected bucket and widens the
-supported value-insensitive owner-call path to direct calls whose argument
-values remain opaque. It still does not invent observed activation values and
-still requires concrete activation values for predicate-boundary checks. The
-2026-05-19 live audit before this slice reported 26,277 static limitations,
-including 25,908 `activation_value_unresolved` limitations. The after-audit
-reported 19,106 static limitations, including 18,859
-`activation_value_unresolved` limitations, while actionable canonical gaps
-stayed at 162. Delta: -7,171 total static limitations and -7,049
-`activation_value_unresolved` limitations.
+The follow-up kept the same historical bucket and widened the supported
+value-insensitive owner-call path to direct calls whose argument values remain
+opaque. It still did not invent observed activation values and still required
+concrete activation values for predicate-boundary checks. The 2026-05-19 live
+audit before that slice reported 26,277 static limitations, including 25,908
+`activation_value_unresolved` limitations. The after-audit reported 19,106
+static limitations, including 18,859 `activation_value_unresolved`
+limitations, while actionable canonical gaps stayed at 162. Delta: -7,171 total
+static limitations and -7,049 `activation_value_unresolved` limitations.
 
 The 2026-05-22 sampled audit follow-up selected `call_presence` /
 `activation_owner_call_unresolved` as the current top named static limitation

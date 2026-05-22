@@ -1288,8 +1288,11 @@ Field contract:
   `same_test_file`, `same_module`, `owner_named_test`,
   `import_path_affinity`, `fixture_owner_affinity`. Detection lives in
   `crates/ripr/src/analysis/test_grip_evidence.rs`.
-  `helper_owner_call` is limited to a one-hop same-file helper that
-  directly calls the owner and carries the owner token in the helper name.
+  `helper_owner_call` is limited to a one-hop same-file helper that directly
+  calls the owner. The helper either carries the specific owner token in its
+  name or is a direct delegating wrapper that calls exactly one specific local
+  owner. Generic owner names, skipped-owner wrappers, and two-hop wrapper chains
+  remain non-activating static limitations.
 - `seams[].related_tests[].relation_confidence` — `high`, `medium`,
   `low`, or `opaque`. Mapping from reason: `direct_owner_call`,
   `helper_owner_call`, and `assertion_target_affinity` → `high`;
