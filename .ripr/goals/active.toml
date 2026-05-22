@@ -110,7 +110,7 @@ commands = [
 
 [[work_item]]
 id = "docs/spec-config-policy-unsupported-flow-expansion"
-status = "ready"
+status = "done"
 branch = "docs-spec-config-policy-unsupported-flow-expansion"
 stackable = false
 plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
@@ -124,5 +124,23 @@ commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/config-policy-unsupported-flow-burndown"
+status = "ready"
+branch = "fixtures-config-policy-unsupported-flow-burndown"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Add benchmark cases for at least two selected config/policy unsupported-flow categories; each case records raw findings, expected canonical item, gap_state, actionability, static limitation category, and must-not-claim guards; internal metadata remains no-action; unsupported flow remains limitation until the matching analyzer slice lands."
+commands = [
+  "cargo test -p xtask evidence_quality_benchmark",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
