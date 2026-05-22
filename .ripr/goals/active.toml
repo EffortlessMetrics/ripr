@@ -138,7 +138,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-pr-boundary-gap-demo"
-status = "ready"
+status = "done"
 branch = "fixtures-first-pr-boundary-gap-demo"
 stackable = false
 proposal = "RIPR-PROP-0009"
@@ -155,7 +155,7 @@ commands = [
 
 [[work_item]]
 id = "surfaces/one-screen-loop-convergence"
-status = "blocked"
+status = "ready"
 branch = "surfaces-one-screen-loop-convergence"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
@@ -164,9 +164,6 @@ specs = [
   "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
 ]
 plan = "RIPR-PLAN-0028"
-blocked_by = [
-  "fixtures/first-pr-boundary-gap-demo",
-]
 acceptance = "Make generated CI, VS Code/editor handoff, and agent packet surfaces mirror the same first-useful-pr wording and repair unit: changed behavior, missing discriminator, focused proof intent, verify command, receipt command, artifacts, and static-advisory boundary. Do not add default blocking, source edits, generated tests, providers, mutation execution, or a second mental model."
 commands = [
   "cargo test -p ripr lsp --lib",

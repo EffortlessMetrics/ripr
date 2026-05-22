@@ -9211,6 +9211,9 @@ fn validate_first_successful_pr_case(
             ));
         }
     }
+    if case_id == "boundary-gap" {
+        validate_first_successful_pr_boundary_demo(root, case, case_id, violations)?;
+    }
     if input_ledger.exists() {
         let ledger = read_json_value(&input_ledger)?;
         if json_string_field(&ledger, "kind").as_deref() != Some("gap_decision_ledger") {
@@ -9283,6 +9286,59 @@ fn validate_first_successful_pr_case(
                 "first successful PR case {case_id} Markdown must show Blocked"
             )),
             _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_first_successful_pr_boundary_demo(
+    root: &Path,
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(demo_story) = json_string_field(case, "demo_story") else {
+        violations.push(format!(
+            "first successful PR case {case_id} is missing demo_story"
+        ));
+        return Ok(());
+    };
+    let story_path = Path::new(&demo_story);
+    if story_path.is_absolute()
+        || story_path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        violations.push(format!(
+            "first successful PR case {case_id} demo_story must be workspace-local"
+        ));
+        return Ok(());
+    }
+    let story_path = root.join(story_path);
+    if !story_path.exists() {
+        violations.push(format!(
+            "first successful PR case {case_id} is missing {}",
+            normalize_path(&story_path)
+        ));
+        return Ok(());
+    }
+    let story = read_text_lossy(&story_path)?;
+    for required in [
+        "ripr first-pr",
+        "ripr outcome",
+        "focused external proof",
+        "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+        "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+        "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
+        "No runtime mutation proof",
+        "No coverage adequacy",
+        "No source edit or generated test from RIPR",
+    ] {
+        if !story.contains(required) {
+            violations.push(format!(
+                "{} is missing `{required}`",
+                normalize_path(&story_path)
+            ));
         }
     }
     Ok(())
@@ -50812,6 +50868,7 @@ mod tests {
         assert!(report.contains("case output-contract-gap must be actionable/top_gap"));
         assert!(report.contains("is missing case empty-diff"));
         assert!(report.contains("is missing case blocked-ledger"));
+        assert!(report.contains("case boundary-gap is missing demo_story"));
         assert!(report.contains("inputs/reports/gap-decision-ledger.json"));
         assert!(report.contains("expected/start-here.json"));
         assert!(report.contains("expected/start-here.md"));

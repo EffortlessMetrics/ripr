@@ -415,7 +415,7 @@ cargo xtask check-pr
 
 ### Work item: fixtures/first-pr-boundary-gap-demo
 
-Status: ready
+Status: done
 
 Linked proposal: `RIPR-PROP-0009`
 
@@ -440,8 +440,8 @@ gap -> focused external proof -> `ripr outcome` -> receipt.
 
 #### Production delta
 
-Add fixture/demo assets and expected outputs after the outcome receipt shape is
-stable.
+Added a case-local boundary-gap demo story to the first successful PR corpus,
+linked it from the public demo, and pinned it in the fixture contract.
 
 #### Acceptance
 
@@ -469,7 +469,8 @@ cargo xtask check-pr
 #### Claim boundary
 
 - The demo validates the first-pr story in a bounded fixture, not general
-  correctness.
+  correctness, runtime adequacy, coverage adequacy, mutation proof, or merge
+  approval.
 
 #### Rollback
 
@@ -477,7 +478,7 @@ cargo xtask check-pr
 
 ### Work item: surfaces/one-screen-loop-convergence
 
-Status: blocked
+Status: ready
 
 Linked proposal: `RIPR-PROP-0011`
 
@@ -490,7 +491,7 @@ Linked ADR: `ADR-0015`
 
 Blocks: `campaign/first-useful-pr-loop-closeout`
 
-Blocked by: `fixtures/first-pr-boundary-gap-demo`
+Blocked by: n/a
 
 Branch: `surfaces-one-screen-loop-convergence`
 

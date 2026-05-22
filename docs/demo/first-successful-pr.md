@@ -42,6 +42,12 @@ The checked golden version is:
 fixtures/first_successful_pr/boundary-gap/expected/start-here.md
 ```
 
+The case-local demo script is:
+
+```text
+fixtures/first_successful_pr/boundary-gap/README.md
+```
+
 ## Demo Cases
 
 | Case | User story | Start-here result | Repair route | Verification |
@@ -73,6 +79,24 @@ Verify:
 The useful output is not the raw finding. It is the bounded work order:
 what changed, why it matters, where to repair, and which command verifies
 movement.
+
+After the focused proof is added outside RIPR, emit the reviewer receipt:
+
+```bash
+ripr outcome \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
+  --out target/ripr/demo/boundary-gap/targeted-test-outcome.md
+```
+
+The checked receipt is:
+
+```text
+fixtures/boundary_gap/calibration/targeted-test-outcome.md
+```
+
+That receipt records static before/after movement. It does not claim runtime
+mutation confirmation, coverage adequacy, correctness, or merge approval.
 
 ## Output Contract Story
 

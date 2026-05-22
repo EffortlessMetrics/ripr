@@ -10,6 +10,7 @@
       "description": "A repairable Rust boundary gap becomes the top first-run repair.",
       "input": "boundary-gap/inputs/reports/gap-decision-ledger.json",
       "expected": "boundary-gap/expected/start-here.json",
+      "demo_story": "boundary-gap/README.md",
       "expected_status": "actionable",
       "expected_state": "top_gap"
     },
