@@ -616,7 +616,7 @@ cargo xtask check-pr
 
 ## Closeout criteria
 
-Campaign 28 can close when these are true:
+Campaign 28 closed after these criteria were satisfied:
 
 - `ripr first-pr --root . --base origin/main --head HEAD` is the front door for
   one changed Rust PR.

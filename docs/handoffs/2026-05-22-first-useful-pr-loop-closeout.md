@@ -2,10 +2,10 @@
 
 Date: 2026-05-22
 
-Branch / PR: `campaign-first-useful-pr-loop-closeout` / pending at authoring
+Branch / PR: `campaign-first-useful-pr-loop-closeout` / #191
 
-Latest merged PR: #188 `campaign: advance surface convergence work`
-(commit `f4dd66aa2d008adaa727bd2edf5107f76dd57b5f`)
+Closeout merged PR: #191 `campaign: close first useful pr loop`
+(commit `de6bd5c27920e995786e08b75c479dfaa1e34551`)
 
 ## Current Work Item
 
