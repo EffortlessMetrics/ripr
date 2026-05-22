@@ -201,7 +201,7 @@ cargo xtask check-pr
 
 ### Work item: first-pr/front-door-polish
 
-Status: ready
+Status: done
 
 Linked proposal: `RIPR-PROP-0009`
 
@@ -261,7 +261,9 @@ cargo xtask check-pr
 
 #### Policy impact
 
-- None expected.
+- Added a narrow `policy/process_allowlist.txt` entry for the public first-pr
+  front-door git preflight. The preflight uses bounded `git` subprocess probes
+  without shell expansion and stays advisory.
 
 #### Claim boundary
 
@@ -275,7 +277,7 @@ cargo xtask check-pr
 
 ### Work item: first-pr/one-screen-recommendation
 
-Status: blocked
+Status: ready
 
 Linked proposal: `RIPR-PROP-0009`
 

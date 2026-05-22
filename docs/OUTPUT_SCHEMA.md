@@ -7391,6 +7391,24 @@ JSON shape:
     "message": "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work.",
     "next_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
   },
+  "preflight": {
+    "status": "needs_attention",
+    "mode": "write",
+    "root": ".",
+    "base": "origin/main",
+    "head": "HEAD",
+    "next_command": "git fetch origin main; then rerun `ripr first-pr --root . --base origin/main --head HEAD`.",
+    "checks": [
+      {
+        "id": "git_base",
+        "label": "Git base",
+        "status": "needs_attention",
+        "message": "Could not resolve `origin/main` to a commit.",
+        "path": null,
+        "next_command": "git fetch origin main; then rerun `ripr first-pr --root . --base origin/main --head HEAD`."
+      }
+    ]
+  },
   "commands": {
     "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
     "next": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
@@ -7454,6 +7472,20 @@ Field contract:
   bounded next command when one is known.
 - `empty_diff` and `no_action` require `status = "no_action"` and must not
   produce a repair interruption.
+- `preflight` is present for the public `ripr first-pr` command path. It
+  records read-only front-door checks for root, Git worktree, base/head refs,
+  diff presence, Cargo workspace, `ripr.toml` defaulting, output directory, and
+  write/check mode. It does not create analyzer facts and does not become gate
+  authority.
+- `preflight.status` is `ready` when the command can proceed without setup
+  attention, or `needs_attention` when a setup check has a recovery/no-action
+  note. A `needs_attention` preflight can still accompany an explicit
+  artifact-backed packet; typed artifact states still decide repair
+  selection.
+- `preflight.checks[].status` is one of `ok`, `needs_attention`, `no_action`,
+  `defaulted`, or `will_create`. Checks with `next_command` provide the next
+  safe setup or recovery command; they must not imply mutation, coverage,
+  runtime proof, merge approval, or gate pass/fail.
 - `commands.regenerate_gap_ledger` is always present so missing, stale,
   wrong-root, malformed, and timeout states can point to a known refresh path.
 - `artifacts[]` records artifact id, label, path, `present` or `missing`

@@ -459,6 +459,12 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     );
     assert_eq!(json_pointer_str(&report, "/inputs/base")?, "origin/main");
     assert_eq!(json_pointer_str(&report, "/inputs/head")?, "HEAD");
+    assert_eq!(json_pointer_str(&report, "/preflight/mode")?, "write");
+    assert!(
+        report
+            .pointer("/preflight/checks")
+            .is_some_and(|value| value.is_array())
+    );
     assert_eq!(
         json_pointer_str(&report, "/commands/verify")?,
         "cargo xtask fixtures boundary_gap"
@@ -467,6 +473,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     let markdown = std::fs::read_to_string(&md_path)?;
     assert!(markdown.contains("# RIPR First PR Start Here"));
     assert!(markdown.contains("Status: advisory"));
+    assert!(markdown.contains("## Preflight"));
     assert!(markdown.contains("ripr gap: missing boundary assertion"));
     assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
     let check_output = run_ripr_in_workspace(&[

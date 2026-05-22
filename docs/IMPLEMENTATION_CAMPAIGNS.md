@@ -3082,8 +3082,8 @@ Work items:
 | --- | --- | --- |
 | `context/proof-stack-reconciliation` | done | Reconciled proof-stack language into RIPR's existing context system, accepted source-of-truth stack, and roadmap end-goal framing without adding a runner-local goals namespace or another operating namespace. |
 | `goals/active-freshness-validation` | done | Goal validation now rejects a closed active campaign unless it declares a successor or explicit no-current-goal marker, so agents cannot silently continue from stale execution state. |
-| `first-pr/front-door-polish` | ready | Make `ripr first-pr --root . --base origin/main --head HEAD` the product front door with clear preflight recovery and next-command guidance. |
-| `first-pr/one-screen-recommendation` | blocked | Stabilize a golden-backed first screen for top gap/no-action, changed behavior, missing discriminator, focused proof intent, verify command, receipt command, and static-advisory boundary. |
+| `first-pr/front-door-polish` | done | `ripr first-pr` now writes a read-only preflight section for root, Git/base/head/diff, Cargo workspace, config defaults, output path, mode, and next-command guidance while preserving advisory artifact selection. |
+| `first-pr/one-screen-recommendation` | ready | Stabilize a golden-backed first screen for top gap/no-action, changed behavior, missing discriminator, focused proof intent, verify command, receipt command, and static-advisory boundary. |
 | `outcome/reviewer-native-receipts` | blocked | Make `ripr outcome` receipts explain before/after movement and reviewer claims without mutation, runtime, or coverage proof overclaiming. |
 | `fixtures/first-pr-boundary-gap-demo` | blocked | Add a tiny canonical demo or fixture story for before -> `ripr first-pr` -> focused external proof -> `ripr outcome` -> receipt. |
 | `surfaces/one-screen-loop-convergence` | blocked | Make generated CI, VS Code/editor handoff, and agent packet surfaces mirror the same first-useful-pr wording and repair unit. |

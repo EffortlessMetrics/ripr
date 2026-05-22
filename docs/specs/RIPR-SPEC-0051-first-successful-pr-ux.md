@@ -53,6 +53,21 @@ reports that work in the packet. It must not silently rerun hidden analysis,
 invent analyzer evidence, edit source, generate tests, call providers, run
 mutation testing, publish comments, or change gate policy.
 
+### Front-door preflight
+
+The public `ripr first-pr` command should include a read-only preflight section
+in the start-here packet. The preflight answers whether the supplied root,
+Git worktree, base/head refs, diff, Cargo workspace, repository config,
+artifact output directory, and write/check mode are usable for the first-run
+path.
+
+Preflight checks explain setup and recovery. They do not create analyzer facts,
+rank gaps, edit source, generate tests, run mutation testing, or decide gate
+authority. When explicit artifacts already provide a typed selected state, the
+selected artifact state remains the repair/no-action authority; preflight
+`needs_attention` notes help the user repair setup drift such as a missing
+`origin/main` ref or an empty local diff.
+
 ### Start-here packet
 
 The first-run path should write:
