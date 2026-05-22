@@ -626,6 +626,130 @@
       "repair_route": "analysis/related-test-ranking-audit-fixes"
     },
     {
+      "id": "call_presence_direct_owner_call_with_mock_expectation_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A direct owner call plus an explicit mock expectation can activate and observe a call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_mock_expectation_then_activation_is_yes",
+      "sample": {
+        "file": "tests/receipt_tests.rs",
+        "source": "let value = receipt_payload();\nemit_receipt(&mut recorder, &value);\nmock_recorder.expect_send().times(1);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-owner-mock-expectation",
+          "canonical_gap_id": "gap:bench-call-presence-direct-owner-mock-expectation",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "receipt::emit_receipt",
+          "location": {
+            "file": "src/receipt.rs",
+            "line": 8
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For call-presence seams, a related test that directly calls the owner and carries an explicit mock expectation can satisfy activation without observed activation values.",
+      "must_not_claim": [
+        "Do not infer call-presence activation without a direct owner call.",
+        "Do not invent synthetic observed values for opaque call-presence arguments.",
+        "Do not treat activation alone as strong exposure without matching side-effect observation and discrimination.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_specific_call_target_affinity_stays_named_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A specific call-target token can relate a test to a call-presence seam, but target-token affinity alone must remain a named activation owner-call limitation.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains",
+      "sample": {
+        "file": "tests/target_affinity.rs",
+        "source": "let observed = \"zq_render_target_token\";\nassert_eq!(observed, \"zq_render_target_token\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-specific-target-affinity",
+          "canonical_gap_id": "gap:bench-call-presence-specific-target-affinity",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "agent_paths::zq_call_presence_owner",
+          "location": {
+            "file": "src/agent_paths.rs",
+            "line": 1
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "related_tests": 1,
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_unresolved",
+      "expected_claim": "Specific call-target affinity is relation evidence only; without an owner call it remains a named activation limitation and not user test debt.",
+      "must_not_claim": [
+        "Do not turn call-target token affinity into activation.",
+        "Do not infer an owner call from assertion text alone.",
+        "Do not invent observed values for call-presence target-token affinity.",
+        "Do not classify affinity-only call-presence seams as user test debt."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
       "id": "one_hop_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "activation_value_resolution",

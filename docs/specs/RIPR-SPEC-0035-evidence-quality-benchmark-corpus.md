@@ -184,11 +184,14 @@ affinity.
 - `test_grip_evidence::tests::given_full_evidence_when_owner_call_with_opaque_args_reaches_return_seam_then_activation_is_yes`
   pins value-insensitive owner-call activation without synthetic observed
   values.
+- `test_grip_evidence::tests::given_call_presence_when_direct_owner_call_has_mock_expectation_then_activation_is_yes`
+  pins fixture-backed call-presence activation for a direct owner call plus an
+  explicit mock expectation without synthetic observed values.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity`
   pins the negative guard for generic call argument tokens such as `path`.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains`
   pins that specific call targets remain eligible for assertion-target
-  affinity.
+  affinity without satisfying activation by themselves.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_calls_owner_then_value_insensitive_activation_is_yes`
   pins same-file one-hop helper owner-call activation for value-insensitive
   seams without synthetic observed values.

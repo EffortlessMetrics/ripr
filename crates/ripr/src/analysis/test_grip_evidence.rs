@@ -3498,6 +3498,128 @@ fn wrapper_mentions_owner_only_in_non_code() {
     }
 
     #[test]
+    fn given_call_presence_when_direct_owner_call_has_mock_expectation_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/receipt.rs");
+        let prod_src = r#"
+pub struct Recorder;
+
+impl Recorder {
+    pub fn send(&mut self, _value: &str) {}
+}
+
+pub fn emit_receipt(recorder: &mut Recorder, value: &str) {
+    recorder.send(value);
+}
+"#;
+        let tests = PathBuf::from("tests/receipt_tests.rs");
+        let tests_src = r#"
+fn receipt_payload() -> String { "sent".to_string() }
+
+#[test]
+fn emit_receipt_sends_value() {
+    let mut recorder = Recorder;
+    let value = receipt_payload();
+    emit_receipt(&mut recorder, &value);
+    mock_recorder.expect_send().times(1);
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/receipt.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::emit_receipt")
+                    && s.expression().contains("send")
+            })
+            .ok_or_else(|| "expected send call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(
+                    |test| test.relation_reason == RelationReason::DirectOwnerCall
+                        && test.oracle_kind == OracleKind::MockExpectation
+                ),
+            "expected direct owner-call related mock expectation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "call_presence owner calls must not create boundary debt"
+        );
+        assert_eq!(evidence.propagate.state, StageState::Yes);
+        assert_eq!(evidence.observe.state, StageState::Yes);
+        assert_eq!(evidence.discriminate.state, StageState::Yes);
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/agent_paths.rs");
+        let prod_src = "pub fn zq_call_presence_owner(path: &std::path::Path) -> String { \
+                            zq_quote_target_token(&zq_render_target_token(path)) \
+                        }\n\
+                        fn zq_render_target_token(path: &std::path::Path) -> String { \
+                            path.display().to_string() \
+                        }\n\
+                        fn zq_quote_target_token(input: &str) -> String { input.to_string() }\n";
+        let tests = PathBuf::from("tests/target_affinity.rs");
+        let tests_src = "#[test] fn unrelated_specific_target_assertion() { \
+                let observed = \"zq_render_target_token\"; \
+                assert_eq!(observed, \"zq_render_target_token\"); \
+            }\n";
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/agent_paths.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.expression().contains("zq_render_target_token")
+            })
+            .ok_or_else(|| "zq_render_target_token call_presence seam present".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity),
+            "specific target token should remain eligible for assertion-target affinity; got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("No direct owner call observed for value-insensitive seam"),
+            "specific target affinity alone should remain a named owner-call limitation: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence affinity-only activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_related_tests_with_same_confidence_when_sorted_then_order_is_stable_by_file_name_line()
     -> Result<(), String> {
         // Two tests with the same reason (both owner_named_test) but
