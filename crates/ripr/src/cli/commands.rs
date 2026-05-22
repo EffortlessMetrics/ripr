@@ -1318,7 +1318,10 @@ jobs:
             echo '### Start here'
             echo '- Open `target/ripr/reports/start-here.md` first when it exists.'
             echo '- Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts.'
-            echo '- Repair route: use the repair, verify, receipt, or regeneration command shown in the start-here packet.'
+            echo '- Safe next action: repair one named gap, regenerate missing or malformed artifacts, refresh stale evidence, fix wrong-root setup, or stop on no-action.'
+            echo '- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence are explicit stop or regeneration states.'
+            echo '- Proof rail: verify command, receipt command, and receipt path are static movement evidence only.'
+            echo '- Preview boundary: preview-limited evidence stays syntax-first and advisory, with static limits before repair language.'
             echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
             if [ -f target/ripr/reports/start-here.md ]; then
               echo '- Start-here artifact: `target/ripr/reports/start-here.md`'
@@ -1385,11 +1388,11 @@ jobs:
               echo "- Repair target: \`$start_target\`"
               echo "- Related test: \`$start_related\`"
               echo "- Static limit: \`$start_limit\`"
-              echo "- Verify: \`$start_verify\`"
-              echo "- Receipt: \`$start_receipt\`"
+              echo "- Verify command: \`$start_verify\`"
+              echo "- Receipt command: \`$start_receipt\`"
               echo "- Receipt path: \`$start_receipt_path\`"
               echo "- Receipt state: \`$start_receipt_state\`"
-              echo "- Next command: \`$start_next\`"
+              echo "- Safe next action command: \`$start_next\`"
               echo "- Warnings: \`$start_warnings\`"
               echo "- Artifacts: \`target/ripr/reports/start-here.json\`, \`target/ripr/reports/start-here.md\`"
               echo "- Boundary: start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority when configured."
@@ -1422,20 +1425,22 @@ jobs:
               first_fallback="$(markdown_inline "$first_fallback")"
               first_warnings="$(markdown_inline "$first_warnings")"
               echo "- Status: \`$first_status\`"
-              echo "- Action: \`$first_action_kind\`"
+              echo "- Safe next action: \`$first_action_kind\`"
               echo "- Title: \`$first_title\`"
               echo "- Why: \`$first_why\`"
               echo "- Gap: \`$first_gap\`"
               echo "- Repair target: \`$first_target\`"
               echo "- Agent packet: \`$first_packet\`"
-              echo "- Verify: \`$first_verify\`"
-              echo "- Receipt: \`$first_receipt\`"
+              echo "- Verify command: \`$first_verify\`"
+              echo "- Receipt command: \`$first_receipt\`"
               echo "- Fallback/no-action: \`$first_fallback\`"
               echo "- Warnings: \`$first_warnings\`"
               echo "- Artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`, \`target/ripr/workflow/agent-packet.json\`"
               echo "- Boundary: advisory first-run path only; gate decision remains separate pass/fail authority when configured."
             else
               echo "- Status: \`missing_start_here\`"
+              echo "- State: \`missing_artifact\`"
+              echo "- Safe next action: regenerate the missing start-here packet before assigning repair work."
               echo "- Next command: \`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports\`."
               echo "- Fallback first-action command: \`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\` (add other available inputs as needed)."
               echo "- Boundary: missing start-here packet does not fail generated CI or create gate authority."
@@ -1618,7 +1623,7 @@ jobs:
                 action_warning_count="$(markdown_inline "$action_warning_count")"
                 echo '#### Recommended next test at a glance'
                 echo "- Status: \`$action_status\`"
-                echo "- Action: \`$action_kind\`"
+                echo "- Safe next action: \`$action_kind\`"
                 echo "- Title: \`$action_title\`"
                 echo "- Why: \`$action_why\`"
                 echo "- Seam: \`$action_seam\`"
@@ -6797,6 +6802,8 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         }
     }
 
+    print_doctor_start_here_guidance(&root);
+
     if ok {
         println!("✓ doctor checks passed");
         Ok(())
@@ -6804,6 +6811,20 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
     }
+}
+
+fn print_doctor_start_here_guidance(root: &Path) {
+    println!("- Start-here packet: target/ripr/reports/start-here.md");
+    println!(
+        "- Safe next action: run `ripr first-pr --root {} --base origin/main --head HEAD` after setup passes",
+        root.display()
+    );
+    println!(
+        "- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence"
+    );
+    println!(
+        "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
+    );
 }
 
 fn report_config_status(root: &Path, ok: &mut bool) {
@@ -10834,6 +10855,18 @@ language = "rust"
             "Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts."
         ));
         assert!(summary.contains(
+            "Safe next action: repair one named gap, regenerate missing or malformed artifacts"
+        ));
+        assert!(summary.contains(
+            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
+        ));
+        assert!(summary.contains(
+            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
+        ));
+        assert!(summary.contains(
+            "Preview boundary: preview-limited evidence stays syntax-first and advisory"
+        ));
+        assert!(summary.contains(
             "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
         ));
         assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
@@ -10864,8 +10897,11 @@ language = "rust"
         assert!(summary.contains("Repair target: \\`$start_target\\`"));
         assert!(summary.contains("Related test: \\`$start_related\\`"));
         assert!(summary.contains("Static limit: \\`$start_limit\\`"));
+        assert!(summary.contains("Verify command: \\`$start_verify\\`"));
+        assert!(summary.contains("Receipt command: \\`$start_receipt\\`"));
         assert!(summary.contains("Receipt path: \\`$start_receipt_path\\`"));
         assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
+        assert!(summary.contains("Safe next action command: \\`$start_next\\`"));
         assert!(
             summary
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
@@ -10873,6 +10909,10 @@ language = "rust"
         assert!(summary.contains(".action_kind // \"unknown\""));
         assert!(summary.contains(".commands.context_packet // \"not_available\""));
         assert!(summary.contains("missing_start_here"));
+        assert!(summary.contains("State: \\`missing_artifact\\`"));
+        assert!(summary.contains(
+            "Safe next action: regenerate the missing start-here packet before assigning repair work."
+        ));
         assert!(summary.contains(
             "start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority"
         ));
@@ -11539,6 +11579,12 @@ language = "rust"
         assert!(summary.contains("#### Recommended next test at a glance"));
         assert!(summary.contains("#### First-run status"));
         assert!(summary.contains("Open `target/ripr/reports/start-here.md` first"));
+        assert!(summary.contains(
+            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
+        ));
+        assert!(summary.contains(
+            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
+        ));
         assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
         assert!(summary.contains("start_json=target/ripr/reports/start-here.json"));
         assert!(summary.contains(".selected.state // \"unknown\""));
@@ -11570,6 +11616,7 @@ language = "rust"
         assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
         assert!(summary.contains(".action_kind // \"unknown\""));
+        assert!(summary.contains("Safe next action: \\`$first_action_kind\\`"));
         assert!(summary.contains(".commands.verify // \"not_available\""));
         assert!(summary.contains(".commands.receipt // \"not_available\""));
         assert!(summary.contains(".fallback.kind // \"none\""));

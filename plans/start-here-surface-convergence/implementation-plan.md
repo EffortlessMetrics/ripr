@@ -40,8 +40,8 @@ canonical repair unit, state names, receipt lifecycle, and non-claims.
 | --- | --- | --- |
 | #201 | `docs(product): open start-here surface convergence stack` | done |
 | #202 | `report: align PR/CI first screen on canonical repair unit` | done |
-| #203 | `cli: converge start-here command language` | ready |
-| #204 | `receipt: standardize receipt lifecycle state` | blocked |
+| #203 | `cli: converge start-here command language` | done |
+| #204 | `receipt: standardize receipt lifecycle state` | ready |
 | #205 | `output: standardize no-output and fail-closed states` | blocked |
 | #206 | `policy(language): define preview promotion proof criteria` | blocked |
 | #207 | `dogfood: record external-style start-here receipts` | blocked |

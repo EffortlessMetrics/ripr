@@ -198,6 +198,7 @@ mod tests {
         assert!(HELP.contains("ripr doctor"));
         assert!(HELP.contains("Start-here path:"));
         assert!(HELP.contains("Safe next action means repair one named gap"));
+        assert!(HELP.contains("Missing artifact, stale evidence, wrong root"));
         assert!(HELP.contains("Verify command, receipt command, and receipt path"));
         assert!(HELP.contains("Preview-limited evidence stays syntax-first"));
     }
@@ -341,7 +342,9 @@ mod tests {
         assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
         assert!(DOCTOR_HELP.contains("Start-here next step:"));
+        assert!(DOCTOR_HELP.contains("safe next action means repair one named gap"));
         assert!(DOCTOR_HELP.contains("missing artifact, stale evidence, wrong root"));
+        assert!(DOCTOR_HELP.contains("verify command, receipt command, and receipt path"));
         assert!(LSP_HELP.starts_with("Start the experimental ripr LSP server"));
         assert!(LSP_HELP.contains("--stdio"));
         assert!(LSP_HELP.contains("--version"));

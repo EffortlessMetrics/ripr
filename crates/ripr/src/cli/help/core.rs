@@ -123,9 +123,13 @@ Start-here next step:
   - after setup is valid, run `ripr first-pr --root . --base origin/main --head HEAD`
     or this repo's `cargo xtask first-pr` wrapper
   - open `target/ripr/reports/start-here.md` first when it exists
+  - safe next action means repair one named gap, regenerate missing or malformed
+    evidence, refresh stale evidence, fix wrong-root setup, or stop on no-action
   - treat missing artifact, stale evidence, wrong root, malformed artifact,
     no actionable gap, and preview-limited evidence as explicit stop or
     regeneration states, not hidden success
+  - verify command, receipt command, and receipt path are the static proof rail;
+    receipts stay advisory and do not prove runtime adequacy or gate approval
 "#;
 pub(super) const LSP_HELP: &str = r#"Start the experimental ripr LSP server over stdio.
 

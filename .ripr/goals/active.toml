@@ -78,7 +78,7 @@ commands = [
 
 [[work_item]]
 id = "cli/start-here-command-language"
-status = "ready"
+status = "done"
 branch = "cli-start-here-command-language"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
@@ -96,16 +96,19 @@ commands = [
 
 [[work_item]]
 id = "receipt/lifecycle-state-convergence"
-status = "blocked"
+status = "ready"
 branch = "receipt-lifecycle-state-convergence"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
 spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
 plan = "plans/start-here-surface-convergence/implementation-plan.md"
-blocked_by = [
-  "cli/start-here-command-language",
-]
 acceptance = "Surfaces distinguish found, missing, stale, gap mismatch, improved, unchanged, and not-applicable receipt states while keeping receipts static movement proof only."
+commands = [
+  "cargo test -p ripr --lib receipt",
+  "cargo test -p xtask dogfood",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "output/no-output-fail-closed-states"

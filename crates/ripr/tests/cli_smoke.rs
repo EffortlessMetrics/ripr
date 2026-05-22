@@ -1331,6 +1331,10 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     assert!(stdout.contains("Analysis mode default: draft"));
     assert!(stdout.contains("LSP seam diagnostics default: true"));
     assert!(stdout.contains("Suppressions path: .ripr/suppressions.toml"));
+    assert!(stdout.contains("Start-here packet: target/ripr/reports/start-here.md"));
+    assert!(stdout.contains("Safe next action: run `ripr first-pr --root"));
+    assert!(stdout.contains("Recovery states: missing artifact, stale evidence, wrong root"));
+    assert!(stdout.contains("Proof rail: verify command, receipt command, and receipt path"));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
