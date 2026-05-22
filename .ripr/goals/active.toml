@@ -91,7 +91,7 @@ commands = [
 
 [[work_item]]
 id = "first-pr/one-screen-recommendation"
-status = "ready"
+status = "done"
 branch = "first-pr-one-screen-recommendation"
 stackable = false
 proposal = "RIPR-PROP-0009"
@@ -115,7 +115,7 @@ commands = [
 
 [[work_item]]
 id = "outcome/reviewer-native-receipts"
-status = "blocked"
+status = "ready"
 branch = "outcome-reviewer-native-receipts"
 stackable = false
 proposal = "RIPR-PROP-0009"

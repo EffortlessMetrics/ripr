@@ -277,7 +277,7 @@ cargo xtask check-pr
 
 ### Work item: first-pr/one-screen-recommendation
 
-Status: ready
+Status: done
 
 Linked proposal: `RIPR-PROP-0009`
 
@@ -296,13 +296,14 @@ Branch: `first-pr-one-screen-recommendation`
 
 Issue: n/a
 
-PR: n/a
+PR: #176
 
 #### Goal
 
 Stabilize a golden-backed first screen for top gap/no-action, changed behavior,
-missing discriminator, focused proof intent, verify command, receipt command,
-and static-advisory boundary.
+current evidence strength, missing discriminator, focused proof intent, verify
+command, receipt command or explicit unavailable reason, and static-advisory
+boundary.
 
 #### Production delta
 
@@ -311,8 +312,10 @@ stable.
 
 #### Acceptance
 
-The first screen always names a top actionable gap or no-action state and gives
-one focused next step with proof and receipt guidance.
+The first screen names a top actionable gap or no-action state and gives one
+focused next step with proof and receipt guidance. Receipt guidance may be an
+exact command when the gap ledger carries one, or an explicit unavailable reason
+when the receipt command is not available yet.
 
 #### Proof commands
 
@@ -345,7 +348,7 @@ cargo xtask check-pr
 
 ### Work item: outcome/reviewer-native-receipts
 
-Status: blocked
+Status: ready
 
 Linked proposal: `RIPR-PROP-0009`
 
