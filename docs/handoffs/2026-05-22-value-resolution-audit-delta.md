@@ -14,10 +14,11 @@ delta. The selected shape was already supported by the current analyzer, so the
 report result is intentionally zero movement rather than a hidden improvement
 claim.
 
-This handoff preserves the durable audit-delta state for later dogfood and
-closeout work. It does not change analyzer behavior, output schemas, PR/CI
-rendering, editor behavior, gates, badges, release behavior, generated tests,
-source edits, provider calls, or mutation execution.
+This handoff preserves the durable audit-delta state for closeout work and the
+boundary later carried by the dogfood receipt. It does not change analyzer
+behavior, output schemas, PR/CI rendering, editor behavior, gates, badges,
+release behavior, generated tests, source edits, provider calls, or mutation
+execution.
 
 ## Selected Sub-Shape
 
@@ -104,8 +105,8 @@ regression.
   the current analyzer.
 - Unsupported value flows remain named static limitations rather than user test
   debt.
-- The next useful work is proof-oriented dogfood that records material
-  value-resolution receipts and non-claims.
+- The checked dogfood receipt preserves the same zero-movement boundary and
+  non-claims before closeout.
 
 ## What This Does Not Prove
 
@@ -138,8 +139,6 @@ git diff --check
 
 ## Next Work
 
-`dogfood/value-resolution-receipts` is the next ready work item. It should
-record material value-resolution dogfood receipts with canonical gap identity,
-raw finding context, before/after limitation movement or no-movement state,
-repair route or limitation state, verify command where applicable, and explicit
-static-evidence non-claims.
+This audit-delta handoff is closed by
+[Lane 1 Value Resolution Audit Fixes Closeout](2026-05-23-lane1-value-resolution-audit-fixes-closeout.md).
+No successor goal is selected from this handoff.

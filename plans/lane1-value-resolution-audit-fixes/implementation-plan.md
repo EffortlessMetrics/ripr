@@ -1,6 +1,6 @@
 # Lane 1 Value Resolution Audit Fixes Implementation Plan
 
-Status: active
+Status: closed
 Owner: Lane 1
 Linked proposal: n/a
 Linked specs:
@@ -287,9 +287,9 @@ work from this reporting PR.
 ### Notes
 
 This slice records a zero movement result because the selected fixture-backed
-sub-shape was already handled before analyzer code changed. The rail continues
-to dogfood receipts so the remaining limitation state and non-claims are
-captured before closeout. The durable state is recorded in
+sub-shape was already handled before analyzer code changed. The follow-up
+dogfood receipt captured the remaining limitation state and non-claims before
+closeout. The durable state is recorded in
 `docs/handoffs/2026-05-22-value-resolution-audit-delta.md`.
 
 ## Work Item: `dogfood/value-resolution-receipts`
@@ -352,7 +352,7 @@ the remaining `activation_value_unresolved` limitation count and non-claims.
 
 ## Work Item: `campaign/value-resolution-audit-closeout`
 
-Status: ready
+Status: done
 Blocks: n/a
 Blocked by:
 - `dogfood/value-resolution-receipts`

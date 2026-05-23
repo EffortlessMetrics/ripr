@@ -3347,8 +3347,8 @@ git diff --check
 
 Tracker ID: `lane1-value-resolution-audit-fixes`
 
-Status: active. `.ripr/goals/active.toml` selects this tracker after the
-closed finding-alignment burn-down rail recorded `no_current_goal = true`.
+Status: closed. `.ripr/goals/active.toml` now records `status = "closed"` and
+`no_current_goal = true` after this rail's closeout.
 
 GitHub issue: [swarm #285](https://github.com/EffortlessMetrics/ripr-swarm/issues/285)
 
@@ -3356,6 +3356,7 @@ Sources of truth:
 
 - [Lane 1 Value Resolution Audit Fixes tracker](lanes/LANE_1_VALUE_RESOLUTION_AUDIT_FIXES.md)
 - [Lane 1 Value Resolution Audit Fixes implementation plan](../plans/lane1-value-resolution-audit-fixes/implementation-plan.md)
+- [Lane 1 Value Resolution Audit Fixes closeout](handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md)
 - [Lane 1 Finding Alignment Burn-Down closeout](handoffs/2026-05-22-lane1-finding-alignment-burndown-closeout.md)
 - [RIPR-SPEC-0001](specs/RIPR-SPEC-0001-static-exposure-loop.md)
   static exposure loop
@@ -3396,7 +3397,7 @@ Work items:
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by existing value-resolution support and keep unsupported value flows named. |
 | `report/value-resolution-audit-delta` | done | Recorded zero-movement Lane 1 audit, scorecard, and trend evidence for the already-supported selected bucket without changing claims; see the [Value Resolution Audit Delta](handoffs/2026-05-22-value-resolution-audit-delta.md). |
 | `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw finding context, zero movement, remaining limitations, and static-evidence non-claims. |
-| `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, downstream impact, and next-step selection. |
+| `campaign/value-resolution-audit-closeout` | done | Closed the rail with proof, remaining limits, downstream non-impact, and no selected successor; see the [closeout](handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md). |
 
 Blocking conditions:
 

@@ -1,6 +1,6 @@
 # Lane 1: Value Resolution Audit Fixes
 
-Status: active
+Status: closed
 
 Opened: 2026-05-22
 
@@ -88,7 +88,7 @@ Lane 1 does not own:
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by the existing value-resolution path while unsupported flows remain named limitations. |
 | `report/value-resolution-audit-delta` | done | Recorded zero-movement audit, scorecard, and trend evidence for the already-supported sub-shape; see the [Value Resolution Audit Delta](../handoffs/2026-05-22-value-resolution-audit-delta.md). |
 | `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw context, zero movement, remaining limitations, and non-claims. |
-| `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, and next-step selection. |
+| `campaign/value-resolution-audit-closeout` | done | Closed the rail with proof, remaining limits, and no selected successor; see the [Lane 1 Value Resolution Audit Fixes Closeout](../handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md). |
 
 ## Audit Delta
 
@@ -122,6 +122,9 @@ new product claim.
 
 The durable handoff is
 [Value Resolution Audit Delta](../handoffs/2026-05-22-value-resolution-audit-delta.md).
+
+The rail closeout is
+[Lane 1 Value Resolution Audit Fixes Closeout](../handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md).
 
 ## Dogfood Receipt
 
