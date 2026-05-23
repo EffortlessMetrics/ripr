@@ -22,11 +22,11 @@ before promoting batches back to the source repository.
 Use current repo state as the source of truth before starting or reviewing work:
 
 ```bash
-git fetch origin --prune
-git status --short --branch
-gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-gh pr list --repo EffortlessMetrics/ripr --state open
-cargo xtask goals next
+rtk git fetch origin --prune
+rtk git status --short --branch
+rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+rtk gh pr list --repo EffortlessMetrics/ripr --state open
+rtk cargo xtask goals next
 ```
 
 Treat ordinary development PRs in `EffortlessMetrics/ripr` as source/swarm
@@ -129,8 +129,8 @@ Before running proof:
 Prove CX53 primary:
 
 ```bash
-gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
-gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --limit 1
+rtk gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
+rtk gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --limit 1
 ```
 
 The run must finish with:
@@ -185,7 +185,7 @@ Development machines and orchestrators should clone this repository
 side-by-side with any existing `EffortlessMetrics/ripr` checkout:
 
 ```bash
-git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
+rtk git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
 ```
 
 Do not retarget a dirty source-repo clone in place. Preserve or discard any
@@ -218,10 +218,10 @@ Promotion remains a source-repo pull request. Before opening it, confirm the
 promotion is carrying reviewed swarm state rather than active construction:
 
 ```bash
-gh pr list --repo EffortlessMetrics/ripr --state open
-gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection
-gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --branch main --limit 1
+rtk gh pr list --repo EffortlessMetrics/ripr --state open
+rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+rtk gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection
+rtk gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --branch main --limit 1
 ```
 
 The operator should see no ordinary source-repo development PRs, a protected
@@ -233,14 +233,14 @@ or not release-relevant in the promotion PR body.
 Create the source promotion branch with a fast-forward-only merge:
 
 ```bash
-git clone git@github.com:EffortlessMetrics/ripr.git ripr-promote
+rtk git clone git@github.com:EffortlessMetrics/ripr.git ripr-promote
 cd ripr-promote
-git remote add swarm git@github.com:EffortlessMetrics/ripr-swarm.git
-git fetch origin --prune --tags
-git fetch swarm --prune --tags
-git switch -c promote/swarm-main origin/main
-git merge --ff-only swarm/main
-git push origin promote/swarm-main
+rtk git remote add swarm git@github.com:EffortlessMetrics/ripr-swarm.git
+rtk git fetch origin --prune --tags
+rtk git fetch swarm --prune --tags
+rtk git switch -c promote/swarm-main origin/main
+rtk git merge --ff-only swarm/main
+rtk git push origin promote/swarm-main
 ```
 
 If `git merge --ff-only swarm/main` fails, stop. Do not resolve conflicts inside
