@@ -1981,6 +1981,9 @@ fn outcome_prints_markdown_receipt_by_default() -> Result<(), String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("# ripr targeted-test outcome report"));
+    assert!(stdout.contains("## Reviewer Receipt"));
+    assert!(stdout.contains("What RIPR flagged before"));
+    assert!(stdout.contains("Reviewer should not believe"));
     assert!(stdout.contains("| moved | 1 |"));
     assert!(stdout.contains("weakly_gripped -> strongly_gripped"));
     assert!(stdout.contains("does not run mutation testing"));
@@ -2012,6 +2015,8 @@ fn outcome_writes_json_receipt_when_requested() -> Result<(), String> {
     let json = std::fs::read_to_string(&out_path).map_err(|e| format!("read outcome json: {e}"))?;
     assert!(json.contains(r#""schema_version": "0.1""#));
     assert!(json.contains(r#""status": "advisory""#));
+    assert!(json.contains(r#""reviewer_receipt""#));
+    assert!(json.contains(r#""reviewer_should_not_believe""#));
     assert!(json.contains(r#""moved": 1"#));
 
     let _ = std::fs::remove_dir_all(&workspace);

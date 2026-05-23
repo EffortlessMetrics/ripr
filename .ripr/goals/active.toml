@@ -100,7 +100,7 @@ commands = [
 
 [[work_item]]
 id = "outcome/reviewer-native-receipts"
-status = "ready"
+status = "done"
 branch = "outcome-reviewer-native-receipts"
 stackable = false
 blocked_by = [
@@ -117,7 +117,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-pr-boundary-gap-demo"
-status = "blocked"
+status = "ready"
 branch = "fixtures-first-pr-boundary-gap-demo"
 stackable = false
 blocked_by = [

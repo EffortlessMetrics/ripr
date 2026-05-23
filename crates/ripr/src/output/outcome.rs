@@ -148,6 +148,7 @@ pub(crate) fn render_targeted_test_outcome_json(
             "new": report.new.len(),
             "removed": report.removed.len()
         },
+        "reviewer_receipt": reviewer_receipt_json(report),
         "moved": report.moved.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
         "unchanged": report.unchanged.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
         "regressed": report.regressed.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
@@ -209,6 +210,8 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
     out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
     out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
 
+    push_reviewer_receipt_md(&mut out, report);
+
     out.push_str("## Summary\n\n");
     out.push_str("| Bucket | Count |\n| --- | ---: |\n");
     out.push_str(&format!("| moved | {} |\n", report.moved.len()));
@@ -237,6 +240,200 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
         "\nThis report compares two static repo-exposure snapshots. It is advisory and does not run mutation testing.\n",
     );
     out
+}
+
+fn reviewer_receipt_json(report: &TargetedTestOutcomeReport) -> Value {
+    serde_json::json!({
+        "what_changed": reviewer_what_changed(report),
+        "what_ripr_flagged_before": reviewer_flagged_before(report),
+        "focused_proof_observed": reviewer_focused_proof_observed(report),
+        "movement": reviewer_movement(report),
+        "remaining_weak_or_unknown": reviewer_remaining_weak_or_unknown(report),
+        "reviewer_should_believe": reviewer_should_believe(report),
+        "reviewer_should_not_believe": reviewer_should_not_believe()
+    })
+}
+
+fn push_reviewer_receipt_md(out: &mut String, report: &TargetedTestOutcomeReport) {
+    out.push_str("## Reviewer Receipt\n\n");
+    out.push_str(&format!(
+        "- What changed: {}\n",
+        reviewer_what_changed(report)
+    ));
+    out.push_str(&format!(
+        "- What RIPR flagged before: {}\n",
+        reviewer_flagged_before(report)
+    ));
+    out.push_str(&format!(
+        "- Focused proof observed: {}\n",
+        reviewer_focused_proof_observed(report)
+    ));
+    out.push_str(&format!(
+        "- Static movement: {}\n",
+        reviewer_movement(report)
+    ));
+    out.push_str("- What remains weak or unknown:\n");
+    for item in reviewer_remaining_weak_or_unknown(report) {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push_str("- Reviewer should believe:\n");
+    for item in reviewer_should_believe(report) {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push_str("- Reviewer should not believe:\n");
+    for item in reviewer_should_not_believe() {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push('\n');
+}
+
+fn reviewer_what_changed(report: &TargetedTestOutcomeReport) -> String {
+    format!(
+        "Compared `{}` to `{}`: {} moved, {} unchanged, {} regressed, {} new, {} removed.",
+        md_escape(&report.before_path),
+        md_escape(&report.after_path),
+        report.moved.len(),
+        report.unchanged.len(),
+        report.regressed.len(),
+        report.new.len(),
+        report.removed.len()
+    )
+}
+
+fn reviewer_flagged_before(report: &TargetedTestOutcomeReport) -> String {
+    let first = report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+        .next();
+    match first {
+        Some(movement) => format!(
+            "`{}` at {}:{} was `{}` before verification.",
+            md_escape(&movement.seam_id),
+            md_escape(&movement.file),
+            movement.line,
+            movement.before
+        ),
+        None if !report.removed.is_empty() => {
+            format!(
+                "{} seam(s) existed only in the before snapshot.",
+                report.removed.len()
+            )
+        }
+        None => "No before-snapshot seam carried into a movement bucket.".to_string(),
+    }
+}
+
+fn reviewer_focused_proof_observed(report: &TargetedTestOutcomeReport) -> String {
+    let first_delta = report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+        .flat_map(|movement| movement.evidence_delta.iter())
+        .next();
+    match first_delta {
+        Some(delta) => format!(
+            "The after snapshot shows static evidence movement such as `{}`; any test or output proof was added outside RIPR.",
+            md_escape(delta)
+        ),
+        None => {
+            "No rendered static evidence delta was visible; inspect the external test or output proof manually.".to_string()
+        }
+    }
+}
+
+fn reviewer_movement(report: &TargetedTestOutcomeReport) -> String {
+    if !report.moved.is_empty() {
+        return format!(
+            "{} seam(s) improved or changed without ranking lower.",
+            report.moved.len()
+        );
+    }
+    if !report.regressed.is_empty() {
+        return format!(
+            "{} seam(s) regressed in static evidence.",
+            report.regressed.len()
+        );
+    }
+    if !report.unchanged.is_empty() {
+        if report
+            .unchanged
+            .iter()
+            .any(|movement| !movement.evidence_delta.is_empty())
+        {
+            return format!(
+                "{} seam(s) stayed in the same static class while rendered evidence changed.",
+                report.unchanged.len()
+            );
+        }
+        return format!(
+            "{} seam(s) stayed unchanged; use the no-movement reason for review.",
+            report.unchanged.len()
+        );
+    }
+    "No matched seam movement was visible.".to_string()
+}
+
+fn reviewer_remaining_weak_or_unknown(report: &TargetedTestOutcomeReport) -> Vec<String> {
+    let mut items = Vec::new();
+    if !report.unchanged.is_empty() {
+        items.push(format!(
+            "{} seam(s) stayed unchanged after the supplied after snapshot.",
+            report.unchanged.len()
+        ));
+    }
+    if !report.regressed.is_empty() {
+        items.push(format!(
+            "{} seam(s) regressed and need reviewer attention.",
+            report.regressed.len()
+        ));
+    }
+    let unknown_total = unknown_after_count(report);
+    if unknown_total > 0 {
+        items.push(format!(
+            "{unknown_total} after-snapshot seam(s) still sit in unknown static classes."
+        ));
+    }
+    if !report.new.is_empty() {
+        items.push(format!(
+            "{} new seam(s) appear only in the after snapshot.",
+            report.new.len()
+        ));
+    }
+    if items.is_empty() {
+        items.push("No unchanged, regressed, new, or unknown-class seam was visible.".to_string());
+    }
+    items
+}
+
+fn reviewer_should_believe(report: &TargetedTestOutcomeReport) -> Vec<String> {
+    vec![
+        "RIPR compared the two supplied static repo-exposure artifacts.".to_string(),
+        reviewer_movement(report),
+        "Evidence deltas describe static movement in rendered artifacts only.".to_string(),
+    ]
+}
+
+fn reviewer_should_not_believe() -> Vec<String> {
+    vec![
+        "RIPR did not edit source or generate tests.".to_string(),
+        "This receipt is not runtime confirmation or mutation confirmation.".to_string(),
+        "This receipt is not merge approval, gate authority, or coverage completeness.".to_string(),
+    ]
+}
+
+fn unknown_after_count(report: &TargetedTestOutcomeReport) -> usize {
+    [
+        "activation_unknown",
+        "propagation_unknown",
+        "observation_unknown",
+        "discrimination_unknown",
+    ]
+    .iter()
+    .map(|class| count_for_class(&report.after_counts, class))
+    .sum()
 }
 
 pub(crate) fn display_path(path: &Path) -> String {
@@ -1056,14 +1253,144 @@ mod tests {
         );
         assert_eq!(value["status"], "advisory");
         assert_eq!(value["summary"]["moved"], 1);
+        assert_eq!(
+            value["reviewer_receipt"]["what_ripr_flagged_before"],
+            "`seam-a` at src/pricing.rs:42 was `weakly_gripped` before verification."
+        );
+        assert!(
+            value["reviewer_receipt"]["reviewer_should_not_believe"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item
+                    .as_str()
+                    .is_some_and(|text| text.contains("not runtime confirmation"))))
+        );
 
         let markdown = render_targeted_test_outcome_md(&report);
         assert!(markdown.contains("# ripr targeted-test outcome report"));
+        assert!(markdown.contains("## Reviewer Receipt"));
+        assert!(markdown.contains("What RIPR flagged before"));
+        assert!(markdown.contains("Reviewer should not believe"));
         assert!(markdown.contains("| moved | 1 |"));
         assert!(markdown.contains("## Unchanged"));
         assert!(markdown.contains("seam-same"));
         assert!(markdown.contains("new observed value: 100"));
         assert!(markdown.contains("weakly_gripped -> strongly_gripped"));
+        Ok(())
+    }
+
+    #[test]
+    fn reviewer_receipt_handles_removed_only_outcome() -> Result<(), String> {
+        let before = vec![targeted_static_seam("seam-removed", "weakly_gripped")];
+        let after = Vec::new();
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        let receipt = reviewer_receipt_json(&report);
+        assert_eq!(
+            receipt["what_ripr_flagged_before"],
+            "1 seam(s) existed only in the before snapshot."
+        );
+        assert_eq!(
+            receipt["focused_proof_observed"],
+            "No rendered static evidence delta was visible; inspect the external test or output proof manually."
+        );
+        assert_eq!(receipt["movement"], "No matched seam movement was visible.");
+        assert!(
+            receipt["remaining_weak_or_unknown"]
+                .as_array()
+                .is_some_and(
+                    |items| items.iter().any(|item| item.as_str().is_some_and(
+                        |text| text.contains("No unchanged, regressed, new, or unknown-class")
+                    ))
+                )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reviewer_receipt_handles_empty_outcome() -> Result<(), String> {
+        let before = Vec::new();
+        let after = Vec::new();
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        let receipt = reviewer_receipt_json(&report);
+        assert_eq!(
+            receipt["what_ripr_flagged_before"],
+            "No before-snapshot seam carried into a movement bucket."
+        );
+        assert_eq!(receipt["movement"], "No matched seam movement was visible.");
+        Ok(())
+    }
+
+    #[test]
+    fn reviewer_receipt_names_regression_unknown_and_new_followups() -> Result<(), String> {
+        let before = vec![targeted_static_seam("seam-regressed", "weakly_gripped")];
+        let after = vec![
+            targeted_static_seam("seam-regressed", "ungripped"),
+            targeted_static_seam("seam-new-unknown", "activation_unknown"),
+        ];
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        let receipt = reviewer_receipt_json(&report);
+        assert_eq!(
+            receipt["movement"],
+            "1 seam(s) regressed in static evidence."
+        );
+        let remaining = receipt["remaining_weak_or_unknown"]
+            .as_array()
+            .ok_or_else(|| "remaining_weak_or_unknown should be an array".to_string())?;
+        assert!(remaining.iter().any(|item| {
+            item.as_str()
+                .is_some_and(|text| text == "1 seam(s) regressed and need reviewer attention.")
+        }));
+        assert!(remaining.iter().any(|item| item.as_str().is_some_and(
+            |text| text == "1 after-snapshot seam(s) still sit in unknown static classes."
+        )));
+        assert!(remaining.iter().any(|item| {
+            item.as_str()
+                .is_some_and(|text| text == "1 new seam(s) appear only in the after snapshot.")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn reviewer_receipt_names_unchanged_outcome_without_delta() -> Result<(), String> {
+        let before = vec![targeted_static_seam("seam-same", "weakly_gripped")];
+        let after = vec![targeted_static_seam("seam-same", "weakly_gripped")];
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        let receipt = reviewer_receipt_json(&report);
+        assert_eq!(
+            receipt["movement"],
+            "1 seam(s) stayed unchanged; use the no-movement reason for review."
+        );
+        assert!(
+            receipt["remaining_weak_or_unknown"]
+                .as_array()
+                .is_some_and(|items| items
+                    .iter()
+                    .any(|item| item.as_str().is_some_and(|text| text
+                        == "1 seam(s) stayed unchanged after the supplied after snapshot.")))
+        );
         Ok(())
     }
 
