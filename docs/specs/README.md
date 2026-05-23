@@ -67,7 +67,7 @@ observable behavior.
 | [RIPR-SPEC-0054](RIPR-SPEC-0054-editor-adoption-assurance.md) | accepted | Editor adoption assurance |
 | [RIPR-SPEC-0055](RIPR-SPEC-0055-editor-actionable-gap-queue.md) | accepted | Editor actionable gap queue |
 | [RIPR-SPEC-0056](RIPR-SPEC-0056-public-actionable-projection.md) | accepted | Public actionable projection |
-| [RIPR-SPEC-0057](RIPR-SPEC-0057-ripr-swarm-repair-loop.md) | proposed | RIPR swarm repair loop |
-| [RIPR-SPEC-0058](RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md) | proposed | RIPR swarm external agent handoff |
+| [RIPR-SPEC-0057](RIPR-SPEC-0057-ripr-swarm-repair-loop.md) | accepted | RIPR swarm repair loop |
+| [RIPR-SPEC-0058](RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md) | accepted | RIPR swarm external agent handoff |
 | [RIPR-SPEC-0059](RIPR-SPEC-0059-actionable-surface-translation.md) | proposed | Actionable surface translation |
 | [RIPR-SPEC-0060](RIPR-SPEC-0060-source-of-truth-stack.md) | accepted | Source-of-truth stack |

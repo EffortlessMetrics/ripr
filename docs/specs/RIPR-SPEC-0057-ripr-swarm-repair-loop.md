@@ -1,6 +1,11 @@
 # RIPR-SPEC-0057: RIPR Swarm Repair Loop
 
-Status: proposed
+Status: accepted
+
+Accepted: 2026-05-20. The current implementation mapping below records the
+implemented `ripr-swarm plan`, `ripr-swarm attempt --dry-run`, readiness,
+swarm-plan, outcome, workflow, fixture, and dogfood surfaces. The accepted
+scope remains advisory, dry-run-first, and source-edit-free.
 
 ## Problem
 

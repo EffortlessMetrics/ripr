@@ -3834,7 +3834,17 @@ id = "RIPR-SPEC-0058"
 name = "RIPR swarm external agent handoff"
 spec = "docs/specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md"
 tests = []
-fixtures = []
+tests = [
+  "xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context",
+  "xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run",
+  "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
+  "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
+  "xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states",
+]
+fixtures = [
+  "fixtures/swarm-plan-packet-corpus",
+  "fixtures/actionable-gap-outcomes-corpus",
+]
 code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md",
