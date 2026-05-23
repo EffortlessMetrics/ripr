@@ -39,6 +39,10 @@ const MAX_RELATED_TESTS_PER_PACKET: usize = 8;
 const RUNTIME_CONFIRMATION_NOTE: &str =
     "optional cargo-mutants confirmation; ripr reports static evidence only";
 
+/// Boundary surfaced as a typed field so agent consumers can carry the
+/// same non-claim language as `ripr first-pr` without scraping prose.
+const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
+
 /// Render every actionable `ClassifiedSeam` in `classified` as an agent
 /// packet, returning a JSON object with a `packets` array. Strongly-gripped,
 /// intentional, and suppressed seams are skipped. `Opaque` seams emit a
@@ -178,6 +182,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
             "copyable_packet": pasteable_packet,
         },
         "runtime_confirmation": RUNTIME_CONFIRMATION_NOTE,
+        "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
     });
     let envelope = json!({
         "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
@@ -414,21 +419,24 @@ fn pasteable_gap_repair_packet(
     let context = gap_record_packet_context(gap_ledger_path, record, route);
     let repair = gap_record_packet_repair(route);
     let verification = gap_record_packet_verification(record, verify_command);
+    let receipt = gap_record_packet_receipt(record);
     let do_not_do = gap_record_packet_do_not_do(record);
-    let markdown = pasteable_packet_markdown(
-        &task,
-        &context,
-        &repair,
-        &verification,
+    let markdown = pasteable_packet_markdown(PasteablePacketSections {
+        task: &task,
+        context: &context,
+        repair: &repair,
+        verification: &verification,
+        receipt: &receipt,
         stop_conditions,
-        &do_not_do,
+        do_not_do: &do_not_do,
         authority_boundary,
-    );
+    });
     json!({
         "task": task,
         "context": context,
         "repair": repair,
         "verification": verification,
+        "receipt": receipt,
         "stop_conditions": stop_conditions,
         "do_not_do": do_not_do,
         "authority_boundary": authority_boundary,
@@ -599,6 +607,26 @@ fn gap_record_packet_verification(record: &GapRecord, verify_command: &str) -> V
     verification
 }
 
+fn gap_record_packet_receipt(record: &GapRecord) -> Vec<String> {
+    let mut receipt = Vec::new();
+    if let Some(receipt_command) = record.receipt_command.as_deref() {
+        receipt.push(format!("Run `{receipt_command}` after verification."));
+    }
+    if let Some(receipt_path) = record
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.path.as_deref())
+    {
+        receipt.push(format!(
+            "Keep receipt artifact `{receipt_path}` with the review."
+        ));
+    }
+    if receipt.is_empty() {
+        receipt.push("No receipt command or path was supplied by the gap record.".to_string());
+    }
+    receipt
+}
+
 fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
     let mut guidance = vec![
         "Do not edit production code unless the focused proof exposes a real product defect."
@@ -614,30 +642,35 @@ fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
     guidance
 }
 
-fn pasteable_packet_markdown(
-    task: &str,
-    context: &[String],
-    repair: &[String],
-    verification: &[String],
-    stop_conditions: &[String],
-    do_not_do: &[String],
-    authority_boundary: &str,
-) -> String {
+struct PasteablePacketSections<'a> {
+    task: &'a str,
+    context: &'a [String],
+    repair: &'a [String],
+    verification: &'a [String],
+    receipt: &'a [String],
+    stop_conditions: &'a [String],
+    do_not_do: &'a [String],
+    authority_boundary: &'a str,
+}
+
+fn pasteable_packet_markdown(sections: PasteablePacketSections<'_>) -> String {
     let mut out = String::new();
     out.push_str("## Task\n");
-    out.push_str(task);
+    out.push_str(sections.task);
     out.push_str("\n\n## Context\n");
-    push_markdown_bullets(&mut out, context);
+    push_markdown_bullets(&mut out, sections.context);
     out.push_str("\n## Repair\n");
-    push_markdown_bullets(&mut out, repair);
+    push_markdown_bullets(&mut out, sections.repair);
     out.push_str("\n## Verification\n");
-    push_markdown_bullets(&mut out, verification);
+    push_markdown_bullets(&mut out, sections.verification);
+    out.push_str("\n## Receipt\n");
+    push_markdown_bullets(&mut out, sections.receipt);
     out.push_str("\n## Stop Conditions\n");
-    push_markdown_bullets(&mut out, stop_conditions);
+    push_markdown_bullets(&mut out, sections.stop_conditions);
     out.push_str("\n## Do Not Do\n");
-    push_markdown_bullets(&mut out, do_not_do);
+    push_markdown_bullets(&mut out, sections.do_not_do);
     out.push_str("\n## Authority\n");
-    out.push_str(authority_boundary);
+    out.push_str(sections.authority_boundary);
     out
 }
 
@@ -922,8 +955,12 @@ fn push_packet_json(
     out.push_str(&evidence_record.to_string());
     out.push_str(",\n");
     out.push_str(&format!(
-        "      \"runtime_confirmation\": \"{}\"\n",
+        "      \"runtime_confirmation\": \"{}\",\n",
         json_escape(RUNTIME_CONFIRMATION_NOTE)
+    ));
+    out.push_str(&format!(
+        "      \"static_evidence_boundary\": \"{}\"\n",
+        json_escape(STATIC_EVIDENCE_BOUNDARY)
     ));
     out.push_str("    }");
 }
@@ -1557,6 +1594,9 @@ mod tests {
         if !json.contains("\"runtime_confirmation\":") {
             return Err(format!("missing runtime_confirmation: {json}"));
         }
+        if !json.contains("\"static_evidence_boundary\": \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\"") {
+            return Err(format!("missing static_evidence_boundary: {json}"));
+        }
         Ok(())
     }
 
@@ -1887,6 +1927,13 @@ mod tests {
             packet.get("confidence").is_none(),
             "gap packets must not carry generic confidence: {json}"
         );
+        assert_eq!(
+            packet
+                .get("static_evidence_boundary")
+                .and_then(serde_json::Value::as_str),
+            Some(STATIC_EVIDENCE_BOUNDARY),
+            "gap packets should carry the typed static boundary: {json}"
+        );
         assert!(
             json.contains("Stop if this is baseline debt."),
             "expected stop condition from GapRecord: {json}"
@@ -1904,6 +1951,7 @@ mod tests {
             "## Context",
             "## Repair",
             "## Verification",
+            "## Receipt",
             "## Stop Conditions",
             "## Do Not Do",
         ] {
@@ -1956,6 +2004,10 @@ mod tests {
         assert!(
             copyable_markdown.contains("- cargo xtask fixtures boundary_gap"),
             "copyable packet should include verification: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains("- Run `ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json` after verification."),
+            "copyable packet should include receipt instructions: {copyable_markdown}"
         );
         assert!(
             copyable_markdown.contains("- Stop if this is baseline debt."),

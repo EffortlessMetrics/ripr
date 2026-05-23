@@ -145,7 +145,7 @@ commands = [
 
 [[work_item]]
 id = "surfaces/first-useful-loop-convergence"
-status = "ready"
+status = "done"
 branch = "surfaces-first-useful-loop-convergence"
 stackable = false
 acceptance = "Generated CI, VS Code, and agent packets mirror the same changed behavior, missing discriminator, focused test intent, verify command, receipt boundary, and advisory/static non-claims as the CLI first screen."
@@ -154,6 +154,23 @@ commands = [
   "cargo xtask lsp-cockpit-report",
   "npm --prefix editors/vscode run compile",
   "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/first-useful-pr-loop-continuation-closeout"
+status = "ready"
+branch = "campaign-first-useful-pr-loop-continuation-closeout"
+stackable = false
+acceptance = "Close the First Useful PR Loop continuation with proof that the CLI first screen, CI summary, VS Code packets, agent packets, receipts, output contracts, and support-tier boundaries now tell one consistent static-advisory repair story, then record the next campaign selection state."
+commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
   "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]

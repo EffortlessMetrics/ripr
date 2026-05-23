@@ -7707,6 +7707,12 @@ const ACTIONABLE_GAP_OUTCOMES_REQUIRED_CASES: &[(&str, &str, &str)] = &[
 ];
 
 const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
+const FIRST_PR_BOUNDARY_CHANGED_BEHAVIOR: &str = "amount >= threshold";
+const FIRST_PR_BOUNDARY_CURRENT_EVIDENCE_STRENGTH: &str = "Static evidence found related Rust test context, but the current proof is weak because the discriminator is missing.";
+const FIRST_PR_BOUNDARY_MISSING_DISCRIMINATOR: &str =
+    "Equality-boundary assertion for the changed behavior.";
+const FIRST_PR_BOUNDARY_FOCUSED_PROOF_INTENT: &str =
+    "Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).";
 const FIRST_PR_STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str, &str)] = &[
@@ -10449,6 +10455,9 @@ fn validate_editor_first_pr_bridge_packet(
             "editor first-pr bridge case {case} receipt_movement must be {expected_movement}"
         ));
     }
+    if editor_first_pr_bridge_case_requires_first_screen_contract(case) {
+        validate_editor_first_pr_bridge_first_screen_contract(case, packet, violations);
+    }
     for field in [
         "runtime_adequacy_claim",
         "mutation_proof_claim",
@@ -10459,6 +10468,51 @@ fn validate_editor_first_pr_bridge_packet(
             violations.push(format!(
                 "editor first-pr bridge case {case} first-pr-status must deny {field}"
             ));
+        }
+    }
+}
+
+fn editor_first_pr_bridge_case_requires_first_screen_contract(case: &str) -> bool {
+    matches!(
+        case,
+        "packet_found_repairable"
+            | "receipt_improved_packet_ready"
+            | "receipt_unchanged_packet_ready"
+    )
+}
+
+fn validate_editor_first_pr_bridge_first_screen_contract(
+    case: &str,
+    packet: &Value,
+    violations: &mut Vec<String>,
+) {
+    for (field, expected) in [
+        ("changed_behavior", FIRST_PR_BOUNDARY_CHANGED_BEHAVIOR),
+        (
+            "current_evidence_strength",
+            FIRST_PR_BOUNDARY_CURRENT_EVIDENCE_STRENGTH,
+        ),
+        (
+            "missing_discriminator",
+            FIRST_PR_BOUNDARY_MISSING_DISCRIMINATOR,
+        ),
+        (
+            "focused_proof_intent",
+            FIRST_PR_BOUNDARY_FOCUSED_PROOF_INTENT,
+        ),
+        (
+            "static_evidence_boundary",
+            FIRST_PR_STATIC_EVIDENCE_BOUNDARY,
+        ),
+    ] {
+        match json_string_field(packet, field) {
+            Some(value) if value == expected => {}
+            Some(value) => violations.push(format!(
+                "editor first-pr bridge case {case} first-pr-status {field} must be {expected:?}, got {value:?}"
+            )),
+            None => violations.push(format!(
+                "editor first-pr bridge case {case} first-pr-status must name {field}"
+            )),
         }
     }
 }
@@ -34693,6 +34747,13 @@ fn dogfood_editor_first_pr_bridge_run(
             }
             packet_state =
                 json_string_field(&packet, "packet_state").unwrap_or_else(|| "missing".to_string());
+            if editor_first_pr_bridge_case_requires_first_screen_contract(&scenario.name) {
+                validate_editor_first_pr_bridge_first_screen_contract(
+                    &scenario.name,
+                    &packet,
+                    &mut errors,
+                );
+            }
             safe_actions = json_string_array_field(&packet, "safe_actions");
             suppressed_actions = json_string_array_field(&packet, "suppressed_actions");
             receipt_movement = json_string_field(&packet, "receipt_movement");
@@ -44911,10 +44972,22 @@ fn write_pr_actionable_top_packet(
     if let Some(source_file) = pr_string_path(packet, &["source_file"]) {
         body.push_str(&format!("- source: `{}`\n", md_escape(&source_file)));
     }
+    if let Some(changed) = pr_string_path(packet, &["changed_behavior"]) {
+        body.push_str(&format!("- Changed behavior: {}\n", md_escape(&changed)));
+    }
     body.push_str(&format!(
         "- repair kind: `{}`\n",
         pr_string_path(packet, &["repair_kind"]).unwrap_or_else(|| "unknown".to_string())
     ));
+    if let Some(missing) = pr_packet_missing_discriminator(packet) {
+        body.push_str(&format!(
+            "- Missing discriminator: {}\n",
+            md_escape(&missing)
+        ));
+    }
+    if let Some(intent) = pr_packet_focused_proof_intent(packet) {
+        body.push_str(&format!("- Focused proof intent: {}\n", md_escape(&intent)));
+    }
     if let Some(related) = pr_related_test_summary(packet) {
         body.push_str(&format!("- related test or observer: {related}\n"));
     }
@@ -44929,6 +45002,27 @@ fn write_pr_actionable_top_packet(
     {
         body.push_str(&format!("- receipt: `{}`\n", md_escape(&receipt)));
     }
+}
+
+fn pr_packet_missing_discriminator(packet: &Value) -> Option<String> {
+    pr_string_path(packet, &["missing_discriminator"])
+        .or_else(|| {
+            audit_get(packet, &["missing_discriminators"])
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| pr_string_path(item, &["value"]))
+        })
+        .or_else(|| pr_string_path(packet, &["candidate_value_or_observer"]))
+        .or_else(|| pr_string_path(packet, &["assertion_shape"]))
+}
+
+fn pr_packet_focused_proof_intent(packet: &Value) -> Option<String> {
+    pr_string_path(packet, &["focused_proof_intent"])
+        .or_else(|| pr_string_path(packet, &["recommended_repair"]))
+        .or_else(|| {
+            pr_string_path(packet, &["assertion_shape"])
+                .map(|assertion| format!("Add or strengthen `{assertion}`."))
+        })
 }
 
 fn pr_related_test_summary(packet: &Value) -> Option<String> {
@@ -56116,7 +56210,11 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
                     "gap_state": "actionable",
                     "public_projection_eligible": true,
                     "source_file": "src/pricing.rs",
+                    "changed_behavior": "amount >= threshold",
                     "repair_kind": "add_boundary_assertion",
+                    "missing_discriminators": [
+                        {"value": "amount == threshold"}
+                    ],
                     "recommended_repair": "Add exact assertion for amount == threshold.",
                     "verify_command": "ripr agent verify --root . --json",
                     "receipt_command_or_path": "ripr agent receipt --root . --json",
@@ -56170,6 +56268,11 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
             "- blocked/static-limited gaps: `3` static limitation(s), `1` static-limited packet(s)"
         ));
         assert!(body.contains("- canonical gap: `gap:abc`"));
+        assert!(body.contains("- Changed behavior: amount >= threshold"));
+        assert!(body.contains("- Missing discriminator: amount == threshold"));
+        assert!(
+            body.contains("- Focused proof intent: Add exact assertion for amount == threshold.")
+        );
         assert!(
             body.contains("- related test or observer: `tests/pricing.rs:42` `discount_boundary`")
         );

@@ -146,7 +146,7 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
 
     if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
         let rendered = render_agent_packet_from_gap_ledger(gap_ledger, gap_id)?;
-        println!("{rendered}");
+        print!("{rendered}");
         return Ok(());
     }
 
@@ -166,7 +166,7 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
     }
 
     let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
-    println!("{rendered}");
+    print!("{rendered}");
     Ok(())
 }
 
@@ -1350,6 +1350,7 @@ jobs:
               start_missing="$(jq -r '.selected.missing_discriminator // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_focused="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_boundary="$(jq -r '.selected.static_evidence_boundary // "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."' "$start_json" 2>/dev/null || echo unknown)"
               start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_limit="$(jq -r 'if .selected.static_limit_kind then (.selected.static_limit_kind + (if .selected.static_limit_detail then ": " + .selected.static_limit_detail else "" end)) else "none" end' "$start_json" 2>/dev/null || echo unknown)"
@@ -1369,6 +1370,7 @@ jobs:
               start_missing="$(markdown_inline "$start_missing")"
               start_repair="$(markdown_inline "$start_repair")"
               start_focused="$(markdown_inline "$start_focused")"
+              start_boundary="$(markdown_inline "$start_boundary")"
               start_target="$(markdown_inline "$start_target")"
               start_related="$(markdown_inline "$start_related")"
               start_limit="$(markdown_inline "$start_limit")"
@@ -1388,6 +1390,7 @@ jobs:
               echo "- Current evidence strength: \`$start_evidence\`"
               echo "- Missing discriminator: \`$start_missing\`"
               echo "- Focused proof intent: \`$start_focused\`"
+              echo "- Boundary: \`$start_boundary\`"
               echo "- Repair target: \`$start_target\`"
               echo "- Related test: \`$start_related\`"
               echo "- Static limit: \`$start_limit\`"
@@ -10900,6 +10903,7 @@ language = "rust"
         assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
         assert!(summary.contains(".selected.language + \" (\""));
         assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
         assert!(summary.contains(
             ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
         ));
@@ -10916,6 +10920,7 @@ language = "rust"
         assert!(summary.contains("Changed behavior: \\`$start_changed\\`"));
         assert!(summary.contains("Missing discriminator: \\`$start_missing\\`"));
         assert!(summary.contains("Focused proof intent: \\`$start_focused\\`"));
+        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
         assert!(summary.contains("Repair target: \\`$start_target\\`"));
         assert!(summary.contains("Related test: \\`$start_related\\`"));
         assert!(summary.contains("Static limit: \\`$start_limit\\`"));
@@ -11615,6 +11620,7 @@ language = "rust"
             ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
         ));
         assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
         assert!(summary.contains(
             ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
         ));
@@ -11629,6 +11635,7 @@ language = "rust"
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
         );
         assert!(summary.contains("cat target/ripr/reports/start-here.md"));
+        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
         assert!(summary.contains("missing_start_here"));
         assert!(summary.contains(
             "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"

@@ -71,6 +71,7 @@ const RIPR_FIRST_PR_PACKET_ARTIFACTS = [
   }
 ];
 const ACTIONABLE_GAP_QUEUE_RELATIVE_PATH = 'target/ripr/reports/actionable-gaps.json';
+const FIRST_PR_STATIC_EVIDENCE_BOUNDARY = 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.';
 
 export interface RiprContextTarget {
   uri?: string;
@@ -1142,6 +1143,10 @@ export interface RiprActionableGapQueueStatus {
   sourceFile?: string;
   evidenceClass?: string;
   actionability?: string;
+  changedBehavior?: string;
+  missingDiscriminator?: string;
+  focusedProofIntent?: string;
+  why?: string;
   canonicalGapId?: string;
   seamId?: string;
   findingId?: string;
@@ -1181,8 +1186,10 @@ export interface RiprFirstPrPacketStatus {
   selectedState?: string;
   selectedKind?: string;
   changedBehavior?: string;
+  currentEvidenceStrength?: string;
   missingDiscriminator?: string;
   focusedProofIntent?: string;
+  staticEvidenceBoundary?: string;
   why?: string;
   gapId?: string;
   canonicalGapId?: string;
@@ -1910,6 +1917,18 @@ function actionableGapQueueTopLines(queue: RiprActionableGapQueueStatus): string
   if (identity) {
     lines.push(`Gap identity: ${identity}`);
   }
+  if (queue.changedBehavior) {
+    lines.push(`Changed behavior: ${queue.changedBehavior}`);
+  }
+  if (queue.why) {
+    lines.push(`Why this matters: ${queue.why}`);
+  }
+  if (queue.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${queue.missingDiscriminator}`);
+  }
+  if (queue.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${queue.focusedProofIntent}`);
+  }
   if (queue.language) {
     lines.push(`Language: ${queue.language}${queue.languageStatus ? ` (${queue.languageStatus})` : ''}`);
   }
@@ -1992,6 +2011,10 @@ function currentRepairPacket(queue: RiprActionableGapQueueStatus): string {
   pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
   pushOptionalLine(lines, 'Evidence class', queue.evidenceClass);
   pushOptionalLine(lines, 'Actionability', queue.actionability);
+  pushOptionalLine(lines, 'Changed behavior', queue.changedBehavior);
+  pushOptionalLine(lines, 'Why this matters', queue.why);
+  pushOptionalLine(lines, 'Missing discriminator', queue.missingDiscriminator);
+  pushOptionalLine(lines, 'Focused proof intent', queue.focusedProofIntent);
   pushOptionalLine(lines, 'Confidence basis', queue.confidenceBasis);
   lines.push(`Related test: ${queue.relatedTest ?? 'not provided by typed queue artifact'}`);
   lines.push('');
@@ -2073,7 +2096,11 @@ function repoGapMap(
   ];
   if (queue.state === 'topActionableGap') {
     pushOptionalLine(lines, 'Canonical gap id', queue.canonicalGapId);
+    pushOptionalLine(lines, 'Changed behavior', queue.changedBehavior);
+    pushOptionalLine(lines, 'Why this matters', queue.why);
     pushOptionalLine(lines, 'Repair kind', queue.topRepair);
+    pushOptionalLine(lines, 'Missing discriminator', queue.missingDiscriminator);
+    pushOptionalLine(lines, 'Focused proof intent', queue.focusedProofIntent);
     pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
     pushOptionalLine(lines, 'Related test', queue.relatedTest);
     pushOptionalLine(lines, 'Verify', queue.verifyCommand);
@@ -2270,6 +2297,9 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
   }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
+  }
   if (packet.missingDiscriminator) {
     lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
   }
@@ -2297,7 +2327,7 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
   lines.push('');
   lines.push('Limits and non-claims:');
-  lines.push('- Advisory static evidence only.');
+  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
   return lines.join('\n');
@@ -2315,6 +2345,9 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   }
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
   }
   if (packet.missingDiscriminator) {
     lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
@@ -2356,7 +2389,7 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   lines.push('- Return the receipt path and result.');
   lines.push('');
   lines.push('Limits and non-claims:');
-  lines.push('- Static editor evidence only.');
+  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
   return lines.join('\n');
@@ -2425,6 +2458,9 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
   }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
+  }
   if (packet.missingDiscriminator) {
     lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
   }
@@ -2447,6 +2483,7 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
     lines.push(`Receipt path: ${packet.receiptPath}`);
   }
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
+  lines.push(`Boundary: ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   return lines;
 }
@@ -3158,6 +3195,10 @@ function validateActionableGapQueue(
     sourceFile: stringField(topActionable, 'source_file'),
     evidenceClass: stringField(topActionable, 'evidence_class'),
     actionability: stringField(topActionable, 'actionability'),
+    changedBehavior: stringField(topActionable, 'changed_behavior'),
+    missingDiscriminator: actionableGapPacketMissingDiscriminator(topActionable),
+    focusedProofIntent: actionableGapPacketFocusedProofIntent(topActionable),
+    why: stringField(topActionable, 'why'),
     canonicalGapId,
     seamId: stringField(topActionable, 'seam_id'),
     findingId: stringField(topActionable, 'finding_id'),
@@ -3170,6 +3211,36 @@ function validateActionableGapQueue(
     receiptCommandOrPath,
     confidenceBasis: stringField(topActionable, 'confidence_basis')
   };
+}
+
+function actionableGapPacketMissingDiscriminator(packet: Record<string, unknown>): string | undefined {
+  return stringField(packet, 'missing_discriminator')
+    ?? firstMissingDiscriminatorValue(packet)
+    ?? stringField(packet, 'candidate_value_or_observer')
+    ?? stringField(packet, 'assertion_shape');
+}
+
+function firstMissingDiscriminatorValue(packet: Record<string, unknown>): string | undefined {
+  const discriminators = packet.missing_discriminators;
+  if (!Array.isArray(discriminators)) {
+    return undefined;
+  }
+  const first = discriminators[0];
+  if (!first || typeof first !== 'object' || Array.isArray(first)) {
+    return undefined;
+  }
+  return stringField(first as Record<string, unknown>, 'value');
+}
+
+function actionableGapPacketFocusedProofIntent(packet: Record<string, unknown>): string | undefined {
+  return stringField(packet, 'focused_proof_intent')
+    ?? stringField(packet, 'recommended_repair')
+    ?? assertionShapeFocusedProofIntent(packet);
+}
+
+function assertionShapeFocusedProofIntent(packet: Record<string, unknown>): string | undefined {
+  const assertionShape = stringField(packet, 'assertion_shape');
+  return assertionShape ? `Add or strengthen \`${assertionShape}\`.` : undefined;
 }
 
 export async function readFirstPrPacketStatus(
@@ -3347,8 +3418,10 @@ function validateFirstPrPacket(
     selectedState,
     selectedKind: stringField(selected, 'kind'),
     changedBehavior: stringField(selected, 'changed_behavior'),
+    currentEvidenceStrength: stringField(selected, 'current_evidence_strength'),
     missingDiscriminator: stringField(selected, 'missing_discriminator'),
     focusedProofIntent: stringField(selected, 'focused_proof_intent'),
+    staticEvidenceBoundary: stringField(selected, 'static_evidence_boundary'),
     why: stringField(selected, 'why'),
     gapId: stringField(selected, 'gap_id'),
     canonicalGapId: stringField(selected, 'canonical_gap_id'),
