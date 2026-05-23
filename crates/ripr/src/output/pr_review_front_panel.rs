@@ -1372,7 +1372,10 @@ fn top_issue_from_first_action(
             (Some(selected), &["changed_behavior"]),
             (target, &["changed_behavior"]),
         ]),
-        current_evidence_strength: classification,
+        current_evidence_strength: current_evidence_strength_from_sources(&[
+            Some(selected),
+            target,
+        ]),
         missing_discriminator: string_path(selected, &["missing_discriminator"]),
         focused_proof_intent: focused_proof_intent_from_action_or_proof(
             action,
@@ -1429,12 +1432,15 @@ fn top_issue_from_guidance(
             (Some(item), &["changed_expression"]),
             (Some(item), &["evidence", "changed_behavior"]),
         ]),
-        current_evidence_strength: string_from_sources(&[
-            (Some(item), &["classification"]),
-            (Some(item), &["class"]),
-            (Some(item), &["static_class"]),
-        ])
-        .map(normalize_class),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| {
+                string_from_sources(&[
+                    (Some(item), &["classification"]),
+                    (Some(item), &["class"]),
+                    (Some(item), &["static_class"]),
+                ])
+                .map(normalize_class)
+            }),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["focused_proof_intent"]),
@@ -1491,7 +1497,8 @@ fn top_issue_from_gate_decision(
         ]),
         classification: Some("weakly_exposed".to_string()),
         changed_behavior: string_path(item, &["evidence", "changed_behavior"]),
-        current_evidence_strength: Some("weakly_exposed".to_string()),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| Some("weakly_exposed".to_string())),
         missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["evidence", "focused_proof_intent"]),
@@ -1539,7 +1546,8 @@ fn top_issue_from_baseline_delta(
         line: u64_path(item, &["line"]),
         classification: string_path(item, &["static_class"]).map(normalize_class),
         changed_behavior: string_path(item, &["changed_behavior"]),
-        current_evidence_strength: string_path(item, &["static_class"]).map(normalize_class),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| string_path(item, &["static_class"]).map(normalize_class)),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["focused_proof_intent"]),
@@ -1583,7 +1591,11 @@ fn top_issue_from_assistant_health(
             (Some(seam), &["changed_behavior"]),
             (recommendation, &["changed_behavior"]),
         ]),
-        current_evidence_strength: string_path(seam, &["grip_class"]).map(normalize_class),
+        current_evidence_strength: current_evidence_strength_from_sources(&[
+            Some(seam),
+            recommendation,
+        ])
+        .or_else(|| string_path(seam, &["grip_class"]).map(normalize_class)),
         missing_discriminator: string_path(seam, &["missing_discriminator"]),
         focused_proof_intent: recommendation.and_then(|value| {
             string_from_sources(&[
@@ -1694,6 +1706,16 @@ fn suggested_test_from_action_or_proof(action: &Value, proof: Option<&Value>) ->
             return format!("Add a focused test where {condition} and assert the exact {target}.");
         }
         value
+    })
+}
+
+fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        let source = (*source)?;
+        string_from_sources(&[
+            (Some(source), &["current_evidence_strength"]),
+            (Some(source), &["evidence", "current_evidence_strength"]),
+        ])
     })
 }
 

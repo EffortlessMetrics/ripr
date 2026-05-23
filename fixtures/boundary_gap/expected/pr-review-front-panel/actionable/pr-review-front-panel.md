@@ -9,7 +9,7 @@ Start here:
 - File: src/lib.rs:2
 - Repair route: focused_test
 - Class: weakly_exposed
-- Current evidence strength: weakly_exposed
+- Current evidence strength: Static evidence found related test context, but the current check is weak because the discriminator is missing.
 - Missing discriminator: input that hits the boundary: amount >= discount_threshold
 - Focused proof intent: Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.
 - Suggested focused test: add amount >= discount_threshold boundary assertion

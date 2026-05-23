@@ -44,7 +44,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
-    "current_evidence_strength": "weakly_exposed",
+    "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "input that hits the boundary: amount >= discount_threshold",
     "focused_proof_intent": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",

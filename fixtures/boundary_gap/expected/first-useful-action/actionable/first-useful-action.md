@@ -11,7 +11,7 @@ Add equality-boundary discriminator test.
 ## One-Screen Recommendation
 
 - Changed behavior: Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.
-- Current evidence strength: `weakly_exposed`
+- Current evidence strength: `Static evidence found related test context, but the current check is weak because the discriminator is missing.`
 - Missing discriminator: input that hits the boundary: amount >= discount_threshold
 - Focused proof intent: Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.
 - Verify command: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`

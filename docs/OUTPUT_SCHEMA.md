@@ -7109,8 +7109,11 @@ Field contract:
   `top_issue.verify_command`, `top_issue.receipt_command`, and
   `top_issue.static_evidence_boundary` are the typed one-screen repair
   vocabulary. They mirror the CLI first screen when the supplied artifacts
-  carry the field. Missing optional source fields stay absent rather than being
-  inferred from prose.
+  carry the field. For `first_useful_action` inputs, current evidence strength
+  must come from `selected.current_evidence_strength`. Legacy PR guidance,
+  gate, baseline, and assistant-health inputs may normalize existing typed
+  class/status fields, but must not infer the value from Markdown prose or code
+  inspection.
 - `movement.*` preserves before/after static movement when supplied. It is not
   runtime mutation confirmation.
 - `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or

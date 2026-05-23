@@ -88,6 +88,8 @@ struct ActionSelected {
     path: Option<String>,
     line: Option<u64>,
     classification: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_evidence_strength: Option<String>,
     missing_discriminator: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     gap_id: Option<String>,
@@ -95,6 +97,19 @@ struct ActionSelected {
     canonical_gap_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     repair_route: Option<String>,
+}
+
+impl ActionSelected {
+    fn with_inferred_current_evidence_strength(mut self) -> Self {
+        if self.current_evidence_strength.is_none() {
+            self.current_evidence_strength = current_evidence_strength_for_selection(
+                self.repair_route.as_deref(),
+                self.classification.as_deref(),
+                self.seam_kind.as_deref(),
+            );
+        }
+        self
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -308,7 +323,12 @@ fn render_one_screen_recommendation_markdown(report: &FirstUsefulActionReport, o
     let evidence_strength = report
         .selected
         .as_ref()
-        .and_then(|selected| selected.classification.as_deref())
+        .and_then(|selected| {
+            selected
+                .current_evidence_strength
+                .as_deref()
+                .or(selected.classification.as_deref())
+        })
         .unwrap_or(report.status.as_str());
     let missing_discriminator = report
         .selected
@@ -1010,19 +1030,26 @@ fn selected_from_gap_record(
 ) -> Option<ActionSelected> {
     let repair_route = record.get("repair_route");
     let anchor = record.get("anchor");
-    Some(ActionSelected {
-        source: "gap_ledger".to_string(),
-        source_artifact: input.gap_ledger_path.clone()?,
-        seam_id: None,
-        seam_kind: string_path(record, &["evidence_class"]),
-        path: string_from_sources(&[(anchor, &["file"]), (repair_route, &["target_file"])]),
-        line: u64_from_sources(&[(anchor, &["line"]), (repair_route, &["target_line"])]),
-        classification: string_path(record, &["gap_state"]),
-        missing_discriminator: string_path(repair_route?, &["assertion_shape"]),
-        gap_id: string_path(record, &["gap_id"]),
-        canonical_gap_id: string_path(record, &["canonical_gap_id"]),
-        repair_route: string_path(repair_route?, &["route_kind"]),
-    })
+    Some(
+        ActionSelected {
+            source: "gap_ledger".to_string(),
+            source_artifact: input.gap_ledger_path.clone()?,
+            seam_id: None,
+            seam_kind: string_path(record, &["evidence_class"]),
+            path: string_from_sources(&[(anchor, &["file"]), (repair_route, &["target_file"])]),
+            line: u64_from_sources(&[(anchor, &["line"]), (repair_route, &["target_line"])]),
+            classification: string_path(record, &["gap_state"]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(record),
+                repair_route,
+            ]),
+            missing_discriminator: string_path(repair_route?, &["assertion_shape"]),
+            gap_id: string_path(record, &["gap_id"]),
+            canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+            repair_route: string_path(repair_route?, &["route_kind"]),
+        }
+        .with_inferred_current_evidence_strength(),
+    )
 }
 
 fn target_from_gap_record(record: &Value) -> Option<ActionTarget> {
@@ -1061,43 +1088,50 @@ fn selected_from_editor_context(
     input: &FirstUsefulActionInput,
     editor_context: &Value,
 ) -> Option<ActionSelected> {
-    Some(ActionSelected {
-        source: "editor_context".to_string(),
-        source_artifact: input.editor_context_path.clone()?,
-        seam_id: string_from_sources(&[
-            (Some(editor_context), &["seam_id"]),
-            (Some(editor_context), &["selected", "seam_id"]),
-        ]),
-        seam_kind: string_from_sources(&[
-            (Some(editor_context), &["class"]),
-            (Some(editor_context), &["seam_kind"]),
-            (Some(editor_context), &["selected", "seam_kind"]),
-        ]),
-        path: string_from_sources(&[
-            (Some(editor_context), &["file"]),
-            (Some(editor_context), &["path"]),
-            (Some(editor_context), &["selected", "path"]),
-        ]),
-        line: u64_from_sources(&[
-            (Some(editor_context), &["line"]),
-            (Some(editor_context), &["range", "start", "line"]),
-            (Some(editor_context), &["selected", "line"]),
-        ]),
-        classification: classification_from_sources(&[
-            (Some(editor_context), &["classification"]),
-            (Some(editor_context), &["class"]),
-            (Some(editor_context), &["grip_class"]),
-            (Some(editor_context), &["selected", "classification"]),
-        ]),
-        missing_discriminator: string_from_sources(&[
-            (Some(editor_context), &["missing_discriminator"]),
-            (Some(editor_context), &["missing_observation"]),
-            (Some(editor_context), &["selected", "missing_discriminator"]),
-        ]),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+    Some(
+        ActionSelected {
+            source: "editor_context".to_string(),
+            source_artifact: input.editor_context_path.clone()?,
+            seam_id: string_from_sources(&[
+                (Some(editor_context), &["seam_id"]),
+                (Some(editor_context), &["selected", "seam_id"]),
+            ]),
+            seam_kind: string_from_sources(&[
+                (Some(editor_context), &["class"]),
+                (Some(editor_context), &["seam_kind"]),
+                (Some(editor_context), &["selected", "seam_kind"]),
+            ]),
+            path: string_from_sources(&[
+                (Some(editor_context), &["file"]),
+                (Some(editor_context), &["path"]),
+                (Some(editor_context), &["selected", "path"]),
+            ]),
+            line: u64_from_sources(&[
+                (Some(editor_context), &["line"]),
+                (Some(editor_context), &["range", "start", "line"]),
+                (Some(editor_context), &["selected", "line"]),
+            ]),
+            classification: classification_from_sources(&[
+                (Some(editor_context), &["classification"]),
+                (Some(editor_context), &["class"]),
+                (Some(editor_context), &["grip_class"]),
+                (Some(editor_context), &["selected", "classification"]),
+            ]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(editor_context),
+                editor_context.get("selected"),
+            ]),
+            missing_discriminator: string_from_sources(&[
+                (Some(editor_context), &["missing_discriminator"]),
+                (Some(editor_context), &["missing_observation"]),
+                (Some(editor_context), &["selected", "missing_discriminator"]),
+            ]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
 }
 
 fn selected_from_assistant_proof(
@@ -1106,19 +1140,23 @@ fn selected_from_assistant_proof(
 ) -> Option<ActionSelected> {
     let proof = parsed.assistant_proof.as_ref()?;
     let seam = proof.get("seam");
-    Some(ActionSelected {
-        source: "assistant_proof".to_string(),
-        source_artifact: input.assistant_proof_path.clone()?,
-        seam_id: string_from_sources(&[(seam, &["seam_id"])]),
-        seam_kind: string_from_sources(&[(seam, &["seam_kind"])]),
-        path: string_from_sources(&[(seam, &["path"])]),
-        line: u64_from_sources(&[(seam, &["line"])]),
-        classification: classification_from_sources(&[(seam, &["grip_class"])]),
-        missing_discriminator: string_from_sources(&[(seam, &["missing_discriminator"])]),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+    Some(
+        ActionSelected {
+            source: "assistant_proof".to_string(),
+            source_artifact: input.assistant_proof_path.clone()?,
+            seam_id: string_from_sources(&[(seam, &["seam_id"])]),
+            seam_kind: string_from_sources(&[(seam, &["seam_kind"])]),
+            path: string_from_sources(&[(seam, &["path"])]),
+            line: u64_from_sources(&[(seam, &["line"])]),
+            classification: classification_from_sources(&[(seam, &["grip_class"])]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[seam]),
+            missing_discriminator: string_from_sources(&[(seam, &["missing_discriminator"])]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
 }
 
 fn selected_from_receipt_or_sources(
@@ -1134,48 +1172,68 @@ fn selected_from_receipt_or_sources(
         .and_then(|value| value.get("seam"));
     let receipt_seam = receipt.get("seam");
     let provenance = receipt.get("provenance");
-    Some(ActionSelected {
-        source: "receipt".to_string(),
-        source_artifact,
-        seam_id: string_from_sources(&[(provenance, &["seam_id"]), (receipt_seam, &["seam_id"])])
+    Some(
+        ActionSelected {
+            source: "receipt".to_string(),
+            source_artifact,
+            seam_id: string_from_sources(&[
+                (provenance, &["seam_id"]),
+                (receipt_seam, &["seam_id"]),
+            ])
             .or_else(|| {
                 proof_selected
                     .as_ref()
                     .and_then(|selected| selected.seam_id.clone())
             }),
-        seam_kind: string_from_sources(&[(receipt_seam, &["seam_kind"]), (proof, &["seam_kind"])])
+            seam_kind: string_from_sources(&[
+                (receipt_seam, &["seam_kind"]),
+                (proof, &["seam_kind"]),
+            ])
             .or_else(|| {
                 proof_selected
                     .as_ref()
                     .and_then(|selected| selected.seam_kind.clone())
             }),
-        path: string_from_sources(&[(receipt_seam, &["file"]), (proof, &["path"])]).or_else(|| {
-            proof_selected
-                .as_ref()
-                .and_then(|selected| selected.path.clone())
-        }),
-        line: u64_from_sources(&[(receipt_seam, &["line"]), (proof, &["line"])])
-            .or_else(|| proof_selected.as_ref().and_then(|selected| selected.line)),
-        classification: classification_from_sources(&[
-            (receipt_seam, &["grip_class"]),
-            (proof, &["grip_class"]),
-        ])
-        .or_else(|| {
-            proof_selected
-                .as_ref()
-                .and_then(|selected| selected.classification.clone())
-        }),
-        missing_discriminator: string_from_sources(&[(proof, &["missing_discriminator"])]).or_else(
-            || {
+            path: string_from_sources(&[(receipt_seam, &["file"]), (proof, &["path"])]).or_else(
+                || {
+                    proof_selected
+                        .as_ref()
+                        .and_then(|selected| selected.path.clone())
+                },
+            ),
+            line: u64_from_sources(&[(receipt_seam, &["line"]), (proof, &["line"])])
+                .or_else(|| proof_selected.as_ref().and_then(|selected| selected.line)),
+            classification: classification_from_sources(&[
+                (receipt_seam, &["grip_class"]),
+                (proof, &["grip_class"]),
+            ])
+            .or_else(|| {
                 proof_selected
                     .as_ref()
-                    .and_then(|selected| selected.missing_discriminator.clone())
-            },
-        ),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+                    .and_then(|selected| selected.classification.clone())
+            }),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(receipt),
+                receipt_seam,
+                proof,
+            ])
+            .or_else(|| {
+                proof_selected
+                    .as_ref()
+                    .and_then(|selected| selected.current_evidence_strength.clone())
+            }),
+            missing_discriminator: string_from_sources(&[(proof, &["missing_discriminator"])])
+                .or_else(|| {
+                    proof_selected
+                        .as_ref()
+                        .and_then(|selected| selected.missing_discriminator.clone())
+                }),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
 }
 
 fn selected_from_guidance(
@@ -1187,34 +1245,38 @@ fn selected_from_guidance(
     let item = first_guidance_item(Some(guidance))
         .or_else(|| first_summary_only_item(Some(guidance)))
         .or_else(|| first_suppressed_item(Some(guidance)));
-    Some(ActionSelected {
-        source: source.to_string(),
-        source_artifact: input.pr_guidance_path.clone()?,
-        seam_id: string_from_sources(&[
-            (item, &["seam_id"]),
-            (item, &["seam", "seam_id"]),
-            (item, &["id"]),
-        ]),
-        seam_kind: string_from_sources(&[(item, &["kind"]), (item, &["seam", "kind"])]),
-        path: string_from_sources(&[
-            (item, &["placement", "path"]),
-            (item, &["seam", "file"]),
-            (item, &["path"]),
-        ]),
-        line: u64_from_sources(&[
-            (item, &["placement", "line"]),
-            (item, &["seam", "line"]),
-            (item, &["line"]),
-        ]),
-        classification: classification_from_sources(&[
-            (item, &["grip_class"]),
-            (item, &["classification"]),
-        ]),
-        missing_discriminator: string_from_sources(&[(item, &["missing_discriminator"])]),
-        gap_id: None,
-        canonical_gap_id: None,
-        repair_route: None,
-    })
+    Some(
+        ActionSelected {
+            source: source.to_string(),
+            source_artifact: input.pr_guidance_path.clone()?,
+            seam_id: string_from_sources(&[
+                (item, &["seam_id"]),
+                (item, &["seam", "seam_id"]),
+                (item, &["id"]),
+            ]),
+            seam_kind: string_from_sources(&[(item, &["kind"]), (item, &["seam", "kind"])]),
+            path: string_from_sources(&[
+                (item, &["placement", "path"]),
+                (item, &["seam", "file"]),
+                (item, &["path"]),
+            ]),
+            line: u64_from_sources(&[
+                (item, &["placement", "line"]),
+                (item, &["seam", "line"]),
+                (item, &["line"]),
+            ]),
+            classification: classification_from_sources(&[
+                (item, &["grip_class"]),
+                (item, &["classification"]),
+            ]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[item]),
+            missing_discriminator: string_from_sources(&[(item, &["missing_discriminator"])]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
 }
 
 fn selected_baseline_only(
@@ -1288,11 +1350,13 @@ fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value)
             (Some(item), &["classification"]),
             (Some(item), &["static_class"]),
         ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)]),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
     }
+    .with_inferred_current_evidence_strength()
 }
 
 fn weakly_exposed_boundary_selected(
@@ -1311,11 +1375,13 @@ fn weakly_exposed_boundary_selected(
         path,
         line,
         classification: Some("weakly_exposed".to_string()),
+        current_evidence_strength: None,
         missing_discriminator,
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
     }
+    .with_inferred_current_evidence_strength()
 }
 
 fn target_from_sources(parsed: &ParsedSources) -> Option<ActionTarget> {
@@ -1544,6 +1610,64 @@ fn classification_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<
         "strongly_gripped" => "exposed".to_string(),
         other => other.to_string(),
     })
+}
+
+fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        let source = (*source)?;
+        string_from_sources(&[
+            (Some(source), &["current_evidence_strength"]),
+            (Some(source), &["evidence", "current_evidence_strength"]),
+            (Some(source), &["selected", "current_evidence_strength"]),
+        ])
+    })
+}
+
+fn current_evidence_strength_for_selection(
+    repair_route: Option<&str>,
+    classification: Option<&str>,
+    seam_kind: Option<&str>,
+) -> Option<String> {
+    match repair_route.or(seam_kind) {
+        Some("MissingOutputContract" | "AddOutputGolden" | "RegenerateArtifact") => Some(
+            "Static evidence found changed user-facing output, but no checked output or golden proof is attached."
+                .to_string(),
+        ),
+        Some(
+            "MissingBoundaryAssertion" | "MissingValueAssertion" | "MissingErrorDiscriminator"
+            | "AddBoundaryAssertion" | "AddTargetedAssertion" | "predicate_boundary",
+        ) => Some(
+            "Static evidence found related test context, but the current check is weak because the discriminator is missing."
+                .to_string(),
+        ),
+        _ => match classification {
+            Some("weakly_exposed") => Some(
+                "Static evidence found related test context, but the current check is weak because the discriminator is missing."
+                    .to_string(),
+            ),
+            Some("reachable_unrevealed") => Some(
+                "Static evidence found reachable changed behavior, but no current check observes the changed result."
+                    .to_string(),
+            ),
+            Some("no_static_path") => Some(
+                "Static analysis did not find a current test path to the changed behavior."
+                    .to_string(),
+            ),
+            Some("exposed") => Some(
+                "Static evidence found a current check that appears to observe the changed behavior."
+                    .to_string(),
+            ),
+            Some(kind @ ("static_unknown" | "infection_unknown" | "propagation_unknown")) => {
+                Some(format!(
+                    "Static evidence is `{kind}`; no runtime proof is claimed."
+                ))
+            }
+            Some(other) => Some(format!(
+                "Static evidence reported `{other}`; no runtime proof is claimed."
+            )),
+            None => None,
+        },
+    }
 }
 
 fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {

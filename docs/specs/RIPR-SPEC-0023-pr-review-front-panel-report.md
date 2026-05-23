@@ -412,9 +412,11 @@ Field contract:
   `top_issue.missing_discriminator`, `top_issue.focused_proof_intent`,
   `top_issue.verify_command`, `top_issue.receipt_command`, and
   `top_issue.static_evidence_boundary` are the first-screen repair vocabulary.
-  They are additive and must come from supplied artifacts. If the input does
-  not carry an optional field such as changed behavior or receipt command, the
-  front panel leaves it absent instead of deriving it from prose.
+  They are additive and must come from supplied artifacts. For
+  `first_useful_action`, current evidence strength must come from the selected
+  typed field. For legacy PR guidance, gate, baseline, and assistant-health
+  artifacts, the front panel may normalize existing typed class/status fields,
+  but must not derive the value from Markdown prose.
 - `movement.*` preserves before/after static movement when supplied. It is not
   runtime mutation confirmation.
 - `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or
