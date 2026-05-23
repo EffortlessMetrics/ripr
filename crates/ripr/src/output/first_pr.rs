@@ -25,6 +25,7 @@ const DEFAULT_REVIEW_COMMENTS: &str = "target/ripr/review/comments.json";
 const DEFAULT_AGENT_PACKET: &str = "target/ripr/workflow/agent-packet.json";
 const DEFAULT_GATE_DECISION: &str = "target/ripr/reports/gate-decision.json";
 const DEFAULT_RECEIPTS_DIR: &str = "target/ripr/receipts";
+const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct FirstPrOptions {
@@ -1194,6 +1195,7 @@ impl TopGapSelection {
             "receipt_state": self.receipt_state,
             "static_limit_kind": self.static_limit_kind,
             "static_limit_detail": self.static_limit_detail,
+            "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
             "agent_packet_command": self.agent_packet_command
         })
     }
@@ -1791,7 +1793,7 @@ fn start_here_cli_summary(packet: &Value, json_path: &Path, markdown_path: &Path
                 out.push_str(&format!("Changed behavior: `{}`\n", changed.trim()));
             }
             if let Some(why) = string_path(selected, &["why"]) {
-                out.push_str(&format!("Why it matters: {why}\n"));
+                out.push_str(&format!("Why this matters: {why}\n"));
             }
             if let Some(strength) = string_path(selected, &["current_evidence_strength"]) {
                 out.push_str(&format!("Current evidence strength: {strength}\n"));
@@ -1849,9 +1851,7 @@ fn start_here_cli_summary(packet: &Value, json_path: &Path, markdown_path: &Path
         json_path.display(),
         markdown_path.display()
     ));
-    out.push_str(
-        "Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\n",
-    );
+    out.push_str(&format!("Boundary: {STATIC_EVIDENCE_BOUNDARY}\n"));
     out
 }
 
@@ -2024,9 +2024,7 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
     if let Some(path) = selected.get("receipt_path").and_then(Value::as_str) {
         out.push_str(&format!("- Receipt path: `{path}`\n"));
     }
-    out.push_str(
-        "- Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\n\n",
-    );
+    out.push_str(&format!("- Boundary: {STATIC_EVIDENCE_BOUNDARY}\n\n"));
     out.push_str("Evidence boundary:\n");
     if let Some(gap_id) = selected.get("canonical_gap_id").and_then(Value::as_str) {
         out.push_str(&format!("- Canonical gap: `{gap_id}`\n"));
@@ -2272,6 +2270,39 @@ fn validate_selected_state(status: &str, selected: &Value, violations: &mut Vec<
             "selected.state {state:?} requires status {expected_status:?}, found {status:?}"
         ));
     }
+    if state == "top_gap" {
+        validate_top_gap_contract(selected, violations);
+    }
+}
+
+fn validate_top_gap_contract(selected: &Value, violations: &mut Vec<String>) {
+    for (path, label) in [
+        (&["kind"][..], "top actionable gap"),
+        (&["why"][..], "why this matters"),
+        (
+            &["current_evidence_strength"][..],
+            "current evidence strength",
+        ),
+        (&["missing_discriminator"][..], "missing discriminator"),
+        (&["focused_proof_intent"][..], "focused proof intent"),
+        (&["verify_command"][..], "verify command"),
+    ] {
+        if string_path(selected, path).is_none() {
+            violations.push(format!("selected top_gap must name {label}"));
+        }
+    }
+    if string_path(selected, &["receipt_command"]).is_none()
+        && string_path(selected, &["receipt_path"]).is_none()
+    {
+        violations.push("selected top_gap must name receipt command or path".to_string());
+    }
+    match string_path(selected, &["static_evidence_boundary"]) {
+        Some(boundary) if boundary == STATIC_EVIDENCE_BOUNDARY => {}
+        Some(boundary) => violations.push(format!(
+            "selected.static_evidence_boundary must be {STATIC_EVIDENCE_BOUNDARY:?}, found {boundary:?}"
+        )),
+        None => violations.push("selected top_gap must name static_evidence_boundary".to_string()),
+    }
 }
 
 fn expect_string(packet: &Value, key: &str, expected: &str, violations: &mut Vec<String>) {
@@ -2404,6 +2435,10 @@ mod tests {
             packet["selected"]["focused_proof_intent"],
             "Add a focused boundary assertion in `tests/pricing.rs`: `assert_eq!(discount(100, 100), 90)`."
         );
+        assert_eq!(
+            packet["selected"]["static_evidence_boundary"],
+            STATIC_EVIDENCE_BOUNDARY
+        );
         assert!(
             packet["commands"]["receipt"]
                 .as_str()
@@ -2429,6 +2464,9 @@ mod tests {
         ));
         assert!(summary.contains(
             "Focused proof intent: Add a focused boundary assertion in `tests/pricing.rs`"
+        ));
+        assert!(summary.contains(
+            "Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
         ));
         cleanup(&repo)
     }

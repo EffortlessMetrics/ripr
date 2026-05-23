@@ -99,6 +99,7 @@
     "state": "top_gap",
     "output_state": "actionable_gap",
     "static_limit_detail": null,
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "static_limit_kind": null,
     "verify_command": "cargo xtask fixtures boundary_gap",
     "why": "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."

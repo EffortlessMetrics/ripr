@@ -7626,6 +7626,12 @@ Field contract:
   provide the one-screen recommendation contract. They are derived from typed
   gap kind and repair-route fields; consumers must not infer them from
   Markdown prose.
+- `selected.why` explains why the selected gap matters in reviewer language.
+  It is supporting explanation for the same typed repair unit, not a separate
+  authority source.
+- `selected.static_evidence_boundary` repeats the static/advisory non-claim
+  boundary in the selected top-gap object so one-screen consumers do not need
+  to infer it from Markdown or higher-level packet authority text.
 - `selected.repair.route`, `selected.repair.target_file`,
   `selected.repair.related_test`, and `selected.repair.suggested_assertion`
   describe the bounded repair route when present.

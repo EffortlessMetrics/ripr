@@ -260,9 +260,10 @@ command.
 When the start-here packet selects a repairable gap, generated CI and report
 navigation should use its typed fields as the first-screen unit:
 `canonical_gap_id` or `gap_id`, `language`, `language_status`, repair route,
-repair target, related test, changed behavior, current evidence strength,
-missing discriminator, focused proof intent, static limit when present, verify
-command, receipt command, receipt path, receipt state, and advisory non-claims.
+repair target, related test, changed behavior, why it matters, current evidence
+strength, missing discriminator, focused proof intent, static limit when
+present, verify command, receipt command, receipt path, receipt state, and
+advisory non-claims.
 Raw finding counts remain supporting evidence.
 
 ## Outputs

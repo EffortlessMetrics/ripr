@@ -447,7 +447,6 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert!(stdout.contains("Safe next action: repair one named gap"));
     assert!(stdout.contains("Top actionable gap: missing boundary assertion"));
     assert!(stdout.contains("Changed behavior: `amount >= threshold`"));
-    assert!(stdout.contains("Why it matters: A related Rust test reaches this change"));
     assert!(
         stdout
             .contains("Current evidence strength: Static evidence found related Rust test context")
@@ -462,6 +461,9 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
             "Focused proof intent: Add a focused boundary assertion in `tests/pricing.rs`"
         )
     );
+    assert!(stdout.contains(
+        "Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
+    ));
     assert!(stdout.contains("Verify command: `cargo xtask fixtures boundary_gap`"));
     assert!(stdout.contains("Receipt command: `ripr outcome --before"));
     assert!(stdout.contains("Receipt path: `target/ripr/receipts/"));
@@ -481,6 +483,14 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert_eq!(
         json_pointer_str(&report, "/selected/repair/route")?,
         "AddBoundaryAssertion"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/static_evidence_boundary")?,
+        "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/why")?,
+        "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
     );
     assert_eq!(json_pointer_str(&report, "/inputs/base")?, "HEAD");
     assert_eq!(json_pointer_str(&report, "/inputs/head")?, "HEAD");

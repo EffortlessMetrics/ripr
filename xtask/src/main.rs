@@ -7707,6 +7707,7 @@ const ACTIONABLE_GAP_OUTCOMES_REQUIRED_CASES: &[(&str, &str, &str)] = &[
 ];
 
 const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
+const FIRST_PR_STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str, &str)] = &[
     (
@@ -9485,6 +9486,9 @@ fn validate_first_successful_pr_case(
                 "first successful PR case {case_id} actionable packet must name verify_command"
             ));
         }
+        if expected_status == "actionable" {
+            validate_first_successful_pr_actionable_json(case_id, &packet, violations);
+        }
     }
     if expected_md.exists() {
         let markdown = read_text_lossy(&expected_md)?;
@@ -9533,8 +9537,86 @@ fn validate_first_successful_pr_case(
                 "first successful PR case {case_id} Markdown must show output state `{expected_output_state}`"
             ));
         }
+        if expected_status == "actionable" {
+            validate_first_successful_pr_actionable_markdown(case_id, &markdown, violations);
+        }
     }
     Ok(())
+}
+
+fn validate_first_successful_pr_actionable_json(
+    case_id: &str,
+    packet: &Value,
+    violations: &mut Vec<String>,
+) {
+    for (path, label) in [
+        (&["selected", "kind"][..], "top actionable gap"),
+        (&["selected", "why"][..], "why this matters"),
+        (
+            &["selected", "current_evidence_strength"][..],
+            "current evidence strength",
+        ),
+        (
+            &["selected", "missing_discriminator"][..],
+            "missing discriminator",
+        ),
+        (
+            &["selected", "focused_proof_intent"][..],
+            "focused proof intent",
+        ),
+        (&["selected", "verify_command"][..], "verify command"),
+    ] {
+        if audit_non_empty_string(packet, path).is_none() {
+            violations.push(format!(
+                "first successful PR case {case_id} actionable packet must name {label}"
+            ));
+        }
+    }
+
+    let receipt_command = audit_non_empty_string(packet, &["selected", "receipt_command"]);
+    let receipt_path = audit_non_empty_string(packet, &["selected", "receipt_path"]);
+    if receipt_command.is_none() && receipt_path.is_none() {
+        violations.push(format!(
+            "first successful PR case {case_id} actionable packet must name receipt command or path"
+        ));
+    }
+
+    match audit_string(packet, &["selected", "static_evidence_boundary"]) {
+        Some(boundary) if boundary == FIRST_PR_STATIC_EVIDENCE_BOUNDARY => {}
+        Some(boundary) => violations.push(format!(
+            "first successful PR case {case_id} actionable packet static_evidence_boundary must be {FIRST_PR_STATIC_EVIDENCE_BOUNDARY:?}, got {boundary:?}"
+        )),
+        None => violations.push(format!(
+            "first successful PR case {case_id} actionable packet must name static_evidence_boundary"
+        )),
+    }
+}
+
+fn validate_first_successful_pr_actionable_markdown(
+    case_id: &str,
+    markdown: &str,
+    violations: &mut Vec<String>,
+) {
+    for required in [
+        "- Top actionable gap:",
+        "Why this matters:",
+        "- Current evidence strength:",
+        "- Missing discriminator:",
+        "- Focused proof intent:",
+        "- Verify command:",
+        "- Boundary: static advisory evidence only;",
+    ] {
+        if !markdown.contains(required) {
+            violations.push(format!(
+                "first successful PR case {case_id} actionable Markdown must include `{required}`"
+            ));
+        }
+    }
+    if !(markdown.contains("- Receipt command:") || markdown.contains("- Receipt path:")) {
+        violations.push(format!(
+            "first successful PR case {case_id} actionable Markdown must include receipt command or path"
+        ));
+    }
 }
 
 fn validate_first_successful_pr_boundary_demo(
@@ -33040,6 +33122,9 @@ fn dogfood_first_pr_run(scenario: &DogfoodFirstPrScenario) -> DogfoodFirstPrRun 
             if scenario.expected_status == "actionable" && verify_command.is_none() {
                 errors.push("actionable start-here receipt must name verify_command".to_string());
             }
+            if scenario.expected_status == "actionable" {
+                validate_first_successful_pr_actionable_json(&scenario.name, &packet, &mut errors);
+            }
             if scenario.expected_status == "blocked" && next_command.is_none() {
                 errors.push("blocked start-here receipt must name next command".to_string());
             }
@@ -33067,6 +33152,13 @@ fn dogfood_first_pr_run(scenario: &DogfoodFirstPrScenario) -> DogfoodFirstPrRun 
                     "Markdown must show expected state `{}`",
                     scenario.expected_state
                 ));
+            }
+            if scenario.expected_status == "actionable" {
+                validate_first_successful_pr_actionable_markdown(
+                    &scenario.name,
+                    &markdown,
+                    &mut errors,
+                );
             }
         }
         Err(err) => errors.push(format!(
@@ -52313,6 +52405,11 @@ mod tests {
         assert!(report.contains("is missing `ripr outcome`"));
         assert!(report.contains("is missing `focused external proof`"));
         assert!(report.contains("is missing `No runtime mutation proof`"));
+        assert!(report.contains("actionable packet must name top actionable gap"));
+        assert!(report.contains("actionable packet must name why this matters"));
+        assert!(report.contains("actionable packet must name static_evidence_boundary"));
+        assert!(report.contains("actionable Markdown must include `- Top actionable gap:`"));
+        assert!(report.contains("actionable Markdown must include receipt command or path"));
         Ok(())
     }
 
