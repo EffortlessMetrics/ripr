@@ -1588,13 +1588,17 @@ suite('Extension Smoke', () => {
   });
 
   test('status model projects actionable gap queue state without producing packets', async () => {
-    await writeWorkspaceFile('src/pricing.rs', 'pub fn discount() {}\n');
-    const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/pricing.rs'));
+    const currentFileQueue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    const currentFilePackets = currentFileQueue.packets as Array<Record<string, unknown>>;
+    currentFilePackets[0].source_file = 'src/lib.rs';
+    (currentFilePackets[0].primary_anchor as Record<string, unknown>).file = 'src/lib.rs';
+    ((currentFilePackets[0].raw_findings as Array<Record<string, unknown>>)[0]).file = 'src/lib.rs';
+    const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
     await vscode.window.showTextDocument(document);
     try {
       await withControllerTestContext({
         files: {
-          'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+          'target/ripr/reports/actionable-gaps.json': JSON.stringify(currentFileQueue)
         }
       }, async (context) => {
         await context.controller.start();
@@ -1605,7 +1609,7 @@ suite('Extension Smoke', () => {
         );
         assertReportIncludes(statusOutput, [
           'Workspace actionable state: repairable (1 actionable; target/ripr/reports/actionable-gaps.json)',
-          'Current-file actionable state: repairable (src/pricing.rs)',
+          'Current-file actionable state: repairable (src/lib.rs)',
           'Top repair item: add_boundary_assertion',
           'Top repair gap: gap:rust:pricing:discount:threshold-boundary',
           'Related test or target: tests/pricing.rs::premium_customer_gets_discount',
