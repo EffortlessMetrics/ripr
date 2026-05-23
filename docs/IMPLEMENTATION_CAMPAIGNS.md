@@ -4231,10 +4231,10 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `goals/first-useful-pr-loop-activation` | ready | Select the First Useful PR Loop continuation as the active repo-owned goal, keep the campaign bounded to first useful PR usability, and record the next PR queue without changing product behavior. |
-| `docs/context-system-proof-stack-reconciliation` | blocked | Map proof-stack terminology into ripr's existing repo tracking and agent-context model without adding a runner-local goals namespace or a parallel docs/source-of-truth namespace. |
-| `goals/active-goal-freshness-check` | blocked | Harden goal validation so agents cannot follow stale closed campaigns without an explicit successor or no-current-goal marker. |
-| `cli/first-pr-front-door-polish` | blocked | Make `ripr first-pr` explain one top repairable gap or recovery state without forcing users to open secondary reports. |
+| `goals/first-useful-pr-loop-activation` | done | Selected the First Useful PR Loop continuation as the active repo-owned goal without changing analyzer behavior. |
+| `docs/context-system-proof-stack-reconciliation` | ready | Map proof-stack terminology into ripr's existing repo tracking and agent-context model without adding a runner-local goals namespace or a parallel docs/source-of-truth namespace. |
+| `goals/active-goal-freshness-check` | blocked | Harden goal validation after the terminology reconciliation so agents cannot follow stale closed campaigns without an explicit successor or no-current-goal marker. |
+| `cli/first-pr-front-door-polish` | blocked | Make `ripr first-pr` explain one top repairable gap or recovery state after the goal-freshness guardrail is in place. |
 | `output/one-screen-recommendation-contract` | blocked | Golden-test the first screen so it always carries top gap, why it matters, weak evidence, missing discriminator, focused test intent, verify, receipt, and static boundary. |
 | `receipt/reviewer-native-outcome` | blocked | Make outcome receipts explain before/after static movement and reviewer belief boundaries. |
 | `fixtures/first-pr-demo-story` | blocked | Add a tiny fixture-backed before -> first-pr recommendation -> focused proof -> outcome receipt demo. |

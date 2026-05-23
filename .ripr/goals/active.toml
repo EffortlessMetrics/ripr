@@ -48,7 +48,7 @@ non_goals = [
 
 [[work_item]]
 id = "goals/first-useful-pr-loop-activation"
-status = "ready"
+status = "done"
 branch = "campaign-first-useful-pr-loop"
 stackable = false
 acceptance = "Select the First Useful PR Loop continuation as the active repo-owned goal, keep the campaign bounded to first useful PR usability, and record the next PR queue without changing product behavior."
@@ -64,12 +64,9 @@ commands = [
 
 [[work_item]]
 id = "docs/context-system-proof-stack-reconciliation"
-status = "blocked"
+status = "ready"
 branch = "docs-context-system-proof-stack-reconciliation"
 stackable = false
-blocked_by = [
-  "goals/first-useful-pr-loop-activation",
-]
 acceptance = "Map proposal/spec/ADR/plan/active-goal/support-tier/policy/closeout terminology into ripr's existing repo tracking and agent-context model without creating a parallel namespace."
 commands = [
   "cargo xtask check-doc-index",
@@ -85,7 +82,7 @@ status = "blocked"
 branch = "goals-active-goal-freshness-check"
 stackable = false
 blocked_by = [
-  "goals/first-useful-pr-loop-activation",
+  "docs/context-system-proof-stack-reconciliation",
 ]
 acceptance = "Goal validation fails stale closed active campaigns unless a successor or no-current-goal marker is present, catches missing work-item proof commands, and keeps agents from following closed execution state."
 commands = [
@@ -101,7 +98,7 @@ status = "blocked"
 branch = "cli-first-pr-front-door-polish"
 stackable = false
 blocked_by = [
-  "goals/first-useful-pr-loop-activation",
+  "goals/active-goal-freshness-check",
 ]
 acceptance = "A new user can run one first-pr command and understand the top repairable gap or recovery state without opening secondary reports."
 commands = [
