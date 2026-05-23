@@ -447,6 +447,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert!(stdout.contains("Safe next action: repair one named gap"));
     assert!(stdout.contains("Top actionable gap: missing boundary assertion"));
     assert!(stdout.contains("Changed behavior: `amount >= threshold`"));
+    assert!(stdout.contains("Why it matters: A related Rust test reaches this change"));
     assert!(
         stdout
             .contains("Current evidence strength: Static evidence found related Rust test context")

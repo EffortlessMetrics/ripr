@@ -1790,6 +1790,9 @@ fn start_here_cli_summary(packet: &Value, json_path: &Path, markdown_path: &Path
             if let Some(changed) = string_path(selected, &["changed_behavior"]) {
                 out.push_str(&format!("Changed behavior: `{}`\n", changed.trim()));
             }
+            if let Some(why) = string_path(selected, &["why"]) {
+                out.push_str(&format!("Why it matters: {why}\n"));
+            }
             if let Some(strength) = string_path(selected, &["current_evidence_strength"]) {
                 out.push_str(&format!("Current evidence strength: {strength}\n"));
             }
@@ -1951,7 +1954,10 @@ fn render_preflight_markdown(packet: &Value, out: &mut String) {
     out.push_str(&format!("Status: `{status}`\n"));
     out.push_str(&format!("Mode: `{mode}`\n"));
     if let Some(command) = preflight.get("next_command").and_then(Value::as_str) {
-        out.push_str(&format!("Next command: `{command}`\n"));
+        out.push_str(&format!(
+            "Next command: {}\n",
+            markdown_code_or_text(command)
+        ));
     }
     out.push('\n');
     if let Some(checks) = preflight.get("checks").and_then(Value::as_array) {
@@ -1967,6 +1973,14 @@ fn render_preflight_markdown(packet: &Value, out: &mut String) {
             let message = check.get("message").and_then(Value::as_str).unwrap_or("");
             out.push_str(&format!("- {label}: `{status}` - {message}\n"));
         }
+    }
+}
+
+fn markdown_code_or_text(value: &str) -> String {
+    if value.contains('`') {
+        value.to_string()
+    } else {
+        format!("`{value}`")
     }
 }
 
@@ -2347,6 +2361,17 @@ mod tests {
         assert!(help.contains("no actionable gap"));
         assert!(help.contains("preview-limited evidence"));
         assert!(help.contains("verify command / receipt command / receipt path"));
+    }
+
+    #[test]
+    fn markdown_command_rendering_preserves_embedded_code_spans() {
+        assert_eq!(markdown_code_or_text("git status"), "`git status`");
+        assert_eq!(
+            markdown_code_or_text(
+                "Choose a head with changes or rerun after committing PR work: `ripr first-pr --root . --base origin/main --head HEAD`."
+            ),
+            "Choose a head with changes or rerun after committing PR work: `ripr first-pr --root . --base origin/main --head HEAD`."
+        );
     }
 
     #[test]
