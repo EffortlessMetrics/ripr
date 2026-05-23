@@ -4194,7 +4194,14 @@ Closeout:
 
 Campaign ID: `first-useful-pr-loop-continuation`
 
-Status: active.
+Status: closed.
+
+Closeout:
+
+- [First Useful PR Loop Continuation closeout](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md)
+  records the proof that the CLI first screen, generated CI, VS Code,
+  agent packets, receipts, output contracts, and support-tier boundaries now
+  tell one consistent static-advisory repair story.
 
 Actionable Surface Translation made the covered first screens speak the same
 repair-first language. Campaign 28 is already closed and archived, so this
@@ -4239,7 +4246,7 @@ Work items:
 | `receipt/reviewer-native-outcome` | done | Outcome receipts now make reviewer-visible static claim boundaries explicit after #338. |
 | `fixtures/first-pr-demo-story` | done | The boundary-gap fixture story now pins the before -> first-pr recommendation -> focused proof -> outcome receipt -> reviewer receipt path after #341. |
 | `surfaces/first-useful-loop-convergence` | done | Generated CI, VS Code, and agent packets now mirror the CLI first-useful loop vocabulary and non-claims. |
-| `campaign/first-useful-pr-loop-continuation-closeout` | ready | Close the First Useful PR Loop continuation with proof that the first-pr front door, receipts, generated CI, VS Code, agent packets, output contracts, and support-tier boundaries tell one consistent static-advisory repair story. |
+| `campaign/first-useful-pr-loop-continuation-closeout` | done | Closed the continuation with proof that the first-pr front door, receipts, generated CI, VS Code, agent packets, output contracts, and support-tier boundaries tell one consistent static-advisory repair story. |
 
 Commands:
 
@@ -4250,6 +4257,7 @@ cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-doc-roles
+cargo xtask check-output-contracts
 cargo xtask check-pr
 git diff --check
 ```
@@ -4268,3 +4276,9 @@ Blocking conditions:
 - release, publish, signing, marketplace, or badge endpoint refresh work
 - runtime adequacy, coverage adequacy, proof-of-correctness, policy
   eligibility, gate pass/fail, or merge-readiness claims
+
+Closeout:
+
+- [First Useful PR Loop Continuation closeout](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md)
+  records the first-pr surface convergence audit, static/advisory claim
+  boundary, archived manifest, and no selected successor campaign.
