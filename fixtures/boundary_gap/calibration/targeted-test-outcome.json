@@ -37,7 +37,7 @@
   "removed": [],
   "review_receipt": {
     "focused_proof_added": [
-      "predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof: new observed value: 100; related test count increased by 1."
+      "predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: new observed value: 100; related test count increased by 1."
     ],
     "movement_after_verification": [
       "0 improved, 0 changed without ranking higher, 0 regressed, 1 unchanged.",
@@ -45,6 +45,11 @@
     ],
     "remaining_weak_or_unknown": [
       "predicate_boundary remains weakly_gripped at src/lib.rs:2."
+    ],
+    "reviewer_may_believe": [
+      "RIPR compared only the listed static snapshots: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.",
+      "The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR.",
+      "The movement and remaining-weak sections define the static claim boundary for this receipt."
     ],
     "reviewer_should_inspect": [
       "Open the compared artifacts: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.",

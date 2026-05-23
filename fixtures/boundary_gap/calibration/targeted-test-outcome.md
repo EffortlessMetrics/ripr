@@ -68,7 +68,7 @@ None.
 
 ### What focused proof changed?
 
-- predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof: new observed value: 100; related test count increased by 1.
+- predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: new observed value: 100; related test count increased by 1.
 
 ### What moved after verification?
 
@@ -84,6 +84,12 @@ None.
 - Open the compared artifacts: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
 - Inspect the focused test or output proof corresponding to each listed evidence delta.
 - Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete.
+
+### Reviewer may believe
+
+- RIPR compared only the listed static snapshots: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
+- The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR.
+- The movement and remaining-weak sections define the static claim boundary for this receipt.
 
 ### Reviewer should not believe
 

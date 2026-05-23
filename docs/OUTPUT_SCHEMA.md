@@ -3367,7 +3367,7 @@ JSON shape:
       "weakly_gripped before predicate_boundary at src/pricing.rs:88."
     ],
     "focused_proof_added": [
-      "predicate_boundary at src/pricing.rs:88 shows static evidence movement for focused proof: missing discriminator no longer reported: discount_threshold (equality boundary); new observed value: discount_threshold."
+      "predicate_boundary at src/pricing.rs:88 shows static evidence movement for focused proof outside RIPR: missing discriminator no longer reported: discount_threshold (equality boundary); new observed value: discount_threshold."
     ],
     "movement_after_verification": [
       "2 improved, 0 changed without ranking higher, 0 regressed, 12 unchanged.",
@@ -3380,6 +3380,11 @@ JSON shape:
       "Open the compared artifacts: target/ripr/before.json and target/ripr/after.json.",
       "Inspect the focused test or output proof corresponding to each listed evidence delta.",
       "Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete."
+    ],
+    "reviewer_may_believe": [
+      "RIPR compared only the listed static snapshots: target/ripr/before.json and target/ripr/after.json.",
+      "The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR.",
+      "The movement and remaining-weak sections define the static claim boundary for this receipt."
     ],
     "reviewer_should_not_believe": [
       "Runtime mutation result.",
@@ -3433,9 +3438,9 @@ Field contract:
 - `review_receipt` — an additive reviewer packet derived from the same
   before/after movement data. It answers what changed, what RIPR flagged before
   the focused repair attempt, which static proof signals moved, what still
-  remains weak or unknown, and what reviewers should inspect or avoid
-  inferring. It does not add gate authority or runtime evidence beyond the
-  compared snapshots.
+  remains weak or unknown, which bounded static claims reviewers may make, and
+  what reviewers should inspect or avoid inferring. It does not add gate
+  authority or runtime evidence beyond the compared snapshots.
 
 The Markdown surface prints the same summary, highlights moved, unchanged,
 regressed, new, and removed seams for human review, and includes a "Review

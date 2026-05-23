@@ -630,6 +630,7 @@ fn targeted_test_outcome_review_receipt_json(report: &TargetedTestOutcomeReport)
         "movement_after_verification": review_movement_after_verification(report),
         "remaining_weak_or_unknown": review_remaining_weak_or_unknown(report),
         "reviewer_should_inspect": review_should_inspect(report),
+        "reviewer_may_believe": reviewer_may_believe(report),
         "reviewer_should_not_believe": reviewer_should_not_believe()
     })
 }
@@ -730,6 +731,7 @@ fn push_targeted_outcome_review_receipt_md(out: &mut String, report: &TargetedTe
         "Reviewer should inspect",
         &review_should_inspect(report),
     );
+    push_review_receipt_list_md(out, "Reviewer may believe", &reviewer_may_believe(report));
     push_review_receipt_list_md(
         out,
         "Reviewer should not believe",
@@ -832,7 +834,7 @@ fn review_focused_proof_added(report: &TargetedTestOutcomeReport) -> Vec<String>
             continue;
         }
         items.push(format!(
-            "{} at {}:{} shows static evidence movement for focused proof: {}.",
+            "{} at {}:{} shows static evidence movement for focused proof outside RIPR: {}.",
             movement.seam_kind,
             movement.file,
             movement.line,
@@ -841,7 +843,7 @@ fn review_focused_proof_added(report: &TargetedTestOutcomeReport) -> Vec<String>
     }
     review_limit_or_default(
         items,
-        "No focused proof signal was visible in the rendered static snapshots.",
+        "No focused proof signal from a test or output proof outside RIPR was visible in the rendered static snapshots.",
     )
 }
 
@@ -929,6 +931,40 @@ fn review_should_inspect(report: &TargetedTestOutcomeReport) -> Vec<String> {
         "Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete."
             .to_string(),
     ]
+}
+
+fn reviewer_may_believe(report: &TargetedTestOutcomeReport) -> Vec<String> {
+    let mut items = vec![format!(
+        "RIPR compared only the listed static snapshots: {} and {}.",
+        report.before_path, report.after_path
+    )];
+    let has_focused_proof_signal = report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+        .any(|movement| {
+            movement
+                .evidence_delta
+                .iter()
+                .any(|delta| positive_proof_delta(delta))
+        });
+    if has_focused_proof_signal {
+        items.push(
+            "The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR."
+                .to_string(),
+        );
+    } else {
+        items.push(
+            "No focused-proof signal was visible; this receipt only records before/after static movement."
+                .to_string(),
+        );
+    }
+    items.push(
+        "The movement and remaining-weak sections define the static claim boundary for this receipt."
+            .to_string(),
+    );
+    items
 }
 
 fn reviewer_should_not_believe() -> Vec<String> {
@@ -1315,7 +1351,15 @@ mod tests {
         assert!(
             value["review_receipt"]["focused_proof_added"][0]
                 .as_str()
-                .is_some_and(|text| text.contains("new observed value: 100"))
+                .is_some_and(|text| text.contains("outside RIPR")
+                    && text.contains("new observed value: 100"))
+        );
+        assert!(
+            value["review_receipt"]["reviewer_may_believe"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item
+                    .as_str()
+                    .is_some_and(|text| text.contains("static claim boundary"))))
         );
         assert!(
             value["review_receipt"]["reviewer_should_not_believe"]
@@ -1331,6 +1375,8 @@ mod tests {
         assert!(markdown.contains("new observed value: 100"));
         assert!(markdown.contains("## Review Receipt"));
         assert!(markdown.contains("### What focused proof changed?"));
+        assert!(markdown.contains("### Reviewer may believe"));
+        assert!(markdown.contains("test or output proof changed outside RIPR"));
         assert!(markdown.contains("### Reviewer should not believe"));
         assert!(markdown.contains("weakly_gripped -> strongly_gripped"));
         Ok(())
