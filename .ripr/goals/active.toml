@@ -64,7 +64,7 @@ commands = [
 
 [[work_item]]
 id = "docs/context-system-proof-stack-reconciliation"
-status = "ready"
+status = "done"
 branch = "docs-context-system-proof-stack-reconciliation"
 stackable = false
 acceptance = "Map proposal/spec/ADR/plan/active-goal/support-tier/policy/closeout terminology into ripr's existing repo tracking and agent-context model without creating a parallel namespace."
@@ -78,12 +78,9 @@ commands = [
 
 [[work_item]]
 id = "goals/active-goal-freshness-check"
-status = "blocked"
+status = "ready"
 branch = "goals-active-goal-freshness-check"
 stackable = false
-blocked_by = [
-  "docs/context-system-proof-stack-reconciliation",
-]
 acceptance = "Goal validation fails stale closed active campaigns unless a successor or no-current-goal marker is present, catches missing work-item proof commands, and keeps agents from following closed execution state."
 commands = [
   "cargo test -p xtask campaign_manifest --bin xtask",

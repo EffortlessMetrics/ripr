@@ -33,6 +33,30 @@ Each doc has exactly one role. Avoid mixing roles in one file.
 | Closeout | [`docs/handoffs/`](handoffs/) | What happened, what passed, what remains. |
 | Generated evidence | `target/ripr/{reports,receipts,fixtures,dogfood}/` | Receipts, summaries, blocked reports, fixtures. |
 
+## Proof-stack translation
+
+Incoming handoffs and agent prompts may use generic terms like PRD, proof
+stack, source-of-truth stack, policy ledger, or active goal. Translate those
+terms into the repo-native artifacts above instead of creating a parallel
+namespace:
+
+| Generic term | Repo-native artifact |
+| --- | --- |
+| Proposal / PRD | `docs/proposals/RIPR-PROP-*` |
+| Spec | `docs/specs/RIPR-SPEC-*` |
+| ADR | `docs/adr/` |
+| Implementation plan | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, and `plans/` |
+| Active goal manifest | `.ripr/goals/active.toml` |
+| Support tiers | `docs/status/SUPPORT_TIERS.md` |
+| Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
+| Closeout | `docs/handoffs/` |
+| Durable learning | `docs/LEARNINGS.md` |
+
+The detailed source-of-truth control-plane guide lives in
+[`docs/source-of-truth/README.md`](source-of-truth/README.md). Its role is to
+explain and link the same repo-owned artifacts, not to replace the execution
+manifest, support-tier files, traceability ledger, or campaign history.
+
 ## Lifecycle
 
 ```text
@@ -117,6 +141,11 @@ Any agent or operator runner may consume these artifacts:
 
 External agent state stays on the agent side. Repo tracking stays in the
 repo. The two coexist; neither replaces the other.
+
+If an external runner proposes a runner-local goals tree, a runner-local
+source-of-truth directory, or another persistent planning ledger, map that
+request back to this repo model unless a dedicated proposal, spec, and migration
+PR deliberately change the repository contract.
 
 ## Validation
 

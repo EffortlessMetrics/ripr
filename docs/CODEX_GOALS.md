@@ -11,6 +11,17 @@ campaigns, work items, the active goal manifest, and handoffs) that any
 runner — Codex, Kiro, Claude Code, Cursor, or a generic agent — consumes,
 see [Repo tracking model](REPO_TRACKING_MODEL.md).
 
+When a handoff uses generic proof-stack language, Codex should translate it
+into RIPR's existing repo artifacts instead of adding a second task system:
+proposal/PRD means `docs/proposals/RIPR-PROP-*`, spec means
+`docs/specs/RIPR-SPEC-*`, ADR means `docs/adr/`, implementation plan means
+`docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, or `plans/`,
+active goal means `.ripr/goals/active.toml`, policy ledger means `policy/*.toml`
+or `.ripr/traceability.toml`, capability claims mean `docs/CAPABILITY_MATRIX.md`
+and `metrics/capabilities.toml`, support tiers mean
+`docs/status/SUPPORT_TIERS.md`, closeout means `docs/handoffs/`, and durable
+learning means `docs/LEARNINGS.md`.
+
 The repository supplies the harness around that loop:
 
 - implementation campaign docs
