@@ -20523,27 +20523,38 @@ fn ripr_swarm_attempt_allowed_file_line(attempt: &RiprSwarmAttemptDryRun) -> Str
             attempt.swarm_state
         );
     }
-    if attempt.related_test_or_observer != "unknown" {
-        let target = ripr_swarm_attempt_related_target_file(&attempt.related_test_or_observer)
-            .unwrap_or_else(|| attempt.related_test_or_observer.clone());
-        format!("{} (bounded repair target)", target)
-    } else {
-        "No typed edit target is available; do not edit files until the packet is regenerated"
-            .to_string()
+    if let Some(target) = ripr_swarm_attempt_related_target_file(&attempt.related_test_or_observer)
+    {
+        return format!("{} (bounded repair target)", target);
     }
+    "No typed edit target is available; do not edit files until the packet is regenerated"
+        .to_string()
 }
 
 fn ripr_swarm_attempt_related_target_file(related: &str) -> Option<String> {
-    related
-        .split_once("::")
-        .map(|(file, _)| file)
-        .filter(|file| !file.trim().is_empty())
-        .map(ToString::to_string)
-        .or_else(|| {
-            let looks_like_path =
-                (related.contains('/') || related.contains('\\')) && related.contains('.');
-            looks_like_path.then(|| related.to_string())
-        })
+    if let Some((file, _)) = related.split_once("::") {
+        return ripr_swarm_attempt_workspace_relative_file_token(file);
+    }
+    ripr_swarm_attempt_workspace_relative_file_token(related)
+}
+
+fn ripr_swarm_attempt_workspace_relative_file_token(value: &str) -> Option<String> {
+    let normalized = value.trim().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.contains(':')
+        || normalized.chars().any(char::is_whitespace)
+        || !normalized.contains('.')
+    {
+        return None;
+    }
+    if normalized
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return None;
+    }
+    Some(normalized)
 }
 
 fn ripr_swarm_plan_blocked_report(
@@ -49516,17 +49527,17 @@ mod tests {
         report_index_markdown, report_index_missing_artifact_count, report_index_missing_expected,
         report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
         report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
-        ripr_pre_commit_hook, ripr_swarm_attempt_dry_run_from_actionable_gaps_value,
-        ripr_swarm_attempt_dry_run_markdown, ripr_swarm_plan_blocked_packets,
-        ripr_swarm_plan_blocked_report, ripr_swarm_plan_from_actionable_gaps_value,
-        ripr_swarm_plan_json, ripr_swarm_plan_markdown, ripr_swarm_plan_packet_is_high_confidence,
-        ripr_swarm_plan_ready_packets, ripr_swarm_read_optional_json,
-        ripr_swarm_readiness_from_values, ripr_swarm_readiness_json, ripr_swarm_readiness_markdown,
-        ripr_swarm_readiness_next_actions, ripr_swarm_readiness_summary,
-        routed_rust_workflow_contract_violations, run_ci_full_evidence_gates,
-        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
-        should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
-        sorted_capability_blocks_content, sorted_command_catalog_content,
+        ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
+        ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
+        ripr_swarm_plan_blocked_packets, ripr_swarm_plan_blocked_report,
+        ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
+        ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
+        ripr_swarm_read_optional_json, ripr_swarm_readiness_from_values, ripr_swarm_readiness_json,
+        ripr_swarm_readiness_markdown, ripr_swarm_readiness_next_actions,
+        ripr_swarm_readiness_summary, routed_rust_workflow_contract_violations,
+        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
+        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
+        sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
         sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
         spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
         static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
@@ -69740,6 +69751,53 @@ covered_by = ["cargo xtask check-file-policy"]
                 .contains("not repair-ready")
         );
         assert_eq!(attempt.static_limitations_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_dry_run_does_not_turn_candidate_prose_into_allowed_file()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "packets": [
+                {
+                    "packet_id": "packet:candidate-prose",
+                    "canonical_gap_id": "gap:candidate-prose",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+                    },
+                    "verify_command": "cargo test -p ripr pricing_threshold",
+                    "receipt_command": "cargo xtask receipts check",
+                    "candidate_value_or_observer": "input that hits the boundary branch",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+            &actionable_gaps,
+            "packet:candidate-prose",
+        )?;
+        assert_eq!(attempt.swarm_state, "queued");
+        assert_eq!(
+            ripr_swarm_attempt_allowed_file_line(&attempt),
+            "No typed edit target is available; do not edit files until the packet is regenerated"
+        );
+
+        let markdown = ripr_swarm_attempt_dry_run_markdown(&attempt);
+        assert!(markdown.contains("No typed edit target is available"));
+        assert!(!markdown.contains("input that hits the boundary branch (bounded repair target)"));
         Ok(())
     }
 
