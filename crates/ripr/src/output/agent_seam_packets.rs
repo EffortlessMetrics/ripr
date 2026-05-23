@@ -22,6 +22,7 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
+use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
 use crate::output::path::{display_path, display_path_text};
@@ -38,10 +39,6 @@ const MAX_RELATED_TESTS_PER_PACKET: usize = 8;
 /// agents that static evidence is preflight, not proof.
 const RUNTIME_CONFIRMATION_NOTE: &str =
     "optional cargo-mutants confirmation; ripr reports static evidence only";
-
-/// Boundary surfaced as a typed field so agent consumers can carry the
-/// same non-claim language as `ripr first-pr` without scraping prose.
-const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 /// Render every actionable `ClassifiedSeam` in `classified` as an agent
 /// packet, returning a JSON object with a `packets` array. Strongly-gripped,
@@ -105,6 +102,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
     let Some(verify_command) = record.verification_commands.first().cloned() else {
         return Err("requires verification_commands".to_string());
     };
+    let current_evidence_strength = gap_record_current_evidence_strength(record);
     let stop_conditions = stop_conditions_for(route);
     let anchor = record.anchor.as_ref();
     let file = anchor
@@ -143,6 +141,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "gap_state": record.gap_state.as_str(),
         "evidence_class": record.evidence_class.as_str(),
         "repairability": record.repairability.as_str(),
+        "current_evidence_strength": current_evidence_strength.as_str(),
         "file": file,
         "line": line,
         "owner": owner,
@@ -170,11 +169,14 @@ pub(crate) fn render_agent_gap_record_packet_json(
             "changed_behavior": route.changed_behavior.as_deref(),
             "repair": repair_text_for_gap_route(route),
             "repair_route": route,
+            "current_evidence_strength": current_evidence_strength.as_str(),
             "verification_commands": &record.verification_commands,
             "verify_command": verify_command,
             "source_artifact": gap_ledger_path,
+            "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
             "authority_boundary": authority_boundary,
         },
+        "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
         "llm_guidance": {
             "prompt": gap_record_prompt(route, &verify_command),
             "verify_command": verify_command,
@@ -458,6 +460,10 @@ fn gap_record_packet_context(
         "Language: {} ({}).",
         record.language, record.language_status
     ));
+    context.push(format!(
+        "Current evidence strength: {}.",
+        gap_record_current_evidence_strength(record)
+    ));
     if let Some(anchor) = record.anchor.as_ref() {
         if let Some(file) = anchor.file.as_deref() {
             let mut location = format!("Anchor: {}", display_path_text(file));
@@ -508,8 +514,25 @@ fn gap_record_packet_context(
     if !record.evidence_ids.is_empty() {
         context.push(format!("Evidence IDs: {}.", record.evidence_ids.join(", ")));
     }
+    context.push(format!(
+        "Static evidence boundary: {STATIC_EVIDENCE_BOUNDARY}."
+    ));
     context.push(format!("Source artifact: {}.", gap_ledger_path));
     context
+}
+
+fn gap_record_current_evidence_strength(record: &GapRecord) -> String {
+    let evidence_class = if record.evidence_class.trim().is_empty() {
+        "unknown"
+    } else {
+        record.evidence_class.as_str()
+    };
+    let gap_state = if record.gap_state.trim().is_empty() {
+        "unknown"
+    } else {
+        record.gap_state.as_str()
+    };
+    format!("{evidence_class} / {gap_state}")
 }
 
 fn gap_record_packet_repair(route: &GapRepairRoute) -> Vec<String> {
@@ -1918,10 +1941,36 @@ mod tests {
         );
         assert_eq!(
             packet
+                .get("current_evidence_strength")
+                .and_then(serde_json::Value::as_str),
+            Some("predicate_boundary / actionable")
+        );
+        assert_eq!(
+            packet
+                .get("static_evidence_boundary")
+                .and_then(serde_json::Value::as_str),
+            Some(STATIC_EVIDENCE_BOUNDARY)
+        );
+        assert_eq!(
+            packet
                 .get("repair_card")
                 .and_then(|card| card.get("source_artifact"))
                 .and_then(serde_json::Value::as_str),
             Some("target/ripr/reports/gap-decision-ledger.json")
+        );
+        assert_eq!(
+            packet
+                .get("repair_card")
+                .and_then(|card| card.get("current_evidence_strength"))
+                .and_then(serde_json::Value::as_str),
+            Some("predicate_boundary / actionable")
+        );
+        assert_eq!(
+            packet
+                .get("repair_card")
+                .and_then(|card| card.get("static_evidence_boundary"))
+                .and_then(serde_json::Value::as_str),
+            Some(STATIC_EVIDENCE_BOUNDARY)
         );
         assert!(
             packet.get("confidence").is_none(),
@@ -1970,6 +2019,17 @@ mod tests {
             copyable_markdown
                 .contains("- Related test or proof target: `discount_threshold_boundary`."),
             "copyable packet should name the related target: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown
+                .contains("- Current evidence strength: predicate_boundary / actionable."),
+            "copyable packet should name the current evidence strength: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains(
+                "- Static evidence boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."
+            ),
+            "copyable packet should name the static evidence boundary: {copyable_markdown}"
         );
         assert!(
             copyable_markdown.contains("- Receipt command: `ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json`."),

@@ -6992,10 +6992,14 @@ JSON shape:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
     "missing_discriminator": "amount == discount_threshold",
+    "focused_proof_intent": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
     "suggested_test": "Add an equality-boundary assertion.",
     "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
     "receipt": {
       "artifact": "target/ripr/reports/agent-receipt.json",
@@ -7075,7 +7079,9 @@ JSON shape:
 
 Field contract:
 
-- `schema_version` is `0.1` until the report shape changes.
+- `schema_version` remains `0.1`; additive top-issue projection fields preserve
+  existing consumers and carry the same first-screen vocabulary used by
+  `first-pr`.
 - `kind` is always `pr_review_front_panel`.
 - `status` is `advisory`, `pass`, `acknowledged`, `blocked`,
   `config_error`, or `incomplete`.
@@ -7098,6 +7104,13 @@ Field contract:
 - `top_issue.*` is copied from existing RIPR artifacts. The front panel must
   not mint seam identities, rerank recommendations with a model, or infer
   missing source facts from code.
+- `top_issue.current_evidence_strength`,
+  `top_issue.missing_discriminator`, `top_issue.focused_proof_intent`,
+  `top_issue.verify_command`, `top_issue.receipt_command`, and
+  `top_issue.static_evidence_boundary` are the typed one-screen repair
+  vocabulary. They mirror the CLI first screen when the supplied artifacts
+  carry the field. Missing optional source fields stay absent rather than being
+  inferred from prose.
 - `movement.*` preserves before/after static movement when supplied. It is not
   runtime mutation confirmation.
 - `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or
@@ -7120,12 +7133,13 @@ Field contract:
   advisory-default boundaries.
 
 Markdown should fit in a generated GitHub job summary. It should show status,
-top issue, missing discriminator, suggested focused test, related test,
-baseline and PR movement, policy state, repair commands, receipt state,
-artifact groups, and advisory limits. For fallback states, Markdown should put
-the safe next step before lower-priority detail. For example, missing required
-inputs should say to regenerate the missing PR guidance or first-useful-action
-artifact before acting on the panel.
+top issue, current evidence strength, missing discriminator, focused proof
+intent, suggested focused test, related test, baseline and PR movement, policy
+state, repair commands, receipt command/state, artifact groups, and advisory
+limits. For fallback states, Markdown should put the safe next step before
+lower-priority detail. For example, missing required inputs should say to
+regenerate the missing PR guidance or first-useful-action artifact before
+acting on the panel.
 
 Generated CI runs the producer only when configured input artifacts exist,
 uploads `pr-review-front-panel.{json,md}` with the normal report packet, and
@@ -8718,6 +8732,14 @@ Field contract:
   `packets[].policy_state`, `packets[].gap_state`,
   `packets[].repairability` - optional GapRecord identity and policy fields.
   Present only when `source = "gap_decision_ledger"`.
+- `packets[].current_evidence_strength` - optional GapRecord first-screen
+  evidence summary in the form `<evidence_class> / <gap_state>`. Present only
+  when `source = "gap_decision_ledger"` and mirrored in the copyable packet so
+  agent work orders carry the same current-evidence vocabulary as `first-pr`.
+- `packets[].static_evidence_boundary` - optional static/advisory non-claim
+  string. Gap-ledger packet mode uses the same boundary text as `first-pr` so
+  coding agents do not infer runtime mutation proof, coverage adequacy, gate
+  approval, or merge approval from a repair packet.
 - `packets[].anchor` - optional GapRecord anchor with `file`, `line`, `owner`,
   and `dedupe_fingerprint` when supplied by the ledger.
 - `packets[].repair_route` - optional full GapRecord repair route. Present
@@ -8732,15 +8754,16 @@ Field contract:
   of inventing a fix.
 - `packets[].repair_card` - optional GapRecord-backed repair card carrying
   repair text, route, source artifact, verification commands, and the
-  authority boundary. It is the same repair vocabulary used by PR comment
-  projection.
+  current evidence strength, static evidence boundary, and authority boundary.
+  It is the same repair vocabulary used by PR comment projection.
 - `packets[].llm_guidance.copyable_packet` - optional GapRecord-backed
   pasteable repair packet for coding agents. It carries `task`, `context`,
   `repair`, `verification`, `receipt`, `stop_conditions`, `do_not_do`,
-  `authority_boundary`, and a Markdown sibling with the same sections. It is
-  additive and derives only from the selected `GapRecord`; it does not rerun
-  analysis, edit source, generate tests, call providers, change gate
-  authority, or infer repairability from prose.
+  `authority_boundary`, static evidence boundary context, and a Markdown
+  sibling with the same sections. It is additive and derives only from the
+  selected `GapRecord`; it does not rerun analysis, edit source, generate
+  tests, call providers, change gate authority, or infer repairability from
+  prose.
 - `packets[].current_grip` — one of the `SeamGripClass` strings the
   packet is emitted for (`weakly_gripped`, `ungripped`,
   `reachable_unrevealed`, the four `*_unknown` classes, or

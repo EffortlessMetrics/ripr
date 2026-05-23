@@ -44,10 +44,13 @@
     "path": "src/ack.rs",
     "line": 5,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
     "missing_discriminator": "ack == 5",
+    "focused_proof_intent": "assert_eq!(ack(), 5)",
     "related_test": "tests/ack.rs::boundary",
     "suggested_test": "assert_eq!(ack(), 5)",
     "verify_command": null,
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "agent_command": "ripr agent start --root . --seam-id ack --out target/ripr/workflow",
     "receipt": {
       "artifact": null,

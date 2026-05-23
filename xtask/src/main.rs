@@ -12943,6 +12943,20 @@ fn validate_pr_review_front_panel_fixture_corpus_at(
                 "pr-review-front-panel case {case_id} report is missing static evidence limit"
             ));
         }
+        if let Some(top_issue) = report.get("top_issue").filter(|value| !value.is_null()) {
+            if json_string_field(top_issue, "static_evidence_boundary").as_deref()
+                != Some(FIRST_PR_STATIC_EVIDENCE_BOUNDARY)
+            {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} top_issue must mirror first-pr static evidence boundary"
+                ));
+            }
+            if json_string_field(top_issue, "current_evidence_strength").is_none() {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} top_issue is missing current_evidence_strength"
+                ));
+            }
+        }
 
         let markdown = match fs::read_to_string(&markdown_path) {
             Ok(markdown) => markdown,

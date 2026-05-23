@@ -61,9 +61,9 @@ LSP/editor behavior, publish inline comments, or change default CI blocking.
 The report must:
 
 - show one selected top issue or explain why no safe action is available;
-- show the missing discriminator, suggested focused test, related test,
-  handoff command, verify command, receipt path, and static movement when
-  present;
+- show the current evidence strength, missing discriminator, focused proof
+  intent, suggested focused test, related test, handoff command, verify command,
+  receipt command/path, and static movement when present;
 - distinguish baseline, new policy-eligible, acknowledged, waived, suppressed,
   blocked, config-error, and advisory states without hiding findings;
 - surface line-placeable versus summary-only guidance;
@@ -153,8 +153,9 @@ A useful panel should provide:
 - selected seam identity, path, line, static classification, and missing
   discriminator when a top issue exists;
 - line-placement state from PR guidance when available;
-- suggested focused test, related test, handoff command, verify command, and
-  receipt path when available;
+- current evidence strength, focused proof intent, suggested focused test,
+  related test, handoff command, verify command, and receipt command/path when
+  available;
 - baseline, acknowledgement, waiver, suppression, and gate state from supplied
   policy artifacts when available;
 - PR debt movement from supplied ledger, baseline delta, or RIPR Zero reports
@@ -308,10 +309,14 @@ The JSON report uses schema version `0.1`:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
     "missing_discriminator": "amount == discount_threshold",
+    "focused_proof_intent": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
     "suggested_test": "Add an equality-boundary assertion.",
     "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
     "receipt": {
       "artifact": "target/ripr/reports/agent-receipt.json",
@@ -403,6 +408,13 @@ Field contract:
 - `top_issue.*` is copied from existing RIPR artifacts. The front panel must
   not mint seam identities, rerank recommendations with a model, or infer
   missing source facts from code.
+- `top_issue.current_evidence_strength`,
+  `top_issue.missing_discriminator`, `top_issue.focused_proof_intent`,
+  `top_issue.verify_command`, `top_issue.receipt_command`, and
+  `top_issue.static_evidence_boundary` are the first-screen repair vocabulary.
+  They are additive and must come from supplied artifacts. If the input does
+  not carry an optional field such as changed behavior or receipt command, the
+  front panel leaves it absent instead of deriving it from prose.
 - `movement.*` preserves before/after static movement when supplied. It is not
   runtime mutation confirmation.
 - `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or
@@ -429,7 +441,9 @@ Status: advisory
 Top issue:
 - File: src/pricing.rs:88
 - Class: weakly_exposed
+- Current evidence strength: weakly_exposed
 - Missing discriminator: amount == discount_threshold
+- Focused proof intent: Add an equality-boundary assertion.
 - Suggested focused test: add an equality-boundary assertion
 - Related test: tests/pricing.rs::applies_discount_above_threshold
 

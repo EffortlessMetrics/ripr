@@ -9,12 +9,14 @@ Start here:
 - File: src/gone.rs:2
 - Repair route: focused_test
 - Class: weakly_exposed
+- Current evidence strength: weakly_exposed
 - Missing discriminator: gone == 2
+- Focused proof intent: assert_eq!(gone(), 2)
 - Suggested focused test: assert_eq!(gone(), 2)
 - Related test: tests/gone.rs::boundary
 - Verify command: not_available
 - Receipt: receipt_not_applicable
-- Boundary: advisory static evidence only; gate authority remains separate and no runtime, coverage, mutation, or merge approval is implied.
+- Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
 Movement:
 - New policy-eligible gaps: 1

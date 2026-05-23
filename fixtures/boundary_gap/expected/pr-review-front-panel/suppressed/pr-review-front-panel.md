@@ -9,10 +9,11 @@ Start here:
 - File: src/suppressed.rs:6
 - Repair route: not_available
 - Class: weakly_exposed
+- Current evidence strength: weakly_exposed
 - Missing discriminator: suppressed == 6
 - Verify command: not_available
 - Receipt: receipt_not_applicable
-- Boundary: advisory static evidence only; gate authority remains separate and no runtime, coverage, mutation, or merge approval is implied.
+- Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
 Movement:
 - New policy-eligible gaps: 0

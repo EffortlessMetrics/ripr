@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use super::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use super::receipt_lifecycle::{
     RECEIPT_MISSING, RECEIPT_NOT_APPLICABLE, receipt_lifecycle_state,
     receipt_lifecycle_state_from_receipt_value,
@@ -124,10 +125,19 @@ struct PanelTopIssue {
     path: Option<String>,
     line: Option<u64>,
     classification: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    changed_behavior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_evidence_strength: Option<String>,
     missing_discriminator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focused_proof_intent: Option<String>,
     related_test: Option<String>,
     suggested_test: Option<String>,
     verify_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    receipt_command: Option<String>,
+    static_evidence_boundary: &'static str,
     agent_command: Option<String>,
     receipt: PanelReceipt,
 }
@@ -423,8 +433,17 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         if let Some(classification) = &issue.classification {
             out.push_str(&format!("- Class: {classification}\n"));
         }
+        if let Some(changed_behavior) = &issue.changed_behavior {
+            out.push_str(&format!("- Changed behavior: `{changed_behavior}`\n"));
+        }
+        if let Some(strength) = &issue.current_evidence_strength {
+            out.push_str(&format!("- Current evidence strength: {strength}\n"));
+        }
         if let Some(discriminator) = &issue.missing_discriminator {
             out.push_str(&format!("- Missing discriminator: {discriminator}\n"));
+        }
+        if let Some(intent) = &issue.focused_proof_intent {
+            out.push_str(&format!("- Focused proof intent: {intent}\n"));
         }
         if let Some(suggested) = &issue.suggested_test {
             out.push_str(&format!(
@@ -439,8 +458,11 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
             "- Verify command: {}\n",
             markdown_command_or(issue.verify_command.as_deref(), "not_available")
         ));
+        if let Some(command) = &issue.receipt_command {
+            out.push_str(&format!("- Receipt command: `{command}`\n"));
+        }
         out.push_str(&format!("- Receipt: {}\n", issue_receipt_summary(issue)));
-        out.push_str("- Boundary: advisory static evidence only; gate authority remains separate and no runtime, coverage, mutation, or merge approval is implied.\n");
+        out.push_str(&format!("- Boundary: {}\n", issue.static_evidence_boundary));
         out.push('\n');
     } else {
         out.push_str("- State: no actionable PR-local RIPR guidance\n");
@@ -1337,6 +1359,7 @@ fn top_issue_from_first_action(
     let selected = action.get("selected")?;
     let target = action.get("target");
     let seam_id = string_path(selected, &["seam_id"]);
+    let classification = string_path(selected, &["classification"]);
     Some(PanelTopIssue {
         source: "first_useful_action".to_string(),
         source_artifact: input.first_action_path.clone()?,
@@ -1344,14 +1367,25 @@ fn top_issue_from_first_action(
         canonical_gap_id: string_path(selected, &["canonical_gap_id"]),
         path: string_path(selected, &["path"]),
         line: u64_path(selected, &["line"]),
-        classification: string_path(selected, &["classification"]),
+        classification: classification.clone(),
+        changed_behavior: string_from_sources(&[
+            (Some(selected), &["changed_behavior"]),
+            (target, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: classification,
         missing_discriminator: string_path(selected, &["missing_discriminator"]),
+        focused_proof_intent: focused_proof_intent_from_action_or_proof(
+            action,
+            parsed.assistant_proof.as_ref(),
+        ),
         related_test: target.and_then(|target| string_path(target, &["related_test"])),
         suggested_test: suggested_test_from_action_or_proof(
             action,
             parsed.assistant_proof.as_ref(),
         ),
         verify_command: string_path(action, &["commands", "verify"]),
+        receipt_command: string_path(action, &["commands", "receipt"]),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().map(|seam_id| {
             format!(
                 "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
@@ -1390,7 +1424,23 @@ fn top_issue_from_guidance(
             (Some(item), &["static_class"]),
         ])
         .map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(item), &["changed_behavior"]),
+            (Some(item), &["changed_expression"]),
+            (Some(item), &["evidence", "changed_behavior"]),
+        ]),
+        current_evidence_strength: string_from_sources(&[
+            (Some(item), &["classification"]),
+            (Some(item), &["class"]),
+            (Some(item), &["static_class"]),
+        ])
+        .map(normalize_class),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["suggested_test", "near_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         verify_command: seam_id.as_ref().map(|_| {
@@ -1399,6 +1449,8 @@ fn top_issue_from_guidance(
                 input.root
             )
         }),
+        receipt_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().map(|seam_id| {
             format!(
                 "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
@@ -1438,10 +1490,18 @@ fn top_issue_from_gate_decision(
             (Some(item), &["line"]),
         ]),
         classification: Some("weakly_exposed".to_string()),
+        changed_behavior: string_path(item, &["evidence", "changed_behavior"]),
+        current_evidence_strength: Some("weakly_exposed".to_string()),
         missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["evidence", "focused_proof_intent"]),
+            (Some(item), &["evidence", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["evidence", "recommended_test"]),
         suggested_test: string_path(item, &["evidence", "assertion_shape"]),
         verify_command: None,
+        receipt_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().and_then(|seam_id| {
             if decision == "acknowledged" {
                 Some(format!(
@@ -1478,10 +1538,18 @@ fn top_issue_from_baseline_delta(
         path: string_path(item, &["path"]),
         line: u64_path(item, &["line"]),
         classification: string_path(item, &["static_class"]).map(normalize_class),
+        changed_behavior: string_path(item, &["changed_behavior"]),
+        current_evidence_strength: string_path(item, &["static_class"]).map(normalize_class),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["suggested_test", "recommended_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         verify_command: string_path(item, &["repair", "verify_command"]),
+        receipt_command: string_path(item, &["repair", "receipt_command"]),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {
             artifact: None,
@@ -1511,10 +1579,24 @@ fn top_issue_from_assistant_health(
         path: string_path(seam, &["path"]),
         line: u64_path(seam, &["line"]),
         classification: string_path(seam, &["grip_class"]).map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(seam), &["changed_behavior"]),
+            (recommendation, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: string_path(seam, &["grip_class"]).map(normalize_class),
         missing_discriminator: string_path(seam, &["missing_discriminator"]),
+        focused_proof_intent: recommendation.and_then(|value| {
+            string_from_sources(&[
+                (Some(value), &["focused_proof_intent"]),
+                (Some(value), &["suggested_test"]),
+                (Some(value), &["assertion_shape"]),
+            ])
+        }),
         related_test: recommendation.and_then(|value| string_path(value, &["related_test"])),
         suggested_test: recommendation.and_then(|value| string_path(value, &["suggested_test"])),
         verify_command: recommendation.and_then(|value| string_path(value, &["verify_command"])),
+        receipt_command: receipt.and_then(|value| string_path(value, &["command"])),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: handoff.and_then(|value| string_path(value, &["agent_command"])),
         receipt: PanelReceipt {
             artifact: receipt.and_then(|value| string_path(value, &["artifact"])),
@@ -1584,6 +1666,19 @@ fn placement_from_guidance(pr_guidance: Option<&Value>) -> String {
         return "summary_only".to_string();
     }
     "not_available".to_string()
+}
+
+fn focused_proof_intent_from_action_or_proof(
+    action: &Value,
+    proof: Option<&Value>,
+) -> Option<String> {
+    string_from_sources(&[
+        (Some(action), &["target", "focused_proof_intent"]),
+        (Some(action), &["target", "suggested_assertion"]),
+        (proof, &["recommendation", "focused_proof_intent"]),
+        (proof, &["recommendation", "suggested_test"]),
+        (proof, &["recommendation", "assertion_shape"]),
+    ])
 }
 
 fn suggested_test_from_action_or_proof(action: &Value, proof: Option<&Value>) -> Option<String> {

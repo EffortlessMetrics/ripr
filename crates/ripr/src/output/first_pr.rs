@@ -25,7 +25,7 @@ const DEFAULT_REVIEW_COMMENTS: &str = "target/ripr/review/comments.json";
 const DEFAULT_AGENT_PACKET: &str = "target/ripr/workflow/agent-packet.json";
 const DEFAULT_GATE_DECISION: &str = "target/ripr/reports/gate-decision.json";
 const DEFAULT_RECEIPTS_DIR: &str = "target/ripr/receipts";
-const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
+pub(crate) const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct FirstPrOptions {
