@@ -42,6 +42,13 @@ The checked golden version is:
 fixtures/first_successful_pr/boundary-gap/expected/start-here.md
 ```
 
+The checked ten-minute story that ties this front door to the outcome receipt
+is:
+
+```text
+fixtures/first_successful_pr/boundary-gap/expected/ten-minute-demo.md
+```
+
 ## Demo Cases
 
 | Case | User story | Start-here result | Repair route | Verification |
@@ -73,6 +80,34 @@ Verify:
 The useful output is not the raw finding. It is the bounded work order:
 what changed, why it matters, where to repair, and which command verifies
 movement.
+
+The repair itself happens outside RIPR. For this demo, the focused proof is one
+boundary assertion:
+
+```rust
+assert_eq!(discount(100, 100), 90);
+```
+
+After adding that proof, emit a reviewer-native receipt from the checked
+before/after static snapshots:
+
+```bash
+ripr outcome \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
+  --format md \
+  --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md
+```
+
+The expected receipt is checked at:
+
+```text
+fixtures/boundary_gap/calibration/targeted-test-outcome.md
+```
+
+That receipt tells a reviewer what RIPR flagged before, what focused proof is
+visible in the after snapshot, what static movement changed, what remains weak
+or unknown, and what the reviewer should not believe.
 
 ## Output Contract Story
 

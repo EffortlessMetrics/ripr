@@ -7530,6 +7530,16 @@ const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str)] = &[
     ("blocked-ledger", "blocked", "blocked_artifact"),
 ];
 
+const FIRST_SUCCESSFUL_PR_DEMO_REQUIRED_TEXT: &[&str] = &[
+    "before -> ripr first-pr -> top gap -> focused external proof -> ripr outcome -> receipt",
+    "Top repairable gap",
+    "Focused proof observed",
+    "Reviewer should not believe",
+    "static advisory evidence",
+    "RIPR does not edit source or generate tests",
+    "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
+];
+
 const GAP_DECISION_LEDGER_CORPUS: &str = "fixtures/gap-decision-ledger/corpus.json";
 
 const GAP_DECISION_REQUIRED_KINDS: &[&str] = &[
@@ -9196,6 +9206,7 @@ fn validate_first_successful_pr_case(
             ));
         }
     }
+    validate_first_successful_pr_demo_story(root, case, case_id, violations)?;
     let case_dir = root.join(case_id);
     let input_ledger = case_dir.join("inputs/reports/gap-decision-ledger.json");
     let expected_json = case_dir.join("expected/start-here.json");
@@ -9280,6 +9291,50 @@ fn validate_first_successful_pr_case(
                 "first successful PR case {case_id} Markdown must show Blocked"
             )),
             _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_first_successful_pr_demo_story(
+    root: &Path,
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let demo_story = json_string_field(case, "demo_story");
+    if case_id == "boundary-gap" && demo_story.is_none() {
+        violations.push("first successful PR case boundary-gap is missing demo_story".to_string());
+        return Ok(());
+    }
+    let Some(demo_story) = demo_story else {
+        return Ok(());
+    };
+    let expected_prefix = format!("{case_id}/expected/");
+    if demo_story.contains('\\')
+        || demo_story.contains("..")
+        || is_absolute_path_like(&demo_story)
+        || !demo_story.starts_with(&expected_prefix)
+    {
+        violations.push(format!(
+            "first successful PR case {case_id} demo_story must be a case-local expected Markdown path"
+        ));
+        return Ok(());
+    }
+    let story_path = root.join(&demo_story);
+    if !story_path.exists() {
+        violations.push(format!(
+            "first successful PR case {case_id} is missing demo story {}",
+            normalize_path(&story_path)
+        ));
+        return Ok(());
+    }
+    let story = read_text_lossy(&story_path)?;
+    for required in FIRST_SUCCESSFUL_PR_DEMO_REQUIRED_TEXT {
+        if !story.contains(required) {
+            violations.push(format!(
+                "first successful PR case {case_id} demo story is missing `{required}`"
+            ));
         }
     }
     Ok(())
@@ -47985,6 +48040,7 @@ mod tests {
         assert!(report.contains("case output-contract-gap must be actionable/top_gap"));
         assert!(report.contains("is missing case empty-diff"));
         assert!(report.contains("is missing case blocked-ledger"));
+        assert!(report.contains("case boundary-gap is missing demo_story"));
         assert!(report.contains("inputs/reports/gap-decision-ledger.json"));
         assert!(report.contains("expected/start-here.json"));
         assert!(report.contains("expected/start-here.md"));
