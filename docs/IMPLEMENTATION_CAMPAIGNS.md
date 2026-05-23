@@ -4146,8 +4146,8 @@ Work items:
 | --- | --- | --- |
 | `docs/actionable-surface-translation-stack` | done | Added RIPR-PROP-0016, linked RIPR-SPEC-0059 to RIPR-PLAN-0059, registered the artifacts, updated indexes, and selected this active manifest without behavior changes. |
 | `badge/actionable-basis-presentation` | done | Badge-adjacent copy and badge-basis output explain the headline count as unresolved actionable static repair gaps using `canonical_actionable_gap` as the public basis. |
-| `pr/actionable-delta-front-panel` | ready | Make PR evidence lead with repo/PR actionable delta and one top next repair packet before raw finding or seam-inventory totals. |
-| `editor/repair-first-status-hierarchy` | blocked | Make editor Show Status lead with one safe repair action or one precise fail-closed reason. |
+| `pr/actionable-delta-front-panel` | done | PR summary now starts with an advisory actionable repair front panel over existing actionable-gaps, outcome, and PR front-panel artifacts before raw path inventory. |
+| `editor/repair-first-status-hierarchy` | ready | Make editor Show Status lead with one safe repair action or one precise fail-closed reason. |
 | `swarm/dry-run-copy-ready-packet` | blocked | Make dry-run attempt output compact and directly copy-ready for human or external-agent operators. |
 | `outcome/movement-front-section` | blocked | Make outcome/trend front sections lead with receipt-linked movement since prior refresh. |
 | `campaign/actionable-surface-translation-closeout` | blocked | Close only after all covered surfaces prove the translation contract and remaining limits are recorded. |

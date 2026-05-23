@@ -94,7 +94,7 @@ commands = [
 
 [[work_item]]
 id = "pr/actionable-delta-front-panel"
-status = "ready"
+status = "done"
 branch = "pr-actionable-delta-front-panel"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
@@ -109,15 +109,12 @@ commands = [
 
 [[work_item]]
 id = "editor/repair-first-status-hierarchy"
-status = "blocked"
+status = "ready"
 branch = "editor-repair-first-status-hierarchy"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
 spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
 plan = "plans/actionable-surface-translation/implementation-plan.md"
-blocked_by = [
-  "pr/actionable-delta-front-panel",
-]
 acceptance = "Editor Show Status leads with workspace/current-file actionable state, top repair item, related test or target, verify command, receipt state, and next safe command or precise fail-closed reason."
 commands = [
   "cargo test -p ripr lsp --lib",

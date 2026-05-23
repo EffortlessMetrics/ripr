@@ -44138,6 +44138,9 @@ fn add_changed_path(changes: &mut BTreeMap<String, BTreeSet<String>>, path: &str
 
 fn pr_summary_body(changes: &[ChangedPath]) -> String {
     let mut body = String::from("# ripr PR readiness summary\n\n");
+    body.push_str(&pr_actionable_delta_front_panel(changes));
+    body.push('\n');
+
     body.push_str("## Scope\n\n");
     body.push_str("Production delta:\n");
     write_path_list(&mut body, &paths_matching(changes, is_production_path));
@@ -44191,6 +44194,330 @@ fn pr_summary_body(changes: &[ChangedPath]) -> String {
         body.push_str(&format!("- `{}`: {status}\n", normalize_path(&path)));
     }
     body
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PrActionableInput {
+    Missing,
+    Read(Value),
+    Malformed(String),
+}
+
+impl PrActionableInput {
+    fn status(&self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Read(_) => "read",
+            Self::Malformed(_) => "malformed",
+        }
+    }
+
+    fn value(&self) -> Option<&Value> {
+        match self {
+            Self::Read(value) => Some(value),
+            Self::Missing | Self::Malformed(_) => None,
+        }
+    }
+
+    fn note(&self) -> Option<&str> {
+        match self {
+            Self::Malformed(err) => Some(err.as_str()),
+            Self::Missing | Self::Read(_) => None,
+        }
+    }
+}
+
+fn pr_actionable_delta_front_panel(changes: &[ChangedPath]) -> String {
+    let actionable =
+        read_pr_actionable_input(Path::new("target/ripr/reports/actionable-gaps.json"));
+    let outcomes = read_pr_actionable_input(Path::new(
+        "target/ripr/reports/actionable-gap-outcomes.json",
+    ));
+    let front_panel =
+        read_pr_actionable_input(Path::new("target/ripr/reports/pr-review-front-panel.json"));
+    pr_actionable_delta_front_panel_from_inputs(changes, &actionable, &outcomes, &front_panel)
+}
+
+fn read_pr_actionable_input(path: &Path) -> PrActionableInput {
+    if !path.exists() {
+        return PrActionableInput::Missing;
+    }
+    match read_json_value(path) {
+        Ok(value) => PrActionableInput::Read(value),
+        Err(err) => PrActionableInput::Malformed(err),
+    }
+}
+
+fn pr_actionable_delta_front_panel_from_inputs(
+    changes: &[ChangedPath],
+    actionable: &PrActionableInput,
+    outcomes: &PrActionableInput,
+    front_panel: &PrActionableInput,
+) -> String {
+    let mut body = String::from("## Actionable Repair Front Panel\n\n");
+    body.push_str("Status: advisory static projection\n\n");
+    body.push_str("Inputs:\n");
+    write_pr_actionable_input_status(
+        &mut body,
+        "actionable gaps",
+        "target/ripr/reports/actionable-gaps.json",
+        actionable,
+    );
+    write_pr_actionable_input_status(
+        &mut body,
+        "actionable outcomes",
+        "target/ripr/reports/actionable-gap-outcomes.json",
+        outcomes,
+    );
+    write_pr_actionable_input_status(
+        &mut body,
+        "PR review front panel",
+        "target/ripr/reports/pr-review-front-panel.json",
+        front_panel,
+    );
+
+    body.push_str("\nActionable delta:\n");
+    if let Some(report) = actionable.value() {
+        let packets = pr_actionable_packets(report);
+        let changed_paths = pr_changed_path_set(changes);
+        let pr_local_packets = packets
+            .iter()
+            .filter(|packet| pr_packet_touches_changed_path(packet, &changed_paths))
+            .count();
+        let static_limited_packets = packets
+            .iter()
+            .filter(|packet| pr_packet_static_limitation_count(packet) > 0)
+            .count();
+        body.push_str(&format!(
+            "- repo actionable gaps: `{}`\n",
+            pr_usize_path(report, &["summary", "actionable_gaps"])
+                .map_or_else(|| "unknown".to_string(), |value| value.to_string())
+        ));
+        body.push_str(&format!(
+            "- PR-local actionable gaps: `{pr_local_packets}`\n"
+        ));
+        body.push_str(&format!(
+            "- repair packets emitted: `{}`\n",
+            pr_usize_path(report, &["summary", "packets_emitted"])
+                .map_or_else(|| packets.len().to_string(), |value| value.to_string())
+        ));
+        body.push_str(&format!(
+            "- public repair packets: `{}`\n",
+            pr_usize_path(report, &["summary", "public_projection_eligible_packets"])
+                .map_or_else(|| "unknown".to_string(), |value| value.to_string())
+        ));
+        body.push_str(&format!(
+            "- blocked/static-limited gaps: `{}` static limitation(s), `{}` static-limited packet(s)\n",
+            pr_usize_path(report, &["summary", "static_limitations"])
+                .map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+            static_limited_packets
+        ));
+    } else {
+        body.push_str("- repo actionable gaps: `unknown` (missing actionable-gaps artifact)\n");
+        body.push_str("- PR-local actionable gaps: `unknown` (missing actionable-gaps artifact)\n");
+        body.push_str(
+            "- blocked/static-limited gaps: `unknown` (missing actionable-gaps artifact)\n",
+        );
+    }
+
+    write_pr_actionable_delta_movement(&mut body, outcomes, front_panel);
+    write_pr_actionable_top_packet(&mut body, changes, actionable);
+
+    body.push_str("\nBoundary:\n");
+    body.push_str("- Static RIPR evidence only.\n");
+    body.push_str("- Does not run mutation testing or claim runtime adequacy.\n");
+    body.push_str("- Does not edit source, generate tests, publish comments, or decide gates.\n");
+    body
+}
+
+fn write_pr_actionable_input_status(
+    body: &mut String,
+    label: &str,
+    path: &str,
+    input: &PrActionableInput,
+) {
+    body.push_str(&format!("- {label}: `{}` (`{path}`)", input.status()));
+    if let Some(note) = input.note() {
+        body.push_str(&format!(" - {}", md_escape(note)));
+    }
+    body.push('\n');
+}
+
+fn write_pr_actionable_delta_movement(
+    body: &mut String,
+    outcomes: &PrActionableInput,
+    front_panel: &PrActionableInput,
+) {
+    let new_actionable = front_panel
+        .value()
+        .and_then(|value| {
+            pr_usize_path(value, &["summary", "new_policy_eligible"])
+                .or_else(|| pr_usize_path(value, &["debt_delta", "new_policy_eligible"]))
+        })
+        .map_or_else(|| "unavailable".to_string(), |value| value.to_string());
+    let resolved = outcomes
+        .value()
+        .and_then(|value| pr_usize_path(value, &["summary", "resolved"]))
+        .map_or_else(|| "unavailable".to_string(), |value| value.to_string());
+    let receipt_state = outcomes.value().map_or_else(
+        || {
+            "unavailable; run `cargo xtask actionable-gap-outcomes` after a repair attempt"
+                .to_string()
+        },
+        pr_receipt_state_summary,
+    );
+
+    body.push_str(&format!("- new actionable gaps: `{new_actionable}`\n"));
+    body.push_str(&format!("- resolved actionable gaps: `{resolved}`\n"));
+    body.push_str(&format!("- receipt state: {receipt_state}\n"));
+}
+
+fn pr_receipt_state_summary(outcomes: &Value) -> String {
+    let receipts_present = pr_usize_path(outcomes, &["summary", "receipts_present"]).unwrap_or(0);
+    let missing_after_input =
+        pr_usize_path(outcomes, &["summary", "receipts_missing_after_input"]).unwrap_or(0);
+    let orphaned = pr_usize_path(outcomes, &["summary", "orphaned_receipts"]).unwrap_or(0);
+    let improved = pr_usize_path(outcomes, &["summary", "evidence_improved"]).unwrap_or(0);
+    let unchanged = pr_usize_path(outcomes, &["summary", "evidence_unchanged"]).unwrap_or(0);
+    format!(
+        "`receipts_present={receipts_present}`, `missing_after_input={missing_after_input}`, \
+         `orphaned={orphaned}`, `improved={improved}`, `unchanged={unchanged}`"
+    )
+}
+
+fn write_pr_actionable_top_packet(
+    body: &mut String,
+    changes: &[ChangedPath],
+    actionable: &PrActionableInput,
+) {
+    body.push_str("\nTop next repair packet:\n");
+    let Some(report) = actionable.value() else {
+        body.push_str(
+            "- unavailable: run `cargo xtask lane1-evidence-audit` to refresh actionable-gaps.\n",
+        );
+        return;
+    };
+    let packets = pr_actionable_packets(report);
+    let changed_paths = pr_changed_path_set(changes);
+    let selected = packets
+        .iter()
+        .copied()
+        .find(|packet| pr_packet_touches_changed_path(packet, &changed_paths))
+        .or_else(|| packets.first().copied());
+    let Some(packet) = selected else {
+        body.push_str("- unavailable: no repair packet was emitted.\n");
+        return;
+    };
+
+    body.push_str(&format!(
+        "- canonical gap: `{}`\n",
+        pr_string_path(packet, &["canonical_gap_id"]).unwrap_or_else(|| "unknown".to_string())
+    ));
+    if let Some(source_file) = pr_string_path(packet, &["source_file"]) {
+        body.push_str(&format!("- source: `{}`\n", md_escape(&source_file)));
+    }
+    body.push_str(&format!(
+        "- repair kind: `{}`\n",
+        pr_string_path(packet, &["repair_kind"]).unwrap_or_else(|| "unknown".to_string())
+    ));
+    if let Some(related) = pr_related_test_summary(packet) {
+        body.push_str(&format!("- related test or observer: {related}\n"));
+    }
+    if let Some(repair) = pr_string_path(packet, &["recommended_repair"]) {
+        body.push_str(&format!("- repair: {}\n", md_escape(&repair)));
+    }
+    if let Some(verify) = pr_string_path(packet, &["verify_command"]) {
+        body.push_str(&format!("- verify: `{}`\n", md_escape(&verify)));
+    }
+    if let Some(receipt) = pr_string_path(packet, &["receipt_command_or_path"])
+        .or_else(|| pr_string_path(packet, &["receipt_command"]))
+    {
+        body.push_str(&format!("- receipt: `{}`\n", md_escape(&receipt)));
+    }
+}
+
+fn pr_related_test_summary(packet: &Value) -> Option<String> {
+    let related = audit_get(packet, &["related_test_or_observer"])?;
+    let file = pr_string_path(related, &["file"])?;
+    let name = pr_string_path(related, &["name"]);
+    let line = pr_usize_path(related, &["line"]);
+    Some(match (name, line) {
+        (Some(name), Some(line)) => format!("`{}:{line}` `{}`", md_escape(&file), md_escape(&name)),
+        (Some(name), None) => format!("`{}` `{}`", md_escape(&file), md_escape(&name)),
+        (None, Some(line)) => format!("`{}:{line}`", md_escape(&file)),
+        (None, None) => format!("`{}`", md_escape(&file)),
+    })
+}
+
+fn pr_actionable_packets(report: &Value) -> Vec<&Value> {
+    audit_get(report, &["packets"])
+        .and_then(Value::as_array)
+        .map(|packets| {
+            packets
+                .iter()
+                .filter(|packet| {
+                    pr_string_path(packet, &["gap_state"]).as_deref() == Some("actionable")
+                        && pr_bool_path(packet, &["public_projection_eligible"]).unwrap_or(true)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn pr_changed_path_set(changes: &[ChangedPath]) -> BTreeSet<String> {
+    changes
+        .iter()
+        .map(|change| normalize_slashes(&change.path))
+        .collect()
+}
+
+fn pr_packet_touches_changed_path(packet: &Value, changed_paths: &BTreeSet<String>) -> bool {
+    if changed_paths.is_empty() {
+        return false;
+    }
+    pr_packet_paths(packet)
+        .iter()
+        .any(|path| changed_paths.contains(path))
+}
+
+fn pr_packet_paths(packet: &Value) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for path in [
+        pr_string_path(packet, &["source_file"]),
+        pr_string_path(packet, &["primary_anchor", "file"]),
+        pr_string_path(packet, &["related_test_or_observer", "file"]),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        paths.insert(normalize_slashes(&path));
+    }
+    if let Some(raw_findings) = audit_get(packet, &["raw_findings"]).and_then(Value::as_array) {
+        for raw in raw_findings {
+            if let Some(path) = pr_string_path(raw, &["file"]) {
+                paths.insert(normalize_slashes(&path));
+            }
+        }
+    }
+    paths
+}
+
+fn pr_packet_static_limitation_count(packet: &Value) -> usize {
+    audit_get(packet, &["static_limitations"])
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn pr_usize_path(value: &Value, path: &[&str]) -> Option<usize> {
+    audit_get(value, path).and_then(json_scalar_as_usize)
+}
+
+fn pr_string_path(value: &Value, path: &[&str]) -> Option<String> {
+    audit_get(value, path).and_then(json_scalar_as_string)
+}
+
+fn pr_bool_path(value: &Value, path: &[&str]) -> Option<bool> {
+    audit_get(value, path).and_then(Value::as_bool)
 }
 
 fn report_index_markdown(
@@ -48980,6 +49307,7 @@ mod tests {
         RECEIPT_MISSING, RECEIPT_MOVEMENT_IMPROVED, RECEIPT_NOT_APPLICABLE,
     };
 
+    use super::PrActionableInput;
     use super::RiprSwarmCommand;
     use super::RiprSwarmReadinessInput;
     use super::XtaskCommand;
@@ -49078,8 +49406,9 @@ mod tests {
         parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
         parse_required_status_contexts, parse_ripr_swarm_args, parse_ripr_swarm_plan_args,
         parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, parse_targeted_test_outcome_args, pr_body_validation_warning,
-        pr_checks_summary, pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
+        parse_string_value, parse_targeted_test_outcome_args,
+        pr_actionable_delta_front_panel_from_inputs, pr_body_validation_warning, pr_checks_summary,
+        pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
         pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
         pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
         pr_triage_queue_dispositions, precommit_report_body, public_badge_basis_violations,
@@ -55258,6 +55587,104 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
         assert!(body.contains("- `plans/campaign-27/lane3-editor-preview-routing.md (??)`"));
         assert!(body.contains("Evidence/support delta:"));
         assert!(body.contains("Docs:"));
+    }
+
+    #[test]
+    fn pr_actionable_front_panel_leads_with_typed_repair_delta() {
+        let changes = vec![ChangedPath {
+            path: "src/pricing.rs".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+        let actionable = PrActionableInput::Read(serde_json::json!({
+            "report": "actionable-gaps",
+            "summary": {
+                "actionable_gaps": 4,
+                "packets_emitted": 2,
+                "public_projection_eligible_packets": 2,
+                "static_limitations": 3
+            },
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:abc",
+                    "gap_state": "actionable",
+                    "public_projection_eligible": true,
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "recommended_repair": "Add exact assertion for amount == threshold.",
+                    "verify_command": "ripr agent verify --root . --json",
+                    "receipt_command_or_path": "ripr agent receipt --root . --json",
+                    "static_limitations": [],
+                    "related_test_or_observer": {
+                        "file": "tests/pricing.rs",
+                        "line": 42,
+                        "name": "discount_boundary"
+                    }
+                },
+                {
+                    "canonical_gap_id": "gap:def",
+                    "gap_state": "actionable",
+                    "public_projection_eligible": true,
+                    "source_file": "src/other.rs",
+                    "repair_kind": "add_output_proof",
+                    "static_limitations": ["observer_unknown"]
+                }
+            ]
+        }));
+        let outcomes = PrActionableInput::Read(serde_json::json!({
+            "summary": {
+                "resolved": 1,
+                "receipts_present": 2,
+                "receipts_missing_after_input": 1,
+                "orphaned_receipts": 0,
+                "evidence_improved": 1,
+                "evidence_unchanged": 1
+            }
+        }));
+        let front_panel = PrActionableInput::Read(serde_json::json!({
+            "summary": {
+                "new_policy_eligible": 2
+            }
+        }));
+
+        let body = pr_actionable_delta_front_panel_from_inputs(
+            &changes,
+            &actionable,
+            &outcomes,
+            &front_panel,
+        );
+
+        assert!(body.starts_with("## Actionable Repair Front Panel"));
+        assert!(body.contains("- repo actionable gaps: `4`"));
+        assert!(body.contains("- PR-local actionable gaps: `1`"));
+        assert!(body.contains("- new actionable gaps: `2`"));
+        assert!(body.contains("- resolved actionable gaps: `1`"));
+        assert!(body.contains("`receipts_present=2`"));
+        assert!(body.contains(
+            "- blocked/static-limited gaps: `3` static limitation(s), `1` static-limited packet(s)"
+        ));
+        assert!(body.contains("- canonical gap: `gap:abc`"));
+        assert!(
+            body.contains("- related test or observer: `tests/pricing.rs:42` `discount_boundary`")
+        );
+        assert!(body.contains("- verify: `ripr agent verify --root . --json`"));
+        assert!(body.contains("Does not run mutation testing"));
+    }
+
+    #[test]
+    fn pr_actionable_front_panel_fails_closed_without_artifacts() {
+        let body = pr_actionable_delta_front_panel_from_inputs(
+            &[],
+            &PrActionableInput::Missing,
+            &PrActionableInput::Missing,
+            &PrActionableInput::Missing,
+        );
+
+        assert!(body.contains("- actionable gaps: `missing`"));
+        assert!(body.contains("- repo actionable gaps: `unknown`"));
+        assert!(body.contains("run `cargo xtask lane1-evidence-audit`"));
+        assert!(body.contains("- new actionable gaps: `unavailable`"));
+        assert!(body.contains("Static RIPR evidence only."));
+        assert!(!body.contains("Gate passed"));
     }
 
     #[test]

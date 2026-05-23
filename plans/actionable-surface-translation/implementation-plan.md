@@ -272,7 +272,7 @@ git diff --check
 
 ### Work item: pr/actionable-delta-front-panel
 
-Status: ready
+Status: done
 
 Linked proposal:
 
@@ -304,7 +304,7 @@ Issue:
 
 PR:
 
-- n/a
+- this PR
 
 #### Goal
 
@@ -343,7 +343,7 @@ git diff --check
 
 ### Work item: editor/repair-first-status-hierarchy
 
-Status: blocked
+Status: ready
 
 Linked proposal:
 
@@ -363,7 +363,7 @@ Blocks:
 
 Blocked by:
 
-- `pr/actionable-delta-front-panel`
+- n/a
 
 Branch:
 

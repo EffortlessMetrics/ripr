@@ -90,7 +90,14 @@ argument-dependent command does not explain when it writes.
 
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
-workflow, extension, and public-contract surfaces.
+workflow, extension, and public-contract surfaces. The first section is an
+advisory actionable repair front panel: when existing
+`target/ripr/reports/actionable-gaps.json`, `actionable-gap-outcomes.json`, or
+`pr-review-front-panel.json` artifacts are present, it names repo and PR-local
+actionable counts, receipt movement state, static-limited counts, and one top
+next repair packet before raw path inventory. Missing artifacts stay visible as
+regeneration guidance; the summary does not infer analyzer truth, gate status,
+runtime proof, mutation proof, source edits, or generated tests.
 
 Top-level `plans/` files are documentation evidence and campaign-planning
 inputs. They appear in the docs, evidence/support, and campaign-planning
