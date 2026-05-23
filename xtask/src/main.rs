@@ -27566,6 +27566,7 @@ fn targeted_test_outcome_report_json(report: &TargetedTestOutcomeReport) -> Resu
             "new": report.new.len(),
             "removed": report.removed.len()
         },
+        "reviewer_receipt": targeted_test_outcome_reviewer_receipt_json(report),
         "moved": report.moved.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
         "unchanged": report.unchanged.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
         "regressed": report.regressed.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
@@ -27611,6 +27612,8 @@ fn targeted_test_outcome_report_markdown(report: &TargetedTestOutcomeReport) -> 
     out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
     out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
 
+    push_targeted_test_outcome_reviewer_receipt_md(&mut out, report);
+
     out.push_str("## Summary\n\n");
     out.push_str("| Bucket | Count |\n| --- | ---: |\n");
     out.push_str(&format!("| moved | {} |\n", report.moved.len()));
@@ -27639,6 +27642,209 @@ fn targeted_test_outcome_report_markdown(report: &TargetedTestOutcomeReport) -> 
         "\nThis report compares two static repo-exposure snapshots. It is advisory and does not run mutation testing.\n",
     );
     out
+}
+
+fn targeted_test_outcome_reviewer_receipt_json(report: &TargetedTestOutcomeReport) -> Value {
+    serde_json::json!({
+        "what_changed": targeted_test_outcome_reviewer_what_changed(report),
+        "what_ripr_flagged_before": targeted_test_outcome_reviewer_flagged_before(report),
+        "focused_proof_observed": targeted_test_outcome_reviewer_focused_proof_observed(report),
+        "movement": targeted_test_outcome_reviewer_movement(report),
+        "remaining_weak_or_unknown": targeted_test_outcome_reviewer_remaining_weak_or_unknown(report),
+        "reviewer_should_believe": targeted_test_outcome_reviewer_should_believe(report),
+        "reviewer_should_not_believe": targeted_test_outcome_reviewer_should_not_believe()
+    })
+}
+
+fn push_targeted_test_outcome_reviewer_receipt_md(
+    out: &mut String,
+    report: &TargetedTestOutcomeReport,
+) {
+    out.push_str("## Reviewer Receipt\n\n");
+    out.push_str(&format!(
+        "- What changed: {}\n",
+        targeted_test_outcome_reviewer_what_changed(report)
+    ));
+    out.push_str(&format!(
+        "- What RIPR flagged before: {}\n",
+        targeted_test_outcome_reviewer_flagged_before(report)
+    ));
+    out.push_str(&format!(
+        "- Focused proof observed: {}\n",
+        targeted_test_outcome_reviewer_focused_proof_observed(report)
+    ));
+    out.push_str(&format!(
+        "- Static movement: {}\n",
+        targeted_test_outcome_reviewer_movement(report)
+    ));
+    out.push_str("- What remains weak or unknown:\n");
+    for item in targeted_test_outcome_reviewer_remaining_weak_or_unknown(report) {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push_str("- Reviewer should believe:\n");
+    for item in targeted_test_outcome_reviewer_should_believe(report) {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push_str("- Reviewer should not believe:\n");
+    for item in targeted_test_outcome_reviewer_should_not_believe() {
+        out.push_str(&format!("  - {item}\n"));
+    }
+    out.push('\n');
+}
+
+fn targeted_test_outcome_reviewer_what_changed(report: &TargetedTestOutcomeReport) -> String {
+    format!(
+        "Compared `{}` to `{}`: {} moved, {} unchanged, {} regressed, {} new, {} removed.",
+        md_escape(&report.before_path),
+        md_escape(&report.after_path),
+        report.moved.len(),
+        report.unchanged.len(),
+        report.regressed.len(),
+        report.new.len(),
+        report.removed.len()
+    )
+}
+
+fn targeted_test_outcome_reviewer_flagged_before(report: &TargetedTestOutcomeReport) -> String {
+    let first = report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+        .next();
+    match first {
+        Some(movement) => format!(
+            "`{}` at {}:{} was `{}` before verification.",
+            md_escape(&movement.seam_id),
+            md_escape(&movement.file),
+            movement.line,
+            movement.before
+        ),
+        None if !report.removed.is_empty() => {
+            format!(
+                "{} seam(s) existed only in the before snapshot.",
+                report.removed.len()
+            )
+        }
+        None => "No before-snapshot seam carried into a movement bucket.".to_string(),
+    }
+}
+
+fn targeted_test_outcome_reviewer_focused_proof_observed(
+    report: &TargetedTestOutcomeReport,
+) -> String {
+    let first_delta = report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+        .flat_map(|movement| movement.evidence_delta.iter())
+        .next();
+    match first_delta {
+        Some(delta) => format!(
+            "The after snapshot shows static evidence movement such as `{}`; any test or output proof was added outside RIPR.",
+            md_escape(delta)
+        ),
+        None => {
+            "No rendered static evidence delta was visible; inspect the external test or output proof manually.".to_string()
+        }
+    }
+}
+
+fn targeted_test_outcome_reviewer_movement(report: &TargetedTestOutcomeReport) -> String {
+    if !report.moved.is_empty() {
+        return format!(
+            "{} seam(s) improved or changed without ranking lower.",
+            report.moved.len()
+        );
+    }
+    if !report.regressed.is_empty() {
+        return format!(
+            "{} seam(s) regressed in static evidence.",
+            report.regressed.len()
+        );
+    }
+    if !report.unchanged.is_empty() {
+        if report
+            .unchanged
+            .iter()
+            .any(|movement| !movement.evidence_delta.is_empty())
+        {
+            return format!(
+                "{} seam(s) stayed in the same static class while rendered evidence changed.",
+                report.unchanged.len()
+            );
+        }
+        return format!(
+            "{} seam(s) stayed unchanged; inspect the static evidence before review.",
+            report.unchanged.len()
+        );
+    }
+    "No matched seam movement was visible.".to_string()
+}
+
+fn targeted_test_outcome_reviewer_remaining_weak_or_unknown(
+    report: &TargetedTestOutcomeReport,
+) -> Vec<String> {
+    let mut items = Vec::new();
+    if !report.unchanged.is_empty() {
+        items.push(format!(
+            "{} seam(s) stayed unchanged after the supplied after snapshot.",
+            report.unchanged.len()
+        ));
+    }
+    if !report.regressed.is_empty() {
+        items.push(format!(
+            "{} seam(s) regressed and need reviewer attention.",
+            report.regressed.len()
+        ));
+    }
+    let unknown_total = targeted_test_outcome_unknown_after_count(report);
+    if unknown_total > 0 {
+        items.push(format!(
+            "{unknown_total} after-snapshot seam(s) still sit in unknown static classes."
+        ));
+    }
+    if !report.new.is_empty() {
+        items.push(format!(
+            "{} new seam(s) appear only in the after snapshot.",
+            report.new.len()
+        ));
+    }
+    if items.is_empty() {
+        items.push("No unchanged, regressed, new, or unknown-class seam was visible.".to_string());
+    }
+    items
+}
+
+fn targeted_test_outcome_reviewer_should_believe(
+    report: &TargetedTestOutcomeReport,
+) -> Vec<String> {
+    vec![
+        "RIPR compared the two supplied static repo-exposure artifacts.".to_string(),
+        targeted_test_outcome_reviewer_movement(report),
+        "Evidence deltas describe static movement in rendered artifacts only.".to_string(),
+    ]
+}
+
+fn targeted_test_outcome_reviewer_should_not_believe() -> Vec<String> {
+    vec![
+        "RIPR did not edit source or generate tests.".to_string(),
+        "This receipt is not runtime confirmation or mutation confirmation.".to_string(),
+        "This receipt is not merge approval, gate authority, or coverage completeness.".to_string(),
+    ]
+}
+
+fn targeted_test_outcome_unknown_after_count(report: &TargetedTestOutcomeReport) -> usize {
+    [
+        "activation_unknown",
+        "propagation_unknown",
+        "observation_unknown",
+        "discrimination_unknown",
+    ]
+    .iter()
+    .map(|class| report.after_counts.get(*class).copied().unwrap_or(0))
+    .sum()
 }
 
 fn push_targeted_outcome_movements_md(
@@ -66445,9 +66651,23 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["status"], "advisory");
         assert_eq!(value["summary"]["moved"], 1);
+        assert_eq!(
+            value["reviewer_receipt"]["what_ripr_flagged_before"],
+            "`seam-a` at src/pricing.rs:42 was `weakly_gripped` before verification."
+        );
+        assert!(
+            value["reviewer_receipt"]["reviewer_should_not_believe"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item
+                    .as_str()
+                    .is_some_and(|text| text.contains("not runtime confirmation"))))
+        );
 
         let markdown = targeted_test_outcome_report_markdown(&report);
         assert!(markdown.contains("# ripr targeted-test outcome report"));
+        assert!(markdown.contains("## Reviewer Receipt"));
+        assert!(markdown.contains("What RIPR flagged before"));
+        assert!(markdown.contains("Reviewer should not believe"));
         assert!(markdown.contains("| moved | 1 |"));
         assert!(markdown.contains("## Unchanged"));
         assert!(markdown.contains("seam-same"));
@@ -66510,7 +66730,9 @@ covered_by = ["cargo xtask check-file-policy"]
             let json = fs::read_to_string("target/ripr/reports/targeted-test-outcome.json")
                 .map_err(|err| format!("failed to read targeted-test outcome JSON: {err}"))?;
             assert!(markdown.contains("# ripr targeted-test outcome report"));
+            assert!(markdown.contains("## Reviewer Receipt"));
             assert!(json.contains("\"schema_version\": \"0.1\""));
+            assert!(json.contains("\"reviewer_receipt\""));
             assert!(json.contains("\"moved\": 1"));
             Ok(())
         })

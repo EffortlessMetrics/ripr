@@ -35,6 +35,25 @@
   "new": [],
   "regressed": [],
   "removed": [],
+  "reviewer_receipt": {
+    "focused_proof_observed": "The after snapshot shows static evidence movement such as `new observed value: 100`; any test or output proof was added outside RIPR.",
+    "movement": "1 seam(s) stayed in the same static class while rendered evidence changed.",
+    "remaining_weak_or_unknown": [
+      "1 seam(s) stayed unchanged after the supplied after snapshot."
+    ],
+    "reviewer_should_believe": [
+      "RIPR compared the two supplied static repo-exposure artifacts.",
+      "1 seam(s) stayed in the same static class while rendered evidence changed.",
+      "Evidence deltas describe static movement in rendered artifacts only."
+    ],
+    "reviewer_should_not_believe": [
+      "RIPR did not edit source or generate tests.",
+      "This receipt is not runtime confirmation or mutation confirmation.",
+      "This receipt is not merge approval, gate authority, or coverage completeness."
+    ],
+    "what_changed": "Compared `fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json` to `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json`: 0 moved, 1 unchanged, 0 regressed, 0 new, 0 removed.",
+    "what_ripr_flagged_before": "`67fc764ba37d77bd` at src/lib.rs:2 was `weakly_gripped` before verification."
+  },
   "schema_version": "0.1",
   "status": "advisory",
   "summary": {
