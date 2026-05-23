@@ -4237,8 +4237,8 @@ Work items:
 | `cli/first-pr-front-door-polish` | done | `ripr first-pr` now explains one top repairable gap, no-action state, or recovery state directly in stdout after #332. |
 | `output/one-screen-recommendation-contract` | done | Golden-backed first-pr output now carries and validates top gap, why it matters, weak evidence, missing discriminator, focused test intent, verify, receipt, and static boundary after #335. |
 | `receipt/reviewer-native-outcome` | done | Outcome receipts now make reviewer-visible static claim boundaries explicit after #338. |
-| `fixtures/first-pr-demo-story` | ready | Add a tiny fixture-backed before -> first-pr recommendation -> focused proof -> outcome receipt demo. |
-| `surfaces/first-useful-loop-convergence` | blocked | Make generated CI, VS Code, and agent packets mirror the CLI first-useful loop vocabulary and non-claims. |
+| `fixtures/first-pr-demo-story` | done | The boundary-gap fixture story now pins the before -> first-pr recommendation -> focused proof -> outcome receipt -> reviewer receipt path after #341. |
+| `surfaces/first-useful-loop-convergence` | ready | Make generated CI, VS Code, and agent packets mirror the CLI first-useful loop vocabulary and non-claims. |
 
 Commands:
 

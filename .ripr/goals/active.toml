@@ -132,7 +132,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-pr-demo-story"
-status = "ready"
+status = "done"
 branch = "fixtures-first-pr-demo-story"
 stackable = false
 acceptance = "A tiny fixture-backed demo shows before -> first-pr recommendation -> focused proof -> outcome receipt and can serve as docs, smoke, release demo, and agent training path."
@@ -145,12 +145,9 @@ commands = [
 
 [[work_item]]
 id = "surfaces/first-useful-loop-convergence"
-status = "blocked"
+status = "ready"
 branch = "surfaces-first-useful-loop-convergence"
 stackable = false
-blocked_by = [
-  "fixtures/first-pr-demo-story",
-]
 acceptance = "Generated CI, VS Code, and agent packets mirror the same changed behavior, missing discriminator, focused test intent, verify command, receipt boundary, and advisory/static non-claims as the CLI first screen."
 commands = [
   "cargo xtask pr-summary",
