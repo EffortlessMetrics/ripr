@@ -1,6 +1,6 @@
 # Adoption Integration Cleanup Implementation Plan
 
-Status: open
+Status: closed
 
 Owner: repo operations and first-run adoption surfaces
 
@@ -30,7 +30,10 @@ front door.
 
 ## Current State
 
-The first-run and editor first-pr surfaces already exist:
+This plan is retained as a historical cleanup rail. It is not the active
+execution manifest and it does not select a successor campaign.
+
+The first-run and editor first-pr surfaces exist:
 
 ```text
 ripr first-pr
@@ -43,13 +46,26 @@ badge endpoint contracts
 PR evidence contracts
 ```
 
-The remaining work is not a new proposal/spec. It is cleanup and convergence:
-reduce queue pressure, keep one owner per surface, and finish the highest-value
-integrations without creating parallel truth.
+The cleanup issue map has been reconciled:
+
+- source issues #1177, #1182, #1183, #1184, #1185, #1148, #1150, #1151,
+  #1178, #1179, and #1180 were already closed;
+- source issues #1154, #1156, and #1157 were closed as completed by the
+  `ripr-swarm` Start-Here Surface Convergence PR chain and closeout;
+- Start-Here Surface Convergence, First Useful PR Loop, Editor First-PR Bridge,
+  and Editor Actionable Gap Queue are closed in their own source-of-truth
+  stacks;
+- `.ripr/goals/active.toml` remains the only machine-readable current-goal
+  source and currently records `no_current_goal = true`.
+
+Do not reactivate this plan for new behavior. Future adoption, output-state,
+or start-here work needs a fresh issue-backed successor campaign.
 
 ## Work Item 1: repo-ops: drain duplicate PR clusters
 
 Issue: [#1177](https://github.com/EffortlessMetrics/ripr/issues/1177)
+
+Status: done; source issue closed.
 
 ### Production Delta
 
@@ -80,6 +96,8 @@ superseded, needs review, needs rebase, or owner decision.
 
 Issue: [#1182](https://github.com/EffortlessMetrics/ripr/issues/1182)
 
+Status: done; source issue closed.
+
 ### Production Delta
 
 Choose a keeper for overlapping extraction/oracle coverage PRs and port only
@@ -94,6 +112,8 @@ One keeper path exists for #1162, #1164, #1165, #1172, #1173, #1175, and
 
 Issue: [#1183](https://github.com/EffortlessMetrics/ripr/issues/1183)
 
+Status: done; source issue closed.
+
 ### Production Delta
 
 Keep first-run helper PRs non-overlapping and aligned with the recovery command
@@ -106,6 +126,8 @@ path.
 ## Work Item 4: refactor: disposition output helper PR cluster
 
 Issue: [#1184](https://github.com/EffortlessMetrics/ripr/issues/1184)
+
+Status: done; source issue closed.
 
 ### Production Delta
 
@@ -120,6 +142,8 @@ output-contract evidence.
 ## Work Item 5: repo-ops: disposition older Claude queue
 
 Issue: [#1185](https://github.com/EffortlessMetrics/ripr/issues/1185)
+
+Status: done; source issue closed.
 
 ### Production Delta
 
@@ -136,6 +160,8 @@ are ported only after overlap review.
 Issues: [#1148](https://github.com/EffortlessMetrics/ripr/issues/1148),
 [#1150](https://github.com/EffortlessMetrics/ripr/issues/1150),
 [#1151](https://github.com/EffortlessMetrics/ripr/issues/1151)
+
+Status: done; source issues closed.
 
 ### Production Delta
 
@@ -159,6 +185,8 @@ gate authority boundary
 
 Issue: [#1178](https://github.com/EffortlessMetrics/ripr/issues/1178)
 
+Status: done; source issue closed.
+
 ### Production Delta
 
 Align `ripr doctor`, worktree doctor, cockpit, pr-ready, and first-pr recovery
@@ -172,6 +200,8 @@ produce one clear next action and a regeneration command.
 ## Work Item 8: repo-ops: disposition stale integration worktrees
 
 Issue: [#1179](https://github.com/EffortlessMetrics/ripr/issues/1179)
+
+Status: done; source issue closed.
 
 ### Production Delta
 
@@ -187,6 +217,8 @@ only removes confirmed temporary worktrees or target artifacts.
 
 Issue: [#1180](https://github.com/EffortlessMetrics/ripr/issues/1180)
 
+Status: done; source issue closed.
+
 ### Production Delta
 
 No product behavior. Reconcile local `docs/LEARNINGS.md` and locked learning
@@ -201,6 +233,9 @@ unique remaining learning text is PR'd before cleanup.
 
 Issue: [#1154](https://github.com/EffortlessMetrics/ripr/issues/1154)
 
+Status: done; closed as completed by the Start-Here Surface Convergence
+no-output/fail-closed state work and closeout.
+
 ### Production Delta
 
 Make empty, missing, stale, malformed, wrong-root, and blocked first-run states
@@ -213,6 +248,9 @@ No-action remains a successful state with reason and next command.
 ## Work Item 11: dogfood: record external-style receipts
 
 Issue: [#1156](https://github.com/EffortlessMetrics/ripr/issues/1156)
+
+Status: done; closed as completed by the Start-Here Surface Convergence
+external-style receipt work and closeout.
 
 ### Production Delta
 
@@ -228,6 +266,9 @@ whether movement improved, resolved, stayed unchanged, or was blocked.
 
 Issue: [#1157](https://github.com/EffortlessMetrics/ripr/issues/1157)
 
+Status: done; closed as completed by the Start-Here Surface Convergence
+closeout.
+
 ### Production Delta
 
 Closeout docs only.
@@ -239,7 +280,7 @@ handoff records remaining limits and non-goals.
 
 ## Validation
 
-Docs-only rails should run:
+This reconciliation PR should run:
 
 ```bash
 rtk cargo xtask check-doc-index
@@ -251,5 +292,5 @@ rtk cargo xtask check-pr
 rtk git diff --check
 ```
 
-Behavior PRs must add the narrower command set required by their touched
-surface.
+Behavior PRs must not continue under this closed plan. Open a fresh
+source-of-truth stack or active goal for new behavior.

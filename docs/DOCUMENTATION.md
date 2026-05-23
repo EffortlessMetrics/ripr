@@ -218,6 +218,7 @@ Current explanation docs:
 - [Lane 1 finding alignment burn-down plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
 - [Lane 1 value resolution audit fixes plan](../plans/lane1-value-resolution-audit-fixes/implementation-plan.md)
 - [Adoption integration cleanup plan](../plans/adoption-integration-cleanup/implementation-plan.md)
+  - closed historical cleanup rail
 - [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
 - [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md)
 - [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
@@ -254,6 +255,7 @@ Current explanation docs:
 - [Editor first-pr bridge plan](../plans/editor-first-pr-bridge/implementation-plan.md)
 - [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
 - [Adoption integration cleanup rails](../plans/adoption-integration-cleanup/README.md)
+  - closed historical cleanup rail
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

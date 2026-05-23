@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Adoption Integration Cleanup reconciliation](2026-05-23-adoption-integration-cleanup-reconciliation.md)
 - [Lane 1 Value Resolution Audit Fixes closeout](2026-05-23-lane1-value-resolution-audit-fixes-closeout.md)
 - [Source-of-Truth Control Plane closeout](2026-05-23-source-of-truth-control-plane-closeout.md)
 - [Value Resolution Audit Delta](2026-05-22-value-resolution-audit-delta.md)
