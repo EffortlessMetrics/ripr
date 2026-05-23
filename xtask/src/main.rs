@@ -41274,6 +41274,8 @@ fn validate_active_manifest_source_truth(
     manifest: &CampaignManifest,
     violations: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_active_manifest_archive_freshness(root, manifest_path, manifest, violations)?;
+
     let artifact_paths = doc_artifact_paths_by_id(root)?;
     for item in &manifest.work_items {
         let item_id = item.id.as_deref().unwrap_or("<missing>");
@@ -41334,6 +41336,52 @@ fn validate_active_manifest_source_truth(
             violations,
         )?;
     }
+    Ok(())
+}
+
+fn validate_active_manifest_archive_freshness(
+    root: &Path,
+    manifest_path: &str,
+    manifest: &CampaignManifest,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if manifest.status.as_deref() == Some("closed") {
+        return Ok(());
+    }
+    let Some(active_id) = manifest.id.as_deref() else {
+        return Ok(());
+    };
+    let archive_dir = root.join(".ripr/goals/archive");
+    if !archive_dir.exists() {
+        return Ok(());
+    }
+
+    let mut archive_paths = Vec::new();
+    for entry in fs::read_dir(&archive_dir)
+        .map_err(|err| format!("read {}: {err}", normalize_path(&archive_dir)))?
+    {
+        let entry =
+            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&archive_dir)))?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) == Some("toml") {
+            archive_paths.push(path);
+        }
+    }
+    archive_paths.sort();
+
+    for path in archive_paths {
+        let normalized = normalize_repo_relative(root, &path);
+        let (archived_manifest, parse_violations) = parse_campaign_manifest(&path)?;
+        for violation in parse_violations {
+            violations.push(format!("{normalized}: {violation}"));
+        }
+        if archived_manifest.id.as_deref() == Some(active_id) {
+            violations.push(format!(
+                "{manifest_path} reactivates archived campaign id `{active_id}` from `{normalized}`; select a new campaign id or restore the closed/no-current-goal manifest"
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -62872,6 +62920,108 @@ commands = ["cargo xtask check-pr"]
                 "{violations:?}"
             );
         });
+    }
+
+    #[test]
+    fn active_manifest_rejects_archived_campaign_reactivation() -> Result<(), String> {
+        with_temp_cwd("campaign-archived-reactivation", |root| {
+            let active_path = root.join(".ripr/goals/active.toml");
+            write(
+                &active_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "active"
+end_state = ["Reactivated stale work."]
+
+[[work_item]]
+id = "docs/test"
+status = "ready"
+branch = "docs-test"
+stackable = false
+acceptance = "Reactivated stale work."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            write(
+                &root.join(".ripr/goals/archive/2026-05-21-closed-campaign.toml"),
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+no_current_goal = true
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+
+            let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            super::validate_active_manifest_source_truth(
+                root,
+                ".ripr/goals/active.toml",
+                &manifest,
+                &mut violations,
+            )?;
+
+            assert!(
+                violations.iter().any(|violation| violation.contains(
+                    ".ripr/goals/active.toml reactivates archived campaign id `closed-campaign`"
+                )),
+                "{violations:?}"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn active_manifest_allows_closed_archived_campaign_history() -> Result<(), String> {
+        with_temp_cwd("campaign-closed-archived-history", |root| {
+            let active_path = root.join(".ripr/goals/active.toml");
+            let closed_manifest = r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+no_current_goal = true
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#;
+            write(&active_path, closed_manifest);
+            write(
+                &root.join(".ripr/goals/archive/2026-05-21-closed-campaign.toml"),
+                closed_manifest,
+            );
+
+            let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            super::validate_active_manifest_source_truth(
+                root,
+                ".ripr/goals/active.toml",
+                &manifest,
+                &mut violations,
+            )?;
+
+            assert!(violations.is_empty(), "{violations:?}");
+            Ok(())
+        })
     }
 
     #[test]
