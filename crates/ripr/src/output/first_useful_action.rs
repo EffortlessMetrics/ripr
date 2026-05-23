@@ -225,6 +225,10 @@ pub(crate) fn render_first_useful_action_markdown(report: &FirstUsefulActionRepo
     out.push_str("## Next\n\n");
     out.push_str(&format!("{}\n\n", with_period(&report.title)));
 
+    if should_render_one_screen_recommendation(report) {
+        render_one_screen_recommendation_markdown(report, &mut out);
+    }
+
     if !report.why_first.is_empty() {
         out.push_str("## Why First\n\n");
         for reason in &report.why_first {
@@ -285,6 +289,102 @@ pub(crate) fn render_first_useful_action_markdown(report: &FirstUsefulActionRepo
     }
 
     out
+}
+
+fn should_render_one_screen_recommendation(report: &FirstUsefulActionReport) -> bool {
+    report.selected.is_some()
+        || matches!(
+            report.action_kind.as_str(),
+            "write_focused_test" | "revise_focused_test" | "generate_missing_artifact"
+        )
+}
+
+fn render_one_screen_recommendation_markdown(report: &FirstUsefulActionReport, out: &mut String) {
+    let changed_behavior = if report.why.trim().is_empty() {
+        "changed behavior unavailable"
+    } else {
+        report.why.trim()
+    };
+    let evidence_strength = report
+        .selected
+        .as_ref()
+        .and_then(|selected| selected.classification.as_deref())
+        .unwrap_or(report.status.as_str());
+    let missing_discriminator = report
+        .selected
+        .as_ref()
+        .and_then(|selected| selected.missing_discriminator.as_deref())
+        .or_else(|| {
+            report
+                .target
+                .as_ref()
+                .and_then(|target| target.suggested_assertion.as_deref())
+        })
+        .unwrap_or("missing discriminator unavailable");
+    let focused_proof_intent = report
+        .target
+        .as_ref()
+        .and_then(|target| target.suggested_assertion.as_deref())
+        .unwrap_or(report.title.as_str());
+    let verify_command = report.commands.verify.as_deref().unwrap_or("not_available");
+    let receipt_command = report
+        .commands
+        .receipt
+        .as_deref()
+        .unwrap_or("not_available");
+    let artifacts = one_screen_artifacts(report);
+
+    out.push_str("## One-Screen Recommendation\n\n");
+    out.push_str(&format!("- Changed behavior: {changed_behavior}\n"));
+    out.push_str(&format!(
+        "- Current evidence strength: `{evidence_strength}`\n"
+    ));
+    out.push_str(&format!(
+        "- Missing discriminator: {missing_discriminator}\n"
+    ));
+    out.push_str(&format!("- Focused proof intent: {focused_proof_intent}\n"));
+    out.push_str(&format!("- Verify command: `{verify_command}`\n"));
+    out.push_str(&format!("- Receipt command: `{receipt_command}`\n"));
+    if !artifacts.is_empty() {
+        let joined = artifacts
+            .into_iter()
+            .map(|artifact| format!("`{artifact}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("- Artifacts: {joined}\n"));
+    }
+    out.push_str(
+        "- Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.\n\n",
+    );
+}
+
+fn one_screen_artifacts(report: &FirstUsefulActionReport) -> Vec<&str> {
+    let mut artifacts = Vec::new();
+    if let Some(selected) = report.selected.as_ref() {
+        push_unique_str(&mut artifacts, selected.source_artifact.as_str());
+    }
+    if let Some(path) = report.evidence.pr_guidance.as_deref() {
+        push_unique_str(&mut artifacts, path);
+    }
+    if let Some(path) = report.evidence.assistant_proof.as_deref() {
+        push_unique_str(&mut artifacts, path);
+    }
+    if let Some(path) = report.evidence.gap_ledger.as_deref() {
+        push_unique_str(&mut artifacts, path);
+    }
+    if let Some(path) = report.evidence.ledger.as_deref() {
+        push_unique_str(&mut artifacts, path);
+    }
+    if let Some(path) = report.evidence.receipt.as_deref() {
+        push_unique_str(&mut artifacts, path);
+    }
+    artifacts
+}
+
+fn push_unique_str<'a>(items: &mut Vec<&'a str>, value: &'a str) {
+    if !items.contains(&value) {
+        items.push(value);
+    }
 }
 
 pub(crate) use crate::output::path::display_path;

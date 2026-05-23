@@ -8,6 +8,17 @@ Action: write_focused_test
 
 Add equality-boundary discriminator test.
 
+## One-Screen Recommendation
+
+- Changed behavior: Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.
+- Current evidence strength: `weakly_exposed`
+- Missing discriminator: input that hits the boundary: amount >= discount_threshold
+- Focused proof intent: Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.
+- Verify command: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+- Receipt command: `ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json`
+- Artifacts: `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json`
+- Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.
+
 ## Why First
 
 - The seam is PR-local.

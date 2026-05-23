@@ -3525,6 +3525,12 @@ tests = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/tests/cli_smoke.rs::first_pr_cli_writes_start_here_packet",
   "xtask/src/main.rs",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid",
+  "crates/ripr/src/lsp/tests.rs::editor_adoption_baseline_pins_gap_repair_action_contract",
+  "crates/ripr/src/output/agent_seam_packets.rs::gap_record_packet_carries_shared_repair_route_and_stop_conditions",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
 ]
 fixtures = [
   "fixtures/actionable-gap-outcomes-corpus/corpus.json",
@@ -3534,6 +3540,8 @@ fixtures = [
   "fixtures/editor_actionable_gap_queue",
   "fixtures/editor_adoption_assurance",
   "fixtures/editor_first_pr_bridge",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.md",
 ]
 code = [
   "crates/ripr/src/output/start_here_state.rs",
@@ -3545,14 +3553,13 @@ code = [
   "crates/ripr/src/output/first_pr.rs",
   "crates/ripr/src/output/pr_evidence_ledger.rs",
   "crates/ripr/src/output/pr_review_front_panel.rs",
-  "crates/ripr/src/output/first_pr.rs",
   "crates/ripr/src/cli/help/core.rs",
   "crates/ripr/src/cli/help/overview.rs",
   "xtask/src/reports/pr_evidence_summary.rs",
   "xtask/src/reports/pr_evidence_summary/render.rs",
-  "crates/ripr/src/cli/commands.rs",
-  "crates/ripr/src/cli/help/core.rs",
-  "crates/ripr/src/cli/help/overview.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/output/first_useful_action.rs",
 ]
 outputs = [
   "docs/policy/PREVIEW_PROMOTION_CRITERIA.md",

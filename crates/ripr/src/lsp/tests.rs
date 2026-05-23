@@ -1506,6 +1506,9 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
             && packet.contains("Language status: preview")
             && packet.contains("Static limit: missing_import_graph")
             && packet.contains("Suggested action:")
+            && packet.contains("Missing discriminator: assert price(threshold) == expected")
+            && packet.contains("Focused proof intent:")
+            && packet.contains("Artifacts:")
             && packet.contains("Verify command:")
             && packet.contains("Receipt command:")
             && packet
@@ -1740,6 +1743,9 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
         .ok_or_else(|| "missing first repair packet text".to_string())?;
     assert!(packet.contains("Language status: preview"));
     assert!(packet.contains("Static limit: missing_import_graph"));
+    assert!(packet.contains("Missing discriminator: assert price(threshold) == expected"));
+    assert!(packet.contains("Focused proof intent:"));
+    assert!(packet.contains("Artifacts:"));
     assert!(packet.contains("Verify command:\nripr agent verify --root . --json"));
     assert!(packet.contains("Receipt command:\nripr agent receipt --root . --json"));
     let static_limit_position = packet

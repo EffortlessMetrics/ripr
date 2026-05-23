@@ -468,6 +468,13 @@ fn gap_record_packet_context(
     if let Some(changed_behavior) = route.changed_behavior.as_deref() {
         context.push(format!("Changed behavior: `{changed_behavior}`."));
     }
+    if let Some(discriminator) = route
+        .assertion_shape
+        .as_deref()
+        .or(route.changed_behavior.as_deref())
+    {
+        context.push(format!("Missing discriminator: `{discriminator}`."));
+    }
     if let Some(receipt_command) = record.receipt_command.as_deref() {
         context.push(format!("Receipt command: `{receipt_command}`."));
     }
@@ -508,8 +515,14 @@ fn gap_record_packet_repair(route: &GapRepairRoute) -> Vec<String> {
         repair.push(format!(
             "Add or strengthen this check: `{assertion_shape}`."
         ));
+        repair.push(format!(
+            "Focused proof intent: add one focused assertion or output proof for `{assertion_shape}`."
+        ));
     } else if let Some(changed_behavior) = route.changed_behavior.as_deref() {
         repair.push(format!("Add a focused check for `{changed_behavior}`."));
+        repair.push(format!(
+            "Focused proof intent: add one focused assertion or output proof for `{changed_behavior}`."
+        ));
     } else {
         repair.push(repair_text_for_gap_route(route));
     }
@@ -1926,8 +1939,19 @@ mod tests {
         );
         assert!(
             copyable_markdown
+                .contains("- Missing discriminator: `assert_eq!(discount(100, 100), 90)`."),
+            "copyable packet should name the missing discriminator: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown
                 .contains("- Add or strengthen this check: `assert_eq!(discount(100, 100), 90)`."),
             "copyable packet should name the repair: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains(
+                "- Focused proof intent: add one focused assertion or output proof for `assert_eq!(discount(100, 100), 90)`."
+            ),
+            "copyable packet should name the focused proof intent: {copyable_markdown}"
         );
         assert!(
             copyable_markdown.contains("- cargo xtask fixtures boundary_gap"),
