@@ -326,6 +326,16 @@ fn timeout_summary_json_is_partial_and_points_to_retry() {
     assert!(json.contains("--timeout-ms 120000"));
 }
 
+#[test]
+fn timeout_summary_json_records_loaded_config_path() {
+    let artifacts = pilot_artifacts();
+    let json = render_pilot_timeout_summary_json(pilot_context(&artifacts));
+    assert!(
+        json.contains(r#""config": {"state": "loaded", "path": "ripr.toml"}"#),
+        "expected loaded-config path in timeout JSON, got:\n{json}"
+    );
+}
+
 fn pilot_context_without_config<'a>(artifacts: &'a PilotArtifacts) -> PilotSummaryContext<'a> {
     PilotSummaryContext {
         root: Path::new("."),
