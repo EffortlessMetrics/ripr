@@ -1348,11 +1348,8 @@ jobs:
               start_changed="$(jq -r '.selected.changed_behavior // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_evidence="$(jq -r '.selected.current_evidence_strength // .selected.state // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_missing="$(jq -r '.selected.missing_discriminator // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
-              start_proof="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
-              start_changed="$(jq -r '.selected.changed_behavior // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
-              start_missing="$(jq -r '.selected.missing_discriminator // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
-              start_focused="$(jq -r '.selected.focused_proof_intent // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_focused="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_limit="$(jq -r 'if .selected.static_limit_kind then (.selected.static_limit_kind + (if .selected.static_limit_detail then ": " + .selected.static_limit_detail else "" end)) else "none" end' "$start_json" 2>/dev/null || echo unknown)"
@@ -1370,10 +1367,7 @@ jobs:
               start_changed="$(markdown_inline "$start_changed")"
               start_evidence="$(markdown_inline "$start_evidence")"
               start_missing="$(markdown_inline "$start_missing")"
-              start_proof="$(markdown_inline "$start_proof")"
               start_repair="$(markdown_inline "$start_repair")"
-              start_changed="$(markdown_inline "$start_changed")"
-              start_missing="$(markdown_inline "$start_missing")"
               start_focused="$(markdown_inline "$start_focused")"
               start_target="$(markdown_inline "$start_target")"
               start_related="$(markdown_inline "$start_related")"
@@ -1389,12 +1383,9 @@ jobs:
               echo "- Canonical gap: \`$start_gap\`"
               echo "- Language: \`$start_language\`"
               echo "- Top gap/no-action: \`$start_kind\`"
-              echo "- Changed behavior: \`$start_changed\`"
-              echo "- Current evidence strength: \`$start_evidence\`"
-              echo "- Missing discriminator: \`$start_missing\`"
-              echo "- Focused proof intent: \`$start_proof\`"
               echo "- Repair: \`$start_repair\`"
               echo "- Changed behavior: \`$start_changed\`"
+              echo "- Current evidence strength: \`$start_evidence\`"
               echo "- Missing discriminator: \`$start_missing\`"
               echo "- Focused proof intent: \`$start_focused\`"
               echo "- Repair target: \`$start_target\`"
@@ -10909,8 +10900,12 @@ language = "rust"
         assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
         assert!(summary.contains(".selected.language + \" (\""));
         assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".selected.focused_proof_intent // \"not_available\""));
+        assert!(summary.contains(
+            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
+        ));
+        assert!(summary.contains(
+            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
+        ));
         assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
         assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
         assert!(summary.contains(".selected.static_limit_kind"));
@@ -11620,8 +11615,12 @@ language = "rust"
             ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
         ));
         assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".selected.focused_proof_intent // \"not_available\""));
+        assert!(summary.contains(
+            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
+        ));
+        assert!(summary.contains(
+            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
+        ));
         assert!(summary.contains(".selected.verify_command // \"not_available\""));
         assert!(summary.contains(".selected.receipt_command // \"not_available\""));
         assert!(summary.contains(".selected.receipt_path // \"not_available\""));
