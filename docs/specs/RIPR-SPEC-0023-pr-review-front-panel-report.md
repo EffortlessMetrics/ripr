@@ -309,7 +309,7 @@ The JSON report uses schema version `0.1`:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
-    "current_evidence_strength": "weakly_exposed",
+    "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "amount == discount_threshold",
     "focused_proof_intent": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
@@ -443,7 +443,7 @@ Status: advisory
 Top issue:
 - File: src/pricing.rs:88
 - Class: weakly_exposed
-- Current evidence strength: weakly_exposed
+- Current evidence strength: Static evidence found related test context, but the current check is weak because the discriminator is missing.
 - Missing discriminator: amount == discount_threshold
 - Focused proof intent: Add an equality-boundary assertion.
 - Suggested focused test: add an equality-boundary assertion

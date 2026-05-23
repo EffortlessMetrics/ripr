@@ -3548,6 +3548,91 @@ mod tests {
     // ── target_from_gap_record filter ────────────────────────────────────────
 
     #[test]
+    fn current_evidence_strength_prefers_explicit_typed_fields() -> Result<(), String> {
+        let value: Value = serde_json::from_str(
+            r#"{
+                "classification": "weakly_exposed",
+                "selected": {
+                    "current_evidence_strength": "explicit selected strength"
+                }
+            }"#,
+        )
+        .map_err(|e| e.to_string())?;
+
+        assert_eq!(
+            current_evidence_strength_from_sources(&[Some(&value)]),
+            Some("explicit selected strength".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn current_evidence_strength_describes_known_repair_routes() {
+        assert_eq!(
+            current_evidence_strength_for_selection(Some("AddOutputGolden"), None, None),
+            Some(
+                "Static evidence found changed user-facing output, but no checked output or golden proof is attached."
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            current_evidence_strength_for_selection(
+                Some("MissingBoundaryAssertion"),
+                Some("reachable_unrevealed"),
+                None,
+            ),
+            Some(
+                "Static evidence found related test context, but the current check is weak because the discriminator is missing."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn current_evidence_strength_describes_exposure_classes() {
+        assert_eq!(
+            current_evidence_strength_for_selection(None, Some("reachable_unrevealed"), None),
+            Some(
+                "Static evidence found reachable changed behavior, but no current check observes the changed result."
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            current_evidence_strength_for_selection(None, Some("no_static_path"), None),
+            Some(
+                "Static analysis did not find a current test path to the changed behavior."
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            current_evidence_strength_for_selection(None, Some("exposed"), None),
+            Some(
+                "Static evidence found a current check that appears to observe the changed behavior."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn current_evidence_strength_keeps_unknowns_conservative() {
+        assert_eq!(
+            current_evidence_strength_for_selection(None, Some("static_unknown"), None),
+            Some("Static evidence is `static_unknown`; no runtime proof is claimed.".to_string())
+        );
+        assert_eq!(
+            current_evidence_strength_for_selection(None, Some("custom_preview_state"), None),
+            Some(
+                "Static evidence reported `custom_preview_state`; no runtime proof is claimed."
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            current_evidence_strength_for_selection(None, None, None),
+            None
+        );
+    }
+
+    #[test]
     fn target_from_gap_record_returns_none_when_no_useful_fields() -> Result<(), String> {
         // repair_route present but none of file/related_test/assertion_shape set
         let record: Value =

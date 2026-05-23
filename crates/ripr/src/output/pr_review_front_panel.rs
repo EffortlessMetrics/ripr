@@ -1372,10 +1372,7 @@ fn top_issue_from_first_action(
             (Some(selected), &["changed_behavior"]),
             (target, &["changed_behavior"]),
         ]),
-        current_evidence_strength: current_evidence_strength_from_sources(&[
-            Some(selected),
-            target,
-        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(selected)]),
         missing_discriminator: string_path(selected, &["missing_discriminator"]),
         focused_proof_intent: focused_proof_intent_from_action_or_proof(
             action,
@@ -2025,6 +2022,59 @@ mod tests {
         let rendered = render_pr_review_front_panel_json(&report)?;
         assert!(rendered.contains("\"kind\": \"malformed_input\""));
         assert!(rendered.contains("Optional PR guidance input is malformed"));
+        Ok(())
+    }
+
+    #[test]
+    fn first_action_top_issue_ignores_target_evidence_strength() -> Result<(), String> {
+        let input = PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: None,
+            first_action_path: Some("first-action.json".to_string()),
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: None,
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        };
+        let parsed = ParsedPanelSources {
+            first_action: Some(
+                serde_json::from_str(
+                    r#"{
+                        "selected": {"classification": "weakly_exposed"},
+                        "target": {"current_evidence_strength": "target-only value"}
+                    }"#,
+                )
+                .map_err(|e| e.to_string())?,
+            ),
+            ..Default::default()
+        };
+
+        let issue = top_issue_from_first_action(&input, &parsed)
+            .ok_or_else(|| "expected first-action top issue".to_string())?;
+        assert_eq!(
+            issue.current_evidence_strength, None,
+            "first-action top issue must source evidence strength only from selected"
+        );
         Ok(())
     }
 

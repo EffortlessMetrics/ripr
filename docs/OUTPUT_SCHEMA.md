@@ -6992,7 +6992,7 @@ JSON shape:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
-    "current_evidence_strength": "weakly_exposed",
+    "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "amount == discount_threshold",
     "focused_proof_intent": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
