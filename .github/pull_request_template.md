@@ -2,6 +2,23 @@
 
 -
 
+## Swarm / Source Boundary
+
+This PR targets `EffortlessMetrics/ripr-swarm`, the normal development trunk for
+trusted same-repo `ripr` work. Confirm the change belongs here:
+
+- [ ] ordinary feature, analyzer, editor, docs, spec, fixture, badge,
+      dependency, or repo-ops development for `ripr-swarm`
+- [ ] repair or follow-up for a same-repo swarm PR
+- [ ] swarm-only CI, runner, routing, source-of-truth, or agent-operating
+      surface
+- [ ] other swarm-scoped work:
+
+If this PR moves crates.io publishing, VS Marketplace publishing, Open VSX
+publishing, GitHub Release assets, signing, release environments, or release
+secrets, close or retarget it. Those surfaces belong in `EffortlessMetrics/ripr`
+unless a dedicated release-boundary change has already been approved.
+
 
 ## Source-of-truth Links
 

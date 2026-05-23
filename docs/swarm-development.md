@@ -9,7 +9,9 @@ before promoting batches back to the source repository.
 
 ## Boundaries
 
-- New development PRs target `ripr-swarm` after the swarm lane is enabled.
+- New ordinary development PRs target `ripr-swarm`.
+- Source `EffortlessMetrics/ripr` receives release, security, and explicit
+  swarm-to-source promotion PRs only.
 - Use same-repo branches and pull requests.
 - Do not run public fork PRs on self-hosted runners.
 - Do not move crates.io, VS Marketplace, Open VSX, GitHub Release, signing, or
