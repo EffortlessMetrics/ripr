@@ -2,6 +2,23 @@
 
 -
 
+## Source Repository Routing
+
+`EffortlessMetrics/ripr` is the public release and distribution authority.
+Routine feature, analyzer, editor, docs, badge, repo-ops, and fixture work
+belongs in [`EffortlessMetrics/ripr-swarm`](https://github.com/EffortlessMetrics/ripr-swarm).
+
+This PR belongs in the source repository because it is:
+
+- [ ] release/publish/distribution work
+- [ ] security fix
+- [ ] explicit `ripr-swarm` to source promotion PR
+- [ ] source-repo boundary/governance fix that keeps routine development out of
+      this repo
+
+If none of those boxes apply, close this PR and reopen the work against
+`EffortlessMetrics/ripr-swarm`.
+
 
 ## Source-of-truth Links
 
