@@ -134,7 +134,7 @@ commands = [
 
 [[work_item]]
 id = "surfaces/one-screen-loop-convergence"
-status = "ready"
+status = "done"
 branch = "surfaces-one-screen-loop-convergence"
 stackable = false
 blocked_by = [
@@ -152,12 +152,9 @@ commands = [
 
 [[work_item]]
 id = "campaign/first-useful-pr-loop-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-first-useful-pr-loop-closeout"
 stackable = false
-blocked_by = [
-  "surfaces/one-screen-loop-convergence",
-]
 acceptance = "Close Campaign 28 only after one command, one top gap or no-action state, one focused repair intent, one verification command, one receipt, one demo, one generated-CI summary, one editor handoff, and one agent packet tell the same static-advisory repair story with proof and remaining limits recorded."
 commands = [
   "cargo xtask check-doc-index",

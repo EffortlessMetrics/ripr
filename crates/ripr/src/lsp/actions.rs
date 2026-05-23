@@ -566,6 +566,12 @@ fn first_repair_packet_text(
     {
         lines.push(format!("- Changed behavior: {changed_behavior}"));
     }
+    if let Some(missing_discriminator) = missing_discriminator_for_packet(data, repair_route) {
+        lines.push(format!("- Missing discriminator: {missing_discriminator}"));
+    }
+    if let Some(focused_proof_intent) = focused_proof_intent_for_packet(repair_route) {
+        lines.push(format!("- Focused proof intent: {focused_proof_intent}"));
+    }
     if let Some(assertion_shape) = repair_route
         .get("assertion_shape")
         .and_then(non_empty_string)
@@ -592,6 +598,14 @@ fn first_repair_packet_text(
         }
     }
     lines.push(String::new());
+    let artifacts = repair_packet_artifacts(data);
+    if !artifacts.is_empty() {
+        lines.push("Artifacts:".to_string());
+        for artifact in artifacts {
+            lines.push(format!("- {artifact}"));
+        }
+        lines.push(String::new());
+    }
     lines.push("Verify command:".to_string());
     lines.push(verify_command.to_string());
     lines.push(String::new());
@@ -607,6 +621,47 @@ fn first_repair_packet_text(
             .to_string(),
     );
     Some(lines.join("\n"))
+}
+
+fn missing_discriminator_for_packet(data: &Value, repair_route: &Value) -> Option<String> {
+    string_at(data, &["missing_discriminator"])
+        .or_else(|| {
+            repair_route
+                .get("assertion_shape")
+                .and_then(non_empty_string)
+        })
+        .or_else(|| {
+            repair_route
+                .get("changed_behavior")
+                .and_then(non_empty_string)
+        })
+        .map(ToOwned::to_owned)
+}
+
+fn focused_proof_intent_for_packet(repair_route: &Value) -> Option<String> {
+    let assertion_shape = repair_route
+        .get("assertion_shape")
+        .and_then(non_empty_string)?;
+    let target = repair_route
+        .get("related_test")
+        .and_then(non_empty_string)
+        .or_else(|| repair_route.get("target_file").and_then(non_empty_string))
+        .unwrap_or("the related test or proof target");
+    Some(format!(
+        "Add one focused assertion or output proof in {target} for {assertion_shape}."
+    ))
+}
+
+fn repair_packet_artifacts(data: &Value) -> Vec<String> {
+    let mut artifacts = Vec::new();
+    for key in ["source_artifact", "gap_ledger", "first_pr_packet"] {
+        if let Some(artifact) = string_at(data, &[key])
+            && !artifacts.iter().any(|item| item == artifact)
+        {
+            artifacts.push(artifact.to_string());
+        }
+    }
+    artifacts
 }
 
 fn copy_optional_string(object: &mut serde_json::Map<String, Value>, data: &Value, key: &str) {

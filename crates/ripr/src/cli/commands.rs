@@ -2051,6 +2051,10 @@ jobs:
               start_gap="$(jq -r '.selected.canonical_gap_id // .selected.gap_id // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_language="$(jq -r 'if .selected.language then (.selected.language + " (" + (.selected.language_status // "unknown") + ")") else "not_available" end' "$start_json" 2>/dev/null || echo unknown)"
               start_kind="$(jq -r '.selected.kind // "none"' "$start_json" 2>/dev/null || echo unknown)"
+              start_changed="$(jq -r '.selected.changed_behavior // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_evidence="$(jq -r '.selected.current_evidence_strength // .selected.state // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_missing="$(jq -r '.selected.missing_discriminator // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_proof="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
@@ -2065,6 +2069,10 @@ jobs:
               start_gap="$(markdown_inline "$start_gap")"
               start_language="$(markdown_inline "$start_language")"
               start_kind="$(markdown_inline "$start_kind")"
+              start_changed="$(markdown_inline "$start_changed")"
+              start_evidence="$(markdown_inline "$start_evidence")"
+              start_missing="$(markdown_inline "$start_missing")"
+              start_proof="$(markdown_inline "$start_proof")"
               start_repair="$(markdown_inline "$start_repair")"
               start_target="$(markdown_inline "$start_target")"
               start_related="$(markdown_inline "$start_related")"
@@ -2079,6 +2087,10 @@ jobs:
               echo "- Canonical gap: \`$start_gap\`"
               echo "- Language: \`$start_language\`"
               echo "- Top gap/no-action: \`$start_kind\`"
+              echo "- Changed behavior: \`$start_changed\`"
+              echo "- Current evidence strength: \`$start_evidence\`"
+              echo "- Missing discriminator: \`$start_missing\`"
+              echo "- Focused proof intent: \`$start_proof\`"
               echo "- Repair: \`$start_repair\`"
               echo "- Repair target: \`$start_target\`"
               echo "- Related test: \`$start_related\`"
@@ -2100,6 +2112,10 @@ jobs:
               first_action_kind="$(jq -r '.action_kind // "unknown"' "$first_json" 2>/dev/null || echo unknown)"
               first_title="$(jq -r '.title // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
               first_why="$(jq -r '.why // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_changed="$(jq -r '.selected.changed_behavior // .why // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_evidence="$(jq -r '.selected.current_evidence_strength // .selected.classification // .status // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_missing="$(jq -r '.selected.missing_discriminator // .target.suggested_assertion // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_proof="$(jq -r '.selected.focused_proof_intent // .target.suggested_assertion // .title // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
               first_gap="$(jq -r 'if .selected == null then "none" else ((.selected.path // "unknown") + (if .selected.line then ":" + (.selected.line|tostring) else "" end) + " " + (.selected.missing_discriminator // .selected.classification // .selected.seam_id // "gap")) end' "$first_json" 2>/dev/null || echo unknown)"
               first_target="$(jq -r 'if .target == null then "none" else ((.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end) + (if .target.suggested_test_name then " suggested=" + .target.suggested_test_name else "" end)) end' "$first_json" 2>/dev/null || echo unknown)"
               first_packet="$(jq -r '.commands.context_packet // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
@@ -2111,6 +2127,10 @@ jobs:
               first_action_kind="$(markdown_inline "$first_action_kind")"
               first_title="$(markdown_inline "$first_title")"
               first_why="$(markdown_inline "$first_why")"
+              first_changed="$(markdown_inline "$first_changed")"
+              first_evidence="$(markdown_inline "$first_evidence")"
+              first_missing="$(markdown_inline "$first_missing")"
+              first_proof="$(markdown_inline "$first_proof")"
               first_gap="$(markdown_inline "$first_gap")"
               first_target="$(markdown_inline "$first_target")"
               first_packet="$(markdown_inline "$first_packet")"
@@ -2122,6 +2142,10 @@ jobs:
               echo "- Action: \`$first_action_kind\`"
               echo "- Title: \`$first_title\`"
               echo "- Why: \`$first_why\`"
+              echo "- Changed behavior: \`$first_changed\`"
+              echo "- Current evidence strength: \`$first_evidence\`"
+              echo "- Missing discriminator: \`$first_missing\`"
+              echo "- Focused proof intent: \`$first_proof\`"
               echo "- Gap: \`$first_gap\`"
               echo "- Repair target: \`$first_target\`"
               echo "- Agent packet: \`$first_packet\`"
@@ -11317,6 +11341,10 @@ language = "rust"
         assert!(workflow.contains("## RIPR advisory summary"));
         assert!(workflow.contains("### Start here"));
         assert!(workflow.contains("#### First-run status"));
+        assert!(workflow.contains("Changed behavior"));
+        assert!(workflow.contains("Current evidence strength"));
+        assert!(workflow.contains("Missing discriminator"));
+        assert!(workflow.contains("Focused proof intent"));
         assert!(workflow.contains("### Language preview grouping"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
