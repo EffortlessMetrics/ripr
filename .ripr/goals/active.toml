@@ -77,13 +77,15 @@ acceptance = "Refresh current-main routed proof on #34 and #24, recording whethe
 # - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526189830
 # - #34 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526512428
 # - #34 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526754297
+# - #34 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526808720
 # - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526148678
 # - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526190172
 # - #24 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526512895
 # - #24 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526754568
+# - #24 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526808969
 # Current disposition remains GitHub-hosted fallback success with
-# target=github, reason=runner_image_unavailable, CX53/CX43 skipped, and
-# visible runners showing CX53/CX43 online but not image-ready.
+# target=github, reason=no_idle_runner, CX53/CX43 skipped, and visible
+# CX53/CX43 runners online but not idle image-ready for em-ci-rust-1.95.
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",
@@ -97,7 +99,7 @@ status = "blocked"
 branch = "ops-cx53-cx43-proof-closeout"
 stackable = false
 acceptance = "Close the routed-runner proof only after #34 records CX53 primary and CX43 fallback proof, or after an org-visible operator records the accepted runner image-readiness or visibility blocker."
-blocked_reason = "Current repo-visible proof after #367 selects GitHub-hosted fallback with target=github and reason=runner_image_unavailable; CX53/CX43 are visible and online but have zero idle image-ready runners for em-ci-rust-1.95."
+blocked_reason = "Current repo-visible proof after #369 selects GitHub-hosted fallback with target=github and reason=no_idle_runner; CX53/CX43 are visible and online but have zero idle image-ready runners for em-ci-rust-1.95."
 
 [[work_item]]
 id = "campaign/self-hosted-routed-runner-proof-closeout"
