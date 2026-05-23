@@ -1588,24 +1588,45 @@ suite('Extension Smoke', () => {
   });
 
   test('status model projects actionable gap queue state without producing packets', async () => {
-    await withControllerTestContext({
-      files: {
-        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
-      }
-    }, async (context) => {
-      await context.controller.start();
-      const statusOutput = await showStatusReport(context);
-      assertReportIncludes(statusOutput, [
-        'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
-        'Top repair: add_boundary_assertion',
-        'Gap identity: gap:rust:pricing:discount:threshold-boundary',
-        'Related test: tests/pricing.rs::premium_customer_gets_discount',
-        'Verify: ripr agent verify --root . --json',
-        'Receipt: ripr agent receipt --root . --json',
-        'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
-      ]);
-      assert.strictEqual(context.runRiprCalls.length, 0);
-    });
+    await writeWorkspaceFile('src/pricing.rs', 'pub fn discount() {}\n');
+    const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/pricing.rs'));
+    await vscode.window.showTextDocument(document);
+    try {
+      await withControllerTestContext({
+        files: {
+          'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+        }
+      }, async (context) => {
+        await context.controller.start();
+        const statusOutput = await showStatusReport(context);
+        assert.ok(
+          statusOutput.indexOf('Editor repair cockpit:') < statusOutput.indexOf('Workspace:'),
+          statusOutput
+        );
+        assertReportIncludes(statusOutput, [
+          'Workspace actionable state: repairable (1 actionable; target/ripr/reports/actionable-gaps.json)',
+          'Current-file actionable state: repairable (src/pricing.rs)',
+          'Top repair item: add_boundary_assertion',
+          'Top repair gap: gap:rust:pricing:discount:threshold-boundary',
+          'Related test or target: tests/pricing.rs::premium_customer_gets_discount',
+          'Verify command: ripr agent verify --root . --json',
+          'Receipt state: missing; command available (ripr agent receipt --root . --json)',
+          'Next safe command: run ripr: Start Current Repair, or ripr: Copy Current Repair Packet.'
+        ]);
+        assertReportIncludes(statusOutput, [
+          'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
+          'Top repair: add_boundary_assertion',
+          'Gap identity: gap:rust:pricing:discount:threshold-boundary',
+          'Related test: tests/pricing.rs::premium_customer_gets_discount',
+          'Verify: ripr agent verify --root . --json',
+          'Receipt: ripr agent receipt --root . --json',
+          'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
+        ]);
+        assert.strictEqual(context.runRiprCalls.length, 0);
+      });
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
 
     await withControllerTestContext({
       files: {
@@ -1622,6 +1643,14 @@ suite('Extension Smoke', () => {
     }, async (context) => {
       await context.controller.start();
       const statusOutput = await showStatusReport(context);
+      assertReportIncludes(statusOutput, [
+        'Workspace actionable state: no_action (target/ripr/reports/actionable-gaps.json)',
+        'Current-file actionable state: fail_closed (no active workspace file)',
+        'Top repair item: not_available',
+        'Verify command: not_available',
+        'Receipt state: missing',
+        'Next safe command: ripr actionable gap queue has no actionable gap; no current repair packet is available.'
+      ]);
       assert.ok(statusOutput.includes('Actionable gap queue: no actionable gap; target/ripr/reports/actionable-gaps.json reports zero safe repair packets.'));
       assert.ok(statusOutput.includes('No local queue repair action is projected from this packet.'));
       assert.strictEqual(context.runRiprCalls.length, 0);

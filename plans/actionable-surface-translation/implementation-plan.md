@@ -343,7 +343,7 @@ git diff --check
 
 ### Work item: editor/repair-first-status-hierarchy
 
-Status: ready
+Status: done
 
 Linked proposal:
 
@@ -375,7 +375,7 @@ Issue:
 
 PR:
 
-- n/a
+- #316
 
 #### Goal
 
@@ -418,7 +418,7 @@ git diff --check
 
 ### Work item: swarm/dry-run-copy-ready-packet
 
-Status: blocked
+Status: ready
 
 Linked proposal:
 
@@ -438,7 +438,7 @@ Blocks:
 
 Blocked by:
 
-- `editor/repair-first-status-hierarchy`
+- n/a
 
 Branch:
 

@@ -109,7 +109,7 @@ commands = [
 
 [[work_item]]
 id = "editor/repair-first-status-hierarchy"
-status = "ready"
+status = "done"
 branch = "editor-repair-first-status-hierarchy"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
@@ -127,15 +127,12 @@ commands = [
 
 [[work_item]]
 id = "swarm/dry-run-copy-ready-packet"
-status = "blocked"
+status = "ready"
 branch = "swarm-dry-run-copy-ready-packet"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
 spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
 plan = "plans/actionable-surface-translation/implementation-plan.md"
-blocked_by = [
-  "editor/repair-first-status-hierarchy",
-]
 acceptance = "`ripr-swarm attempt --dry-run` emits a compact copy-ready operator or external-agent packet with task, allowed files, do-not-change boundaries, repair target, verify command, receipt command, stop conditions, and required return format."
 commands = [
   "cargo test -p xtask ripr_swarm_attempt --bin xtask",

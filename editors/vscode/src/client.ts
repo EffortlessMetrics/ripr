@@ -1019,6 +1019,7 @@ export class RiprClientController {
       workspaceTrusted: this.runtime.isWorkspaceTrusted(),
       workspaceRootState: this.workspaceRootState,
       workspaceRoot: this.workspaceRoot,
+      activeDocumentRelativePath: activeDocumentRelativePath(this.workspaceRoot),
       server: this.server,
       documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language),
       setupStatus: this.setupStatus
@@ -1088,6 +1089,7 @@ interface RiprStatusContext {
   workspaceTrusted: boolean;
   workspaceRootState: RiprWorkspaceRootState;
   workspaceRoot?: string;
+  activeDocumentRelativePath?: string;
   server?: ResolvedServer;
   documentLanguages: string[];
   setupStatus: RiprSetupStatus;
@@ -1307,6 +1309,9 @@ function statusTooltip(
   context?: RiprStatusContext
 ): string {
   const lines = [status.summary];
+  if (context) {
+    lines.push('', ...repairFirstStatusLines(status, firstAction, context));
+  }
   if (status.detail) {
     lines.push(status.detail);
   }
@@ -1696,6 +1701,115 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   lines.push(`Warnings: ${firstAction.warningCount}`);
   lines.push('Advisory static evidence only; gate evaluation remains the pass/fail authority.');
   return lines;
+}
+
+function repairFirstStatusLines(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string[] {
+  const queue = context.setupStatus.actionableQueue;
+  const lines = ['Editor repair cockpit:'];
+  lines.push(`Workspace actionable state: ${workspaceActionableState(queue)}`);
+  lines.push(`Current-file actionable state: ${currentFileActionableState(queue, context.activeDocumentRelativePath)}`);
+  if (queue.state === 'topActionableGap') {
+    lines.push(`Top repair item: ${queue.topRepair ?? 'not_available'}`);
+    const identity = queue.canonicalGapId ?? queue.seamId ?? queue.findingId;
+    if (identity) {
+      lines.push(`Top repair gap: ${identity}`);
+    }
+    lines.push(`Related test or target: ${queue.relatedTest ?? queue.sourceFile ?? 'not_available'}`);
+    lines.push(`Verify command: ${queue.verifyCommand ?? 'not_available'}`);
+    lines.push(`Receipt state: ${receiptStateForRepairFirst(context.setupStatus.receipt, firstAction, queue)}`);
+    lines.push('Next safe command: run ripr: Start Current Repair, or ripr: Copy Current Repair Packet.');
+  } else {
+    lines.push('Top repair item: not_available');
+    lines.push('Related test or target: not_available');
+    lines.push('Verify command: not_available');
+    lines.push(`Receipt state: ${receiptStateForRepairFirst(context.setupStatus.receipt, firstAction, queue)}`);
+    lines.push(`Next safe command: ${repairFirstFailClosedCommand(status, queue, context)}`);
+  }
+  lines.push('Boundary: advisory static projection only; no source edits, generated tests, provider calls, mutation execution, gate decision, or merge approval.');
+  return lines;
+}
+
+function workspaceActionableState(queue: RiprActionableGapQueueStatus): string {
+  switch (queue.state) {
+    case 'topActionableGap':
+      return `repairable (${queue.actionableGaps ?? 1} actionable; ${queue.relativePath})`;
+    case 'noAction':
+      return `no_action (${queue.relativePath})`;
+    case 'reportOnly':
+      return `report_only (${queue.reportOnlyGaps ?? 0} report-only; ${queue.relativePath})`;
+    case 'staticLimitOnly':
+      return `static_limit_only (${queue.staticLimitOnlyGaps ?? 0} static-limited; ${queue.relativePath})`;
+    case 'blocked':
+    case 'missing':
+    case 'malformed':
+    case 'unsupportedSchema':
+    case 'wrongRoot':
+    case 'stale':
+    case 'unsafePath':
+    case 'unsafeCommand':
+      return `fail_closed (${queue.state}; ${queue.relativePath})`;
+    case 'noWorkspace':
+      return 'fail_closed (no workspace)';
+  }
+}
+
+function currentFileActionableState(
+  queue: RiprActionableGapQueueStatus,
+  activeRelativePath: string | undefined
+): string {
+  if (!activeRelativePath) {
+    return 'fail_closed (no active workspace file)';
+  }
+  if (queue.state !== 'topActionableGap') {
+    return `fail_closed (${queue.state}; ${activeRelativePath})`;
+  }
+  if (queue.sourceFile && sameWorkspaceRelativePath(activeRelativePath, queue.sourceFile)) {
+    return `repairable (${activeRelativePath})`;
+  }
+  return `no_matching_gap (${activeRelativePath}; top repair source ${queue.sourceFile ?? 'not_available'})`;
+}
+
+function receiptStateForRepairFirst(
+  receipt: RiprReceiptArtifactStatus,
+  firstAction: FirstUsefulActionStatus | undefined,
+  queue: RiprActionableGapQueueStatus
+): string {
+  if (receipt.state === 'found' && receipt.movement) {
+    return `found (${receipt.movement})`;
+  }
+  if (receipt.state !== 'missing' && receipt.state !== 'noWorkspace') {
+    return receipt.state;
+  }
+  if (queue.receiptCommandOrPath) {
+    return `missing; command available (${queue.receiptCommandOrPath})`;
+  }
+  if (firstAction?.receiptCommand) {
+    return `missing; command available (${firstAction.receiptCommand})`;
+  }
+  return receipt.state;
+}
+
+function repairFirstFailClosedCommand(
+  status: RiprStatusState,
+  queue: RiprActionableGapQueueStatus,
+  context: RiprStatusContext
+): string {
+  const setupBlocker = setupRepairBlocker(context);
+  if (setupBlocker) {
+    return setupBlocker;
+  }
+  if (status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {
+    return 'Save the file or refresh saved-workspace evidence before acting on repair packets.';
+  }
+  return actionableGapQueueSuppressedMessage(queue);
+}
+
+function sameWorkspaceRelativePath(left: string, right: string): boolean {
+  return normalizePath(left) === normalizePath(right);
 }
 
 function actionableGapQueueStatusLines(
@@ -3950,6 +4064,18 @@ function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): 
 
 function sameWorkspaceRoot(left: string, right: string): boolean {
   return normalizePath(path.resolve(left)) === normalizePath(path.resolve(right));
+}
+
+function activeDocumentRelativePath(workspaceRoot: string | undefined): string | undefined {
+  const document = vscode.window.activeTextEditor?.document;
+  if (!workspaceRoot || !document || !isRiprFileDocument(document) || document.uri.scheme !== 'file') {
+    return undefined;
+  }
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!workspaceFolder || !sameWorkspaceRoot(workspaceFolder.uri.fsPath, workspaceRoot)) {
+    return undefined;
+  }
+  return relativeWorkspacePath(workspaceRoot, document.uri.fsPath);
 }
 
 function relativeWorkspacePath(workspaceRoot: string, filePath: string): string {
