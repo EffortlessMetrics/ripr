@@ -61,6 +61,8 @@ Prefer packets with:
 
 - `swarm_state = queued`;
 - a concrete `repair_kind`;
+- confidence stronger than `static_only` for predicate-boundary assertion
+  packets;
 - a related test or observer;
 - `verify_command`;
 - `receipt_command` or `receipt_command_or_path`;
@@ -71,6 +73,7 @@ Do not attempt packets marked:
 
 - `blocked_by_missing_context`;
 - `blocked_by_static_limitation`;
+- `blocked_by_operator_judgment`;
 - missing verify command;
 - missing receipt command;
 - missing must-not-change boundaries.

@@ -89,6 +89,10 @@ Before a packet can be ranked as swarm-ready, typed evidence must show:
 - must-not-change boundaries;
 - confidence basis;
 - absence of blocking static limitations.
+- for predicate-boundary assertion repairs, confidence stronger than
+  `static_only`; static-only predicate boundaries require operator judgment
+  because the existing movement proof may not observe derived internal
+  equality predicates from a focused test invocation.
 
 Before an attempt can claim improvement, typed evidence must show:
 
@@ -190,6 +194,7 @@ Each packet has one swarm state.
 | `failed_to_apply` | The repair could not be applied within packet boundaries. | Record failure and keep packet visible. |
 | `blocked_by_missing_context` | Required packet fields, related test, verify command, receipt command, or safe path context are missing. | Regenerate upstream artifacts or improve Lane 1 packet fields. |
 | `blocked_by_static_limitation` | The packet or class carries a named static limitation that prevents a safe repair attempt. | Close analyzer limitation or inspect manually. |
+| `blocked_by_operator_judgment` | The packet has typed context but current confidence is too weak for a default swarm attempt, such as a static-only predicate boundary. | Inspect manually, add stronger upstream evidence, or route to a human-selected repair. |
 
 State transitions are receipt-backed when an attempt reaches verification. A
 passing test without a receipt does not become `verified_improved`.
@@ -213,7 +218,8 @@ Ranking may consider:
 - prior outcome state.
 
 Ranking must not place static-limitation-only items, missing-receipt packets,
-or missing-verify packets in the high-confidence repair-ready set.
+missing-verify packets, or static-only predicate-boundary assertion packets in
+the repair-ready set.
 
 ## Attempt Contract
 
@@ -310,10 +316,11 @@ The readiness report must also emit a bounded `next_actions` queue derived
 from those same artifacts. It may recommend refreshing missing or malformed
 inputs, repairing missing verify or receipt command projections, reconciling
 orphaned receipts, inspecting unchanged or regressed attempts, routing static
-limitations to the Lane 1 analyzer backlog, or dry-running a top swarm-ready
-packet. These actions are advisory coordination hints; they must not execute
-repairs, consume raw findings as work, change badge semantics, or hide blocked
-or uncertain evidence.
+limitations to the Lane 1 analyzer backlog, routing operator-judgment packets
+for manual selection or stronger upstream evidence, or dry-running a top
+swarm-ready packet. These actions are advisory coordination hints; they must not
+execute repairs, consume raw findings as work, change badge semantics, or hide
+blocked or uncertain evidence.
 
 `attempt --dry-run` prints the bounded packet context and the commands a human
 or external agent would run. It does not edit files, run tests, call providers,
@@ -368,6 +375,11 @@ Given a static-limitation packet such as an opaque helper or unsupported
 observer topology, `ripr-swarm` must report `blocked_by_static_limitation`
 rather than enqueueing it as repair-ready.
 
+Given a static-only predicate-boundary assertion packet, `ripr-swarm` must
+report `blocked_by_operator_judgment` rather than enqueueing it as
+repair-ready. The packet remains visible, but a default swarm attempt must wait
+for fixture-backed or calibrated evidence, or an explicit operator decision.
+
 Given a receipt-backed attempt with evidence movement `evidence_unchanged`,
 `ripr-swarm` must keep the failed attempt visible and must not mark the gap as
 resolved.
@@ -385,6 +397,7 @@ receipt rather than silently dropping it or creating a new repair packet.
 
 - high-confidence boundary assertion packet;
 - exact error variant packet;
+- static-only predicate-boundary packet requiring operator judgment;
 - output observer packet;
 - blocked static limitation packet;
 - missing verify command packet;
@@ -405,6 +418,8 @@ receipt rather than silently dropping it or creating a new repair packet.
 Must-not-claim guards:
 
 - do not rank static limitation as repair-ready;
+- do not rank static-only predicate-boundary packets as swarm-ready without
+  stronger evidence;
 - do not rank packet without `receipt_command` as swarm-ready;
 - do not rank packet without `verify_command` as high confidence;
 - do not create a repair attempt from raw findings alone;

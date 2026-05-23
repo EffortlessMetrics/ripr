@@ -7644,6 +7644,10 @@ const SWARM_PLAN_PACKET_REQUIRED_CASES: &[(&str, &str)] = &[
     ("exact_error_variant_packet", "queued"),
     ("output_observer_packet", "queued"),
     (
+        "static_only_predicate_boundary_packet",
+        "blocked_by_operator_judgment",
+    ),
+    (
         "blocked_static_limitation_packet",
         "blocked_by_static_limitation",
     ),
@@ -20802,6 +20806,12 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     let must_not_change_count = audit_array(packet, &["must_not_change"]).len();
     let public_projection_eligible =
         audit_bool(packet, &["public_projection_eligible"]).unwrap_or(false);
+    let requires_operator_judgment = ripr_swarm_plan_requires_operator_judgment(
+        &evidence_class,
+        &repair_kind,
+        &target_test_type,
+        &confidence_basis,
+    );
     let related_test_or_observer_available = ripr_swarm_plan_related_context_present(packet);
     let has_repair_route = ripr_swarm_plan_has_repair_route(packet);
     let has_verify_command = verify_command
@@ -20849,6 +20859,10 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
                 .map(|field| format!("missing_{field}")),
         );
         "blocked_by_missing_context".to_string()
+    } else if requires_operator_judgment {
+        blocked_reasons
+            .push("static_only_predicate_boundary_requires_operator_judgment".to_string());
+        "blocked_by_operator_judgment".to_string()
     } else {
         "queued".to_string()
     };
@@ -20940,6 +20954,18 @@ fn ripr_swarm_plan_has_repair_route(packet: &Value) -> bool {
                 packet,
                 &["assertion_shape", "suggested_assertion"],
             ))
+}
+
+fn ripr_swarm_plan_requires_operator_judgment(
+    evidence_class: &str,
+    repair_kind: &str,
+    target_test_type: &str,
+    confidence_basis: &str,
+) -> bool {
+    evidence_class == "predicate_boundary"
+        && repair_kind == "add_boundary_assertion"
+        && target_test_type == "boundary_discriminator"
+        && confidence_basis == "static_only"
 }
 
 fn ripr_swarm_plan_related_context_present(packet: &Value) -> bool {
@@ -21085,6 +21111,7 @@ fn ripr_swarm_plan_json(report: &RiprSwarmPlanReport) -> Result<String, String> 
         "must_not_infer": [
             "do not consume raw findings as swarm work",
             "do not rank static limitations as repair-ready",
+            "do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence",
             "do not rank packets without receipt_command as swarm-ready",
             "do not rank packets without verify_command as high confidence",
             "do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan"
@@ -21252,6 +21279,9 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
     out.push_str("## Must Not Infer\n\n");
     out.push_str("- Do not consume raw findings as swarm work.\n");
     out.push_str("- Do not rank static limitations as repair-ready.\n");
+    out.push_str(
+        "- Do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence.\n",
+    );
     out.push_str("- Do not rank packets without `receipt_command` as swarm-ready.\n");
     out.push_str("- Do not rank packets without `verify_command` as high confidence.\n");
     out.push_str("- Do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan.\n");
@@ -21596,6 +21626,9 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if let Some(plan) = swarm_plan {
+        if let Some(action) = ripr_swarm_readiness_operator_judgment_action(plan) {
+            actions.push(action);
+        }
         actions.extend(ripr_swarm_readiness_ready_packet_actions(plan));
     }
     if actions.is_empty() {
@@ -21610,6 +21643,36 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     actions
+}
+
+fn ripr_swarm_readiness_operator_judgment_action(
+    swarm_plan: &Value,
+) -> Option<RiprSwarmReadinessNextAction> {
+    let blocked = audit_array(swarm_plan, &["top_blocked_packets"]);
+    let mut operator_judgment_packets = blocked.iter().filter(|packet| {
+        audit_non_empty_string(packet, &["swarm_state"]).as_deref()
+            == Some("blocked_by_operator_judgment")
+            || audit_array(packet, &["blocked_reasons"])
+                .iter()
+                .any(|reason| {
+                    reason.as_str()
+                        == Some("static_only_predicate_boundary_requires_operator_judgment")
+                })
+    });
+    let first = operator_judgment_packets.next()?;
+    let count = 1 + operator_judgment_packets.count();
+    Some(RiprSwarmReadinessNextAction {
+        kind: "route_operator_judgment_packets".to_string(),
+        packet_id: audit_non_empty_string(first, &["packet_id"])
+            .or_else(|| audit_non_empty_string(first, &["canonical_gap_id"])),
+        canonical_gap_id: audit_non_empty_string(first, &["canonical_gap_id"]),
+        evidence_class: audit_non_empty_string(first, &["evidence_class"]),
+        repair_kind: audit_non_empty_string(first, &["repair_kind"]),
+        command: Some("cargo xtask ripr-swarm plan --top 10".to_string()),
+        reason: format!(
+            "{count} top blocked packet(s) require operator judgment; improve upstream evidence confidence or choose a manual repair outside the default swarm-ready queue"
+        ),
+    })
 }
 
 fn ripr_swarm_readiness_ready_packet_actions(
@@ -69869,8 +69932,8 @@ covered_by = ["cargo xtask check-file-policy"]
             "report": "actionable-gaps",
             "summary": {
                 "raw_signals": 8,
-                "canonical_items": 4,
-                "actionable_gaps": 4
+                "canonical_items": 5,
+                "actionable_gaps": 5
             },
             "packets": [
                 {
@@ -69890,6 +69953,26 @@ covered_by = ["cargo xtask check-file-policy"]
                     "confidence_basis": "fixture_backed",
                     "must_not_change": ["Do not edit production code by default."],
                     "raw_findings": [{"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                },
+                {
+                    "packet_id": "packet:static-only-boundary",
+                    "canonical_gap_id": "gap:static-only-boundary",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "actionability": "extend_related_test",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo xtask evidence-quality-scorecard",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/pricing.rs", "name": "threshold"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/pricing.rs", "line": 48, "kind": "weakly_exposed"}],
                     "static_limitations": [],
                     "public_projection_eligible": true
                 },
@@ -69962,7 +70045,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["report"], "swarm-plan");
         assert_eq!(
             value["summary"]["packets_total"],
-            serde_json::Value::from(4)
+            serde_json::Value::from(5)
         );
         assert_eq!(
             value["summary"]["swarm_ready_packets"],
@@ -69970,7 +70053,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["summary"]["blocked_packets"],
-            serde_json::Value::from(3)
+            serde_json::Value::from(4)
         );
         assert_eq!(
             value["summary"]["missing_verify_command"],
@@ -70009,6 +70092,14 @@ covered_by = ["cargo xtask check-file-policy"]
                 .iter()
                 .any(|packet| packet["swarm_state"] == "blocked_by_static_limitation")
         );
+        assert!(blocked_packets.iter().any(|packet| {
+            packet["swarm_state"] == "blocked_by_operator_judgment"
+                && packet["blocked_reasons"].as_array().is_some_and(|reasons| {
+                    reasons.iter().any(|reason| {
+                        reason == "static_only_predicate_boundary_requires_operator_judgment"
+                    })
+                })
+        }));
         let missing_verify_or_receipt = value["top_missing_verify_or_receipt"]
             .as_array()
             .ok_or_else(|| "top_missing_verify_or_receipt must be an array".to_string())?;
@@ -70016,6 +70107,11 @@ covered_by = ["cargo xtask check-file-policy"]
         let must_not_infer = value["must_not_infer"]
             .as_array()
             .ok_or_else(|| "must_not_infer must be an array".to_string())?;
+        assert!(
+            must_not_infer
+                .iter()
+                .any(|claim| claim == "do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence")
+        );
         assert!(
             must_not_infer
                 .iter()
@@ -70027,6 +70123,111 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("gap:ready-boundary"));
         assert!(markdown.contains("gap:static-limit"));
         assert!(markdown.contains("Do not rank static limitations as repair-ready."));
+        assert!(
+            markdown.contains(
+                "Do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence."
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_missing_context_before_static_only_operator_judgment()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "summary": {
+                "raw_signals": 1,
+                "canonical_items": 1,
+                "actionable_gaps": 1
+            },
+            "packets": [
+                {
+                    "packet_id": "packet:static-only-boundary-missing-context",
+                    "canonical_gap_id": "gap:static-only-boundary-missing-context",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "actionability": "extend_related_test",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "related_test_or_observer": {
+                        "file": "tests/pricing.rs",
+                        "name": "threshold"
+                    },
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 48, "kind": "weakly_exposed"}
+                    ],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let packet = report
+            .packets
+            .first()
+            .ok_or_else(|| "expected one swarm-plan packet".to_string())?;
+
+        assert_eq!(packet.swarm_state, "blocked_by_missing_context");
+        assert!(
+            packet
+                .missing_context
+                .iter()
+                .any(|context| context == "verify_command")
+        );
+        assert!(
+            packet
+                .missing_context
+                .iter()
+                .any(|context| context == "receipt_command")
+        );
+        assert!(
+            packet
+                .blocked_reasons
+                .iter()
+                .any(|reason| reason == "missing_verify_command")
+        );
+        assert!(
+            packet
+                .blocked_reasons
+                .iter()
+                .any(|reason| reason == "missing_receipt_command")
+        );
+        assert!(!packet.blocked_reasons.iter().any(|reason| {
+            reason == "static_only_predicate_boundary_requires_operator_judgment"
+        }));
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["swarm_ready_packets"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            value["summary"]["blocked_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["missing_verify_command"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["missing_receipt_command"],
+            serde_json::Value::from(1)
+        );
         Ok(())
     }
 
@@ -70228,6 +70429,83 @@ covered_by = ["cargo xtask check-file-policy"]
                 .contains("cargo xtask ripr-swarm attempt --packet packet-boundary-001 --dry-run")
         );
         assert!(markdown.contains("Readiness counts do not change public badge semantics."));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_routes_operator_judgment_packets() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "source_summary": {
+                "actionable_gaps": 25,
+                "public_projection_eligible_packets": 25
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 25,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 0,
+                "high_confidence_packets": 0
+            },
+            "top_ready_packets": [],
+            "top_blocked_packets": [
+                {
+                    "packet_id": "gap:static-only-boundary",
+                    "canonical_gap_id": "gap:static-only-boundary",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion",
+                    "swarm_state": "blocked_by_operator_judgment",
+                    "blocked_reasons": [
+                        "static_only_predicate_boundary_requires_operator_judgment"
+                    ]
+                }
+            ]
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "summary": {
+                "outcomes_total": 25,
+                "not_attempted": 25,
+                "evidence_improved": 0,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["next_actions"][0]["kind"],
+            serde_json::Value::from("route_operator_judgment_packets")
+        );
+        assert_eq!(
+            value["next_actions"][0]["packet_id"],
+            serde_json::Value::from("gap:static-only-boundary")
+        );
+        assert!(
+            value["next_actions"][0]["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("require operator judgment")
+        );
         Ok(())
     }
 

@@ -2428,6 +2428,7 @@ It does not silently drop the plan or infer work from stale Markdown.
   "must_not_infer": [
     "do not consume raw findings as swarm work",
     "do not rank static limitations as repair-ready",
+    "do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence",
     "do not rank packets without receipt_command as swarm-ready",
     "do not rank packets without verify_command as high confidence",
     "do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan"
@@ -2438,9 +2439,12 @@ It does not silently drop the plan or infer work from stale Markdown.
 `swarm_state = queued` means the packet is ready for a bounded dry-run repair
 attempt. Packets missing required typed context use
 `blocked_by_missing_context`. Packets with static limitations use
-`blocked_by_static_limitation`. Ranking is advisory and never redefines
-actionability; it starts from the canonical packet state already emitted by
-Lane 1.
+`blocked_by_static_limitation`. Static-only predicate-boundary assertion
+packets use `blocked_by_operator_judgment`; they remain visible but are not
+default swarm-ready until upstream evidence is fixture-backed, calibrated, or
+explicitly operator-selected. Ranking is advisory and never redefines
+actionability; it starts from the canonical packet state already emitted by Lane
+1.
 
 ## RIPR Swarm Attempt Dry Run
 
@@ -2485,7 +2489,8 @@ static_limitations_count
 `queued` packets show the expected canonical-gap delta if receipt-backed
 evidence movement resolves or improves the item. Blocked packets remain visible
 with their `blocked_by_missing_context` or `blocked_by_static_limitation` state
-and are not promoted to repair-ready work.
+or `blocked_by_operator_judgment` state and are not promoted to repair-ready
+work.
 
 ## Actionable Gap Outcomes
 
@@ -2674,6 +2679,15 @@ available yet; missing outcomes do not imply failed attempts.
       "reason": "2 packet(s) are blocked by static limitations; route them to the Lane 1 analyzer backlog, not repair execution"
     },
     {
+      "kind": "route_operator_judgment_packets",
+      "packet_id": "gap:static-only-boundary",
+      "canonical_gap_id": "gap:static-only-boundary",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "command": "cargo xtask ripr-swarm plan --top 10",
+      "reason": "1 top blocked packet(s) require operator judgment; improve upstream evidence confidence or choose a manual repair outside the default swarm-ready queue"
+    },
+    {
       "kind": "attempt_ready_packet",
       "packet_id": "packet-boundary-001",
       "canonical_gap_id": "gap:boundary",
@@ -2700,7 +2714,8 @@ outcomes improved, stayed unchanged, regressed, or resolved. It does not make
 badge-readiness claims by itself. `next_actions` is a bounded advisory queue
 derived from the same plan and outcome artifacts. It can point operators to a
 ready dry-run packet, missing verify/receipt source fields, orphaned receipts,
-unchanged or regressed attempts, or static-limitation backlog work, but it does
+unchanged or regressed attempts, static-limitation backlog work, or
+operator-judgment packets that are visible but not default swarm-ready. It does
 not execute the action or consume raw findings as work.
 
 
