@@ -142,8 +142,8 @@ packet for one PR after it exists.
 generated residue, and broad untracked scope before PR work proceeds.
 `cargo xtask check-pr` is the review-ready non-release gate.
 
-See `docs/PR_AUTOMATION.md` for the shape/check/guide model and the planned
-repair-reporting lane.
+See `docs/PR_AUTOMATION.md` for the shape/check/guide model, current automation
+entrypoint, and repo-ops report packets.
 
 Useful runtime checks:
 

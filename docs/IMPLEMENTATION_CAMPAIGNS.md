@@ -4333,15 +4333,20 @@ Work items:
 Commands:
 
 ```bash
-cargo xtask check-goals
-cargo xtask goals next
-cargo xtask check-doc-index
-cargo xtask markdown-links
-cargo xtask check-static-language
-cargo xtask check-doc-roles
-cargo xtask check-workflows
-cargo xtask check-pr
-git diff --check
+rtk git fetch origin --prune
+rtk git status --short --branch
+rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+rtk gh pr list --repo EffortlessMetrics/ripr --state open
+rtk cargo xtask pr-triage-report
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-workflows
+rtk cargo xtask check-pr
+rtk git diff --check
 ```
 
 Blocking conditions:

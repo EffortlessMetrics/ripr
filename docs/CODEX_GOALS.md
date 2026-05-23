@@ -167,8 +167,8 @@ and declared source-of-truth paths must point at existing proposal, plan, spec,
 receipt, and closeout files. When campaign docs reference a tracker manifest,
 the referenced manifest path must exist.
 
-Blocking a work item through `xtask` is planned but not implemented yet:
-
-```bash
-cargo xtask goals block <work-item-id> --reason "..."
-```
+Blocked work items are manifest state, not a separate mutation command. Record
+blocked work in the active manifest with `status = "blocked"`,
+`blocked_reason`, and `blocked_by` when applicable. `cargo xtask goals next`
+surfaces those blocked items and their reasons so agents do not infer ready work
+from chat history when the queue is intentionally blocked.
