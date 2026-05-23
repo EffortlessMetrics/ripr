@@ -68,10 +68,18 @@ commands = [
 
 [[work_item]]
 id = "ops/current-routed-proof-refresh"
-status = "ready"
+status = "done"
 branch = "ops-current-routed-proof-refresh"
 stackable = false
 acceptance = "Refresh current-main routed proof on #34 and #24, recording whether CX53/CX43 self-hosted execution is validated or whether the bounded blocker remains runner image readiness or runner visibility."
+# Refreshed 2026-05-23 with post-merge routed proof comments:
+# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526148362
+# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526189830
+# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526148678
+# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526190172
+# Current disposition remains GitHub-hosted fallback success with
+# target=github, reason=runner_image_unavailable, CX53/CX43 skipped, and
+# visible runners showing CX53/CX43 online but not image-ready.
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",
@@ -85,7 +93,7 @@ status = "blocked"
 branch = "ops-cx53-cx43-proof-closeout"
 stackable = false
 acceptance = "Close the routed-runner proof only after #34 records CX53 primary and CX43 fallback proof, or after an org-visible operator records the accepted runner image-readiness or visibility blocker."
-blocked_reason = "Current repo-visible proof repeatedly selects GitHub-hosted fallback because CX53/CX43 runners are not image-ready or not visible to the route as idle implementation targets."
+blocked_reason = "Current repo-visible proof after #352 selects GitHub-hosted fallback with target=github and reason=runner_image_unavailable; CX53/CX43 are visible and online but have zero idle image-ready runners for em-ci-rust-1.95."
 
 [[work_item]]
 id = "campaign/self-hosted-routed-runner-proof-closeout"

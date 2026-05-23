@@ -4326,7 +4326,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `goals/self-hosted-routed-runner-proof-activation` | done | Select #34/#24 as the active repo-owned successor after no-current-goal without changing analyzer, product, release, badge, source-promotion, or branch-protection behavior. |
-| `ops/current-routed-proof-refresh` | ready | Refresh current-main routed proof on #34 and #24, recording whether CX53/CX43 self-hosted execution is validated or whether the bounded blocker remains runner image readiness or runner visibility. |
+| `ops/current-routed-proof-refresh` | done | Current-main routed proof was refreshed on #34 and #24 after PR #351 and PR #352. Both post-merge runs passed through the normalized result with `target=github`, `reason=runner_image_unavailable`, CX53/CX43 skipped, and CX53/CX43 visible but not idle image-ready for `em-ci-rust-1.95`. |
 | `ops/cx53-cx43-proof-closeout` | blocked | Requires an image-ready idle CX53/CX43 runner or org-visible accepted runner blocker before proof can close. |
 | `campaign/self-hosted-routed-runner-proof-closeout` | blocked | Close only after #34/#24 carry proof or an accepted bounded blocker, plus branch-protection and source/swarm authority status. |
 
