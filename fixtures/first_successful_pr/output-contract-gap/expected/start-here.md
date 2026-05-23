@@ -7,6 +7,15 @@ State: actionable
 
 ripr gap: missing output contract
 
+One-screen recommendation:
+- Changed behavior: `APPLE_M3_AIR_DEVICE_LABELS_TEXT`
+- Current evidence strength: actionable repairable static gap in pr_local scope
+- Missing discriminator: golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT
+- Focused proof intent: Add or update `fixtures/device-labels/expected/human.txt` so it checks `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.
+- Verify command: `cargo xtask goldens check`
+- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md`
+- Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.
+
 Evidence boundary:
 - Canonical gap: `gap:rust:output:device-label`
 - Language: `rust` (stable)
@@ -25,6 +34,9 @@ Repair:
 
 Verify:
 `cargo xtask goldens check`
+
+Receipt:
+`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md`
 
 Agent packet:
 `ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json`

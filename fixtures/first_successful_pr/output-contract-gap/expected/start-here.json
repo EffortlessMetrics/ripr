@@ -43,6 +43,7 @@
   },
   "commands": {
     "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json",
+    "receipt": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md",
     "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
     "verify": "cargo xtask goldens check"
   },
@@ -77,12 +78,15 @@
     },
     "canonical_gap_id": "gap:rust:output:device-label",
     "changed_behavior": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+    "current_evidence_strength": "actionable repairable static gap in pr_local scope",
+    "focused_proof_intent": "Add or update `fixtures/device-labels/expected/human.txt` so it checks `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.",
     "gap_id": "gap:pr:output:device-label",
     "kind": "MissingOutputContract",
     "language": "rust",
     "language_status": "stable",
-    "receipt_command": null,
-    "receipt_state": null,
+    "missing_discriminator": "golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+    "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md",
+    "receipt_state": "receipt_missing",
     "repair": {
       "related_test": "fixtures/device-labels",
       "route": "AddOutputGolden",

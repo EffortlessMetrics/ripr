@@ -43,6 +43,7 @@
   },
   "commands": {
     "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json",
+    "receipt": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md",
     "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
     "verify": "cargo xtask fixtures boundary_gap"
   },
@@ -77,12 +78,15 @@
     },
     "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
     "changed_behavior": "amount >= threshold",
+    "current_evidence_strength": "actionable repairable static gap in pr_local scope",
+    "focused_proof_intent": "Add one focused assertion in `tests/pricing.rs` for `assert_eq!(discount(100, 100), 90)`.",
     "gap_id": "gap:pr:pricing:threshold-boundary",
     "kind": "MissingBoundaryAssertion",
     "language": "rust",
     "language_status": "stable",
-    "receipt_command": null,
-    "receipt_state": null,
+    "missing_discriminator": "assert_eq!(discount(100, 100), 90)",
+    "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md",
+    "receipt_state": "receipt_missing",
     "repair": {
       "related_test": "tests/pricing.rs::premium_customer_gets_discount",
       "route": "AddBoundaryAssertion",
