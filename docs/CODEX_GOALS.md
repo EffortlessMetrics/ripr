@@ -156,11 +156,12 @@ cargo xtask goals report
 Validate the manifest with:
 
 ```bash
-cargo xtask check-campaign
+cargo xtask check-goals
 ```
 
-`check-campaign` validates the active execution manifest and the focused tracker
-rails around it. Focused tracker manifests must stay outside
+`check-goals` validates the active execution manifest and the focused tracker
+rails around it. `check-campaign` remains a compatibility alias. Focused
+tracker manifests must stay outside
 `.ripr/goals/active.toml`, done work items must stay tied to proof commands,
 and declared source-of-truth paths must point at existing proposal, plan, spec,
 receipt, and closeout files. When campaign docs reference a tracker manifest,

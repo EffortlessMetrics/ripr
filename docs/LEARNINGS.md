@@ -158,7 +158,7 @@ operating brief's premises against current repo state:
 - `git fetch origin` and check whether `main` has advanced
 - `git status` and `git log --oneline origin/main..HEAD` to see what
   is actually on the working branch
-- `cargo xtask check-campaign` and `cargo xtask goals next` to see
+- `cargo xtask check-goals` and `cargo xtask goals next` to see
   the manifest's "next item"
 - `gh pr list` for open PRs that may already do part of the work
 - read cited files at cited line ranges; live source over paraphrased

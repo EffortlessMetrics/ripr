@@ -320,7 +320,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
@@ -454,7 +454,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-command-catalog
