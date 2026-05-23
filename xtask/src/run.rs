@@ -347,7 +347,10 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     {
         return Ok(false);
     }
-    let group_terminated = terminate_timed_process_group(child);
+    let tree_terminated = terminate_timed_process_tree(child);
+    if tree_terminated {
+        return Ok(true);
+    }
     match child.kill() {
         Ok(()) => Ok(true),
         Err(kill_err) => {
@@ -356,7 +359,7 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
                 .map_err(|err| format!("failed to poll {error_context}: {err}"))?
                 .is_some()
             {
-                Ok(group_terminated)
+                Ok(false)
             } else {
                 Err(format!(
                     "failed to terminate timed-out {error_context}: {kill_err}"
@@ -366,7 +369,7 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     }
 }
 
-fn terminate_timed_process_group(child: &Child) -> bool {
+fn terminate_timed_process_tree(child: &Child) -> bool {
     #[cfg(unix)]
     {
         let group = format!("-{}", child.id());
@@ -377,7 +380,18 @@ fn terminate_timed_process_group(child: &Child) -> bool {
             .status();
         status.is_ok_and(|status| status.success())
     }
+    #[cfg(windows)]
+    {
+        let pid = child.id().to_string();
+        let status = Command::new("taskkill")
+            .args(["/PID", pid.as_str(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        status.is_ok_and(|status| status.success())
+    }
     #[cfg(not(unix))]
+    #[cfg(not(windows))]
     {
         let _ = child;
         false
@@ -626,21 +640,34 @@ mod tests {
 
     #[test]
     fn capture_output_with_timeout_reports_timed_out_process() -> Result<(), String> {
-        let args = vec![
-            "metadata".to_string(),
-            "--no-deps".to_string(),
-            "--format-version".to_string(),
-            "1".to_string(),
-        ];
-        let output =
-            capture_output_with_timeout("cargo", &args, &[], Duration::ZERO, "cargo metadata")?;
+        let (program, args) = long_running_command();
+        let output = capture_output_with_timeout(
+            program,
+            &args,
+            &[],
+            Duration::from_millis(100),
+            "long-running command",
+        )?;
 
-        assert!(output.timed_out, "cargo metadata should time out");
+        assert!(output.timed_out, "long-running command should time out");
         assert!(
             !output.status.is_some_and(|status| status.success()),
-            "timed-out cargo metadata should not exit successfully"
+            "timed-out long-running command should not exit successfully"
         );
         Ok(())
+    }
+
+    #[cfg(unix)]
+    fn long_running_command() -> (&'static str, Vec<String>) {
+        ("sh", vec!["-c".to_string(), "sleep 30".to_string()])
+    }
+
+    #[cfg(windows)]
+    fn long_running_command() -> (&'static str, Vec<String>) {
+        (
+            "cmd",
+            vec!["/C".to_string(), "ping -n 30 127.0.0.1 >NUL".to_string()],
+        )
     }
 
     #[cfg(unix)]
@@ -659,6 +686,53 @@ mod tests {
             output.timed_out,
             "pipe-inheriting descendant should time out"
         );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
+        let started = std::time::Instant::now();
+        let current_exe =
+            std::env::current_exe().map_err(|err| format!("locate current test binary: {err}"))?;
+        let current_exe = current_exe.to_string_lossy().into_owned();
+        let args = vec![
+            "--exact".to_string(),
+            "run::tests::pipe_inheriting_descendant_helper".to_string(),
+            "--nocapture".to_string(),
+        ];
+        let output = capture_output_with_timeout(
+            &current_exe,
+            &args,
+            &[("RIPR_XTASK_PIPE_DESCENDANT_HELPER", "1")],
+            Duration::from_millis(100),
+            "pipe-inheriting descendant",
+        )?;
+
+        assert!(
+            output.timed_out,
+            "pipe-inheriting descendant should time out"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(45),
+            "pipe-inheriting descendant should not keep captured pipes open"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn pipe_inheriting_descendant_helper() -> Result<(), String> {
+        if std::env::var_os("RIPR_XTASK_PIPE_DESCENDANT_HELPER").is_none() {
+            return Ok(());
+        }
+
+        let mut child = Command::new("cmd")
+            .args(["/C", "ping -n 120 127.0.0.1"])
+            .spawn()
+            .map_err(|err| format!("spawn pipe-inheriting descendant: {err}"))?;
+        thread::sleep(Duration::from_mins(2));
+        let _ = child.wait();
         Ok(())
     }
 
