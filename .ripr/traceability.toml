@@ -3456,9 +3456,24 @@ metrics = [
 id = "RIPR-SPEC-0053"
 name = "Start-here surface convergence"
 spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid",
+  "crates/ripr/src/lsp/tests.rs::editor_adoption_baseline_pins_gap_repair_action_contract",
+  "crates/ripr/src/output/agent_seam_packets.rs::gap_record_packet_carries_shared_repair_route_and_stop_conditions",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.md",
+]
+code = [
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/output/first_useful_action.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
   "docs/specs/README.md",

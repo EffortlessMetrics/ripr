@@ -3086,8 +3086,8 @@ Work items:
 | `first-pr/one-screen-recommendation` | done | Golden-backed start-here packets now carry one-screen recommendation fields for changed behavior, current static evidence strength, missing discriminator, focused proof intent, verify command, receipt command, and static-advisory boundary. |
 | `outcome/reviewer-native-receipts` | done | `ripr outcome` and the xtask targeted-test outcome mirror now render reviewer-native receipts that explain before/after static movement, focused proof visibility, remaining weak or unknown states, and explicit non-claims. |
 | `fixtures/first-pr-boundary-gap-demo` | done | The boundary-gap first-successful-pr corpus now includes a checked ten-minute demo story linking `ripr first-pr`, the top repairable gap, focused external proof, `ripr outcome`, and the reviewer-native receipt. |
-| `surfaces/one-screen-loop-convergence` | ready | Make generated CI, VS Code/editor handoff, and agent packet surfaces mirror the same first-useful-pr wording and repair unit. |
-| `campaign/first-useful-pr-loop-closeout` | blocked | Close only after the one-command, one-gap, one-repair, one-verification, one-receipt loop is proven across CLI, CI, editor, agent packet, and demo surfaces. |
+| `surfaces/one-screen-loop-convergence` | done | Generated CI, first-useful-action Markdown, VS Code/LSP repair packets, and agent seam packets now mirror changed behavior, missing discriminator, focused proof intent, verify, receipt, artifacts, and static-advisory boundary wording. |
+| `campaign/first-useful-pr-loop-closeout` | ready | Close only after the one-command, one-gap, one-repair, one-verification, one-receipt loop is proven across CLI, CI, editor, agent packet, and demo surfaces. |
 
 References:
 
