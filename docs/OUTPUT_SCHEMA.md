@@ -7336,6 +7336,14 @@ Field contract:
   canonical gap id when present.
 - `selected.language` and `selected.language_status` keep Rust stable evidence
   distinct from preview evidence when a top gap is selected.
+- `selected.current_evidence_strength` explains the static state behind the
+  interruption in user-facing terms. It is advisory context, not a score,
+  runtime result, or coverage claim.
+- `selected.missing_discriminator` names the specific assertion, output proof,
+  or discriminator the focused repair should add when a top gap is selected.
+- `selected.focused_proof_intent` is the one-screen test or output-proof intent
+  for a human or coding agent. It must stay bounded to the selected gap and
+  must not imply that RIPR edits source or generates tests.
 - `selected.repair.route`, `selected.repair.target_file`,
   `selected.repair.related_test`, and `selected.repair.suggested_assertion`
   describe the bounded repair route when present.

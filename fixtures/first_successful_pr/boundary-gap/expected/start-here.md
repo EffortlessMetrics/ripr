@@ -7,6 +7,15 @@ State: actionable
 
 ripr gap: missing boundary assertion
 
+One-screen recommendation:
+- Changed behavior: `amount >= threshold`
+- Current evidence strength: actionable repairable static gap in pr_local scope
+- Missing discriminator: assert_eq!(discount(100, 100), 90)
+- Focused proof intent: Add one focused assertion in `tests/pricing.rs` for `assert_eq!(discount(100, 100), 90)`.
+- Verify command: `cargo xtask fixtures boundary_gap`
+- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md`
+- Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.
+
 Evidence boundary:
 - Canonical gap: `gap:rust:pricing:discount:threshold-boundary`
 - Language: `rust` (stable)
@@ -25,6 +34,9 @@ Repair:
 
 Verify:
 `cargo xtask fixtures boundary_gap`
+
+Receipt:
+`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md`
 
 Agent packet:
 `ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json`

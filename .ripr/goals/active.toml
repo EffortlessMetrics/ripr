@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "first-pr/one-screen-recommendation"
-status = "ready"
+status = "done"
 branch = "first-pr-one-screen-recommendation"
 stackable = false
 blocked_by = [
@@ -100,7 +100,7 @@ commands = [
 
 [[work_item]]
 id = "outcome/reviewer-native-receipts"
-status = "blocked"
+status = "ready"
 branch = "outcome-reviewer-native-receipts"
 stackable = false
 blocked_by = [

@@ -104,6 +104,8 @@ A repairable top gap should include:
 - gap ID and source artifact path;
 - gap kind;
 - changed behavior text when safe to display;
+- current static evidence strength in reviewer-readable terms;
+- missing discriminator or output proof intent;
 - why the gap matters;
 - repair route;
 - likely related test or output proof location when known;
