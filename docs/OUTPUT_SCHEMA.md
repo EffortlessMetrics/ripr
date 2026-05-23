@@ -744,7 +744,7 @@ Required JSON shape:
   },
   "recommended_public_projection": {
     "basis": "canonical_actionable_gap",
-    "rule": "README/store badges should count unresolved actionable canonical repair items."
+    "rule": "README/store badges should count unresolved actionable static repair gaps using canonical_actionable_gap; ripr+ adds only items projected into the same repair, verify, and receipt model; seam-native inventory stays supporting/internal."
   },
   "warnings": [],
   "non_claims": []
@@ -756,7 +756,9 @@ Field contract:
 - `current_public_endpoints` mirrors committed Shields endpoint JSON.
 - `current_repo_badges` records the native badge basis used to derive public
   counts.
-- `canonical_actionable_gap` records the public repair projection counts.
+- `canonical_actionable_gap` records the public repair projection counts: the
+  unresolved actionable static repair gaps used for README/store badge
+  headlines.
 - `seam_native` records internal inventory status and per-class counts when
   collected with `--include-seam-classes`.
 - `test_efficiency` records class counts but does not move the public `ripr+`
@@ -765,7 +767,9 @@ Field contract:
 - `supporting_signals` names supporting or excluded evidence rather than
   silently dropping it.
 - `recommended_public_projection.basis` must be
-  `canonical_actionable_gap` for public repair badges.
+  `canonical_actionable_gap` for public repair badges, and
+  `recommended_public_projection.rule` must keep seam-native inventory
+  supporting/internal rather than a public headline counter.
 
 ## SARIF Output
 

@@ -194,7 +194,7 @@ git diff --check
 
 ### Work item: badge/actionable-basis-presentation
 
-Status: ready
+Status: done
 
 Linked proposal:
 
@@ -226,7 +226,7 @@ Issue:
 
 PR:
 
-- n/a
+- #314
 
 #### Goal
 
@@ -272,7 +272,7 @@ git diff --check
 
 ### Work item: pr/actionable-delta-front-panel
 
-Status: blocked
+Status: ready
 
 Linked proposal:
 
@@ -292,7 +292,7 @@ Blocks:
 
 Blocked by:
 
-- `badge/actionable-basis-presentation`
+- n/a
 
 Branch:
 

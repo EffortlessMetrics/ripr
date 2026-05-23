@@ -36,8 +36,8 @@ hard_rules = [
 non_goals = [
   "no analyzer truth changes",
   "no actionable-gap producer or schema changes",
-  "no support-tier promotion in the activation PR",
-  "no public badge semantic change in the activation PR",
+  "no support-tier promotion without a dedicated support-tier PR",
+  "no public badge endpoint semantic change in presentation-only slices",
   "no default CI blocking or gate behavior changes",
   "no PR comment publishing changes",
   "no source edits or generated tests",
@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "badge/actionable-basis-presentation"
-status = "ready"
+status = "done"
 branch = "badge-actionable-basis-presentation"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
@@ -94,15 +94,12 @@ commands = [
 
 [[work_item]]
 id = "pr/actionable-delta-front-panel"
-status = "blocked"
+status = "ready"
 branch = "pr-actionable-delta-front-panel"
 stackable = false
 proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
 spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
 plan = "plans/actionable-surface-translation/implementation-plan.md"
-blocked_by = [
-  "badge/actionable-basis-presentation",
-]
 acceptance = "PR evidence front panels lead with repo actionable count, PR-local actionable count, new/resolved gaps, receipt state, blocked/static-limited counts, and one top next repair packet before raw finding or seam inventory totals."
 commands = [
   "cargo xtask pr-summary",
