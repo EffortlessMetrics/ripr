@@ -289,7 +289,8 @@ work from this reporting PR.
 This slice records a zero movement result because the selected fixture-backed
 sub-shape was already handled before analyzer code changed. The rail continues
 to dogfood receipts so the remaining limitation state and non-claims are
-captured before closeout.
+captured before closeout. The durable state is recorded in
+`docs/handoffs/2026-05-22-value-resolution-audit-delta.md`.
 
 ## Work Item: `dogfood/value-resolution-receipts`
 

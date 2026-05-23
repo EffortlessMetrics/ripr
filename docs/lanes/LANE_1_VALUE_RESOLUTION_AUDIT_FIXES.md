@@ -86,7 +86,7 @@ Lane 1 does not own:
 | `docs/lane1-value-resolution-audit-fixes-stack` | done | Open the issue-backed rail, active manifest, plan, lane tracker, and index links. |
 | `fixtures/value-resolution-audit-corpus` | done | Pin one audit-derived supported value-resolution sub-shape and must-not-claim guards before analyzer behavior. |
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by the existing value-resolution path while unsupported flows remain named limitations. |
-| `report/value-resolution-audit-delta` | done | Recorded zero-movement audit, scorecard, and trend evidence for the already-supported sub-shape. |
+| `report/value-resolution-audit-delta` | done | Recorded zero-movement audit, scorecard, and trend evidence for the already-supported sub-shape; see the [Value Resolution Audit Delta](../handoffs/2026-05-22-value-resolution-audit-delta.md). |
 | `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw context, zero movement, remaining limitations, and non-claims. |
 | `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, and next-step selection. |
 
@@ -119,6 +119,9 @@ Remaining `activation_value_unresolved` findings stay on
 `analysis/value-resolution-audit-fixes`. This report does not prove runtime
 behavior, mutation adequacy, coverage adequacy, public badge movement, or any
 new product claim.
+
+The durable handoff is
+[Value Resolution Audit Delta](../handoffs/2026-05-22-value-resolution-audit-delta.md).
 
 ## Dogfood Receipt
 

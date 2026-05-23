@@ -3394,7 +3394,7 @@ Work items:
 | `docs/lane1-value-resolution-audit-fixes-stack` | done | [swarm #285](https://github.com/EffortlessMetrics/ripr-swarm/issues/285) opens the active issue-backed rail, active manifest, lane tracker, implementation plan, and docs indexes without analyzer behavior. |
 | `fixtures/value-resolution-audit-corpus` | done | Pin one audit-derived supported value-resolution sub-shape plus must-not-claim guards before analyzer behavior changes. |
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by existing value-resolution support and keep unsupported value flows named. |
-| `report/value-resolution-audit-delta` | done | Recorded zero-movement Lane 1 audit, scorecard, and trend evidence for the already-supported selected bucket without changing claims. |
+| `report/value-resolution-audit-delta` | done | Recorded zero-movement Lane 1 audit, scorecard, and trend evidence for the already-supported selected bucket without changing claims; see the [Value Resolution Audit Delta](handoffs/2026-05-22-value-resolution-audit-delta.md). |
 | `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw finding context, zero movement, remaining limitations, and static-evidence non-claims. |
 | `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, downstream impact, and next-step selection. |
 
