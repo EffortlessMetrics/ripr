@@ -117,7 +117,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-pr-boundary-gap-demo"
-status = "ready"
+status = "done"
 branch = "fixtures-first-pr-boundary-gap-demo"
 stackable = false
 blocked_by = [
@@ -134,7 +134,7 @@ commands = [
 
 [[work_item]]
 id = "surfaces/one-screen-loop-convergence"
-status = "blocked"
+status = "ready"
 branch = "surfaces-one-screen-loop-convergence"
 stackable = false
 blocked_by = [
