@@ -65,16 +65,24 @@ than one behavior contract or touches repo shape.
 | Editor Actionable Gap Queue (Lane 3 tracker) | Project existing actionable-gap artifacts into the editor as a bounded local repair queue. | Complete: [RIPR-PROP-0013](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md), [RIPR-SPEC-0055](specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md), [ADR-0017](adr/0017-editor-gap-queue-is-read-only.md), and [the implementation plan](../plans/editor-actionable-gap-queue/implementation-plan.md) define the closed stack. Validation, Show Status queue projection, Copy Current Repair Packet, Copy Repo Gap Map, fixtures, VS Code smoke, [workflow docs](EDITOR_ACTIONABLE_GAP_QUEUE.md), dogfood receipts, and [closeout proof](handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md) are in place. |
 | Actionable Surface Translation | Make badge, PR, editor, swarm dry-run, and outcome/trend first screens translate existing actionable canonical gap evidence into the same repair-first user questions. | Complete: [RIPR-PROP-0016](proposals/RIPR-PROP-0016-actionable-surface-translation.md), [RIPR-SPEC-0059](specs/RIPR-SPEC-0059-actionable-surface-translation.md), [RIPR-PLAN-0059](../plans/actionable-surface-translation/implementation-plan.md), and [the closeout handoff](handoffs/2026-05-23-actionable-surface-translation-closeout.md) record the accepted source-of-truth stack, badge/PR/editor/swarm/outcome first-screen proof, advisory claim boundary, and no selected successor. |
 | First Useful PR Loop Continuation | Make one changed Rust behavior become one clear repairable gap, one focused proof intent, one verification command, and one reviewer- and agent-readable receipt. | Complete: the goal-freshness guardrail, first-pr front door, one-screen recommendation contract, reviewer-native outcome, first-pr demo story, generated CI/VS Code/agent packet convergence, and [closeout handoff](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md) are in place. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
+| Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Active: tracked by [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34) and [#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24). The activation PR selects this as the current repo-ops goal without changing analyzer, product, release, badge, or branch-protection behavior. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it currently records `status = "closed"` and `no_current_goal = true` after
-First Useful PR Loop Continuation closed. The closed manifest is archived at
-`.ripr/goals/archive/2026-05-23-first-useful-pr-loop-continuation.toml`.
-The goal-freshness guardrail is pinned, the first-pr front-door stdout behavior
-landed in #332, the one-screen recommendation contract landed in #335,
-reviewer-native outcome claim boundaries landed in #338, the fixture-backed
-first successful PR demo story landed in #341, and generated CI, VS Code, and
-agent packet convergence landed in #344. The
+it currently records `status = "active"` for the
+`self-hosted-routed-runner-proof` repo-ops goal after First Useful PR Loop
+Continuation closed and archived at
+`.ripr/goals/archive/2026-05-23-first-useful-pr-loop-continuation.toml`. The
+selected successor is intentionally operational: prove the CX53/CX43
+self-hosted routed Rust path in [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34)
+and mirror the cutover disposition in
+[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24), or keep the
+runner image-readiness/visibility blocker explicit while the protected
+GitHub-hosted fallback remains healthy. The goal-freshness guardrail is pinned,
+the first-pr front-door stdout behavior landed in #332, the one-screen
+recommendation contract landed in #335, reviewer-native outcome claim
+boundaries landed in #338, the fixture-backed first successful PR demo story
+landed in #341, and generated CI, VS Code, and agent packet convergence landed
+in #344. The
 focused Lane 2 policy readiness tracker lives in
 `.ripr/goals/lane2-policy-readiness.toml` and
 [Policy readiness](policy/POLICY_READINESS.md); it is a GitHub issue/PR board,

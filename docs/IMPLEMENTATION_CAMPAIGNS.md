@@ -4282,3 +4282,80 @@ Closeout:
 - [First Useful PR Loop Continuation closeout](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md)
   records the first-pr surface convergence audit, static/advisory claim
   boundary, archived manifest, and no selected successor campaign.
+
+## Repo-Ops Campaign: Self-Hosted Routed Runner Proof
+
+Campaign ID: `self-hosted-routed-runner-proof`
+
+Status: active.
+
+First Useful PR Loop Continuation is closed and archived. The current issue
+board has no product or analyzer PR queue, but it does have one live
+repo-owned cutover gap: [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34)
+tracks CX53/CX43 self-hosted routed Rust proof, and
+[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24) tracks the
+larger source-to-swarm cutover boundary. This repo-ops campaign selects that
+work without reopening product behavior, release, badge, source promotion, or
+branch-protection scope.
+
+Objective:
+
+```text
+Restore and prove the self-hosted routed Rust path for ripr-swarm while keeping
+the normalized Ripr Rust Small Result gate and GitHub-hosted fallback as the
+branch-protection-facing proof.
+```
+
+End state:
+
+- #34 records CX53 primary proof with `target=cx53`, `reason=cx53_idle`, and
+  `Ripr Rust Small Result` success, or a current bounded
+  image-readiness/runner-visibility blocker.
+- #34 records CX43 fallback proof with `target=cx43`, `reason=cx43_idle`, and
+  `Ripr Rust Small Result` success, or a current bounded
+  image-readiness/runner-visibility blocker.
+- #24 records the same cutover disposition and does not claim machine cutover
+  completion before self-hosted proof or an accepted blocker.
+- Branch protection remains strict and requires only `Ripr Rust Small Result`.
+- Conditional CX53/CX43/GitHub-hosted implementation jobs remain unrequired.
+- Normal feature, docs, spec, analyzer, editor, badge, and repo-ops work stays
+  routed to `ripr-swarm`; source `ripr` remains release/distribution authority.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/self-hosted-routed-runner-proof-activation` | done | Select #34/#24 as the active repo-owned successor after no-current-goal without changing analyzer, product, release, badge, source-promotion, or branch-protection behavior. |
+| `ops/current-routed-proof-refresh` | ready | Refresh current-main routed proof on #34 and #24, recording whether CX53/CX43 self-hosted execution is validated or whether the bounded blocker remains runner image readiness or runner visibility. |
+| `ops/cx53-cx43-proof-closeout` | blocked | Requires an image-ready idle CX53/CX43 runner or org-visible accepted runner blocker before proof can close. |
+| `campaign/self-hosted-routed-runner-proof-closeout` | blocked | Close only after #34/#24 carry proof or an accepted bounded blocker, plus branch-protection and source/swarm authority status. |
+
+Commands:
+
+```bash
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-workflows
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- output schema or product surface changes
+- source repo promotion
+- release, publish, signing, marketplace, or badge endpoint refresh work
+- release/publish/signing secrets in `ripr-swarm`
+- fork PRs on self-hosted runners
+- branch-protection expansion beyond `Ripr Rust Small Result`
+- default CI blocking changes beyond the normalized routed result
+- provider/model calls
+- source edits or generated tests
+- mutation execution
+- runtime adequacy, coverage adequacy, proof-of-correctness, policy
+  eligibility, gate pass/fail, or merge-readiness claims
