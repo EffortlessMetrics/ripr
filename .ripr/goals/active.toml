@@ -91,7 +91,7 @@ commands = [
 
 [[work_item]]
 id = "cli/first-pr-front-door-polish"
-status = "ready"
+status = "done"
 branch = "cli-first-pr-front-door-polish"
 stackable = false
 acceptance = "A new user can run one first-pr command and understand the top repairable gap or recovery state without opening secondary reports."
@@ -105,12 +105,9 @@ commands = [
 
 [[work_item]]
 id = "output/one-screen-recommendation-contract"
-status = "blocked"
+status = "ready"
 branch = "output-one-screen-recommendation-contract"
 stackable = false
-blocked_by = [
-  "cli/first-pr-front-door-polish",
-]
 acceptance = "Golden-backed first-pr output always includes top actionable gap, why it matters, current evidence strength, missing discriminator, focused test intent, exact verify command, receipt command or path, and static-evidence boundary."
 commands = [
   "cargo test -p ripr --lib first_pr",
