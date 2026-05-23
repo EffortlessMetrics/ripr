@@ -52,10 +52,10 @@ namespace:
 | Closeout | `docs/handoffs/` |
 | Durable learning | `docs/LEARNINGS.md` |
 
-The detailed source-of-truth control-plane guide lives in
-[`docs/source-of-truth/README.md`](source-of-truth/README.md). Its role is to
-explain and link the same repo-owned artifacts, not to replace the execution
-manifest, support-tier files, traceability ledger, or campaign history.
+This file is the repo-native source-of-truth control-plane guide for RIPR's
+existing artifacts. Its role is to explain and link the repo-owned artifacts,
+not to replace the execution manifest, support-tier files, traceability ledger,
+or campaign history.
 
 ## Lifecycle
 
