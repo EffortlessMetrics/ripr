@@ -9654,15 +9654,23 @@ fn validate_first_successful_pr_boundary_demo(
     }
     let story = read_text_lossy(&story_path)?;
     for required in [
+        "before evidence",
+        "first-pr recommendation",
         "ripr first-pr",
         "ripr outcome",
         "focused external proof",
+        "reviewer receipt",
+        "fixture smoke path",
+        "release demo",
+        "agent training path",
         "cargo xtask fixtures boundary_gap",
         "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
         "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
         "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
         "No runtime mutation proof",
         "No coverage adequacy",
+        "No general correctness proof",
+        "No merge approval",
         "No source edit or generated test from RIPR",
     ] {
         if !story.contains(required) {
@@ -52406,7 +52414,12 @@ mod tests {
 
         assert!(report.contains("is missing `ripr outcome`"));
         assert!(report.contains("is missing `focused external proof`"));
+        assert!(report.contains("is missing `reviewer receipt`"));
+        assert!(report.contains("is missing `fixture smoke path`"));
+        assert!(report.contains("is missing `release demo`"));
+        assert!(report.contains("is missing `agent training path`"));
         assert!(report.contains("is missing `No runtime mutation proof`"));
+        assert!(report.contains("is missing `No merge approval`"));
         assert!(report.contains("actionable packet must name top actionable gap"));
         assert!(report.contains("actionable packet must name changed behavior"));
         assert!(report.contains("actionable packet must name why this matters"));

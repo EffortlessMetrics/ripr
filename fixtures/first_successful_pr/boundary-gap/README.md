@@ -4,6 +4,10 @@ This case is the canonical ten-minute first successful PR story. It uses
 checked fixture artifacts to show the loop without asking RIPR to edit source,
 generate tests, call a provider, or run mutation testing.
 
+This story is the checked first-pr recommendation path for docs, a fixture
+smoke check, a release demo, and an agent training path. The fixture smoke path
+is intentionally the same checked boundary-gap loop used by the demo.
+
 ```text
 before evidence
 -> ripr first-pr
