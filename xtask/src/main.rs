@@ -6906,6 +6906,7 @@ fn check_workflows_impl() -> Result<(), String> {
         }
     }
     validate_assistant_loop_health_fixture_corpus(&mut violations)?;
+    violations.extend(routed_rust_workflow_contract_violations_for_repo()?);
 
     finish_policy_report(
         PolicyReportSpec {
@@ -6927,6 +6928,150 @@ fn check_workflows_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn routed_rust_workflow_contract_violations_for_repo() -> Result<Vec<String>, String> {
+    let workflow_path = Path::new(".github/workflows/routed-rust.yml");
+    if !workflow_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let workflow = read_text_lossy(workflow_path)?;
+    let settings = optional_policy_text(".github/settings.yml")?;
+    let lane_whitelist = optional_policy_text("policy/ci-lane-whitelist.toml")?;
+
+    Ok(routed_rust_workflow_contract_violations(
+        &workflow,
+        settings.as_deref(),
+        lane_whitelist.as_deref(),
+    ))
+}
+
+fn optional_policy_text(path: &str) -> Result<Option<String>, String> {
+    let path = Path::new(path);
+    if path.exists() {
+        read_text_lossy(path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn routed_rust_workflow_contract_violations(
+    workflow: &str,
+    settings: Option<&str>,
+    lane_whitelist: Option<&str>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let required_workflow_snippets = [
+        (
+            "org runner discovery",
+            "orgs/EffortlessMetrics/actions/runners",
+        ),
+        (
+            "runner read token fallback",
+            "secrets.EM_RUNNER_READ_TOKEN || github.token",
+        ),
+        ("trusted fork fallback reason", "fork_or_untrusted_pr"),
+        ("runner API fallback reason", "runner_api_failed"),
+        ("no-idle fallback reason", "no_idle_runner"),
+        (
+            "runner image readiness fallback reason",
+            "runner_image_unavailable",
+        ),
+        ("CX53 idle route reason", "cx53_idle"),
+        ("CX43 idle route reason", "cx43_idle"),
+        ("CX53 readiness label", "em-ci-rust-1.95"),
+        ("normalized result job", "name: Ripr Rust Small Result"),
+        (
+            "CX53 conditional implementation job",
+            "if: needs.route.outputs.router_target == 'cx53'",
+        ),
+        (
+            "CX43 conditional implementation job",
+            "if: needs.route.outputs.router_target == 'cx43'",
+        ),
+        (
+            "hosted fallback conditional job",
+            "if: needs.route.outputs.router_target == 'github'",
+        ),
+    ];
+
+    for (label, snippet) in required_workflow_snippets {
+        if !workflow.contains(snippet) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml is missing {label}: `{snippet}`"
+            ));
+        }
+    }
+
+    if workflow.contains("repos/${REPOSITORY}/actions/runners")
+        || workflow.contains("repos/$REPOSITORY/actions/runners")
+        || workflow.contains("repos/EffortlessMetrics/ripr-swarm/actions/runners")
+    {
+        violations.push(
+            ".github/workflows/routed-rust.yml must use organization runner discovery, not repo-local runner discovery".to_string(),
+        );
+    }
+
+    if !(workflow.contains("[ \"$EVENT_NAME\" = \"pull_request\" ]")
+        && workflow.contains("[ \"$HEAD_REPO\" != \"$REPOSITORY\" ]"))
+    {
+        violations.push(
+            ".github/workflows/routed-rust.yml must guard pull_request events from forks before selecting self-hosted runners".to_string(),
+        );
+    }
+
+    for forbidden in [
+        "github.event.pull_request.head.repo.full_name == github.repository",
+        "github.event.pull_request.head.repo.full_name != github.repository",
+    ] {
+        if workflow.contains(forbidden) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml must keep fork routing in the route job, not on self-hosted implementation job condition `{forbidden}`"
+            ));
+        }
+    }
+
+    if let Some(settings) = settings
+        && (settings.contains("name: ripr-swarm") || settings.contains("Ripr Rust Small Result"))
+    {
+        if !settings.contains("Ripr Rust Small Result") {
+            violations.push(
+                ".github/settings.yml must require the normalized `Ripr Rust Small Result` check for ripr-swarm".to_string(),
+            );
+        }
+        for forbidden in [
+            "Route Ripr Rust Small",
+            "Ripr Rust Small on CX53",
+            "Ripr Rust Small on CX43",
+            "Ripr Rust Small on GitHub Hosted",
+        ] {
+            if settings.contains(forbidden) {
+                violations.push(format!(
+                    ".github/settings.yml must not require conditional implementation job `{forbidden}`"
+                ));
+            }
+        }
+    }
+
+    if let Some(lane_whitelist) = lane_whitelist
+        && lane_whitelist.contains("routed-rust-small")
+    {
+        if !lane_whitelist.contains("workflow = \".github/workflows/routed-rust.yml\"") {
+            violations.push(
+                "policy/ci-lane-whitelist.toml must point `routed-rust-small` at `.github/workflows/routed-rust.yml`".to_string(),
+            );
+        }
+        if !lane_whitelist.contains("jobs = [\"Ripr Rust Small Result\"]") {
+            violations.push(
+                "policy/ci-lane-whitelist.toml must list only `Ripr Rust Small Result` for the routed Rust lane".to_string(),
+            );
+        }
+    }
+
+    violations.sort();
+    violations.dedup();
+    violations
 }
 
 fn workflow_runtime_violations(
@@ -48948,9 +49093,10 @@ mod tests {
         ripr_swarm_plan_ready_packets, ripr_swarm_read_optional_json,
         ripr_swarm_readiness_from_values, ripr_swarm_readiness_json, ripr_swarm_readiness_markdown,
         ripr_swarm_readiness_next_actions, ripr_swarm_readiness_summary,
-        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
-        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
+        routed_rust_workflow_contract_violations, run_ci_full_evidence_gates,
+        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
+        should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
+        sorted_capability_blocks_content, sorted_command_catalog_content,
         sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
         spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
         static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
@@ -54402,6 +54548,113 @@ jobs:
         assert!(violations.iter().any(|violation| {
             violation.contains("uses `actions/dependency-review-action@v4` 2 time(s), allowed 1")
         }));
+    }
+
+    #[test]
+    fn routed_rust_workflow_contract_accepts_swarm_shape() {
+        let workflow = r#"
+jobs:
+  route:
+    name: Route Ripr Rust Small
+    steps:
+      - name: Select runner
+        env:
+          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN || github.token }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
+            reason=fork_or_untrusted_pr
+          fi
+          gh api --paginate orgs/EffortlessMetrics/actions/runners
+          reason=runner_api_failed
+          reason=no_idle_runner
+          reason=runner_image_unavailable
+          reason=cx53_idle
+          reason=cx43_idle
+          echo em-ci-rust-1.95
+  rust-cx53:
+    if: needs.route.outputs.router_target == 'cx53'
+  rust-cx43:
+    if: needs.route.outputs.router_target == 'cx43'
+  rust-github:
+    if: needs.route.outputs.router_target == 'github'
+  result:
+    name: Ripr Rust Small Result
+"#;
+        let settings = r#"
+repository:
+  name: ripr-swarm
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        contexts:
+          - Ripr Rust Small Result
+"#;
+        let lane = r#"
+[[lane]]
+id = "routed-rust-small"
+workflow = ".github/workflows/routed-rust.yml"
+jobs = ["Ripr Rust Small Result"]
+"#;
+
+        assert!(
+            routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane),)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn routed_rust_workflow_contract_rejects_unsafe_drift() {
+        let workflow = r#"
+jobs:
+  route:
+    steps:
+      - run: |
+          gh api repos/$REPOSITORY/actions/runners
+          reason=no_idle_runner
+  rust-cx53:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+  result:
+    name: Ripr Rust Small Result
+"#;
+        let settings = r#"
+repository:
+  name: ripr-swarm
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        contexts:
+          - Ripr Rust Small Result
+          - Ripr Rust Small on CX53
+"#;
+        let lane = r#"
+[[lane]]
+id = "routed-rust-small"
+workflow = ".github/workflows/routed-rust.yml"
+jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
+"#;
+
+        let violations =
+            routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane));
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("organization runner discovery")
+                || violation.contains("repo-local runner discovery")
+        }));
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("guard pull_request events from forks") })
+        );
+        assert!(violations.iter().any(|violation| {
+            violation.contains("must not require conditional implementation job")
+        }));
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("must list only `Ripr Rust Small Result`") })
+        );
     }
 
     #[test]
