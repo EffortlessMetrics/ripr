@@ -87,8 +87,8 @@ Lane 1 does not own:
 | `fixtures/value-resolution-audit-corpus` | done | Pin one audit-derived supported value-resolution sub-shape and must-not-claim guards before analyzer behavior. |
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by the existing value-resolution path while unsupported flows remain named limitations. |
 | `report/value-resolution-audit-delta` | done | Recorded zero-movement audit, scorecard, and trend evidence for the already-supported sub-shape. |
-| `dogfood/value-resolution-receipts` | ready | Record material dogfood receipts with canonical gap identity and non-claims. |
-| `campaign/value-resolution-audit-closeout` | blocked | Close the rail with proof, remaining limits, and next-step selection. |
+| `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw context, zero movement, remaining limitations, and non-claims. |
+| `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, and next-step selection. |
 
 ## Audit Delta
 
@@ -119,6 +119,21 @@ Remaining `activation_value_unresolved` findings stay on
 `analysis/value-resolution-audit-fixes`. This report does not prove runtime
 behavior, mutation adequacy, coverage adequacy, public badge movement, or any
 new product claim.
+
+## Dogfood Receipt
+
+`fixtures/finding-alignment-dogfood/corpus.json` includes
+`value_resolution_struct_literal_projection_zero_movement`, a checked receipt
+for the selected sub-shape. The receipt records:
+
+- canonical gap id:
+  `gap:value_resolution_struct_literal_projection_zero_movement`;
+- raw finding context for the same-test struct literal projection;
+- zero before/after movement from the already-supported implementation;
+- `cargo xtask lane1-evidence-audit` as the verify command;
+- no-action outcome for the selected supported sub-shape;
+- explicit non-claims for unsupported value flows, runtime proof, mutation
+  proof, coverage, badge, and gate authority.
 
 ## Operating Rules
 

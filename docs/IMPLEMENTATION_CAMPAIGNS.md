@@ -3395,8 +3395,8 @@ Work items:
 | `fixtures/value-resolution-audit-corpus` | done | Pin one audit-derived supported value-resolution sub-shape plus must-not-claim guards before analyzer behavior changes. |
 | `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by existing value-resolution support and keep unsupported value flows named. |
 | `report/value-resolution-audit-delta` | done | Recorded zero-movement Lane 1 audit, scorecard, and trend evidence for the already-supported selected bucket without changing claims. |
-| `dogfood/value-resolution-receipts` | ready | Record material dogfood receipts with canonical gap identity, raw finding context, moved counts, remaining limitations, and static-evidence non-claims. |
-| `campaign/value-resolution-audit-closeout` | blocked | Close the rail with proof, remaining limits, downstream impact, and next-step selection. |
+| `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw finding context, zero movement, remaining limitations, and static-evidence non-claims. |
+| `campaign/value-resolution-audit-closeout` | ready | Close the rail with proof, remaining limits, downstream impact, and next-step selection. |
 
 Blocking conditions:
 

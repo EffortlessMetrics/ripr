@@ -136,7 +136,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/value-resolution-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-value-resolution-receipts"
 stackable = false
 plan = "plans/lane1-value-resolution-audit-fixes/implementation-plan.md"
@@ -157,7 +157,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/value-resolution-audit-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-value-resolution-audit-closeout"
 stackable = false
 plan = "plans/lane1-value-resolution-audit-fixes/implementation-plan.md"
@@ -168,3 +168,11 @@ blocked_by = [
   "dogfood/value-resolution-receipts",
 ]
 acceptance = "Close the value-resolution audit-fixes rail only after fixtures, analyzer movement, audit delta, and dogfood receipts prove the selected sub-shape while preserving all unsupported value flows as named future work."
+commands = [
+  "cargo xtask goals status",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
