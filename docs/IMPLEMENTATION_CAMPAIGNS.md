@@ -4236,8 +4236,8 @@ Work items:
 | `goals/active-goal-freshness-check` | done | Pinned goal validation for stale closed campaigns, missing work-item proof commands, unknown proof commands, and failed `goals next` reporting before product behavior work resumes. |
 | `cli/first-pr-front-door-polish` | done | `ripr first-pr` now explains one top repairable gap, no-action state, or recovery state directly in stdout after #332. |
 | `output/one-screen-recommendation-contract` | done | Golden-backed first-pr output now carries and validates top gap, why it matters, weak evidence, missing discriminator, focused test intent, verify, receipt, and static boundary after #335. |
-| `receipt/reviewer-native-outcome` | ready | Make outcome receipts explain before/after static movement and reviewer belief boundaries. |
-| `fixtures/first-pr-demo-story` | blocked | Add a tiny fixture-backed before -> first-pr recommendation -> focused proof -> outcome receipt demo. |
+| `receipt/reviewer-native-outcome` | done | Outcome receipts now make reviewer-visible static claim boundaries explicit after #338. |
+| `fixtures/first-pr-demo-story` | ready | Add a tiny fixture-backed before -> first-pr recommendation -> focused proof -> outcome receipt demo. |
 | `surfaces/first-useful-loop-convergence` | blocked | Make generated CI, VS Code, and agent packets mirror the CLI first-useful loop vocabulary and non-claims. |
 
 Commands:

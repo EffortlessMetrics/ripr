@@ -119,7 +119,7 @@ commands = [
 
 [[work_item]]
 id = "receipt/reviewer-native-outcome"
-status = "ready"
+status = "done"
 branch = "receipt-reviewer-native-outcome"
 stackable = false
 acceptance = "Outcome receipts explain what changed, what ripr flagged before, what proof was added outside ripr, what moved after verification, what remains weak or unknown, and what reviewers may or must not believe."
@@ -132,12 +132,9 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-pr-demo-story"
-status = "blocked"
+status = "ready"
 branch = "fixtures-first-pr-demo-story"
 stackable = false
-blocked_by = [
-  "receipt/reviewer-native-outcome",
-]
 acceptance = "A tiny fixture-backed demo shows before -> first-pr recommendation -> focused proof -> outcome receipt and can serve as docs, smoke, release demo, and agent training path."
 commands = [
   "cargo xtask fixtures",
