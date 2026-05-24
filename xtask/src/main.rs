@@ -46,6 +46,7 @@ use run::{
     TimedFileOutput, TimedOutput, capture_output, capture_output_with_timeout,
     capture_stdout_to_file_with_timeout, command_success_owned, run, run_in_dir,
     run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
+    run_with_envs,
 };
 
 #[derive(Debug)]
@@ -1231,9 +1232,13 @@ fn main() {
 }
 
 fn ci_fast() -> Result<(), String> {
-    run("cargo", &["fmt", "--check"])?;
-    run("cargo", &["check", "--workspace", "--all-targets"])?;
-    run("cargo", &["test", "--workspace"])?;
+    ci_fast_with_envs(&[])
+}
+
+fn ci_fast_with_envs(envs: &[(&str, &str)]) -> Result<(), String> {
+    run_with_envs("cargo", &["fmt", "--check"], envs)?;
+    run_with_envs("cargo", &["check", "--workspace", "--all-targets"], envs)?;
+    run_with_envs("cargo", &["test", "--workspace"], envs)?;
     run_policy_checks()
 }
 
@@ -1274,8 +1279,13 @@ fn precommit() -> Result<(), String> {
 
 fn check_pr() -> Result<(), String> {
     ensure_reports_dir()?;
-    ci_fast()?;
-    run(
+    let temp_env = check_pr_temp_env()?;
+    let temp_env_refs = temp_env
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    ci_fast_with_envs(&temp_env_refs)?;
+    run_with_envs(
         "cargo",
         &[
             "clippy",
@@ -1285,8 +1295,13 @@ fn check_pr() -> Result<(), String> {
             "-D",
             "warnings",
         ],
+        &temp_env_refs,
     )?;
-    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    run_with_envs(
+        "cargo",
+        &["doc", "--workspace", "--no-deps"],
+        &temp_env_refs,
+    )?;
     pr_summary()?;
     let body = check_pr_report_body();
     write_report("check-pr.md", &body)?;
@@ -1294,6 +1309,26 @@ fn check_pr() -> Result<(), String> {
     receipts_write()?;
     pr_summary()?;
     reports_index()
+}
+
+fn check_pr_temp_env() -> Result<Vec<(String, String)>, String> {
+    let temp_dir = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve current directory for check-pr temp dir: {err}"))?
+        .join("target")
+        .join("tmp")
+        .join("check-pr");
+    fs::create_dir_all(&temp_dir).map_err(|err| {
+        format!(
+            "failed to create check-pr temp dir {}: {err}",
+            temp_dir.display()
+        )
+    })?;
+    let temp_dir = temp_dir.to_string_lossy().into_owned();
+    Ok(vec![
+        ("TEMP".to_string(), temp_dir.clone()),
+        ("TMP".to_string(), temp_dir.clone()),
+        ("TMPDIR".to_string(), temp_dir),
+    ])
 }
 
 fn run_policy_checks() -> Result<(), String> {
@@ -56651,6 +56686,36 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
 
         assert!(body.contains("cargo fmt --check"));
         assert!(body.contains("cargo xtask check-pr"));
+    }
+
+    #[test]
+    fn check_pr_temp_env_points_to_repo_local_target_tmp() -> Result<(), String> {
+        with_temp_cwd("check-pr-temp-env", |_root| -> Result<(), String> {
+            let envs = super::check_pr_temp_env()?;
+            let expected_path = std::env::current_dir()
+                .map_err(|err| format!("current dir: {err}"))?
+                .join("target")
+                .join("tmp")
+                .join("check-pr");
+            if !expected_path.is_dir() {
+                return Err(format!(
+                    "check-pr temp dir should exist at {}",
+                    expected_path.display()
+                ));
+            }
+            let expected = expected_path.to_string_lossy().into_owned();
+
+            for name in ["TEMP", "TMP", "TMPDIR"] {
+                let Some((_, value)) = envs.iter().find(|(env_name, _)| env_name == name) else {
+                    return Err(format!("missing {name} in check-pr temp envs"));
+                };
+                if value != &expected {
+                    return Err(format!("{name} should point to {expected}, got {value}"));
+                }
+            }
+
+            Ok(())
+        })
     }
 
     #[test]

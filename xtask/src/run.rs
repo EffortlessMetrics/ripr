@@ -37,9 +37,31 @@ struct WaitOutcome {
 }
 
 pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
-    eprintln!("$ {} {}", program, args.join(" "));
-    let status = Command::new(program)
-        .args(args)
+    run_with_envs(program, args, &[])
+}
+
+pub(crate) fn run_with_envs(
+    program: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<ExitStatus, String> {
+    let env_text = envs
+        .iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let env_prefix = if env_text.is_empty() {
+        String::new()
+    } else {
+        format!("{env_text} ")
+    };
+    eprintln!("$ {env_prefix}{} {}", program, args.join(" "));
+    let mut command = Command::new(program);
+    command.args(args);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let status = command
         .status()
         .map_err(|err| format!("failed to run {program}: {err}"))?;
     if status.success() {
