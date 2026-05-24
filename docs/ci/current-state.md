@@ -54,7 +54,7 @@ as distinct from the target design in `docs/CI.md`.
 
 | Gap | Target PR | Impact |
 | --- | --- | --- |
-| No numeric PR Plan (`ci-plan.json`) | PR 10 | No LEM forecast before lanes run. |
+| No numeric PR Plan (`ci-plan.json`) | PR 11 | Structural PR Plan exists; no numeric LEM forecast before lanes run. |
 | No `ci-actuals.json` emission | PR 12 | No forecast→actuals loop. |
 | VS Code lane is not path-gated or wired to the `vscode` label | PR 13 | `full-ci` is currently the only PR label that runs the legacy VS Code CI job. |
 | `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
