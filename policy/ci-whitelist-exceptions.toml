@@ -55,8 +55,8 @@ review_note = "Do not treat LGTM as a sufficient review record; inspect posted f
 [[exception]]
 id = "ci_plan_and_actuals_not_yet_generated"
 kind = "planned_artifact"
-paths = ["policy/ci-budget.toml", "policy/ci-lane-whitelist.toml", "policy/ci-risk-packs.toml"]
+paths = [".github/workflows/pr-plan.yml", "policy/ci-budget.toml", "policy/ci-lane-whitelist.toml", "policy/ci-risk-packs.toml"]
 artifact_families = ["ci-plan"]
-current_behavior = "The policy files describe planned ci-plan and ci-actuals artifacts, but no workflow or xtask command emits them yet."
-target_behavior = "A follow-up PR should add a structural checker, then an advisory PR Plan workflow."
-review_note = "This exception should disappear after the plan and actuals lanes exist."
+current_behavior = "The structural PR Plan workflow exists and emits a changed-file advisory artifact, but no workflow or xtask command emits numeric target/ci/ci-plan.json or target/ci/ci-actuals.json yet."
+target_behavior = "A follow-up PR should add the numeric planner that emits target/ci/ci-plan.json, then wire per-lane target/ci/ci-actuals.json telemetry."
+review_note = "This exception should disappear after the numeric plan and actuals lanes exist."
