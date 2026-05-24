@@ -98,13 +98,10 @@ jobs:
         run: |
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
-      - name: Generate ripr report index
-        if: always()
-        run: cargo xtask reports index || true
       - name: Generate ripr receipts
         if: always()
         run: cargo xtask receipts || true
-      - name: Refresh ripr report index
+      - name: Generate ripr report index
         if: always()
         run: cargo xtask reports index || true
       - name: Write ripr report summary
