@@ -39515,6 +39515,8 @@ struct RepoContractWorkItem {
     branch: String,
     commands: Vec<String>,
     acceptance: Option<String>,
+    blocked_by: Vec<String>,
+    blocked_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39524,6 +39526,7 @@ struct RepoContractSummary {
     active_goal_status: Option<String>,
     artifacts: Vec<RepoContractArtifact>,
     ready_work_items: Vec<RepoContractWorkItem>,
+    blocked_work_items: Vec<RepoContractWorkItem>,
     done_work_items: Vec<RepoContractWorkItem>,
     support_rows: Vec<SupportTierRow>,
     policy_ledgers: Vec<String>,
@@ -39569,6 +39572,7 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
     let mut active_goal_title = None;
     let mut active_goal_status = None;
     let mut ready_work_items = Vec::new();
+    let mut blocked_work_items = Vec::new();
     let mut done_work_items = Vec::new();
     if active_path.exists() {
         let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
@@ -39581,6 +39585,9 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
         for item in &manifest.work_items {
             match item.status.as_deref() {
                 Some("ready") => ready_work_items.push(repo_contract_work_item_from_campaign(item)),
+                Some("blocked") => {
+                    blocked_work_items.push(repo_contract_work_item_from_campaign(item))
+                }
                 Some("done") => done_work_items.push(repo_contract_work_item_from_campaign(item)),
                 _ => {}
             }
@@ -39606,6 +39613,7 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
         active_goal_status,
         artifacts,
         ready_work_items,
+        blocked_work_items,
         done_work_items,
         support_rows,
         policy_ledgers: repo_contract_policy_ledgers(root)?,
@@ -39656,6 +39664,8 @@ fn repo_contract_work_item_from_campaign(item: &CampaignWorkItem) -> RepoContrac
             .unwrap_or_else(|| "<missing>".to_string()),
         commands: item.commands.clone(),
         acceptance: item.acceptance.clone(),
+        blocked_by: item.blocked_by.clone(),
+        blocked_reason: item.blocked_reason.clone(),
     }
 }
 
@@ -39695,6 +39705,9 @@ fn repo_contract_report_markdown(summary: &RepoContractSummary) -> String {
 
     body.push_str("## Ready Work Items\n\n");
     write_repo_contract_work_items(&mut body, &summary.ready_work_items);
+
+    body.push_str("## Blocked Work Items\n\n");
+    write_repo_contract_work_items(&mut body, &summary.blocked_work_items);
 
     body.push_str("## Accepted Proposals\n\n");
     write_repo_contract_artifact_list(&mut body, &summary.artifacts, "proposal", "accepted");
@@ -39801,6 +39814,12 @@ fn write_repo_contract_work_items(body: &mut String, items: &[RepoContractWorkIt
         if let Some(acceptance) = item.acceptance.as_ref() {
             body.push_str(&format!("  acceptance: {acceptance}\n"));
         }
+        if let Some(reason) = item.blocked_reason.as_ref() {
+            body.push_str(&format!("  blocked reason: {reason}\n"));
+        }
+        if !item.blocked_by.is_empty() {
+            body.push_str(&format!("  blocked by: {}\n", item.blocked_by.join(", ")));
+        }
     }
     body.push('\n');
 }
@@ -39885,6 +39904,9 @@ fn repo_contract_report_json(summary: &RepoContractSummary) -> String {
     body.push_str("  \"ready_work_items\": [");
     write_repo_contract_work_item_json_array(&mut body, &summary.ready_work_items);
     body.push_str("],\n");
+    body.push_str("  \"blocked_work_items\": [");
+    write_repo_contract_work_item_json_array(&mut body, &summary.blocked_work_items);
+    body.push_str("],\n");
     body.push_str("  \"recently_completed_work\": [");
     write_repo_contract_work_item_json_array(&mut body, &summary.done_work_items);
     body.push_str("],\n");
@@ -39955,7 +39977,15 @@ fn write_repo_contract_work_item_json_array(body: &mut String, items: &[RepoCont
             json_escape(&item.branch)
         ));
         write_json_string_array(body, &item.commands);
-        body.push_str("] }");
+        body.push_str(&format!(
+            "], \"acceptance\": {}, \"blocked_by\": [",
+            json_optional_string(item.acceptance.as_deref())
+        ));
+        write_json_string_array(body, &item.blocked_by);
+        body.push_str(&format!(
+            "], \"blocked_reason\": {} }}",
+            json_optional_string(item.blocked_reason.as_deref())
+        ));
     }
 }
 
@@ -61336,7 +61366,7 @@ linked_spec = "RIPR-SPEC-0001"
         if include_active_goal {
             write(
                 &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "# Campaigns\n\nsource-of-truth-control-plane\n\n| Work item | Status |\n| --- | --- |\n| `docs/ledger` | done |\n| `docs/report` | ready |\n| `docs/report-json` | ready |\n| `docs/wait` | blocked |\n",
+                "# Campaigns\n\nsource-of-truth-control-plane\n\n| Work item | Status |\n| --- | --- |\n| `docs/ledger` | done |\n| `docs/report` | ready |\n| `docs/report-json` | ready |\n| `docs/wait` | blocked |\n| `docs/wait-dependent` | blocked |\n",
             );
             write(
                 &root.join(".ripr/goals/active.toml"),
@@ -61381,6 +61411,15 @@ branch = "docs-wait"
 stackable = false
 acceptance = "Blocked item is recorded."
 blocked_reason = "Waiting on runner proof."
+
+[[work_item]]
+id = "docs/wait-dependent"
+status = "blocked"
+branch = "docs-wait-dependent"
+stackable = false
+acceptance = "Blocked dependency item is recorded."
+blocked_by = ["docs/wait"]
+blocked_reason = "Waiting on docs/wait."
 "#,
             );
         }
@@ -62673,6 +62712,30 @@ linked_spec = "RIPR-SPEC-0001"
                     .as_array()
                     .is_some_and(|items| items.len() == 2)
             );
+            assert!(markdown.contains("## Blocked Work Items"));
+            assert!(markdown.contains("`docs/wait`"));
+            assert!(markdown.contains("blocked reason: Waiting on runner proof."));
+            assert!(markdown.contains("blocked by: docs/wait"));
+            assert!(
+                value["blocked_work_items"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| {
+                        item["id"] == "docs/wait"
+                            && item["blocked_reason"] == "Waiting on runner proof."
+                    }))
+            );
+            assert!(
+                value["blocked_work_items"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| {
+                        item["id"] == "docs/wait-dependent"
+                            && item["blocked_by"].as_array().is_some_and(|blocked_by| {
+                                blocked_by
+                                    .iter()
+                                    .any(|dependency| dependency == "docs/wait")
+                            })
+                    }))
+            );
             assert!(value["accepted_proposals"].is_array());
             assert!(
                 value["open_adrs"]
@@ -62773,6 +62836,7 @@ owner = "repo-infra"
             active_goal_status: None,
             artifacts: Vec::new(),
             ready_work_items: Vec::new(),
+            blocked_work_items: Vec::new(),
             done_work_items: Vec::new(),
             support_rows: Vec::new(),
             policy_ledgers: Vec::new(),
@@ -62790,6 +62854,10 @@ owner = "repo-infra"
         let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["status"], "warn");
         assert_eq!(value["active_goal"]["id"], Value::Null);
+        assert_eq!(
+            value["blocked_work_items"].as_array().map(Vec::len),
+            Some(0)
+        );
         assert_eq!(value["support_tiers"].as_array().map(Vec::len), Some(0));
         assert_eq!(value["policy_ledgers"].as_array().map(Vec::len), Some(0));
         assert_eq!(value["missing_links"][0], "missing source-of-truth edge");

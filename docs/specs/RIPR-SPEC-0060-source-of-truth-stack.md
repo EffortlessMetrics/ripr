@@ -255,7 +255,7 @@ Source-of-truth reports should be able to derive:
 - artifacts by kind and status;
 - unresolved artifact links;
 - accepted specs without proposal or standalone reason;
-- active and ready work items;
+- active, ready, and blocked work items with current blocker text;
 - ready work items without proof commands;
 - blocked work items without blockers;
 - stable or stabilizing claims without proof commands;

@@ -102,7 +102,9 @@ cargo xtask repo-contract-report
 `cargo xtask repo-contract-report` is advisory and report-only. It writes the
 source-of-truth graph packet under `target/ripr/reports/`; it does not add a CI
 gate, change support-tier claims, or replace the narrower validators listed
-above.
+above. The report includes ready and blocked work-item state so the next agent
+can see that a blocked item is not selectable without resolving the recorded
+blocker first.
 
 ## Claim boundary
 
