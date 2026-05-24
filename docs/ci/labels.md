@@ -8,7 +8,7 @@ selection, budget acknowledgement, and gate behavior.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Runs all lanes including release-surface proof. Maps forecast to release band; suppresses budget warnings. |
-| `release-check` | Same lane mapping as `full-ci`; runs release readiness lanes explicitly. |
+| `release-check` | Runs the currently wired release-surface proof without opting into every `full-ci` lane. Today that means the legacy Rust package list and publish dry-run steps. |
 | `ci-budget-ack` | Acknowledges an over-budget forecast at the `elevated` band. Budget-neutral; does not run additional lanes. |
 | `vscode` | Forces the VS Code extension lane on for PRs that do not touch `editors/vscode/` but need it. |
 | `ripr-waive` | Waives a `ripr` soft-gate finding for this PR. Requires a written reason in the PR body. |

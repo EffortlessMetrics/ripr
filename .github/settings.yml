@@ -47,7 +47,7 @@ labels:
     description: Run required, advisory, and release-like CI lanes.
   - name: release-check
     color: "b60205"
-    description: Run package, publish dry-run, VSIX, server archive, and release-readiness proof.
+    description: Run the currently wired release-surface package list and publish dry-run proof.
   - name: vscode
     color: "007acc"
     description: Run editor extension lanes even when no editor path changed.

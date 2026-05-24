@@ -76,8 +76,9 @@ Labels documented in `docs/CI.md` (labels section):
 
 - `full-ci` expects release-band forecast; the guard suppresses the
   warning.
-- `release-check` uses the same release-band mapping as `full-ci` and runs
-  release readiness lanes.
+- `release-check` uses the release-band mapping and runs the release-surface
+  lanes that are currently wired. Today, that is the legacy Rust package list
+  and publish dry-run proof.
 - `ci-budget-ack` records that the author acknowledges elevated forecast (no
   budget effect).
 

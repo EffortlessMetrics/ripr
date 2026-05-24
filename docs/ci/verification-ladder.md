@@ -57,9 +57,9 @@ Cost: variable, captured in `ci-actuals.json`.
 
 - `cargo package -p ripr --list`
 - `cargo publish -p ripr --dry-run`
-- VSIX packaging and e2e.
-- Release readiness checks.
-- Server archive checks.
+- VSIX packaging and e2e when the relevant workflow lane is wired.
+- Release readiness checks when the relevant workflow lane is wired.
+- Server archive checks when the relevant workflow lane is wired.
 
 Triggered by: `full-ci`, `release-check`, push to `main`, manual dispatch.
 
