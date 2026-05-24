@@ -71,10 +71,12 @@ PR Plan
 ```
 
 The active PR Plan workflow is structural advisory today: it runs on opened,
-synchronized, reopened, labeled, and unlabeled pull requests, uploads the
-changed-file list, and writes a placeholder step summary. Until the numeric
-planner exists, authors should still fill the PR template's CI economics
-section for CI-affecting changes.
+synchronized, reopened, labeled, and unlabeled pull requests, writes the
+changed-file list locally, and writes a placeholder step summary. To avoid
+routine artifact churn, it uploads the changed-file list only on failure or
+when the PR is labeled `full-ci`. Until the numeric planner exists, authors
+should still fill the PR template's CI economics section for CI-affecting
+changes.
 
 ### Risk Packs
 
@@ -294,7 +296,9 @@ The routed lane runs the existing Rust/product command surface without release
 package or publish dry-run steps. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
 
-The Rust workflow currently runs:
+The legacy Rust workflow currently runs on pushes to `main` or `master`, manual
+dispatches, pull requests labeled `release-check`, and pull requests labeled
+`full-ci`:
 
 ```bash
 cargo fmt --check
@@ -330,8 +334,9 @@ cargo xtask check-process-policy
 cargo xtask check-network-policy
 ```
 
-On pushes to `main` or `master`, and on pull requests labeled `release-check`
-or `full-ci`, the Rust workflow also runs the release-surface package checks:
+On those same Rust workflow runs, pull requests labeled `release-check`, pull
+requests labeled `full-ci`, and pushes to `main` or `master` also run the
+release-surface package checks:
 
 ```bash
 cargo package -p ripr --list
@@ -428,9 +433,10 @@ advance through multiple work items, but each scoped PR should leave the same
 shape/check/report artifacts that CI uploads for human review.
 
 Current policy checks write Markdown reports to `target/ripr/reports` when they
-run. The Rust workflow generates `target/ripr/reports/index.md`, writes it to
-the GitHub Actions job summary when present, and uploads the report and receipt
-directories as the `ripr-pr-reports` artifact.
+run. The Rust workflow generates `target/ripr/reports/index.md` and writes it
+to the GitHub Actions job summary when present. To keep ordinary PR CI cheap,
+it uploads the report and receipt directories as the `ripr-pr-reports` artifact
+only on failure or when the PR is labeled `full-ci`.
 
 Local policy checks can also be run directly:
 

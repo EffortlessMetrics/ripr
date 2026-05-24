@@ -29,8 +29,10 @@ This PR ships:
 - This document.
 
 The job currently emits a structural advisory output (changed-file list,
-ledger-presence check, step-summary placeholder). The forecast logic is
-deferred to the follow-up PR that adds `cargo xtask ci plan`.
+ledger-presence check, step-summary placeholder). It uploads the changed-file
+artifact only on failure or when the PR is labeled `full-ci`, so ordinary PRs
+keep the advisory signal without paying for routine artifact retention. The
+forecast logic is deferred to the follow-up PR that adds `cargo xtask ci plan`.
 
 ## Output schema (target)
 

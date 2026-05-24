@@ -284,20 +284,68 @@ jobs:
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
     needs: route
-    if: needs.route.outputs.router_target == 'github' && (needs.route.outputs.router_reason == 'fork_or_untrusted_pr' || contains(github.event.pull_request.labels.*.name, 'allow-github-hosted') || contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: needs.route.outputs.router_target == 'github'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - name: Tiny fallback Rust checks
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-swarm-rust-small-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Required Rust gates
         run: |
           cargo fmt --check
           cargo check --workspace --all-targets
-          git diff --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
       - name: Upload ripr reports
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: ripr-rust-small-github
@@ -309,21 +357,9 @@ jobs:
             target/xtask/impacted-evidence/
           if-no-files-found: ignore
 
-  github-fallback-disallowed:
-    name: GitHub fallback disallowed
-    needs: route
-    if: needs.route.outputs.router_target == 'github' && !(needs.route.outputs.router_reason == 'fork_or_untrusted_pr' || contains(github.event.pull_request.labels.*.name, 'allow-github-hosted') || contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail when hosted fallback is not explicitly allowed
-        run: |
-          echo "GitHub-hosted fallback blocked for reason=${{ needs.route.outputs.router_reason }}."
-          echo "Use self-hosted capacity, or add full-ci / ci-budget-ack / allow-github-hosted label to acknowledge budget impact."
-          exit 1
-
   result:
     name: Ripr Rust Small Result
-    needs: [route, rust-cx53, rust-cx43, rust-github, github-fallback-disallowed]
+    needs: [route, rust-cx53, rust-cx43, rust-github]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -335,7 +371,6 @@ jobs:
           CX53_RESULT: ${{ needs.rust-cx53.result }}
           CX43_RESULT: ${{ needs.rust-cx43.result }}
           GITHUB_RESULT: ${{ needs.rust-github.result }}
-          GITHUB_FALLBACK_DISALLOWED_RESULT: ${{ needs.github-fallback-disallowed.result }}
           RUNNER_QUERY: ${{ needs.route.outputs.runner_query }}
           RUNNER_TOTAL: ${{ needs.route.outputs.runner_total }}
           CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
@@ -386,7 +421,6 @@ jobs:
           echo "- cx53: \`$CX53_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- cx43: \`$CX43_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- github: \`$GITHUB_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- github fallback disallowed: \`$GITHUB_FALLBACK_DISALLOWED_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- runner query: \`$RUNNER_QUERY\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- visible runners: \`$RUNNER_TOTAL\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- cx53 online: \`$CX53_ONLINE\`" >> "$GITHUB_STEP_SUMMARY"
