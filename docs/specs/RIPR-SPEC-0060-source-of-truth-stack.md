@@ -233,7 +233,8 @@ This spec coordinates these accepted source-of-truth surfaces:
 - PR and issue templates under `.github/`;
 - advisory source-of-truth CI before blocking promotion;
 - `cargo xtask repo-contract-report`;
-- `cargo xtask pr-body --work-item <id>`, limited to ready or active work items;
+- `cargo xtask pr-body --work-item <id>`, limited to ready or active work items
+  with resolved proposal, spec, and plan references;
 - `cargo xtask closeout --goal <goal-id>`.
 - [source-of-truth closeout](../handoffs/2026-05-23-source-of-truth-control-plane-closeout.md).
 

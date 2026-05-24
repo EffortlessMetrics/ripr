@@ -72,7 +72,9 @@ later PR changes the schema and documentation together.
 `cargo xtask pr-body --work-item <id>` can generate
 `target/ripr/reports/source-of-truth-pr-body.md` from one ready or active work
 item in the active-goal manifest. It refuses blocked or already done items so
-blocked state cannot become PR text by accident.
+blocked state cannot become PR text by accident. It also requires linked
+artifact IDs to resolve through `policy/doc-artifacts.toml`, so a generated PR
+body cannot carry an unresolved proposal, spec, or plan reference into review.
 `cargo xtask closeout --goal <goal-id>` can generate a handoff scaffold under
 `docs/handoffs/` and an archive copy under `.ripr/goals/archive/`.
 

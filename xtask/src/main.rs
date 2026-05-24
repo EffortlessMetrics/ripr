@@ -40144,13 +40144,15 @@ fn pr_body_artifact_reference(
         .find(|artifact| artifact.id.as_deref() == Some(id))
     {
         let Some(path) = artifact.path.as_deref() else {
-            return Ok(format!("`{id}` (registered without a path)"));
+            return Err(format!(
+                "artifact `{id}` is registered in `{DOC_ARTIFACT_LEDGER}` without a path; `pr-body` requires linked artifacts to resolve before generating review text"
+            ));
         };
         let title = pr_body_artifact_title(&root.join(path))?;
         return Ok(format!("`{id}` - {} (`{path}`)", markdown_inline(&title)));
     }
-    Ok(format!(
-        "`{id}` (not registered in `{DOC_ARTIFACT_LEDGER}`)"
+    Err(format!(
+        "artifact `{id}` is not registered in `{DOC_ARTIFACT_LEDGER}`; run `cargo xtask check-doc-artifacts` before generating PR body text"
     ))
 }
 
@@ -62916,6 +62918,67 @@ owner = "repo-infra"
                 "{error}"
             );
         });
+    }
+
+    #[test]
+    fn pr_body_rejects_unregistered_artifact_reference() -> Result<(), String> {
+        with_temp_cwd("pr-body-unregistered-artifact", |root| {
+            write_repo_contract_report_fixture(root, true);
+            let active_path = root.join(".ripr/goals/active.toml");
+            let active = fs::read_to_string(&active_path)
+                .map_err(|err| format!("failed to read active goal fixture: {err}"))?;
+            write(
+                &active_path,
+                &active.replace(
+                    "proposal = \"RIPR-PROP-0001\"",
+                    "proposal = \"RIPR-PROP-0999\"",
+                ),
+            );
+
+            let error = super::pr_body_from_root(root, "docs/report")
+                .expect_err("unregistered artifact should fail PR body generation");
+            assert!(
+                error.contains("artifact `RIPR-PROP-0999` is not registered"),
+                "{error}"
+            );
+            assert!(error.contains("cargo xtask check-doc-artifacts"), "{error}");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn pr_body_rejects_registered_artifact_without_path() -> Result<(), String> {
+        with_temp_cwd("pr-body-artifact-without-path", |root| {
+            write_repo_contract_report_fixture(root, true);
+            let active_path = root.join(".ripr/goals/active.toml");
+            let active = fs::read_to_string(&active_path)
+                .map_err(|err| format!("failed to read active goal fixture: {err}"))?;
+            write(
+                &active_path,
+                &active.replace(
+                    "proposal = \"RIPR-PROP-0001\"",
+                    "proposal = \"RIPR-PROP-0999\"",
+                ),
+            );
+            let ledger_path = root.join(super::DOC_ARTIFACT_LEDGER);
+            let ledger = fs::read_to_string(&ledger_path)
+                .map_err(|err| format!("failed to read doc artifact ledger fixture: {err}"))?;
+            write(
+                &ledger_path,
+                &format!(
+                    "{ledger}\n[[artifact]]\nid = \"RIPR-PROP-0999\"\nkind = \"proposal\"\nstatus = \"accepted\"\nowner = \"repo-infra\"\n"
+                ),
+            );
+
+            let error = super::pr_body_from_root(root, "docs/report")
+                .expect_err("pathless artifact should fail PR body generation");
+            assert!(
+                error.contains("artifact `RIPR-PROP-0999` is registered"),
+                "{error}"
+            );
+            assert!(error.contains("without a path"), "{error}");
+            Ok(())
+        })
     }
 
     #[test]
