@@ -69,6 +69,11 @@ Reusable proof-stack bootstraps may choose another repo-specific active-goal
 path, but `ripr` agents should follow the repo-local `.ripr` path unless a
 later PR changes the schema and documentation together.
 
+When the active manifest has no ready work items, agents should run
+`cargo xtask goals next` and follow the printed blocker boundary. A valid
+blocked-only manifest is not stale, and it is not permission to choose work from
+chat history as if it belonged to the blocked goal.
+
 `cargo xtask pr-body --work-item <id>` can generate
 `target/ripr/reports/source-of-truth-pr-body.md` from one ready or active work
 item in the active-goal manifest. It refuses blocked or already done items so

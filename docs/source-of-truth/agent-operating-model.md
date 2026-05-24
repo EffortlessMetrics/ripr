@@ -8,17 +8,29 @@ chat memory. Chat can explain intent, but the repo owns execution state.
 For normal source-of-truth work in this repo:
 
 1. Read [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml).
-2. If the manifest is active, select the next ready work item.
-3. Read the linked implementation plan.
-4. Read the linked spec.
-5. Read the linked proposal for context.
-6. Read linked ADRs only when the slice touches durable architecture.
-7. Make one PR-sized change.
-8. Run the proof commands named by the plan item or prompt.
-9. Update support tiers only if product claims change.
-10. Update policy ledgers only if policy obligations or exceptions change.
-11. Write a PR body with links, scope, proof, claim boundary, and rollback.
-12. Add or update closeout notes only when the lane or goal completes.
+2. Run `cargo xtask goals next` when choosing work from the manifest.
+3. If the manifest is active and has a ready work item, select the next ready
+   work item.
+4. If the manifest is active but all unfinished items are blocked, do not infer
+   ready work from chat history. Resolve the named blocker, record an accepted
+   bounded blocker in the manifest, or choose a separate scoped prompt that does
+   not claim to advance the blocked goal.
+5. Read the linked implementation plan.
+6. Read the linked spec.
+7. Read the linked proposal for context.
+8. Read linked ADRs only when the slice touches durable architecture.
+9. Make one PR-sized change.
+10. Run the proof commands named by the plan item or prompt.
+11. Update support tiers only if product claims change.
+12. Update policy ledgers only if policy obligations or exceptions change.
+13. Write a PR body with links, scope, proof, claim boundary, and rollback.
+14. Add or update closeout notes only when the lane or goal completes.
+
+The active-goal manifest can be valid and still have no selectable work. In
+that state, `cargo xtask goals next` is the durable handoff: it prints the
+blocked work items, issue links, blocker text, and acceptance boundary. Treat
+that output as a stop sign for the blocked goal, not as permission to invent a
+new PR-sized slice inside it.
 
 If the active manifest is closed or stale, do not invent the next campaign. Use
 the linked plans and the user's current scoped prompt as the active contract,
