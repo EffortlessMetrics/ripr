@@ -83,6 +83,7 @@ acceptance = "Refresh current-main routed proof on #34 and #24, recording whethe
 # - #34 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526860777
 # - #34 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526898495
 # - #34 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527749965
+# - #34 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527818659
 # - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526148678
 # - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526190172
 # - #24 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526512895
@@ -91,12 +92,14 @@ acceptance = "Refresh current-main routed proof on #34 and #24, recording whethe
 # - #24 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526861154
 # - #24 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526898494
 # - #24 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527750005
+# - #24 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527819086
 # Current issue-ledger disposition remains GitHub-hosted fallback success with
-# target=github and CX53/CX43 skipped. The latest receipt records
-# reason=runner_api_failed with runner_query=not_attempted, so runner
-# visibility/read access is not established as current; older receipts that
-# showed visible runners with zero idle image-ready capacity are historical, not
-# the current blocker shape.
+# target=github and CX53/CX43 skipped. Recent receipts record both a
+# runner visibility/API blocker shape (reason=runner_api_failed with
+# runner_query=not_attempted) and a runner-readiness blocker shape
+# (reason=no_idle_runner with runner_query=ok, visible CX53/CX43 runners, and
+# zero idle image-ready CX53/CX43 capacity). Neither shape is CX53/CX43
+# execution proof.
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",
@@ -110,7 +113,7 @@ status = "blocked"
 branch = "ops-cx53-cx43-proof-closeout"
 stackable = false
 acceptance = "Close the routed-runner proof only after #34 records CX53 primary and CX43 fallback proof, or after an org-visible operator records the accepted runner image-readiness or visibility blocker."
-blocked_reason = "Issue #34 currently records GitHub-hosted fallback proof with target=github, reason=runner_api_failed, and runner_query=not_attempted; no CX53/CX43 execution proof or org-visible accepted runner-readiness/visibility blocker is recorded."
+blocked_reason = "Issue #34 currently records GitHub-hosted fallback proof with target=github and CX53/CX43 skipped; recent receipts alternate between runner visibility/API failure and no idle image-ready CX53/CX43 runner availability, but no CX53/CX43 execution proof or org-visible accepted blocker is recorded."
 
 [[work_item]]
 id = "campaign/self-hosted-routed-runner-proof-closeout"

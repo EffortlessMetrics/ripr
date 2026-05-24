@@ -4326,7 +4326,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `goals/self-hosted-routed-runner-proof-activation` | done | Select #34/#24 as the active repo-owned successor after no-current-goal without changing analyzer, product, release, badge, source-promotion, or branch-protection behavior. |
-| `ops/current-routed-proof-refresh` | done | Current routed proof is recorded on #34 and #24 as the issue ledger. Hosted-fallback evidence remains current when that ledger records `target=github` and CX53/CX43 skipped; the latest receipt also records `reason=runner_api_failed` with `runner_query=not_attempted`, so runner visibility/read access is not established as current. |
+| `ops/current-routed-proof-refresh` | done | Current routed proof is recorded on #34 and #24 as the issue ledger. Hosted-fallback evidence remains current when that ledger records `target=github` and CX53/CX43 skipped. Recent receipts record both runner visibility/API failure and no idle image-ready CX53/CX43 runner availability; neither is CX53/CX43 execution proof. |
 | `ops/cx53-cx43-proof-closeout` | blocked | Requires CX53/CX43 self-hosted proof or an org-visible accepted runner-readiness/visibility blocker before proof can close. |
 | `campaign/self-hosted-routed-runner-proof-closeout` | blocked | Close only after #34/#24 carry proof or an accepted bounded blocker, plus branch-protection and source/swarm authority status. |
 
