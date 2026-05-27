@@ -17637,6 +17637,19 @@ struct Lane1EvidenceAuditRunLimitation {
     latency_trace_tail: Vec<RepoExposureLatencyTrace>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1RuntimeStatus {
+    state: String,
+    phase: Option<String>,
+    duration_ms: Option<u128>,
+    limit_ms: Option<u128>,
+    input_kind: Option<String>,
+    input_path: Option<String>,
+    limitation_category: Option<String>,
+    repair_route: Option<String>,
+    downstream_consumable: bool,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct Lane1EvidenceAuditSummary {
     seams_total: usize,
@@ -18151,6 +18164,213 @@ fn lane1_evidence_audit_record_run_limitation(
         "report/lane1-audit-bounded-diagnostics",
     );
     report.run_limitations.push(limitation);
+}
+
+fn lane1_runtime_status_full() -> Lane1RuntimeStatus {
+    Lane1RuntimeStatus {
+        state: "full".to_string(),
+        phase: None,
+        duration_ms: None,
+        limit_ms: None,
+        input_kind: None,
+        input_path: None,
+        limitation_category: None,
+        repair_route: None,
+        downstream_consumable: true,
+    }
+}
+
+fn lane1_runtime_status_for_report(
+    limitations: &[Lane1EvidenceAuditRunLimitation],
+) -> Lane1RuntimeStatus {
+    limitations
+        .iter()
+        .map(lane1_runtime_status_from_run_limitation)
+        .min_by_key(|status| lane1_runtime_status_priority(&status.state))
+        .unwrap_or_else(lane1_runtime_status_full)
+}
+
+fn lane1_runtime_status_from_run_limitation(
+    limitation: &Lane1EvidenceAuditRunLimitation,
+) -> Lane1RuntimeStatus {
+    Lane1RuntimeStatus {
+        state: lane1_runtime_state_for_limitation_category(&limitation.category).to_string(),
+        phase: Some(limitation.phase.clone()),
+        duration_ms: limitation.duration_ms,
+        limit_ms: limitation.timeout_ms,
+        input_kind: Some(lane1_runtime_input_kind(limitation)),
+        input_path: None,
+        limitation_category: Some(limitation.category.clone()),
+        repair_route: Some(limitation.repair_route.clone()),
+        downstream_consumable: lane1_runtime_limitation_downstream_consumable(&limitation.category),
+    }
+}
+
+fn lane1_runtime_status_from_limitation_value(limitation: &Value) -> Option<Lane1RuntimeStatus> {
+    let category = audit_string(limitation, &["category"])?;
+    Some(Lane1RuntimeStatus {
+        state: lane1_runtime_state_for_limitation_category(&category).to_string(),
+        phase: audit_string(limitation, &["phase"]),
+        duration_ms: audit_u128(limitation, &["duration_ms"]),
+        limit_ms: audit_u128(limitation, &["limit_ms"])
+            .or_else(|| audit_u128(limitation, &["timeout_ms"])),
+        input_kind: audit_string(limitation, &["input_kind"])
+            .or_else(|| audit_string(limitation, &["input"]))
+            .map(|input| lane1_runtime_input_kind_from_parts(&category, None, &input)),
+        input_path: audit_string(limitation, &["input_path"]),
+        limitation_category: Some(category.clone()),
+        repair_route: audit_string(limitation, &["repair_route"]),
+        downstream_consumable: audit_bool(limitation, &["downstream_consumable"])
+            .unwrap_or_else(|| lane1_runtime_limitation_downstream_consumable(&category)),
+    })
+}
+
+fn lane1_runtime_status_from_report_value(value: &Value) -> Option<Lane1RuntimeStatus> {
+    if let Some(status) = value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .and_then(|limitations| {
+            limitations
+                .iter()
+                .filter_map(lane1_runtime_status_from_limitation_value)
+                .min_by_key(|status| lane1_runtime_status_priority(&status.state))
+        })
+        && status.state != "full"
+    {
+        return Some(status);
+    }
+    if let Some(status) = audit_get(value, &["runtime_status"])
+        .and_then(lane1_runtime_status_from_runtime_status_value)
+    {
+        return Some(status);
+    }
+    None
+}
+
+fn lane1_runtime_status_from_runtime_status_value(value: &Value) -> Option<Lane1RuntimeStatus> {
+    let state = audit_string(value, &["state"])?;
+    Some(Lane1RuntimeStatus {
+        downstream_consumable: audit_bool(value, &["downstream_consumable"])
+            .unwrap_or(state == "full"),
+        state,
+        phase: audit_string(value, &["phase"]),
+        duration_ms: audit_u128(value, &["duration_ms"]),
+        limit_ms: audit_u128(value, &["limit_ms"]),
+        input_kind: audit_string(value, &["input_kind"]),
+        input_path: audit_string(value, &["input_path"]),
+        limitation_category: audit_string(value, &["limitation_category"]),
+        repair_route: audit_string(value, &["repair_route"]),
+    })
+}
+
+fn lane1_runtime_status_with_input_path(
+    mut status: Lane1RuntimeStatus,
+    phase: &str,
+    input_path: &str,
+) -> Lane1RuntimeStatus {
+    if status.phase.is_none() {
+        status.phase = Some(phase.to_string());
+    }
+    if status.input_path.is_none() {
+        status.input_path = Some(input_path.to_string());
+    }
+    status
+}
+
+fn lane1_runtime_status_limited_input(
+    phase: &str,
+    input_kind: &str,
+    input_path: Option<&str>,
+    category: &str,
+    repair_route: &str,
+    downstream_consumable: bool,
+) -> Lane1RuntimeStatus {
+    Lane1RuntimeStatus {
+        state: lane1_runtime_state_for_limitation_category(category).to_string(),
+        phase: Some(phase.to_string()),
+        duration_ms: None,
+        limit_ms: None,
+        input_kind: Some(input_kind.to_string()),
+        input_path: input_path.map(str::to_string),
+        limitation_category: Some(category.to_string()),
+        repair_route: Some(repair_route.to_string()),
+        downstream_consumable,
+    }
+}
+
+fn lane1_runtime_state_for_limitation_category(category: &str) -> &'static str {
+    match category {
+        "lane1_repo_exposure_timeout" | "evidence_health_timeout" => "limited_timeout",
+        "lane1_repo_exposure_runner_error" | "evidence_health_runner_error" => {
+            "limited_runner_failure"
+        }
+        "lane1_repo_exposure_cache_store_skipped_large_entry" => "limited_large_cache_skip",
+        "limited_stale_input" => "limited_stale_input",
+        "lane1_repo_exposure_incomplete"
+        | "lane1_repo_exposure_sampled"
+        | EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED
+        | EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE
+        | "swarm_plan_input_unavailable"
+        | "actionable_gap_outcomes_input_unavailable" => "limited_incomplete_input",
+        _ => "limited_incomplete_input",
+    }
+}
+
+fn lane1_runtime_limitation_downstream_consumable(category: &str) -> bool {
+    matches!(
+        category,
+        "lane1_repo_exposure_cache_store_skipped_large_entry"
+    )
+}
+
+fn lane1_runtime_status_priority(state: &str) -> u8 {
+    match state {
+        "limited_timeout" => 0,
+        "limited_runner_failure" => 1,
+        "limited_incomplete_input" => 2,
+        "limited_stale_input" => 3,
+        "limited_large_cache_skip" => 4,
+        "full" => 9,
+        _ => 8,
+    }
+}
+
+fn lane1_runtime_input_kind(limitation: &Lane1EvidenceAuditRunLimitation) -> String {
+    lane1_runtime_input_kind_from_parts(
+        &limitation.category,
+        Some(&limitation.phase),
+        &limitation.input,
+    )
+}
+
+fn lane1_runtime_input_kind_from_parts(category: &str, phase: Option<&str>, input: &str) -> String {
+    if category == "lane1_repo_exposure_cache_store_skipped_large_entry" {
+        return "repo-seam-facts-cache".to_string();
+    }
+    if phase == Some("repo_exposure_generation") || input.starts_with("repo-exposure-json") {
+        return "repo-exposure-json".to_string();
+    }
+    input.to_string()
+}
+
+fn lane1_runtime_status_json(status: &Lane1RuntimeStatus) -> Value {
+    serde_json::json!({
+        "state": status.state,
+        "phase": status.phase,
+        "duration_ms": status.duration_ms,
+        "limit_ms": status.limit_ms,
+        "input_kind": status.input_kind,
+        "input_path": status.input_path,
+        "limitation_category": status.limitation_category,
+        "repair_route": status.repair_route,
+        "downstream_consumable": status.downstream_consumable,
+    })
+}
+
+fn audit_u128(value: &Value, path: &[&str]) -> Option<u128> {
+    audit_get(value, path)
+        .and_then(Value::as_u64)
+        .map(u128::from)
 }
 
 fn lane1_repo_exposure_cache_store_limitation(
@@ -19143,12 +19363,15 @@ fn audit_evidence_record_json_from_line(line: &str) -> Option<&str> {
 }
 
 fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String, String> {
+    let runtime_status = lane1_runtime_status_for_report(&report.run_limitations);
     let value = serde_json::json!({
         "schema_version": LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION,
         "tool": "ripr",
         "report": "lane1-evidence-audit",
         "scope": "repo",
         "status": "advisory",
+        "run_status": runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&runtime_status),
         "inputs": {
             "root": report.root,
             "source": "repo-exposure-json",
@@ -19288,10 +19511,58 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
 }
 
 fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
+    let runtime_status = lane1_runtime_status_for_report(&report.run_limitations);
     let mut out = String::new();
     out.push_str("# Lane 1 evidence quality audit\n\n");
     out.push_str("Status: advisory\n\n");
+    out.push_str(&format!("Run status: `{}`\n\n", runtime_status.state));
     out.push_str("This repo-local report summarizes evidence quality from `seams[].evidence_record`. It does not change analyzer behavior, gate policy, PR projection, LSP UX, or runtime execution.\n\n");
+
+    out.push_str("## Runtime Status\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| State | `{}` |\n",
+        audit_markdown_cell(&runtime_status.state)
+    ));
+    out.push_str(&format!(
+        "| Downstream consumable | `{}` |\n",
+        runtime_status.downstream_consumable
+    ));
+    if let Some(category) = &runtime_status.limitation_category {
+        out.push_str(&format!(
+            "| Limitation category | `{}` |\n",
+            audit_markdown_cell(category)
+        ));
+    }
+    if let Some(phase) = &runtime_status.phase {
+        out.push_str(&format!("| Phase | `{}` |\n", audit_markdown_cell(phase)));
+    }
+    if let Some(input_kind) = &runtime_status.input_kind {
+        out.push_str(&format!(
+            "| Input kind | `{}` |\n",
+            audit_markdown_cell(input_kind)
+        ));
+    }
+    if let Some(input_path) = &runtime_status.input_path {
+        out.push_str(&format!(
+            "| Input path | `{}` |\n",
+            audit_markdown_cell(input_path)
+        ));
+    }
+    if let Some(duration_ms) = runtime_status.duration_ms {
+        out.push_str(&format!("| Duration | {} ms |\n", duration_ms));
+    }
+    if let Some(limit_ms) = runtime_status.limit_ms {
+        out.push_str(&format!("| Limit | {} ms |\n", limit_ms));
+    }
+    if let Some(repair_route) = &runtime_status.repair_route {
+        out.push_str(&format!(
+            "| Repair route | {} |\n",
+            audit_markdown_cell(repair_route)
+        ));
+    }
+    out.push('\n');
 
     out.push_str("## Repo Exposure Generation\n\n");
     if let Some(generation) = &report.repo_exposure_generation {
@@ -19857,6 +20128,7 @@ fn audit_actionable_gap_packet_public_projection_json(
 }
 
 fn lane1_actionable_gap_packets_json(report: &Lane1EvidenceAuditReport) -> Result<String, String> {
+    let runtime_status = lane1_runtime_status_for_report(&report.run_limitations);
     let public_projection_eligible_packets =
         audit_actionable_gap_packet_public_projection_eligible_count(
             &report.actionable_gap_packets,
@@ -19867,6 +20139,8 @@ fn lane1_actionable_gap_packets_json(report: &Lane1EvidenceAuditReport) -> Resul
         "report": "actionable-gaps",
         "scope": "repo",
         "status": "advisory",
+        "run_status": runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&runtime_status),
         "source_report": "target/ripr/reports/lane1-evidence-audit.json",
         "source": "evidence_record.canonical_item",
         "packet_limit": LANE1_ACTIONABLE_GAP_PACKET_LIMIT,
@@ -19911,8 +20185,10 @@ fn lane1_actionable_gap_packets_json(report: &Lane1EvidenceAuditReport) -> Resul
 }
 
 fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> String {
+    let runtime_status = lane1_runtime_status_for_report(&report.run_limitations);
     let mut out = String::new();
     out.push_str("# Actionable Canonical Gap Packets\n\n");
+    out.push_str(&format!("Run status: `{}`\n\n", runtime_status.state));
     out.push_str("Advisory Lane 1 packets derived from `evidence_record.canonical_item`.\n\n");
     out.push_str("Raw findings remain supporting evidence; packets are bounded work items for humans and agents.\n\n");
     out.push_str("## Summary\n\n");
@@ -20116,6 +20392,7 @@ struct RiprSwarmReadinessArgs {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmPlanReport {
     status: String,
+    runtime_status: Lane1RuntimeStatus,
     input_state: String,
     input_path: String,
     input_limitation: Option<String>,
@@ -20173,6 +20450,7 @@ struct RiprSwarmAttemptDryRun {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmReadinessReport {
     status: String,
+    runtime_status: Lane1RuntimeStatus,
     swarm_plan_path: String,
     swarm_plan_state: String,
     swarm_plan_limitation: Option<String>,
@@ -20777,6 +21055,14 @@ fn ripr_swarm_plan_blocked_report(
 ) -> RiprSwarmPlanReport {
     RiprSwarmPlanReport {
         status: "blocked".to_string(),
+        runtime_status: lane1_runtime_status_limited_input(
+            "actionable_gaps_input",
+            "actionable-gaps",
+            Some(&normalize_path(path)),
+            "swarm_plan_input_unavailable",
+            "rerun cargo xtask lane1-evidence-audit before planning swarm repairs",
+            false,
+        ),
         input_state: input_state.to_string(),
         input_path: path.display().to_string(),
         input_limitation: Some(input_limitation),
@@ -20808,6 +21094,8 @@ fn ripr_swarm_plan_from_actionable_gaps_value(
     };
     RiprSwarmPlanReport {
         status: "advisory".to_string(),
+        runtime_status: lane1_runtime_status_from_report_value(value)
+            .unwrap_or_else(lane1_runtime_status_full),
         input_state: "read".to_string(),
         input_path: path.display().to_string(),
         input_limitation: None,
@@ -21126,6 +21414,8 @@ fn ripr_swarm_plan_json(report: &RiprSwarmPlanReport) -> Result<String, String> 
         "report": "swarm-plan",
         "scope": "repo",
         "status": report.status,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
         "input": {
             "actionable_gaps": report.input_path,
             "state": report.input_state,
@@ -21254,6 +21544,10 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
     let summary = ripr_swarm_plan_summary_json(report);
     let mut out = String::new();
     out.push_str("# RIPR Swarm Plan\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
     out.push_str(
         "Advisory dry-run plan over actionable canonical gap packets. Raw findings remain supporting evidence only.\n\n",
     );
@@ -21423,9 +21717,11 @@ fn ripr_swarm_readiness_from_values(
         "blocked"
     }
     .to_string();
+    let runtime_status = ripr_swarm_readiness_runtime_status(&swarm_plan, &actionable_gap_outcomes);
 
     RiprSwarmReadinessReport {
         status,
+        runtime_status,
         swarm_plan_path: swarm_plan.path,
         swarm_plan_state: swarm_plan.state,
         swarm_plan_limitation: swarm_plan.limitation,
@@ -21435,6 +21731,43 @@ fn ripr_swarm_readiness_from_values(
         summary,
         next_actions,
     }
+}
+
+fn ripr_swarm_readiness_runtime_status(
+    swarm_plan: &RiprSwarmReadinessInput<'_>,
+    actionable_gap_outcomes: &RiprSwarmReadinessInput<'_>,
+) -> Lane1RuntimeStatus {
+    if let Some(plan) = swarm_plan.value {
+        if let Some(status) = lane1_runtime_status_from_report_value(plan)
+            && status.state != "full"
+        {
+            return lane1_runtime_status_with_input_path(
+                status,
+                "swarm_plan_input",
+                &swarm_plan.path,
+            );
+        }
+    } else {
+        return lane1_runtime_status_limited_input(
+            "swarm_plan_input",
+            "swarm-plan",
+            Some(&swarm_plan.path),
+            "swarm_plan_input_unavailable",
+            "run cargo xtask ripr-swarm plan before readiness",
+            false,
+        );
+    }
+    if actionable_gap_outcomes.value.is_none() {
+        return lane1_runtime_status_limited_input(
+            "actionable_gap_outcomes_input",
+            "actionable-gap-outcomes",
+            Some(&actionable_gap_outcomes.path),
+            "actionable_gap_outcomes_input_unavailable",
+            "run cargo xtask actionable-gap-outcomes before claiming attempt outcomes",
+            true,
+        );
+    }
+    lane1_runtime_status_full()
 }
 
 fn ripr_swarm_readiness_summary(
@@ -21491,6 +21824,8 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         "report": "swarm-readiness",
         "scope": "repo",
         "status": report.status,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
         "inputs": {
             "swarm_plan": {
                 "path": report.swarm_plan_path,
@@ -21761,6 +22096,10 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     let summary = ripr_swarm_readiness_summary_json(&report.summary);
     let mut out = String::new();
     out.push_str("# RIPR Swarm Readiness\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
     out.push_str(
         "Advisory roll-up over swarm-plan and actionable-gap-outcome artifacts. It does not execute repairs or consume raw findings as work.\n\n",
     );
@@ -22929,14 +23268,20 @@ fn lane1_evidence_audit_repo_exposure_generation_json(
 }
 
 fn lane1_evidence_audit_run_limitation_json(limitation: &Lane1EvidenceAuditRunLimitation) -> Value {
+    let runtime_status = lane1_runtime_status_from_run_limitation(limitation);
     serde_json::json!({
         "category": limitation.category,
+        "run_status": runtime_status.state.clone(),
         "phase": limitation.phase,
         "input": limitation.input,
+        "input_kind": runtime_status.input_kind,
+        "input_path": runtime_status.input_path,
         "summary": limitation.summary,
         "repair_route": limitation.repair_route,
         "timeout_ms": limitation.timeout_ms,
+        "limit_ms": runtime_status.limit_ms,
         "duration_ms": limitation.duration_ms,
+        "downstream_consumable": runtime_status.downstream_consumable,
         "command": limitation.command.as_ref().map(|command| normalize_report_path(command)),
         "exit_code": limitation.exit_code,
         "stdout_bytes": limitation.stdout_bytes,
@@ -24336,6 +24681,7 @@ struct EvidenceQualityUnknown {
 struct EvidenceQualityScorecardReport {
     generated_at: String,
     root: String,
+    runtime_status: Lane1RuntimeStatus,
     inputs: EvidenceQualityScorecardInputs,
     summary: EvidenceQualityScorecardSummary,
     maturity_by_class: Vec<EvidenceQualityMaturityRow>,
@@ -24638,11 +24984,13 @@ fn evidence_quality_scorecard_from_values(
         evidence_quality_recent_deltas(&summary, previous_scorecard, &inputs.previous_scorecard);
     summary.recent_delta_available = recent_audit_deltas.available;
     let unknowns = evidence_quality_unknowns(&summary, audit, evidence_health, &inputs);
+    let runtime_status = evidence_quality_scorecard_runtime_status(audit, evidence_health);
     let calibration_coverage = evidence_quality_calibration_coverage(&summary, audit);
 
     Ok(EvidenceQualityScorecardReport {
         generated_at,
         root,
+        runtime_status,
         inputs,
         summary,
         maturity_by_class,
@@ -24722,6 +25070,24 @@ fn evidence_quality_scorecard_from_values(
         recent_audit_deltas,
         unknowns,
     })
+}
+
+fn evidence_quality_scorecard_runtime_status(
+    audit: &Value,
+    evidence_health: Option<&Value>,
+) -> Lane1RuntimeStatus {
+    if let Some(status) = lane1_runtime_status_from_report_value(audit)
+        && status.state != "full"
+    {
+        return status;
+    }
+    if let Some(evidence_health) = evidence_health
+        && let Some(status) = lane1_runtime_status_from_report_value(evidence_health)
+        && status.state != "full"
+    {
+        return status;
+    }
+    lane1_runtime_status_full()
 }
 
 fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecardSummary {
@@ -25757,6 +26123,8 @@ fn lane1_audit_has_completeness_limitation(value: &Value) -> bool {
     [
         "lane1_repo_exposure_timeout",
         "lane1_repo_exposure_incomplete",
+        "lane1_repo_exposure_runner_error",
+        "lane1_repo_exposure_sampled",
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
     ]
     .iter()
@@ -25850,6 +26218,8 @@ fn evidence_quality_scorecard_json(
         "tool": "ripr",
         "report": "evidence-quality-scorecard",
         "generated_at": report.generated_at,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
         "scope": {
             "kind": "repo",
             "root": report.root,
@@ -26284,6 +26654,10 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     let mut out = String::new();
     out.push_str("# Lane 1 evidence quality scorecard\n\n");
     out.push_str("Status: advisory\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
     out.push_str("This repo-local scorecard summarizes Lane 1 evidence quality from existing evidence artifacts. It does not change analyzer behavior, gate policy, PR or CI projection, editor output, source files, generated tests, provider calls, or runtime execution.\n\n");
 
     out.push_str("## Summary\n\n");
@@ -26751,6 +27125,7 @@ struct EvidenceQualityTrendUnknown {
 struct EvidenceQualityTrendReport {
     generated_at: String,
     root: String,
+    runtime_status: Lane1RuntimeStatus,
     inputs: EvidenceQualityTrendInputs,
     summary: EvidenceQualityTrendSummary,
     metric_trends: Vec<EvidenceQualityTrendMetric>,
@@ -26894,6 +27269,7 @@ fn write_limited_evidence_quality_trend_for_previous_input_failure(
             "spec/test/code/output/metric linkage",
         )?,
     };
+    let previous_artifact_path = inputs.previous_artifact.path.clone();
     let mut report = evidence_quality_trend_from_values(
         evidence_quality_scorecard_generated_at()?,
         inputs,
@@ -26908,6 +27284,14 @@ fn write_limited_evidence_quality_trend_for_previous_input_failure(
             evidence_quality_scorecard_error_summary(error)
         ),
         Some("report/evidence-quality-trend"),
+    );
+    report.runtime_status = lane1_runtime_status_limited_input(
+        "previous_artifact_input",
+        "evidence-quality-previous-artifact",
+        Some(&previous_artifact_path),
+        EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE,
+        "supply a readable previous scorecard or audit snapshot, or omit --previous when movement history is optional",
+        true,
     );
     write_report(
         "evidence-quality-trend.json",
@@ -27033,10 +27417,12 @@ fn evidence_quality_trend_from_values(
     let summary = evidence_quality_trend_summary(previous, &metric_trends);
     let unknowns =
         evidence_quality_trend_unknowns(previous, &metric_trends, &current_limited_kinds);
+    let runtime_status = evidence_quality_trend_runtime_status(current, &inputs, &unknowns);
 
     Ok(EvidenceQualityTrendReport {
         generated_at,
         root,
+        runtime_status,
         inputs,
         summary,
         metric_trends,
@@ -27044,6 +27430,49 @@ fn evidence_quality_trend_from_values(
         runtime_confidence_static_only_class_trends,
         unknowns,
     })
+}
+
+fn evidence_quality_trend_runtime_status(
+    current: &Value,
+    inputs: &EvidenceQualityTrendInputs,
+    unknowns: &[EvidenceQualityTrendUnknown],
+) -> Lane1RuntimeStatus {
+    if let Some(status) = lane1_runtime_status_from_report_value(current)
+        && status.state != "full"
+    {
+        return lane1_runtime_status_with_input_path(
+            status,
+            "current_scorecard_input",
+            &inputs.current_scorecard.path,
+        );
+    }
+    if unknowns
+        .iter()
+        .any(|unknown| unknown.kind == "current_scorecard_limited")
+    {
+        return lane1_runtime_status_limited_input(
+            "current_scorecard_input",
+            "evidence-quality-scorecard",
+            Some(&inputs.current_scorecard.path),
+            "current_scorecard_limited",
+            "rerun Lane 1 audit, evidence-health, and scorecard after resolving limited input diagnostics",
+            false,
+        );
+    }
+    if unknowns
+        .iter()
+        .any(|unknown| unknown.kind == EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE)
+    {
+        return lane1_runtime_status_limited_input(
+            "previous_artifact_input",
+            "evidence-quality-previous-artifact",
+            Some(&inputs.previous_artifact.path),
+            EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE,
+            "supply a readable previous scorecard or audit snapshot, or omit --previous when movement history is optional",
+            true,
+        );
+    }
+    lane1_runtime_status_full()
 }
 
 fn evidence_quality_current_scorecard_limited_kinds(current: &Value) -> Vec<String> {
@@ -27743,6 +28172,8 @@ fn evidence_quality_trend_json(report: &EvidenceQualityTrendReport) -> Result<St
         "tool": "ripr",
         "report": "evidence-quality-trend",
         "generated_at": report.generated_at,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
         "scope": {
             "kind": "repo",
             "root": report.root,
@@ -27871,6 +28302,10 @@ fn evidence_quality_trend_markdown(report: &EvidenceQualityTrendReport) -> Strin
     let mut out = String::new();
     out.push_str("# Lane 1 evidence quality trend\n\n");
     out.push_str("Status: advisory\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
     out.push_str("This repo-local trend compares existing Lane 1 scorecard or audit snapshots. It does not change analyzer behavior, gate policy, PR or CI projection, editor output, source files, generated tests, provider calls, score definitions, or runtime execution.\n\n");
 
     out.push_str("## Movement Since Prior Refresh\n\n");
@@ -68300,9 +68735,19 @@ covered_by = ["cargo xtask check-file-policy"]
         let json = lane1_evidence_audit_json(&report)?;
         let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["status"], "advisory");
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "lane1_repo_exposure_incomplete"
+        );
+        assert_eq!(value["runtime_status"]["downstream_consumable"], false);
         assert_eq!(
             value["run_limitations"][0]["category"],
             "lane1_repo_exposure_incomplete"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["run_status"],
+            "limited_incomplete_input"
         );
         assert_eq!(
             value["inputs"]["repo_exposure_generation"]["status"],
@@ -68312,6 +68757,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let packets_json = lane1_actionable_gap_packets_json(&report)?;
         let packets: Value = serde_json::from_str(&packets_json).map_err(|err| err.to_string())?;
+        assert_eq!(packets["run_status"], "limited_incomplete_input");
         assert_eq!(packets["summary"]["actionable_gaps"], 0);
 
         let markdown = lane1_evidence_audit_markdown(&report);
@@ -68478,6 +68924,8 @@ covered_by = ["cargo xtask check-file-policy"]
         let json = lane1_evidence_audit_json(&report)?;
         let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
+        assert_eq!(value["run_status"], "limited_large_cache_skip");
+        assert_eq!(value["runtime_status"]["downstream_consumable"], true);
         assert_eq!(value["summary"]["static_limitations_total"], 1);
         assert_eq!(
             value["static_limitations"]["by_category"]["lane1_repo_exposure_cache_store_skipped_large_entry"],
@@ -68490,6 +68938,14 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["run_limitations"][0]["category"],
             "lane1_repo_exposure_cache_store_skipped_large_entry"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["run_status"],
+            "limited_large_cache_skip"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["input_kind"],
+            "repo-seam-facts-cache"
         );
         assert_eq!(
             value["run_limitations"][0]["input"],
@@ -68544,6 +69000,7 @@ covered_by = ["cargo xtask check-file-policy"]
             value["inputs"]["repo_exposure_generation"]["status"],
             "pass"
         );
+        assert_eq!(value["run_status"], "limited_incomplete_input");
         assert_eq!(value["finding_alignment"]["summary"]["actionable_gaps"], 1);
         assert_eq!(
             value["run_limitations"][0]["category"],
@@ -70601,6 +71058,7 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
         assert_eq!(value["report"], "swarm-plan");
+        assert_eq!(value["run_status"], "full");
         assert_eq!(
             value["summary"]["packets_total"],
             serde_json::Value::from(5)
@@ -70938,6 +71396,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["report"], "swarm-readiness");
+        assert_eq!(value["run_status"], "full");
         assert_eq!(
             value["summary"]["actionable_gaps_total"],
             serde_json::Value::from(162)
@@ -71050,6 +71509,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let json = ripr_swarm_readiness_json(&report)?;
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["run_status"], "full");
         assert_eq!(
             value["next_actions"][0]["kind"],
             serde_json::Value::from("route_operator_judgment_packets")
@@ -71173,6 +71633,12 @@ covered_by = ["cargo xtask check-file-policy"]
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["status"], "blocked");
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "swarm_plan_input_unavailable"
+        );
+        assert_eq!(value["runtime_status"]["downstream_consumable"], false);
         assert_eq!(value["inputs"]["swarm_plan"]["state"], "missing");
         assert_eq!(
             value["summary"]["attempted_packets"],
@@ -71467,6 +71933,11 @@ covered_by = ["cargo xtask check-file-policy"]
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["status"], "blocked");
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "swarm_plan_input_unavailable"
+        );
         assert_eq!(value["input"]["state"], "missing");
         assert_eq!(
             value["summary"]["packets_total"],
@@ -73604,6 +74075,11 @@ covered_by = ["cargo xtask check-file-policy"]
             .filter_map(|unknown| unknown["kind"].as_str())
             .collect::<BTreeSet<_>>();
 
+        assert_eq!(value["run_status"], "limited_timeout");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "lane1_repo_exposure_timeout"
+        );
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_limited"));
         assert_eq!(value["summary"]["static_limitations_total"], 1);
@@ -73648,6 +74124,8 @@ covered_by = ["cargo xtask check-file-policy"]
             .filter_map(|unknown| unknown["kind"].as_str())
             .collect::<BTreeSet<_>>();
 
+        assert_eq!(value["run_status"], "limited_large_cache_skip");
+        assert_eq!(value["runtime_status"]["downstream_consumable"], true);
         assert!(!kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_unavailable"));
         Ok(())
@@ -73685,6 +74163,11 @@ covered_by = ["cargo xtask check-file-policy"]
             .filter_map(|unknown| unknown["kind"].as_str())
             .collect::<BTreeSet<_>>();
 
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "lane1_repo_exposure_incomplete"
+        );
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_unavailable"));
         Ok(())
@@ -73724,6 +74207,11 @@ covered_by = ["cargo xtask check-file-policy"]
             .filter_map(|unknown| unknown["kind"].as_str())
             .collect::<BTreeSet<_>>();
 
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED
+        );
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains(EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED));
         assert_eq!(
@@ -74434,6 +74922,11 @@ covered_by = ["cargo xtask check-file-policy"]
         let json = evidence_quality_trend_json(&report)?;
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["run_status"], "limited_incomplete_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "current_scorecard_limited"
+        );
         assert_eq!(value["summary"]["status"], "unknown");
         assert_eq!(
             value["summary"]["compared_metrics"],
@@ -74470,6 +74963,11 @@ covered_by = ["cargo xtask check-file-policy"]
                 .map_err(|err| format!("read trend json: {err}"))?;
             let value: serde_json::Value =
                 serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["run_status"], "limited_incomplete_input");
+            assert_eq!(
+                value["runtime_status"]["limitation_category"],
+                EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE
+            );
             assert_eq!(value["summary"]["status"], "unknown");
             assert_eq!(value["summary"]["no_history"], true);
             assert_eq!(value["inputs"]["previous_artifact"]["status"], "missing");
@@ -74514,6 +75012,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 .map_err(|err| format!("read trend json: {err}"))?;
             let value: serde_json::Value =
                 serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["run_status"], "limited_incomplete_input");
             assert_eq!(value["summary"]["status"], "unknown");
             assert_eq!(value["summary"]["no_history"], true);
             assert_eq!(value["inputs"]["previous_artifact"]["status"], "malformed");

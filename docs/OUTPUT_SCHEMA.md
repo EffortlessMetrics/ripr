@@ -1718,6 +1718,47 @@ JSON and are capped in Markdown. Static-language constraints still apply:
 runtime-specific labels stay confined to the optional imported calibration
 availability section.
 
+## Lane 1 Runtime Status
+
+Lane 1 repair-control reports keep the existing advisory `status` field and add
+a separate `run_status` field for completeness:
+
+```text
+full
+limited_timeout
+limited_runner_failure
+limited_large_cache_skip
+limited_incomplete_input
+limited_stale_input
+```
+
+Reports that emit this contract also include `runtime_status`:
+
+```json
+{
+  "run_status": "limited_timeout",
+  "runtime_status": {
+    "state": "limited_timeout",
+    "phase": "repo_exposure_generation",
+    "duration_ms": 120000,
+    "limit_ms": 120000,
+    "input_kind": "repo-exposure-json",
+    "input_path": null,
+    "limitation_category": "lane1_repo_exposure_timeout",
+    "repair_route": "inspect repo-exposure latency trace",
+    "downstream_consumable": false
+  }
+}
+```
+
+`run_status = "full"` means the report did not observe a completeness-affecting
+runtime limitation. Limited states must name the phase, duration or limit when
+available, an input kind or path, a limitation category, a repair route, and
+whether downstream consumers may safely use the counts. `status = "advisory"`
+still means the artifact does not change gate policy or public badge semantics.
+Downstream surfaces must read `run_status` before treating Lane 1 counts as
+complete.
+
 ## Lane 1 Evidence Quality Audit
 
 `cargo xtask lane1-evidence-audit` writes a repo-local audit over generated
@@ -1742,6 +1783,18 @@ runtime execution.
   "report": "lane1-evidence-audit",
   "scope": "repo",
   "status": "advisory",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
   "inputs": {
     "root": ".",
     "source": "repo-exposure-json",
@@ -2071,6 +2124,12 @@ Field contract:
 - `report` - always `"lane1-evidence-audit"`.
 - `scope` - always `"repo"`.
 - `status` - always `"advisory"`.
+- `run_status` - Lane 1 completeness state. Values are `full`,
+  `limited_timeout`, `limited_runner_failure`, `limited_large_cache_skip`,
+  `limited_incomplete_input`, or `limited_stale_input`.
+- `runtime_status` - structured completeness context matching `run_status`.
+  Limited states name the phase, input kind or path, limitation category, repair
+  route, timing fields when available, and `downstream_consumable`.
 - `inputs.root` - analyzed root for the generated repo exposure snapshot.
 - `inputs.source` - always `"repo-exposure-json"`.
 - `inputs.repo_exposure_mode` - currently `"instant"`; this keeps the
@@ -2108,6 +2167,9 @@ Field contract:
   `lane1_repo_exposure_sampled` with input such as
   `repo-exposure-json:limit_5000_of_39685`; sampled counts are useful work-queue
   evidence, not full-repo debt totals.
+  Run-limitation rows also carry `run_status`, `input_kind`, `input_path`,
+  `limit_ms`, and `downstream_consumable` so consumers do not need to infer
+  completeness from category strings.
   Named `run_limitations[]` entries also contribute to
   `summary.static_limitations_total` and `static_limitations.by_category`, so a
   limited audit cannot look like a clean zero-limitation run in headline
@@ -2248,6 +2310,18 @@ mutation execution.
   "report": "actionable-gaps",
   "scope": "repo",
   "status": "advisory",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
   "source_report": "target/ripr/reports/lane1-evidence-audit.json",
   "source": "evidence_record.canonical_item",
   "packet_limit": 25,
@@ -2624,6 +2698,11 @@ bounded input limitation. If `actionable-gap-outcomes.json` is missing, the
 report still writes zero attempt counts and records that no outcome join is
 available yet; missing outcomes do not imply failed attempts.
 
+Swarm plan and readiness reports include `run_status` and `runtime_status`.
+Readiness preserves a limited swarm-plan input, and reports missing or malformed
+required plan input as `limited_incomplete_input` instead of turning absent
+packets into a clean zero-ready state.
+
 ```json
 {
   "schema_version": "0.1",
@@ -2631,6 +2710,18 @@ available yet; missing outcomes do not imply failed attempts.
   "report": "swarm-readiness",
   "scope": "repo",
   "status": "advisory",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
   "inputs": {
     "swarm_plan": {
       "path": "target/ripr/reports/swarm-plan.json",
@@ -2744,6 +2835,13 @@ limited scorecard carries `unknowns[].kind =
 diagnostic only and must not be treated as complete repo truth or user test
 debt.
 
+Scorecard JSON includes `run_status` and `runtime_status`. It preserves a
+limited current audit or limited evidence-health input instead of converting
+partial counts into a clean scorecard headline. A completed audit that only
+skipped a large cache store reports `limited_large_cache_skip` with
+`downstream_consumable = true`; timeout, runner failure, sampled, incomplete, or
+audit-regeneration states are not complete repo truth.
+
 When a Lane 1 audit carries named `run_limitations[]`, the scorecard treats the
 matching `static_limitations.by_category` rows as static limitations even if an
 older or partial audit summary did not increment `summary.static_limitations_total`.
@@ -2756,6 +2854,18 @@ instead of presenting a misleading zero.
   "tool": "ripr",
   "report": "evidence-quality-scorecard",
   "generated_at": "unix_ms:1778620000000",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
   "scope": {
     "kind": "repo",
     "root": "."
@@ -3068,12 +3178,29 @@ still writes bounded trend JSON/Markdown with `summary.status = "unknown"`,
 exiting before producing trend evidence. Metric rows may still carry current
 values, but movement and badge-readiness deltas remain unknown.
 
+Trend JSON includes `run_status` and `runtime_status`. A limited current
+scorecard is preserved as `limited_incomplete_input`; an explicit missing or
+malformed previous artifact also produces a limited trend state. Missing
+implicit history remains an unknown trend, not a gate or badge claim.
+
 ```json
 {
   "schema_version": "0.1",
   "tool": "ripr",
   "report": "evidence-quality-trend",
   "generated_at": "unix_ms:1778620000000",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
   "scope": {
     "kind": "repo",
     "root": "."

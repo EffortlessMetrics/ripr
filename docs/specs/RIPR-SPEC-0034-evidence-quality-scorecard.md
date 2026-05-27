@@ -168,6 +168,14 @@ their directions unknown, leave deltas null, and emit
 `unknowns[].kind = "current_scorecard_limited"` instead of claiming
 improvement or regression.
 
+Scorecard and trend outputs must also preserve the shared Lane 1 runtime status
+contract. A full report emits `run_status = "full"`. A limited audit,
+evidence-health input, audit regeneration failure, limited current scorecard, or
+explicit malformed/missing previous artifact emits the matching limited state
+and a `runtime_status` object with phase, input kind or path, limitation
+category, repair route, timing fields when available, and
+`downstream_consumable`.
+
 If an explicit previous artifact path is missing or malformed, the trend command
 must still write bounded JSON/Markdown with
 `unknowns[].kind = "evidence_quality_trend_previous_artifact_unavailable"`,
@@ -312,10 +320,12 @@ Given a Lane 1 audit artifact with completeness-affecting limitations such as
 `lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`, or
 `evidence_quality_scorecard_audit_regeneration_failed`, the scorecard adds
 `lane1_evidence_audit_limited` to `unknowns` so downstream users can see that
-the report is bounded diagnostic evidence rather than complete repo truth.
+the report is bounded diagnostic evidence rather than complete repo truth. It
+also preserves the limited input in `run_status` and `runtime_status`.
 Non-completeness audit limitations, such as skipped full-cache storage after a
 complete repo-exposure run, remain audit-visible but do not make scorecard
-counts partial.
+counts partial; they report `limited_large_cache_skip` with downstream
+consumption allowed.
 
 Given an evidence-health artifact with `run_limitations[]`, the scorecard adds
 `evidence_health_limited` to `unknowns` because evidence-health warning

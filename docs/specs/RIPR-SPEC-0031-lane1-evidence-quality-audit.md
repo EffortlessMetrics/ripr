@@ -109,6 +109,8 @@ includes:
 - `report`;
 - `scope`;
 - `status`;
+- `run_status`;
+- `runtime_status`;
 - `inputs`;
 - `run_limitations`;
 - `summary`;
@@ -246,32 +248,39 @@ path, the command preserves the `repo_exposure_seam_limit` latency trace row,
 records `run_limitations[].category = "lane1_repo_exposure_sampled"`, and keeps
 the sampled raw/canonical/actionable counts available as partial work-queue
 evidence. Downstream scorecards must surface that named limitation and must not
-treat sampled counts as full-repo debt totals. If generation times out before a
+treat sampled counts as full-repo debt totals. The audit also reports
+`run_status = "limited_incomplete_input"` and `runtime_status` details for that
+sampled input. If generation times out before a
 complete repo-exposure JSON document exists, the audit still writes a limited
 artifact with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
 `phase = "repo_exposure_generation"`, phase/input diagnostics, the most recent
 latency trace entries, and a repair route. Downstream scorecards must surface
 that limitation and must not treat zero counts in the limited artifact as proof
-that no gaps exist. The named run limitation contributes to
+that no gaps exist. The audit reports `run_status = "limited_timeout"` and
+`runtime_status.downstream_consumable = false`. The named run limitation contributes to
 `summary.static_limitations_total` and `static_limitations.by_category` so the
 limited artifact cannot present a clean zero-limitation headline. If generation
 fails before repo exposure can be started or captured, the audit still writes a
 limited artifact with
-`run_limitations[].category = "lane1_repo_exposure_runner_error"` and records
-the `failure_reason` under `inputs.repo_exposure_generation`.
+`run_limitations[].category = "lane1_repo_exposure_runner_error"`, reports
+`run_status = "limited_runner_failure"`, and records the `failure_reason` under
+`inputs.repo_exposure_generation`.
 Best-effort cache writes are not allowed to turn a completed analysis into an
 unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as
 `ignored_skipped_large_entry_seams_..._limit_...`. The audit must preserve that
 under `run_limitations[]` with category
-`lane1_repo_exposure_cache_store_skipped_large_entry` rather than hiding the
-cache-store limitation in stderr.
+`lane1_repo_exposure_cache_store_skipped_large_entry`, report
+`run_status = "limited_large_cache_skip"`, and keep
+`runtime_status.downstream_consumable = true` because the evidence was emitted
+rather than hiding the cache-store limitation in stderr.
 
 Given a repo-exposure subprocess that exits successfully but leaves an empty,
 malformed, or otherwise incomplete captured JSON artifact, the audit treats that
 as `lane1_repo_exposure_incomplete`, preserves the subprocess diagnostics and
 latency trace tail, removes the partial input, and does not claim complete repo
-truth or user test debt from the limited artifact.
+truth or user test debt from the limited artifact. The audit reports
+`run_status = "limited_incomplete_input"`.
 
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
@@ -424,6 +433,7 @@ The audit feeds these Lane 1 metrics:
 - `lane1_evidence_audit_static_limitations`;
 - `lane1_evidence_audit_uncalibrated_records`.
 - `lane1_evidence_audit_run_limitations`.
+- `lane1_report_run_status`.
 - `finding_alignment_raw_signals_total`;
 - `finding_alignment_canonical_items_total`;
 - `finding_alignment_actionable_items_total`;
