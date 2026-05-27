@@ -136,6 +136,9 @@ jobs:
           if [ -f target/xtask/impacted-evidence/latest.md ]; then
             printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/xtask/impacted-evidence/latest.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
       - name: Upload ripr reports
         if: failure() || contains(github.event.pull_request.labels.*.name, 'full-ci')
         uses: actions/upload-artifact@v7

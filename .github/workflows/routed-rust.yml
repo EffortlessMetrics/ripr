@@ -173,6 +173,9 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -263,6 +266,9 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -344,6 +350,9 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v7

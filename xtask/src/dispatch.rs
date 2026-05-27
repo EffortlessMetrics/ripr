@@ -67,6 +67,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Critic => super::reports::critic(),
         XtaskCommand::Goals(args) => super::goals(&args),
         XtaskCommand::Reports(args) => super::reports::reports(&args),
+        XtaskCommand::Cache(args) => super::cache::run(&args),
         XtaskCommand::Receipts(args) => super::reports::receipts(&args),
         XtaskCommand::Worktree(args) => super::worktree(&args),
         XtaskCommand::Specs(args) => super::specs(&args),

@@ -18,6 +18,7 @@ use ripr::output::start_here_state::{
     START_HERE_ACTIONABLE_GAP, START_HERE_CLEAN, START_HERE_MISSING_ARTIFACTS,
 };
 
+mod cache;
 mod command;
 mod dispatch;
 mod policy;
