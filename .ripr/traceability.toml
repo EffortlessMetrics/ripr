@@ -3794,6 +3794,8 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run",
   "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
+  "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest",
+  "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",
@@ -3827,6 +3829,7 @@ metrics = [
   "swarm_missing_receipt_command",
   "swarm_static_limitation_packets",
   "swarm_high_confidence_packets",
+  "swarm_attempt_ledger_attempts_total",
   "swarm_attempted_packets",
   "swarm_verified_improved",
   "swarm_verified_unchanged",

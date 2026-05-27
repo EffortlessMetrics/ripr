@@ -357,17 +357,18 @@ evidence = [
   "docs/specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md defines the external-agent handoff as one canonical packet in, operator-reviewed patch and receipt metadata out, with no provider SDK, autonomous merge, production-code edits by default, raw-finding work queue, or unbounded retry loop",
   "cargo xtask ripr-swarm plan --top <n> writes target/ripr/reports/swarm-plan.{json,md} from actionable-gaps.json with top ready packets, blocked packets, missing verify/receipt buckets, static-limitation blocking, high-confidence counts, and must-not-infer guardrails",
   "cargo xtask ripr-swarm attempt --packet <id> --dry-run prints bounded packet context with repair route, target test/assertion shape, verify command, receipt command, expected evidence movement, and must-not-change boundaries without editing files or running commands",
-  "cargo xtask ripr-swarm readiness writes target/ripr/reports/swarm-readiness.{json,md} from swarm-plan and actionable-gap-outcomes artifacts with actionable gap, packet readiness, missing verify/receipt, static-limitation, high-confidence, attempted, improved, unchanged, regressed, resolved, and orphaned receipt counts",
+  "cargo xtask ripr-swarm attempt-ledger writes target/ripr/reports/swarm-attempt-ledger.{json,md} from swarm-plan, actionable-gap-outcomes, and any prior ledger with durable attempt_id, packet_id, canonical_gap_id, actor_kind, receipt_path, verify command, receipt command, before/after gap state, outcome, timestamp, and latest-attempt projection",
+  "cargo xtask ripr-swarm readiness writes target/ripr/reports/swarm-readiness.{json,md} from swarm-plan, actionable-gap-outcomes, and swarm-attempt-ledger artifacts with actionable gap, packet readiness, missing verify/receipt, static-limitation, high-confidence, attempted, improved, unchanged, regressed, resolved, and orphaned receipt counts",
   "docs/RIPR_SWARM_HUMAN_WORKFLOW.md documents the operator loop from packet selection through dry-run, bounded repair, verify command, receipt command, outcome report, and stop conditions",
   "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md records release-loop dogfood: live audit timeout fail-closed behavior, fixture-backed packet planning, ready and static-limit dry-run attempts, verify/receipt command separation, and outcome joins for not-attempted, improved, unchanged, and orphaned receipt states",
   "docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md accepts the live swarm-repo audit timeout as a bounded 0.7 limitation, keeps the loop advisory/dry-run-first, and authorizes source promotion before source release proof",
   "fixtures/swarm-plan-packet-corpus pins ready boundary/error/output packets plus static-limitation, missing verify, missing receipt, and missing must-not-change blocking cases",
   "fixtures/actionable-gap-outcomes-corpus pins not-attempted, receipt-present, improved, unchanged, regressed, resolved, attempted-without-receipt, and orphaned-receipt outcome joins",
-  "the implemented plan command is report-only and does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
+  "the implemented plan, attempt-ledger, and readiness commands are report-only and do not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
 fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus"]
-next = "0.7 release proof and explicit publish decision"
-metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
+next = "dogfood real repair attempts"
+metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempt_ledger_attempts_total, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
 
 [[capability]]
 id = "lane1_canonical_actionability_contract"
@@ -384,14 +385,16 @@ evidence = [
   "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt validates emitted public packets carry target_test_shape, receipt_command, confidence, raw_evidence_refs, and must_not_change boundaries before projection eligibility",
   "xtask::tests::ripr_swarm_plan_blocks_missing_raw_evidence_refs keeps swarm-ready ranking blocked when a packet lacks raw evidence references",
   "crates/ripr/src/lsp/gap_artifacts.rs actionable-gaps validation rejects public packets missing target_test_shape, receipt_command, related_test_or_observer, must_not_change, or raw_evidence_refs",
-  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while durable attempt-ledger work remains the next proof"
+  "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest records durable attempt history and latest-attempt projection over current outcome joins plus prior ledger entries",
+  "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts validates readiness consumes swarm-attempt-ledger counts instead of deriving durable attempt state directly from raw outcomes",
+  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while dogfood repair attempts remain the next proof"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
   "fixtures/swarm-plan-packet-corpus",
   "fixtures/editor_actionable_gap_queue"
 ]
-next = "swarm attempt ledger"
+next = "dogfood real repair attempts"
 metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets"
 
 [[capability]]

@@ -2694,10 +2694,142 @@ readiness.
 `orphaned_receipts[]` preserves receipt artifacts that do not match any current
 packet so attempt history remains visible without creating new actionable gaps.
 
+## RIPR Swarm Attempt Ledger
+
+`cargo xtask ripr-swarm attempt-ledger` joins the swarm plan and
+actionable-gap outcome report into durable attempt history:
+
+```text
+target/ripr/reports/swarm-attempt-ledger.json
+target/ripr/reports/swarm-attempt-ledger.md
+```
+
+The command reads `target/ripr/reports/swarm-plan.json`,
+`target/ripr/reports/actionable-gap-outcomes.json`, and any existing
+`target/ripr/reports/swarm-attempt-ledger.json` by default. It preserves prior
+attempt entries by `attempt_id`, adds the current outcome join, and highlights
+the latest attempt per `canonical_gap_id`. It does not execute repairs, edit
+files, run tests, create receipts, call providers, run mutation testing, change
+PR/CI rendering, change editor/LSP behavior, change gates, or change public
+badges.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "swarm-attempt-ledger",
+  "scope": "repo",
+  "status": "advisory",
+  "run_status": "full",
+  "runtime_status": {
+    "state": "full",
+    "phase": null,
+    "duration_ms": null,
+    "limit_ms": null,
+    "input_kind": null,
+    "input_path": null,
+    "limitation_category": null,
+    "repair_route": null,
+    "downstream_consumable": true
+  },
+  "generated_at": "unix_ms:1778240100000",
+  "inputs": {
+    "swarm_plan": {
+      "path": "target/ripr/reports/swarm-plan.json",
+      "state": "read",
+      "limitation": null
+    },
+    "actionable_gap_outcomes": {
+      "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "read",
+      "limitation": null
+    },
+    "prior_ledger": {
+      "path": "target/ripr/reports/swarm-attempt-ledger.json",
+      "state": "read",
+      "limitation": null
+    }
+  },
+  "summary": {
+    "attempts_total": 4,
+    "canonical_gaps_total": 3,
+    "not_attempted": 1,
+    "attempted_no_receipt": 0,
+    "receipt_present": 0,
+    "evidence_improved": 2,
+    "evidence_unchanged": 1,
+    "evidence_regressed": 0,
+    "resolved": 0,
+    "unknown": 0,
+    "orphaned_receipts": 1
+  },
+  "attempts": [
+    {
+      "packet_id": "packet-boundary-001",
+      "canonical_gap_id": "gap:abc",
+      "attempt_id": "attempt:gap-abc:evidence-improved:receipt-movement-improved:agent-receipt:abc",
+      "actor_kind": "agent",
+      "receipt_path": "target/ripr/reports/agent-receipt.json",
+      "verify_command": "cargo test -p ripr boundary_gap",
+      "receipt_command": "cargo xtask receipts write --packet packet-boundary-001",
+      "before_gap_state": "weakly_gripped",
+      "after_gap_state": "strongly_gripped",
+      "outcome": "evidence_improved",
+      "timestamp": "unix_ms:1778240100000",
+      "receipt_state": "receipt_movement_improved",
+      "movement_source": "agent_receipt",
+      "reason": "Matched agent receipt artifact."
+    }
+  ],
+  "latest_attempts": [
+    {
+      "packet_id": "packet-boundary-001",
+      "canonical_gap_id": "gap:abc",
+      "attempt_id": "attempt:gap-abc:evidence-improved:receipt-movement-improved:agent-receipt:abc",
+      "actor_kind": "agent",
+      "receipt_path": "target/ripr/reports/agent-receipt.json",
+      "verify_command": "cargo test -p ripr boundary_gap",
+      "receipt_command": "cargo xtask receipts write --packet packet-boundary-001",
+      "before_gap_state": "weakly_gripped",
+      "after_gap_state": "strongly_gripped",
+      "outcome": "evidence_improved",
+      "timestamp": "unix_ms:1778240100000",
+      "receipt_state": "receipt_movement_improved",
+      "movement_source": "agent_receipt",
+      "reason": "Matched agent receipt artifact."
+    }
+  ],
+  "orphaned_receipts": [
+    {
+      "receipt_id": "receipt:old-gap",
+      "seam_id": "old-gap",
+      "reason": "Receipt artifact did not match any current actionable canonical gap packet."
+    }
+  ],
+  "must_not_infer": [
+    "attempt ledgers preserve existing artifact joins; they do not execute repairs",
+    "not_attempted means no matching attempt artifact was supplied, not that repair failed",
+    "receipt_present without movement is not evidence improvement",
+    "orphaned receipts do not create new actionable gaps",
+    "ledger counts do not change public badge semantics or CI gate mode"
+  ]
+}
+```
+
+`attempts[]` is durable history. `latest_attempts[]` is the current routing
+view, one entry per canonical gap, and is the source readiness uses for
+attempt/improved/unchanged/regressed/resolved counts. The ledger preserves
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown` outcomes. Missing outcome inputs make the ledger
+`limited_incomplete_input`; missing swarm-plan input is consumable but
+explicitly limited because packet ids may be less complete.
+
 ## RIPR Swarm Readiness
 
-`cargo xtask ripr-swarm readiness` rolls up the existing swarm plan and
-actionable-gap outcomes into a repo-level repair-coordination readiness report:
+`cargo xtask ripr-swarm readiness` rolls up the existing swarm plan,
+actionable-gap outcomes, and swarm attempt ledger into a repo-level
+repair-coordination readiness report:
 
 ```text
 target/ripr/reports/swarm-readiness.json
@@ -2705,16 +2837,19 @@ target/ripr/reports/swarm-readiness.md
 ```
 
 The command reads `target/ripr/reports/swarm-plan.json` and
-`target/ripr/reports/actionable-gap-outcomes.json` by default, or the paths
-provided by `--swarm-plan` and `--actionable-gap-outcomes`. It is report-only.
-It does not execute repairs, edit files, run tests, call providers, generate
-tests, create receipts, run mutation testing, change PR/CI rendering, change
-editor/LSP behavior, change gates, or change public badges.
+`target/ripr/reports/actionable-gap-outcomes.json` and
+`target/ripr/reports/swarm-attempt-ledger.json` by default, or the paths
+provided by `--swarm-plan`, `--actionable-gap-outcomes`, and
+`--attempt-ledger`. It is report-only. It does not execute repairs, edit files,
+run tests, call providers, generate tests, create receipts, run mutation
+testing, change PR/CI rendering, change editor/LSP behavior, change gates, or
+change public badges.
 
 If `swarm-plan.json` is missing or malformed, the report is `blocked` with a
-bounded input limitation. If `actionable-gap-outcomes.json` is missing, the
-report still writes zero attempt counts and records that no outcome join is
-available yet; missing outcomes do not imply failed attempts.
+bounded input limitation. If `actionable-gap-outcomes.json` or
+`swarm-attempt-ledger.json` is missing, the report records the limitation and
+routes the operator to regenerate the missing artifact; missing outcomes or
+ledger inputs do not imply failed attempts.
 
 Swarm plan and readiness reports include `run_status` and `runtime_status`.
 Readiness preserves a limited swarm-plan input, and reports missing or malformed
@@ -2748,6 +2883,11 @@ packets into a clean zero-ready state.
     },
     "actionable_gap_outcomes": {
       "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "read",
+      "limitation": null
+    },
+    "attempt_ledger": {
+      "path": "target/ripr/reports/swarm-attempt-ledger.json",
       "state": "read",
       "limitation": null
     }
