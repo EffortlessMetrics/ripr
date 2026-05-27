@@ -17505,6 +17505,9 @@ const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 120_000;
+const LANE1_EVIDENCE_AUDIT_CACHE_MAX_GB_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_MAX_CACHE_GB";
+const LANE1_EVIDENCE_AUDIT_DEFAULT_CACHE_MAX_GB: u64 = 20;
+const LANE1_BYTES_PER_GB: u64 = 1024 * 1024 * 1024;
 const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS";
 const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT: usize = 5_000;
 const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
@@ -17827,27 +17830,33 @@ struct Lane1EvidenceAuditFileDebt {
 /// data and write `target/ripr/reports/lane1-evidence-audit.{json,md}`.
 pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
-    let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
-    let report = match write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)? {
-        Lane1EvidenceAuditRepoExposureOutcome::Complete(repo_exposure_generation) => {
-            let report = lane1_evidence_audit_report_from_complete_repo_exposure(
-                ".",
-                &repo_exposure_path,
-                repo_exposure_generation,
-            );
-            if let Err(err) = fs::remove_file(&repo_exposure_path) {
-                eprintln!(
-                    "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
-                    repo_exposure_path.display()
+    let report = if let Some(limitation) =
+        lane1_repo_exposure_large_cache_preflight_limitation(Path::new("."))?
+    {
+        lane1_evidence_audit_limited_report_from_run_limitation(".", limitation)
+    } else {
+        let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
+        match write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)? {
+            Lane1EvidenceAuditRepoExposureOutcome::Complete(repo_exposure_generation) => {
+                let report = lane1_evidence_audit_report_from_complete_repo_exposure(
+                    ".",
+                    &repo_exposure_path,
+                    repo_exposure_generation,
                 );
+                if let Err(err) = fs::remove_file(&repo_exposure_path) {
+                    eprintln!(
+                        "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
+                        repo_exposure_path.display()
+                    );
+                }
+                report
             }
-            report
-        }
-        Lane1EvidenceAuditRepoExposureOutcome::TimedOut(repo_exposure_generation) => {
-            lane1_evidence_audit_limited_report(".", repo_exposure_generation)
-        }
-        Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(repo_exposure_generation) => {
-            lane1_evidence_audit_limited_report(".", repo_exposure_generation)
+            Lane1EvidenceAuditRepoExposureOutcome::TimedOut(repo_exposure_generation) => {
+                lane1_evidence_audit_limited_report(".", repo_exposure_generation)
+            }
+            Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(repo_exposure_generation) => {
+                lane1_evidence_audit_limited_report(".", repo_exposure_generation)
+            }
         }
     };
     write_report(
@@ -17866,6 +17875,129 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
         "actionable-gaps.md",
         &lane1_actionable_gap_packets_markdown(&report),
     )
+}
+
+fn lane1_evidence_audit_limited_report_from_run_limitation(
+    root: &str,
+    limitation: Lane1EvidenceAuditRunLimitation,
+) -> Lane1EvidenceAuditReport {
+    let mut report = Lane1EvidenceAuditBuilder::default().finish(root.to_string(), None);
+    lane1_evidence_audit_record_run_limitation(&mut report, limitation);
+    report
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1CacheFootprint {
+    bytes: u64,
+    files: usize,
+}
+
+fn lane1_repo_exposure_large_cache_preflight_limitation(
+    root: &Path,
+) -> Result<Option<Lane1EvidenceAuditRunLimitation>, String> {
+    let Some(max_bytes) = lane1_evidence_audit_cache_max_bytes() else {
+        return Ok(None);
+    };
+    lane1_repo_exposure_large_cache_preflight_limitation_for_root(root, max_bytes)
+}
+
+fn lane1_repo_exposure_large_cache_preflight_limitation_for_root(
+    root: &Path,
+    max_bytes: u64,
+) -> Result<Option<Lane1EvidenceAuditRunLimitation>, String> {
+    let cache_root = lane1_repo_exposure_cache_root(root);
+    let Some(footprint) = lane1_cache_footprint(&cache_root)? else {
+        return Ok(None);
+    };
+    if footprint.bytes <= max_bytes {
+        return Ok(None);
+    }
+    let max_gb = max_bytes.div_ceil(LANE1_BYTES_PER_GB).max(1);
+    let repair_route = format!(
+        "run cargo xtask cache report && cargo xtask cache gc --dry-run --max-size-gb {max_gb} --ttl-days 14, then review and rerun without --dry-run before lane1-evidence-audit"
+    );
+    Ok(Some(Lane1EvidenceAuditRunLimitation {
+        category: "lane1_repo_exposure_large_cache_preflight_skip".to_string(),
+        phase: "repo_seam_facts_cache".to_string(),
+        input: normalize_report_path(&cache_root.display().to_string()),
+        summary: format!(
+            "Lane 1 repo-exposure generation was skipped because target/ripr/cache contains {} bytes across {} files, above the configured {} byte cache budget. No user test debt is claimed from this limited artifact.",
+            footprint.bytes, footprint.files, max_bytes
+        ),
+        repair_route,
+        timeout_ms: None,
+        duration_ms: None,
+        command: Some("cargo xtask lane1-evidence-audit".to_string()),
+        exit_code: None,
+        stdout_bytes: None,
+        stderr_bytes: None,
+        latency_trace_tail: Vec::new(),
+    }))
+}
+
+fn lane1_evidence_audit_cache_max_bytes() -> Option<u64> {
+    let max_gb = std::env::var(LANE1_EVIDENCE_AUDIT_CACHE_MAX_GB_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(LANE1_EVIDENCE_AUDIT_DEFAULT_CACHE_MAX_GB);
+    if max_gb == 0 {
+        None
+    } else {
+        Some(max_gb.saturating_mul(LANE1_BYTES_PER_GB))
+    }
+}
+
+fn lane1_repo_exposure_cache_root(root: &Path) -> PathBuf {
+    let cache_root = Path::new("target").join("ripr").join("cache");
+    if root == Path::new(".") {
+        cache_root
+    } else {
+        root.join(cache_root)
+    }
+}
+
+fn lane1_cache_footprint(cache_root: &Path) -> Result<Option<Lane1CacheFootprint>, String> {
+    if !cache_root.exists() {
+        return Ok(None);
+    }
+    let metadata = fs::metadata(cache_root)
+        .map_err(|err| format!("failed to inspect {}: {err}", cache_root.display()))?;
+    if !metadata.is_dir() {
+        return Err(format!("{} is not a directory", cache_root.display()));
+    }
+    let mut footprint = Lane1CacheFootprint::default();
+    let mut stack = vec![cache_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir)
+            .map_err(|err| format!("failed to read cache directory {}: {err}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|err| {
+                format!(
+                    "failed to read cache directory entry in {}: {err}",
+                    dir.display()
+                )
+            })?;
+            let file_type = entry.file_type().map_err(|err| {
+                format!(
+                    "failed to inspect cache entry {}: {err}",
+                    entry.path().display()
+                )
+            })?;
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            } else if file_type.is_file() {
+                let metadata = entry.metadata().map_err(|err| {
+                    format!(
+                        "failed to inspect cache file {}: {err}",
+                        entry.path().display()
+                    )
+                })?;
+                footprint.bytes = footprint.bytes.saturating_add(metadata.len());
+                footprint.files += 1;
+            }
+        }
+    }
+    Ok(Some(footprint))
 }
 
 fn lane1_evidence_audit_report_from_complete_repo_exposure(
@@ -18199,7 +18331,7 @@ fn lane1_runtime_status_from_run_limitation(
         duration_ms: limitation.duration_ms,
         limit_ms: limitation.timeout_ms,
         input_kind: Some(lane1_runtime_input_kind(limitation)),
-        input_path: None,
+        input_path: lane1_runtime_input_path(limitation),
         limitation_category: Some(limitation.category.clone()),
         repair_route: Some(limitation.repair_route.clone()),
         downstream_consumable: lane1_runtime_limitation_downstream_consumable(&limitation.category),
@@ -18304,7 +18436,8 @@ fn lane1_runtime_state_for_limitation_category(category: &str) -> &'static str {
         "lane1_repo_exposure_runner_error" | "evidence_health_runner_error" => {
             "limited_runner_failure"
         }
-        "lane1_repo_exposure_cache_store_skipped_large_entry" => "limited_large_cache_skip",
+        "lane1_repo_exposure_cache_store_skipped_large_entry"
+        | "lane1_repo_exposure_large_cache_preflight_skip" => "limited_large_cache_skip",
         "limited_stale_input" => "limited_stale_input",
         "lane1_repo_exposure_incomplete"
         | "lane1_repo_exposure_sampled"
@@ -18344,7 +18477,11 @@ fn lane1_runtime_input_kind(limitation: &Lane1EvidenceAuditRunLimitation) -> Str
 }
 
 fn lane1_runtime_input_kind_from_parts(category: &str, phase: Option<&str>, input: &str) -> String {
-    if category == "lane1_repo_exposure_cache_store_skipped_large_entry" {
+    if matches!(
+        category,
+        "lane1_repo_exposure_cache_store_skipped_large_entry"
+            | "lane1_repo_exposure_large_cache_preflight_skip"
+    ) {
         return "repo-seam-facts-cache".to_string();
     }
     if phase == Some("repo_exposure_generation") || input.starts_with("repo-exposure-json") {
@@ -18365,6 +18502,14 @@ fn lane1_runtime_status_json(status: &Lane1RuntimeStatus) -> Value {
         "repair_route": status.repair_route,
         "downstream_consumable": status.downstream_consumable,
     })
+}
+
+fn lane1_runtime_input_path(limitation: &Lane1EvidenceAuditRunLimitation) -> Option<String> {
+    if limitation.category == "lane1_repo_exposure_large_cache_preflight_skip" {
+        Some(limitation.input.clone())
+    } else {
+        None
+    }
 }
 
 fn audit_u128(value: &Value, path: &[&str]) -> Option<u128> {
@@ -26125,6 +26270,7 @@ fn lane1_audit_has_completeness_limitation(value: &Value) -> bool {
         "lane1_repo_exposure_incomplete",
         "lane1_repo_exposure_runner_error",
         "lane1_repo_exposure_sampled",
+        "lane1_repo_exposure_large_cache_preflight_skip",
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
     ]
     .iter()
@@ -68879,6 +69025,84 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_repo_exposure_large_cache_preflight_skip_becomes_named_run_limitation()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-large-cache-preflight");
+        let cache_file = root
+            .join("target")
+            .join("ripr")
+            .join("cache")
+            .join("repo-seam-facts")
+            .join("v1")
+            .join("large.json");
+        if let Some(parent) = cache_file.parent() {
+            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        }
+        fs::write(&cache_file, vec![0_u8; 11]).map_err(|err| err.to_string())?;
+
+        let Some(limitation) =
+            super::lane1_repo_exposure_large_cache_preflight_limitation_for_root(&root, 10)?
+        else {
+            return Err("oversized Lane 1 cache should produce a named limitation".to_string());
+        };
+
+        assert_eq!(
+            limitation.category,
+            "lane1_repo_exposure_large_cache_preflight_skip"
+        );
+        assert_eq!(limitation.phase, "repo_seam_facts_cache");
+        assert!(
+            limitation.input.ends_with("target/ripr/cache"),
+            "input should name target/ripr/cache, got {}",
+            limitation.input
+        );
+        assert!(
+            limitation.repair_route.contains("cargo xtask cache report")
+                && limitation
+                    .repair_route
+                    .contains("cargo xtask cache gc --dry-run"),
+            "repair route should point at cache report/gc, got {}",
+            limitation.repair_route
+        );
+
+        let report =
+            super::lane1_evidence_audit_limited_report_from_run_limitation(".", limitation);
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["run_status"], "limited_large_cache_skip");
+        assert_eq!(value["runtime_status"]["downstream_consumable"], false);
+        assert_eq!(
+            value["runtime_status"]["input_kind"],
+            "repo-seam-facts-cache"
+        );
+        assert!(
+            value["runtime_status"]["input_path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("target/ripr/cache"))
+        );
+        assert_eq!(value["summary"]["static_limitations_total"], 1);
+        assert_eq!(
+            value["run_limitations"][0]["category"],
+            "lane1_repo_exposure_large_cache_preflight_skip"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["repair_route"],
+            "run cargo xtask cache report && cargo xtask cache gc --dry-run --max-size-gb 1 --ttl-days 14, then review and rerun without --dry-run before lane1-evidence-audit"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_repo_exposure_large_cache_preflight_ignores_missing_cache() -> Result<(), String> {
+        let root = temp_dir("lane1-large-cache-preflight-missing");
+        let limitation =
+            super::lane1_repo_exposure_large_cache_preflight_limitation_for_root(&root, 10)?;
+        assert!(limitation.is_none());
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_complete_report_counts_cache_store_run_limitation() -> Result<(), String>
     {
         let root = temp_dir("lane1-repo-exposure-cache-store-limitation");
@@ -74127,6 +74351,47 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["run_status"], "limited_large_cache_skip");
         assert_eq!(value["runtime_status"]["downstream_consumable"], true);
         assert!(!kinds.contains("lane1_evidence_audit_limited"));
+        assert!(kinds.contains("evidence_health_unavailable"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_treats_large_cache_preflight_as_limited() -> Result<(), String> {
+        let mut audit = lane1_scorecard_sample_audit_value()?;
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .insert(
+                "run_limitations".to_string(),
+                serde_json::json!([
+                    {
+                        "category": "lane1_repo_exposure_large_cache_preflight_skip",
+                        "phase": "repo_seam_facts_cache",
+                        "input": "target/ripr/cache",
+                        "repair_route": "cargo xtask cache report && cargo xtask cache gc --dry-run",
+                        "downstream_consumable": false
+                    }
+                ]),
+            );
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let kinds = value["unknowns"]
+            .as_array()
+            .ok_or("unknowns must be an array")?
+            .iter()
+            .filter_map(|unknown| unknown["kind"].as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(value["run_status"], "limited_large_cache_skip");
+        assert_eq!(value["runtime_status"]["downstream_consumable"], false);
+        assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_unavailable"));
         Ok(())
     }

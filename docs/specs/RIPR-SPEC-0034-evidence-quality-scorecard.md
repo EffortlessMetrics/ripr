@@ -152,10 +152,11 @@ diagnostic scorecard with
 a matching audit `run_limitations[]` category. That limited scorecard must not
 claim complete repo truth, public badge readiness, or user test debt.
 Completeness-affecting audit limitations such as
-`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`, and audit
-regeneration failure must surface as unknowns and must not let zero or partial
-counts masquerade as complete repo truth. Completed-audit run limitations such
-as `lane1_repo_exposure_cache_store_skipped_large_entry` remain visible as named
+`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`,
+`lane1_repo_exposure_large_cache_preflight_skip`, and audit regeneration failure
+must surface as unknowns and must not let zero or partial counts masquerade as
+complete repo truth. Completed-audit run limitations such as
+`lane1_repo_exposure_cache_store_skipped_large_entry` remain visible as named
 static limitations without marking the audit input limited. Named audit run
 limitations that appear in `static_limitations.by_category` must contribute to
 the scorecard static-limitation headline even when an older or partial audit
@@ -325,7 +326,9 @@ also preserves the limited input in `run_status` and `runtime_status`.
 Non-completeness audit limitations, such as skipped full-cache storage after a
 complete repo-exposure run, remain audit-visible but do not make scorecard
 counts partial; they report `limited_large_cache_skip` with downstream
-consumption allowed.
+consumption allowed. Cache preflight skips happen before repo-exposure evidence
+exists, so they also report `limited_large_cache_skip` but keep
+`downstream_consumable = false`.
 
 Given an evidence-health artifact with `run_limitations[]`, the scorecard adds
 `evidence_health_limited` to `unknowns` because evidence-health warning

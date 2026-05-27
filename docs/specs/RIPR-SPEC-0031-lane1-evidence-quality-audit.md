@@ -92,7 +92,13 @@ with a `lane1_repo_exposure_incomplete` run limitation instead of failing before
 the report surfaces the phase/input diagnostics. If the runner cannot start or
 capture repo exposure at all, the command writes bounded warning artifacts with
 `lane1_repo_exposure_runner_error`, a captured `failure_reason`, phase/input
-context, and a repair route. If repo exposure completes but skips the full
+context, and a repair route. If the existing `target/ripr/cache` footprint
+exceeds the Lane 1 cache budget before repo exposure starts, the command writes
+bounded warning artifacts with
+`lane1_repo_exposure_large_cache_preflight_skip`, `run_status =
+"limited_large_cache_skip"`, `runtime_status.downstream_consumable = false`,
+and a repair route through `cargo xtask cache report` and
+`cargo xtask cache gc --dry-run`. If repo exposure completes but skips the full
 classified seam cache store because the cache entry exceeds the bounded
 full-cache store limit, the audit records
 `lane1_repo_exposure_cache_store_skipped_large_entry` with the cache-store phase,
@@ -265,6 +271,16 @@ limited artifact with
 `run_limitations[].category = "lane1_repo_exposure_runner_error"`, reports
 `run_status = "limited_runner_failure"`, and records the `failure_reason` under
 `inputs.repo_exposure_generation`.
+Large existing cache state must be visible before Lane 1 claims repo truth: if
+`target/ripr/cache` is above the configured Lane 1 budget, the audit must skip
+repo-exposure generation, emit
+`run_limitations[].category =
+"lane1_repo_exposure_large_cache_preflight_skip"`, report
+`run_status = "limited_large_cache_skip"`, keep
+`runtime_status.downstream_consumable = false`, and point
+`repair_route` at `cargo xtask cache report` plus
+`cargo xtask cache gc --dry-run`.
+
 Best-effort cache writes are not allowed to turn a completed analysis into an
 unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as

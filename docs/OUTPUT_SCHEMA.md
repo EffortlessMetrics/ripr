@@ -2159,7 +2159,13 @@ Field contract:
   surface the limitation instead of treating zeros as absence of gaps. A runner
   or capture failure before repo exposure can be started or read produces
   `lane1_repo_exposure_runner_error` with `failure_reason`, command, timeout,
-  duration, phase/input context, and a repair route. A completed audit may also report
+  duration, phase/input context, and a repair route. If the existing
+  `target/ripr/cache` footprint exceeds the Lane 1 cache budget before
+  repo-exposure generation starts, the audit writes
+  `lane1_repo_exposure_large_cache_preflight_skip` with `run_status =
+  "limited_large_cache_skip"`, `downstream_consumable = false`, and a repair
+  route through `cargo xtask cache report` and `cargo xtask cache gc --dry-run`.
+  A completed audit may also report
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
   seam cache store because the entry exceeded the bounded cache-store limit.
@@ -2838,9 +2844,12 @@ debt.
 Scorecard JSON includes `run_status` and `runtime_status`. It preserves a
 limited current audit or limited evidence-health input instead of converting
 partial counts into a clean scorecard headline. A completed audit that only
-skipped a large cache store reports `limited_large_cache_skip` with
-`downstream_consumable = true`; timeout, runner failure, sampled, incomplete, or
-audit-regeneration states are not complete repo truth.
+  skipped a large cache store reports `limited_large_cache_skip` with
+  `downstream_consumable = true`; an audit skipped before generation because
+  the existing cache footprint exceeded the Lane 1 budget reports
+  `limited_large_cache_skip` with `downstream_consumable = false`; timeout,
+  runner failure, sampled, incomplete, or audit-regeneration states are not
+  complete repo truth.
 
 When a Lane 1 audit carries named `run_limitations[]`, the scorecard treats the
 matching `static_limitations.by_category` rows as static limitations even if an
