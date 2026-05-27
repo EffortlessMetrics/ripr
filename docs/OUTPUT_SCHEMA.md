@@ -1938,6 +1938,11 @@ runtime execution.
         "repair_kind": "add_boundary_assertion",
         "target_test_type": "boundary_discriminator",
         "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)"
+        },
         "target_test_shape": "boundary_discriminator: assert_eq!(price(/* boundary input where amount == threshold */), expected)",
         "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
         "why": "Related tests reach the seam but miss equality at the threshold.",
@@ -2370,6 +2375,11 @@ mutation execution.
       "repair_kind": "add_boundary_assertion",
       "target_test_type": "boundary_discriminator",
       "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+      "repair_route": {
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)"
+      },
       "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
       "why": "Related tests reach the seam but miss equality at the threshold.",
       "related_test_or_observer": {
@@ -2442,7 +2452,9 @@ change public badges.
 
 For compatibility with current actionable-gap packets, input may carry either
 `receipt_command_or_path` or `receipt_command`. The swarm plan normalizes the
-ranked packet output to `receipt_command`.
+ranked packet output to `receipt_command`. A packet is not swarm-ready unless it
+also carries a structured `repair_route` object and a typed workspace-relative
+repair target in `related_test_or_observer` or `candidate_value_or_observer`.
 
 If the actionable-gaps input is missing or malformed, the command still writes
 a bounded blocked report with the input path, input state, and limitation text.
