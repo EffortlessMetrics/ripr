@@ -177,6 +177,14 @@ for the surface they touch:
 - every surface repeats the relevant advisory, static, preview, and non-runtime
   proof boundary.
 
+Dogfood receipts must include a badge/LSP/PR/CI projection-alignment corpus.
+The corpus starts from one canonical repair state and proves each surface keeps
+the same `canonical_gap_id`, `packet_id`, `repair_kind`, `verify_command`,
+`receipt_command`, and top next action. Each case must state that it consumes
+canonical state, does not reinterpret raw findings, does not headline raw
+finding totals, remains advisory by default, and can show limited or stale
+state instead of an incorrect count.
+
 ## Acceptance Examples
 
 Given the public badge headline, a new reader can describe the count as

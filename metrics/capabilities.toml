@@ -366,11 +366,12 @@ evidence = [
   "fixtures/actionable-gap-outcomes-corpus pins not-attempted, receipt-present, improved, unchanged, regressed, resolved, attempted-without-receipt, and orphaned-receipt outcome joins",
   "fixtures/surface-projection-alignment/corpus.json pins a receipt-backed canonical gap whose packet_id, canonical_gap_id, repair_kind, verify command, receipt command/state, evidence_improved outcome, and readiness top_next_action stay aligned while badge/LSP/PR/CI remain advisory consumers",
   "fixtures/real-repair-attempts/corpus.json records five repo-local repair-loop attempts across improved, resolved, unchanged, and attempted_no_receipt outcomes with packet identity, canonical gap identity, verify command/result, receipt command/path/state, must-not-change boundaries, raw evidence refs, and operator notes",
+  "fixtures/user-surface-projection-alignment/corpus.json pins badge, LSP, PR comment, and CI projection examples to the same canonical gap, packet, repair kind, verify command, receipt command, and top next action while rejecting raw-finding headline counts and default blocking",
   "the implemented plan, attempt-ledger, and readiness commands are report-only and do not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
-fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus", "fixtures/surface-projection-alignment", "fixtures/real-repair-attempts"]
-next = "badge/LSP/PR/CI projection alignment"
-metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempt_ledger_attempts_total, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts, repair_kind_attempted, repair_kind_improved, repair_kind_unchanged, repair_kind_regressed, repair_kind_success_rate, top_failing_repair_routes, top_missing_evidence_fields, top_next_action, surface_projection_alignment_receipts, real_repair_attempt_receipts"
+fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus", "fixtures/surface-projection-alignment", "fixtures/real-repair-attempts", "fixtures/user-surface-projection-alignment"]
+next = "Lane 1 closeout evidence audit"
+metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempt_ledger_attempts_total, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts, repair_kind_attempted, repair_kind_improved, repair_kind_unchanged, repair_kind_regressed, repair_kind_success_rate, top_failing_repair_routes, top_missing_evidence_fields, top_next_action, surface_projection_alignment_receipts, real_repair_attempt_receipts, user_surface_projection_alignment_receipts"
 
 [[capability]]
 id = "lane1_canonical_actionability_contract"
@@ -391,16 +392,18 @@ evidence = [
   "xtask::tests::ripr_swarm_attempt_ledger_summarizes_repair_route_quality validates typed route context, per-repair-kind quality counts, top failing repair routes, and missing evidence fields",
   "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts validates readiness consumes swarm-attempt-ledger counts and route-quality signals instead of deriving durable attempt state directly from raw outcomes",
   "fixtures/real-repair-attempts/corpus.json records merged PR and handoff attempts that preserve canonical identity, repair guidance, verify command/result, receipt command/path/state, must-not-change boundaries, raw evidence refs, and non-success outcomes without hiding unchanged or missing-receipt attempts",
-  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while badge/LSP/PR/CI projection alignment remains the next proof"
+  "fixtures/user-surface-projection-alignment/corpus.json proves badge, LSP, PR comment, and CI examples share one canonical gap/packet route and do not headline raw findings or default to blocking",
+  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while Lane 1 closeout evidence audit remains the next proof"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
   "fixtures/swarm-plan-packet-corpus",
   "fixtures/editor_actionable_gap_queue",
-  "fixtures/real-repair-attempts"
+  "fixtures/real-repair-attempts",
+  "fixtures/user-surface-projection-alignment"
 ]
-next = "badge/LSP/PR/CI projection alignment"
-metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, real_repair_attempt_receipts"
+next = "Lane 1 closeout evidence audit"
+metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, real_repair_attempt_receipts, user_surface_projection_alignment_receipts"
 
 [[capability]]
 id = "actionable_surface_translation"
@@ -416,15 +419,17 @@ evidence = [
   "VS Code Show Status starts with an editor repair cockpit over current actionable state, top repair, verify command, receipt state, and fail-closed next action",
   "ripr-swarm attempt --dry-run starts with a copy-ready operator packet and fails closed on prose-only edit targets",
   "actionable-gap outcomes and evidence-quality trend reports include movement_front sections while keeping receipt-linked movement bounded to outcome artifacts",
+  "fixtures/user-surface-projection-alignment/corpus.json validates that badge, LSP, PR comment, and CI examples consume the same canonical repair state, expose limited/stale state, stay advisory, and do not headline raw findings",
   "docs/handoffs/2026-05-23-actionable-surface-translation-closeout.md records the PR chain, validation, remaining advisory/static limits, and no selected successor"
 ]
 fixtures = [
   "fixtures/editor_actionable_gap_queue",
   "fixtures/swarm-plan-packet-corpus",
-  "fixtures/actionable-gap-outcomes-corpus"
+  "fixtures/actionable-gap-outcomes-corpus",
+  "fixtures/user-surface-projection-alignment"
 ]
-next = "fresh campaign selection from repo-owned state"
-metric = "repo_actionable_queue_count, pr_local_actionable_gap_count, actionable_gaps_new, actionable_gaps_resolved, actionable_gaps_blocked_static_limited, actionable_receipts_missing, actionable_receipts_orphaned, actionable_repairs_attempted_unchanged, swarm_ready_packets, outcome_delta_improved, outcome_delta_unchanged, outcome_delta_regressed, outcome_delta_resolved"
+next = "maintenance"
+metric = "repo_actionable_queue_count, pr_local_actionable_gap_count, actionable_gaps_new, actionable_gaps_resolved, actionable_gaps_blocked_static_limited, actionable_receipts_missing, actionable_receipts_orphaned, actionable_repairs_attempted_unchanged, swarm_ready_packets, outcome_delta_improved, outcome_delta_unchanged, outcome_delta_regressed, outcome_delta_resolved, user_surface_projection_alignment_receipts"
 
 [[capability]]
 id = "parser_backed_syntax_facts"

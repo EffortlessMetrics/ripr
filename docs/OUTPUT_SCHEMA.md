@@ -9930,6 +9930,7 @@ fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
 fixtures/finding-alignment-dogfood/corpus.json
 fixtures/surface-projection-alignment/corpus.json
 fixtures/real-repair-attempts/corpus.json
+fixtures/user-surface-projection-alignment/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -9971,6 +9972,11 @@ The checked real repair attempt receipts are read from
 attempts, including improved/resolved movement and unchanged or missing-receipt
 non-success cases, so failed or incomplete attempts remain visible instead of
 being hidden from the repair queue.
+The checked user-surface projection receipts are read from
+`fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
+and CI projection examples share the same canonical gap, packet, repair kind,
+verify command, receipt command, and top next action while remaining advisory
+and never treating raw finding totals as headline product truth.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -10251,6 +10257,37 @@ JSON shape:
         "raw_evidence_refs": ["metrics/capabilities.toml:ripr_swarm_repair_loop"],
         "missing_receipt_reason": null,
         "reason": "A real merged repair-loop PR converted attempt outcomes into route-quality evidence.",
+        "errors": []
+      }
+    ]
+  },
+  "user_surface_projection_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/user-surface-projection-alignment",
+    "cases": [
+      {
+        "name": "badge_actionable_count_from_canonical_state",
+        "surface": "badge",
+        "artifact": "badge-basis",
+        "headline": "ripr: 8 actionable",
+        "run_status": "full",
+        "projection_basis": "canonical_actionable_gap",
+        "canonical_gap_id": "gap:boundary-discriminator-004",
+        "packet_id": "boundary-discriminator-004",
+        "repair_kind": "add_boundary_assertion",
+        "top_next_action_kind": "attempt_ready_packet",
+        "verify_command": "cargo test -p ripr-swarm boundary_discriminator_004",
+        "receipt_command": "cargo xtask receipts write --packet boundary-discriminator-004 --canonical-gap gap:boundary-discriminator-004",
+        "actionable_count": 8,
+        "raw_findings_total": 312,
+        "consumes_canonical_state": true,
+        "reinterprets_raw_findings": false,
+        "raw_findings_headline": false,
+        "advisory": true,
+        "blocking_default": false,
+        "limited_state_visible": true,
+        "stale_state_visible": true,
+        "reason": "Badge projection should show unresolved actionable canonical gaps or limited/stale, never raw finding volume.",
         "errors": []
       }
     ]

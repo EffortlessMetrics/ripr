@@ -936,6 +936,59 @@ struct DogfoodRealRepairAttemptRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodUserSurfaceProjectionScenario {
+    name: String,
+    surface: String,
+    artifact: String,
+    headline: String,
+    run_status: String,
+    projection_basis: String,
+    canonical_gap_id: String,
+    packet_id: String,
+    repair_kind: String,
+    top_next_action_kind: String,
+    verify_command: String,
+    receipt_command: String,
+    actionable_count: usize,
+    raw_findings_total: usize,
+    consumes_canonical_state: bool,
+    reinterprets_raw_findings: bool,
+    raw_findings_headline: bool,
+    advisory: bool,
+    blocking_default: bool,
+    limited_state_visible: bool,
+    stale_state_visible: bool,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodUserSurfaceProjectionRun {
+    name: String,
+    surface: String,
+    artifact: String,
+    headline: String,
+    run_status: String,
+    projection_basis: String,
+    canonical_gap_id: String,
+    packet_id: String,
+    repair_kind: String,
+    top_next_action_kind: String,
+    verify_command: String,
+    receipt_command: String,
+    actionable_count: usize,
+    raw_findings_total: usize,
+    consumes_canonical_state: bool,
+    reinterprets_raw_findings: bool,
+    raw_findings_headline: bool,
+    advisory: bool,
+    blocking_default: bool,
+    limited_state_visible: bool,
+    stale_state_visible: bool,
+    reason: String,
+    errors: Vec<String>,
+}
+
 struct DogfoodPreviewProjectionRuns<'a> {
     generated_ci_cockpit: &'a [DogfoodGeneratedCiCockpitRun],
     language_preview: &'a [DogfoodLanguagePreviewRun],
@@ -954,6 +1007,7 @@ struct DogfoodReportInputs<'a> {
     finding_alignment_runs: &'a [DogfoodFindingAlignmentRun],
     surface_projection_alignment_runs: &'a [DogfoodSurfaceProjectionAlignmentRun],
     real_repair_attempt_runs: &'a [DogfoodRealRepairAttemptRun],
+    user_surface_projection_runs: &'a [DogfoodUserSurfaceProjectionRun],
     pr_inline_comment_runs: &'a [DogfoodPrInlineCommentRun],
 }
 
@@ -5312,6 +5366,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
+                    | "user-surface-projection-alignment"
             )
         })
 }
@@ -7624,6 +7679,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_real_repair_attempt_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
+    validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
     validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
@@ -7765,6 +7821,8 @@ const FINDING_ALIGNMENT_DOGFOOD_CORPUS: &str = "fixtures/finding-alignment-dogfo
 const REAL_REPAIR_ATTEMPTS_CORPUS: &str = "fixtures/real-repair-attempts/corpus.json";
 const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
+const USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
+    "fixtures/user-surface-projection-alignment/corpus.json";
 
 const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
     ("presentation_text_actionable_output_observer", "actionable"),
@@ -7797,6 +7855,8 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "attempted_no_receipt",
     ),
 ];
+
+const USER_SURFACE_PROJECTION_REQUIRED_SURFACES: &[&str] = &["badge", "lsp", "pr_comment", "ci"];
 
 const SWARM_PLAN_PACKET_CORPUS: &str = "fixtures/swarm-plan-packet-corpus/corpus.json";
 
@@ -8858,6 +8918,98 @@ fn validate_surface_projection_alignment_fixture_corpus_at(
             None => violations.push(format!(
                 "surface projection alignment corpus is missing case {case_id}"
             )),
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_user_surface_projection_alignment_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/user-surface-projection-alignment");
+    let corpus = root.join("corpus.json");
+    if !corpus.exists() {
+        violations.push(format!(
+            "user surface projection alignment fixture corpus is missing {}",
+            normalize_path(&corpus)
+        ));
+    }
+    validate_user_surface_projection_alignment_fixture_corpus_at(
+        Path::new(USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS),
+        violations,
+    )
+}
+
+fn validate_user_surface_projection_alignment_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "user surface projection alignment corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let scenarios = dogfood_user_surface_projection_scenarios();
+    let mut seen_names = BTreeSet::new();
+    let mut seen_surfaces = BTreeSet::new();
+    let mut canonical_gap_id: Option<String> = None;
+    let mut packet_id: Option<String> = None;
+    let mut repair_kind: Option<String> = None;
+    let mut verify_command: Option<String> = None;
+    let mut receipt_command: Option<String> = None;
+    for scenario in &scenarios {
+        if !seen_names.insert(scenario.name.clone()) {
+            violations.push(format!(
+                "user surface projection alignment case {} is duplicated",
+                scenario.name
+            ));
+        }
+        seen_surfaces.insert(scenario.surface.clone());
+        for error in dogfood_user_surface_projection_run(scenario).errors {
+            violations.push(format!(
+                "user surface projection alignment case {}: {error}",
+                scenario.name
+            ));
+        }
+        for (label, expected, actual) in [
+            (
+                "canonical_gap_id",
+                &mut canonical_gap_id,
+                &scenario.canonical_gap_id,
+            ),
+            ("packet_id", &mut packet_id, &scenario.packet_id),
+            ("repair_kind", &mut repair_kind, &scenario.repair_kind),
+            (
+                "verify_command",
+                &mut verify_command,
+                &scenario.verify_command,
+            ),
+            (
+                "receipt_command",
+                &mut receipt_command,
+                &scenario.receipt_command,
+            ),
+        ] {
+            match expected {
+                Some(value) if value != actual => violations.push(format!(
+                    "user surface projection alignment case {} {label} must match shared {}, got {}",
+                    scenario.name, value, actual
+                )),
+                Some(_) => {}
+                None => *expected = Some(actual.clone()),
+            }
+        }
+    }
+
+    for required in USER_SURFACE_PROJECTION_REQUIRED_SURFACES {
+        if !seen_surfaces.contains(*required) {
+            violations.push(format!(
+                "user surface projection alignment corpus is missing surface {required}"
+            ));
         }
     }
 
@@ -34838,6 +34990,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_real_repair_attempt_run(&scenario))
         .collect::<Vec<_>>();
+    let user_surface_projection_runs = dogfood_user_surface_projection_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_user_surface_projection_run(&scenario))
+        .collect::<Vec<_>>();
     let preview_projection_runs = DogfoodPreviewProjectionRuns {
         generated_ci_cockpit: &generated_ci_cockpit_runs,
         language_preview: &language_preview_runs,
@@ -34859,6 +35015,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         finding_alignment_runs: &finding_alignment_runs,
         surface_projection_alignment_runs: &surface_projection_alignment_runs,
         real_repair_attempt_runs: &real_repair_attempt_runs,
+        user_surface_projection_runs: &user_surface_projection_runs,
         pr_inline_comment_runs: &pr_inline_comment_runs,
     };
     write_report("dogfood.md", &dogfood_report_markdown(&report_inputs))?;
@@ -37746,6 +37903,216 @@ fn dogfood_real_repair_attempt_run(
     }
 }
 
+fn dogfood_user_surface_projection_scenarios() -> Vec<DogfoodUserSurfaceProjectionScenario> {
+    let corpus_path = Path::new(USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS);
+    let fallback = |reason: String| {
+        vec![DogfoodUserSurfaceProjectionScenario {
+            name: "corpus".to_string(),
+            surface: "unknown".to_string(),
+            artifact: "unknown".to_string(),
+            headline: "unknown".to_string(),
+            run_status: "unknown".to_string(),
+            projection_basis: "unknown".to_string(),
+            canonical_gap_id: "unknown".to_string(),
+            packet_id: "unknown".to_string(),
+            repair_kind: "unknown".to_string(),
+            top_next_action_kind: "unknown".to_string(),
+            verify_command: "unknown".to_string(),
+            receipt_command: "unknown".to_string(),
+            actionable_count: 0,
+            raw_findings_total: 0,
+            consumes_canonical_state: false,
+            reinterprets_raw_findings: true,
+            raw_findings_headline: true,
+            advisory: false,
+            blocking_default: true,
+            limited_state_visible: false,
+            stale_state_visible: false,
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback(
+            "user surface projection alignment corpus schema_version must be 0.1".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "kind").as_deref()
+        != Some("user_surface_projection_alignment_corpus")
+    {
+        return fallback(
+            "user surface projection alignment corpus kind must be user_surface_projection_alignment_corpus"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0059") {
+        return fallback(
+            "user surface projection alignment corpus spec must be RIPR-SPEC-0059".to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback(
+            "user surface projection alignment corpus is missing cases array".to_string(),
+        );
+    };
+
+    cases
+        .iter()
+        .map(|case| DogfoodUserSurfaceProjectionScenario {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            surface: json_string_field(case, "surface").unwrap_or_else(|| "unknown".to_string()),
+            artifact: json_string_field(case, "artifact").unwrap_or_else(|| "unknown".to_string()),
+            headline: json_string_field(case, "headline").unwrap_or_else(|| "unknown".to_string()),
+            run_status: json_string_field(case, "run_status")
+                .unwrap_or_else(|| "unknown".to_string()),
+            projection_basis: json_string_field(case, "projection_basis")
+                .unwrap_or_else(|| "unknown".to_string()),
+            canonical_gap_id: json_string_field(case, "canonical_gap_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            packet_id: json_string_field(case, "packet_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_kind: json_string_field(case, "repair_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            top_next_action_kind: json_string_field(case, "top_next_action_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_command: json_string_field(case, "verify_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_command: json_string_field(case, "receipt_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            actionable_count: json_usize_field(case, "actionable_count").unwrap_or(0),
+            raw_findings_total: json_usize_field(case, "raw_findings_total").unwrap_or(0),
+            consumes_canonical_state: case
+                .get("consumes_canonical_state")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            reinterprets_raw_findings: case
+                .get("reinterprets_raw_findings")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            raw_findings_headline: case
+                .get("raw_findings_headline")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            advisory: case
+                .get("advisory")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            blocking_default: case
+                .get("blocking_default")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            limited_state_visible: case
+                .get("limited_state_visible")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            stale_state_visible: case
+                .get("stale_state_visible")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                "user surface projection alignment case did not document a reason".to_string()
+            }),
+        })
+        .collect()
+}
+
+fn dogfood_user_surface_projection_run(
+    scenario: &DogfoodUserSurfaceProjectionScenario,
+) -> DogfoodUserSurfaceProjectionRun {
+    let mut errors = Vec::new();
+    if scenario.name.trim().is_empty() || scenario.name == "unknown" {
+        errors.push("case id must be present".to_string());
+    }
+    if !USER_SURFACE_PROJECTION_REQUIRED_SURFACES.contains(&scenario.surface.as_str()) {
+        errors.push(format!("unsupported surface {}", scenario.surface));
+    }
+    for (label, value) in [
+        ("artifact", &scenario.artifact),
+        ("headline", &scenario.headline),
+        ("run_status", &scenario.run_status),
+        ("projection_basis", &scenario.projection_basis),
+        ("packet_id", &scenario.packet_id),
+        ("repair_kind", &scenario.repair_kind),
+        ("top_next_action_kind", &scenario.top_next_action_kind),
+        ("verify_command", &scenario.verify_command),
+        ("receipt_command", &scenario.receipt_command),
+        ("reason", &scenario.reason),
+    ] {
+        if value.trim().is_empty() || value == "unknown" {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+    if !scenario.canonical_gap_id.starts_with("gap:") {
+        errors.push(format!(
+            "canonical_gap_id must use gap: identity, got {}",
+            scenario.canonical_gap_id
+        ));
+    }
+    if scenario.projection_basis != "canonical_actionable_gap" {
+        errors.push(format!(
+            "projection_basis must be canonical_actionable_gap, got {}",
+            scenario.projection_basis
+        ));
+    }
+    if scenario.raw_findings_total <= scenario.actionable_count {
+        errors.push("raw_findings_total must exceed actionable_count to prove raw counts are not the headline".to_string());
+    }
+    if !scenario.consumes_canonical_state {
+        errors.push("surface must consume canonical state".to_string());
+    }
+    if scenario.reinterprets_raw_findings {
+        errors.push("surface must not reinterpret raw findings".to_string());
+    }
+    if scenario.raw_findings_headline {
+        errors.push("surface must not headline raw findings".to_string());
+    }
+    if !scenario.advisory {
+        errors.push("surface must remain advisory".to_string());
+    }
+    if scenario.blocking_default {
+        errors.push("surface must not be blocking by default".to_string());
+    }
+    if !scenario.limited_state_visible {
+        errors.push("surface must make limited state visible".to_string());
+    }
+    if !scenario.stale_state_visible {
+        errors.push("surface must make stale state visible".to_string());
+    }
+    if scenario.verify_command == scenario.receipt_command {
+        errors.push("receipt_command must stay distinct from verify_command".to_string());
+    }
+
+    DogfoodUserSurfaceProjectionRun {
+        name: scenario.name.clone(),
+        surface: scenario.surface.clone(),
+        artifact: scenario.artifact.clone(),
+        headline: scenario.headline.clone(),
+        run_status: scenario.run_status.clone(),
+        projection_basis: scenario.projection_basis.clone(),
+        canonical_gap_id: scenario.canonical_gap_id.clone(),
+        packet_id: scenario.packet_id.clone(),
+        repair_kind: scenario.repair_kind.clone(),
+        top_next_action_kind: scenario.top_next_action_kind.clone(),
+        verify_command: scenario.verify_command.clone(),
+        receipt_command: scenario.receipt_command.clone(),
+        actionable_count: scenario.actionable_count,
+        raw_findings_total: scenario.raw_findings_total,
+        consumes_canonical_state: scenario.consumes_canonical_state,
+        reinterprets_raw_findings: scenario.reinterprets_raw_findings,
+        raw_findings_headline: scenario.raw_findings_headline,
+        advisory: scenario.advisory,
+        blocking_default: scenario.blocking_default,
+        limited_state_visible: scenario.limited_state_visible,
+        stale_state_visible: scenario.stale_state_visible,
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
 fn dogfood_surface_projection_alignment_scenarios() -> Vec<DogfoodSurfaceProjectionAlignmentScenario>
 {
     let corpus_path = Path::new(SURFACE_PROJECTION_ALIGNMENT_CORPUS);
@@ -38463,6 +38830,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
 
     if runs.iter().any(|run| !run.errors.is_empty())
@@ -38496,6 +38864,9 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
             .iter()
             .any(|run| !run.errors.is_empty())
         || real_repair_attempt_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || user_surface_projection_runs
             .iter()
             .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
@@ -38544,6 +38915,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
     let mut body = format!(
@@ -39590,6 +39962,94 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         }
     }
 
+    body.push_str("## User Surface Projection Alignment Receipts\n\n");
+    body.push_str("These receipts validate that badge, LSP, PR comment, and CI projection examples consume the same canonical repair state instead of independently interpreting raw findings. They keep all four surfaces advisory by default and require limited/stale state visibility.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Receipt input: `fixtures/user-surface-projection-alignment/corpus.json`\n\n");
+    body.push_str(
+        "| Case | Surface | Headline | Basis | Gap ID | Packet | Advisory | Raw headline |\n",
+    );
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    for run in user_surface_projection_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.surface),
+            markdown_cell(&run.headline),
+            markdown_cell(&run.projection_basis),
+            markdown_cell(&run.canonical_gap_id),
+            markdown_cell(&run.packet_id),
+            if run.advisory { "yes" } else { "no" },
+            if run.raw_findings_headline {
+                "yes"
+            } else {
+                "no"
+            }
+        ));
+    }
+    body.push('\n');
+    for run in user_surface_projection_runs {
+        body.push_str(&format!("### User Surface Projection `{}`\n\n", run.name));
+        body.push_str(&format!("- Surface: `{}`\n", markdown_cell(&run.surface)));
+        body.push_str(&format!("- Artifact: `{}`\n", markdown_cell(&run.artifact)));
+        body.push_str(&format!(
+            "- Run status: `{}`\n",
+            markdown_cell(&run.run_status)
+        ));
+        body.push_str(&format!(
+            "- Top next action: `{}`\n",
+            markdown_cell(&run.top_next_action_kind)
+        ));
+        body.push_str(&format!(
+            "- Repair kind: `{}`\n",
+            markdown_cell(&run.repair_kind)
+        ));
+        body.push_str(&format!(
+            "- Verify command: `{}`\n",
+            markdown_cell(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "- Receipt command: `{}`\n",
+            markdown_cell(&run.receipt_command)
+        ));
+        body.push_str(&format!(
+            "- Counts: actionable {}, raw findings {}\n",
+            run.actionable_count, run.raw_findings_total
+        ));
+        body.push_str(&format!(
+            "- Consumes canonical state: {}; reinterprets raw findings: {}; blocking default: {}\n",
+            if run.consumes_canonical_state {
+                "yes"
+            } else {
+                "no"
+            },
+            if run.reinterprets_raw_findings {
+                "yes"
+            } else {
+                "no"
+            },
+            if run.blocking_default { "yes" } else { "no" }
+        ));
+        body.push_str(&format!(
+            "- Limited visible: {}; stale visible: {}\n",
+            if run.limited_state_visible {
+                "yes"
+            } else {
+                "no"
+            },
+            if run.stale_state_visible { "yes" } else { "no" }
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Receipt validation: pass\n\n");
+        } else {
+            body.push_str(&format!(
+                "- Receipt validation: fail - `{}`\n\n",
+                markdown_cell(&run.errors.join("; "))
+            ));
+        }
+    }
+
     body.push_str("## PR Inline Comment Publisher Receipts\n\n");
     body.push_str("These receipts validate checked `comment-publish-plan.{json,md}` fixture outputs for the documented Campaign 26 inline-comment publisher routes. They verify opt-in modes, safe publish flags, summary-only exclusion, cap behavior, dedupe/upsert, stale-existing cleanup planning, fork or token blockers, missing-input blockers, and advisory limits without posting real PR comments.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -39775,6 +40235,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
     let mut body = format!(
@@ -40847,6 +41308,105 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"missing_receipt_reason\": {},\n",
             json_optional_string(run.missing_receipt_reason.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"user_surface_projection_alignment\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(
+        "    \"receipt_dir\": \"fixtures/user-surface-projection-alignment\",\n    \"cases\": [\n",
+    );
+    for (index, run) in user_surface_projection_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"surface\": \"{}\",\n",
+            json_escape(&run.surface)
+        ));
+        body.push_str(&format!(
+            "        \"artifact\": \"{}\",\n",
+            json_escape(&run.artifact)
+        ));
+        body.push_str(&format!(
+            "        \"headline\": \"{}\",\n",
+            json_escape(&run.headline)
+        ));
+        body.push_str(&format!(
+            "        \"run_status\": \"{}\",\n",
+            json_escape(&run.run_status)
+        ));
+        body.push_str(&format!(
+            "        \"projection_basis\": \"{}\",\n",
+            json_escape(&run.projection_basis)
+        ));
+        body.push_str(&format!(
+            "        \"canonical_gap_id\": \"{}\",\n",
+            json_escape(&run.canonical_gap_id)
+        ));
+        body.push_str(&format!(
+            "        \"packet_id\": \"{}\",\n",
+            json_escape(&run.packet_id)
+        ));
+        body.push_str(&format!(
+            "        \"repair_kind\": \"{}\",\n",
+            json_escape(&run.repair_kind)
+        ));
+        body.push_str(&format!(
+            "        \"top_next_action_kind\": \"{}\",\n",
+            json_escape(&run.top_next_action_kind)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": \"{}\",\n",
+            json_escape(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_command\": \"{}\",\n",
+            json_escape(&run.receipt_command)
+        ));
+        body.push_str(&format!(
+            "        \"actionable_count\": {},\n",
+            run.actionable_count
+        ));
+        body.push_str(&format!(
+            "        \"raw_findings_total\": {},\n",
+            run.raw_findings_total
+        ));
+        body.push_str(&format!(
+            "        \"consumes_canonical_state\": {},\n",
+            run.consumes_canonical_state
+        ));
+        body.push_str(&format!(
+            "        \"reinterprets_raw_findings\": {},\n",
+            run.reinterprets_raw_findings
+        ));
+        body.push_str(&format!(
+            "        \"raw_findings_headline\": {},\n",
+            run.raw_findings_headline
+        ));
+        body.push_str(&format!("        \"advisory\": {},\n", run.advisory));
+        body.push_str(&format!(
+            "        \"blocking_default\": {},\n",
+            run.blocking_default
+        ));
+        body.push_str(&format!(
+            "        \"limited_state_visible\": {},\n",
+            run.limited_state_visible
+        ));
+        body.push_str(&format!(
+            "        \"stale_state_visible\": {},\n",
+            run.stale_state_visible
         ));
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
@@ -53320,7 +53880,7 @@ mod tests {
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
         DogfoodRealRepairAttemptScenario, DogfoodReportInputs, DogfoodReportPacketIndexRun,
         DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
-        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        DogfoodUserSurfaceProjectionScenario, EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
@@ -53334,22 +53894,22 @@ mod tests {
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         ReportIndexRepoOpsArtifact, SUPPORT_TIERS_PATH, SarifPolicyMode, SarifPolicyResult,
         SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
-        actionable_gap_outcomes_markdown, actionable_gap_outcomes_report_from_values,
-        actionable_gap_outcomes_report_impl, badge_artifact_command_args,
-        badge_artifact_command_label, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_impl_with_runners, badge_artifacts_summary_markdown,
-        badge_basis_canonical_projection, badge_basis_derived_ripr_plus_snapshot,
-        badge_basis_needs_repo_badge_plus_job, badge_basis_report_json,
-        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
-        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_doc_artifacts, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_support_tiers,
-        check_workflows, ci_full_evidence_gates, cockpit_json, cockpit_markdown,
-        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        USER_SURFACE_PROJECTION_REQUIRED_SURFACES, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        actionable_gap_outcomes_json, actionable_gap_outcomes_markdown,
+        actionable_gap_outcomes_report_from_values, actionable_gap_outcomes_report_impl,
+        badge_artifact_command_args, badge_artifact_command_label, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_impl_with_runners,
+        badge_artifacts_summary_markdown, badge_basis_canonical_projection,
+        badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
+        badge_basis_report_json, badge_basis_report_markdown, badge_basis_seam_native_counts,
+        badge_diff_policy_violations, badge_native_audit_snapshot, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_doc_artifacts,
+        check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
+        check_network_policy, check_no_panic_family, check_process_policy, check_static_language,
+        check_support_tiers, check_workflows, ci_full_evidence_gates, cockpit_json,
+        cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings, command_catalog,
         command_catalog_violations, commands_report_json, commands_report_markdown,
         critic_findings, days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
         dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
@@ -53364,7 +53924,8 @@ mod tests {
         dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
-        dogfood_surface_projection_alignment_scenarios, evaluate_semantic_no_panic_policy,
+        dogfood_surface_projection_alignment_scenarios, dogfood_user_surface_projection_run,
+        dogfood_user_surface_projection_scenarios, evaluate_semantic_no_panic_policy,
         evidence_health_args, evidence_quality_scorecard_audit_regeneration_failure_audit,
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
@@ -61191,6 +61752,31 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "real merged repair-loop PR improved route-quality evidence".to_string(),
             errors: Vec::new(),
         };
+        let user_surface_projection_run = super::DogfoodUserSurfaceProjectionRun {
+            name: "badge_actionable_count_from_canonical_state".to_string(),
+            surface: "badge".to_string(),
+            artifact: "badge-basis".to_string(),
+            headline: "ripr: 8 actionable".to_string(),
+            run_status: "full".to_string(),
+            projection_basis: "canonical_actionable_gap".to_string(),
+            canonical_gap_id: "gap:boundary-discriminator-004".to_string(),
+            packet_id: "boundary-discriminator-004".to_string(),
+            repair_kind: "add_boundary_assertion".to_string(),
+            top_next_action_kind: "attempt_ready_packet".to_string(),
+            verify_command: "cargo test -p ripr-swarm boundary_discriminator_004".to_string(),
+            receipt_command: "cargo xtask receipts write --packet boundary-discriminator-004 --canonical-gap gap:boundary-discriminator-004".to_string(),
+            actionable_count: 8,
+            raw_findings_total: 312,
+            consumes_canonical_state: true,
+            reinterprets_raw_findings: false,
+            raw_findings_headline: false,
+            advisory: true,
+            blocking_default: false,
+            limited_state_visible: true,
+            stale_state_visible: true,
+            reason: "badge projection should use canonical actionable state".to_string(),
+            errors: Vec::new(),
+        };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
             name: "publishable_changed_line".to_string(),
             actual_dir: Path::new(
@@ -61241,6 +61827,7 @@ fn exact_owner_call_has_external_expected_value() {
         let finding_alignment_runs = [finding_alignment_run];
         let surface_projection_alignment_runs = [surface_projection_alignment_run];
         let real_repair_attempt_runs = [real_repair_attempt_run];
+        let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
             generated_ci_cockpit: &generated_ci_runs,
             language_preview: &language_preview_runs,
@@ -61265,6 +61852,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &markdown_pr_inline_comment_runs,
         };
         let empty_runs = [];
@@ -61284,6 +61872,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &empty_pr_inline_comment_runs,
         };
         let markdown = dogfood_report_markdown(&markdown_inputs);
@@ -61302,6 +61891,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Finding Alignment Receipts"));
         assert!(markdown.contains("Surface Projection Alignment Receipts"));
         assert!(markdown.contains("Real Repair Attempt Receipts"));
+        assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -61324,6 +61914,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"surface_projection_alignment\""));
         assert!(json.contains("\"real_repair_attempts\""));
         assert!(json.contains("\"repair_route_quality_metrics_improved\""));
+        assert!(json.contains("\"user_surface_projection_alignment\""));
+        assert!(json.contains("\"badge_actionable_count_from_canonical_state\""));
         let value: Value =
             serde_json::from_str(&json).map_err(|err| format!("dogfood JSON invalid: {err}"))?;
         let editor_gap_cockpit = value
@@ -62027,6 +62619,98 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(
             missing_report.contains("attempted_no_receipt must include missing_receipt_reason")
         );
+    }
+
+    #[test]
+    fn dogfood_user_surface_projection_alignment_receipts_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_user_surface_projection_scenarios();
+            let surfaces = scenarios
+                .iter()
+                .map(|scenario| scenario.surface.as_str())
+                .collect::<BTreeSet<_>>();
+            for required in USER_SURFACE_PROJECTION_REQUIRED_SURFACES {
+                assert!(
+                    surfaces.contains(required),
+                    "{required} user surface projection receipt should be checked"
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_user_surface_projection_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} user surface projection receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    fn valid_user_surface_projection_scenario() -> DogfoodUserSurfaceProjectionScenario {
+        DogfoodUserSurfaceProjectionScenario {
+            name: "badge_actionable_count_from_canonical_state".to_string(),
+            surface: "badge".to_string(),
+            artifact: "badge-basis".to_string(),
+            headline: "ripr: 8 actionable".to_string(),
+            run_status: "full".to_string(),
+            projection_basis: "canonical_actionable_gap".to_string(),
+            canonical_gap_id: "gap:boundary-discriminator-004".to_string(),
+            packet_id: "boundary-discriminator-004".to_string(),
+            repair_kind: "add_boundary_assertion".to_string(),
+            top_next_action_kind: "attempt_ready_packet".to_string(),
+            verify_command: "cargo test -p ripr-swarm boundary_discriminator_004".to_string(),
+            receipt_command: "cargo xtask receipts write --packet boundary-discriminator-004 --canonical-gap gap:boundary-discriminator-004".to_string(),
+            actionable_count: 8,
+            raw_findings_total: 312,
+            consumes_canonical_state: true,
+            reinterprets_raw_findings: false,
+            raw_findings_headline: false,
+            advisory: true,
+            blocking_default: false,
+            limited_state_visible: true,
+            stale_state_visible: true,
+            reason: "badge projection should use canonical actionable state".to_string(),
+        }
+    }
+
+    #[test]
+    fn dogfood_user_surface_projection_alignment_reports_contract_drift() {
+        let mut scenario = valid_user_surface_projection_scenario();
+        scenario.name.clear();
+        scenario.surface = "raw_dashboard".to_string();
+        scenario.projection_basis = "raw_findings".to_string();
+        scenario.canonical_gap_id = "boundary-discriminator-004".to_string();
+        scenario.raw_findings_total = scenario.actionable_count;
+        scenario.consumes_canonical_state = false;
+        scenario.reinterprets_raw_findings = true;
+        scenario.raw_findings_headline = true;
+        scenario.advisory = false;
+        scenario.blocking_default = true;
+        scenario.limited_state_visible = false;
+        scenario.stale_state_visible = false;
+        scenario.receipt_command = scenario.verify_command.clone();
+
+        let report = dogfood_user_surface_projection_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("case id must be present"));
+        assert!(report.contains("unsupported surface raw_dashboard"));
+        assert!(report.contains("projection_basis must be canonical_actionable_gap"));
+        assert!(report.contains("canonical_gap_id must use gap: identity"));
+        assert!(report.contains("raw_findings_total must exceed actionable_count"));
+        assert!(report.contains("surface must consume canonical state"));
+        assert!(report.contains("surface must not reinterpret raw findings"));
+        assert!(report.contains("surface must not headline raw findings"));
+        assert!(report.contains("surface must remain advisory"));
+        assert!(report.contains("surface must not be blocking by default"));
+        assert!(report.contains("surface must make limited state visible"));
+        assert!(report.contains("surface must make stale state visible"));
+        assert!(report.contains("receipt_command must stay distinct from verify_command"));
     }
 
     #[test]
