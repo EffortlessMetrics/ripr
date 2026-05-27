@@ -17584,6 +17584,7 @@ struct Lane1ActionableGapPacket {
     repair_kind: String,
     target_test_type: String,
     assertion_shape: String,
+    target_test_shape: String,
     recommended_repair: String,
     why: String,
     related_test_or_observer: Option<Value>,
@@ -17592,10 +17593,12 @@ struct Lane1ActionableGapPacket {
     verify_command: String,
     repair_route_source: String,
     verify_command_source: String,
+    receipt_command: Option<String>,
     receipt_command_or_path: Option<String>,
     receipt_source: String,
     public_projection_eligible: bool,
     projection_exclusion_reasons: Vec<String>,
+    raw_evidence_refs: Vec<Value>,
     raw_findings: Vec<Value>,
     raw_findings_supporting_only: bool,
     static_limitations: Vec<Value>,
@@ -19089,7 +19092,7 @@ impl Lane1EvidenceAuditBuilder {
                     .iter()
                     .map(|(category, repair_route)| (category.as_str(), repair_route.as_str())),
             );
-            if item_kind == "gap" || gap_state == "actionable" {
+            if gap_state == "actionable" {
                 coverage.actionable_items += 1;
             }
             if item_kind == "observed" || gap_state == "already_observed" {
@@ -19228,10 +19231,33 @@ impl Lane1EvidenceAuditBuilder {
 
         let (repair_kind, target_test_type, assertion_shape, repair_route_source) =
             audit_actionable_gap_repair_route_fields(record, canonical_item);
+        let target_test_shape =
+            audit_actionable_gap_target_test_shape(&target_test_type, &assertion_shape);
         let (verify_command, verify_command_source) =
             audit_actionable_gap_verify_command_with_source(record, canonical_item);
         let (receipt_command_or_path, receipt_source) =
             audit_actionable_gap_receipt_command_or_path(record, canonical_item);
+        let receipt_command = receipt_command_or_path
+            .clone()
+            .filter(|_| receipt_source.ends_with(".receipt_command"));
+        let related_test_or_observer =
+            audit_actionable_gap_related_test_or_observer(canonical_item);
+        let candidate_value_or_observer =
+            audit_actionable_gap_candidate_value_or_observer(record, canonical_item);
+        let raw_evidence_refs = audit_json_array_owned(canonical_item, &["raw_evidence_refs"])
+            .or_else(|| audit_json_array_owned(canonical_item, &["raw_findings"]))
+            .or_else(|| audit_json_array_owned(record, &["raw_evidence_refs"]))
+            .or_else(|| audit_json_array_owned(record, &["raw_findings"]))
+            .unwrap_or_default();
+        let static_limitations = audit_json_array_owned(canonical_item, &["static_limitations"])
+            .or_else(|| audit_json_array_owned(record, &["static_limitations"]))
+            .unwrap_or_default();
+        let confidence_basis = audit_non_empty_string(canonical_item, &["confidence", "basis"])
+            .or_else(|| audit_non_empty_string(record, &["calibration", "confidence"]))
+            .unwrap_or_else(|| "unknown".to_string());
+        let must_not_change = audit_string_array(canonical_item, &["must_not_change"])
+            .or_else(|| audit_string_array(record, &["must_not_change"]))
+            .unwrap_or_else(default_actionable_gap_packet_must_not_change);
         let gap_state = audit_non_empty_string(canonical_item, &["gap_state"])
             .unwrap_or_else(|| "gap_state_unknown".to_string());
         let actionability = audit_non_empty_string(canonical_item, &["actionability"])
@@ -19245,10 +19271,17 @@ impl Lane1EvidenceAuditBuilder {
                 repair_kind: &repair_kind,
                 target_test_type: &target_test_type,
                 assertion_shape: &assertion_shape,
+                target_test_shape: &target_test_shape,
                 repair_route_source: &repair_route_source,
                 verify_command: &verify_command,
                 verify_command_source: &verify_command_source,
                 receipt_command_or_path: receipt_command_or_path.as_deref(),
+                receipt_source: &receipt_source,
+                related_test_or_observer_present: related_test_or_observer.is_some(),
+                confidence_basis: &confidence_basis,
+                must_not_change_count: must_not_change.len(),
+                raw_evidence_refs_count: raw_evidence_refs.len(),
+                static_limitations_count: static_limitations.len(),
             });
         let public_projection_eligible = projection_exclusion_reasons.is_empty();
 
@@ -19264,18 +19297,14 @@ impl Lane1EvidenceAuditBuilder {
                 repair_kind,
                 target_test_type,
                 assertion_shape,
+                target_test_shape,
                 recommended_repair: audit_non_empty_string(canonical_item, &["recommended_repair"])
                     .or_else(|| audit_non_empty_string(record, &["recommendation", "reason"]))
                     .unwrap_or_else(|| "recommended_repair_unknown".to_string()),
                 why: audit_non_empty_string(canonical_item, &["why"])
                     .unwrap_or_else(|| "why_unknown".to_string()),
-                related_test_or_observer: audit_actionable_gap_related_test_or_observer(
-                    canonical_item,
-                ),
-                candidate_value_or_observer: audit_actionable_gap_candidate_value_or_observer(
-                    record,
-                    canonical_item,
-                ),
+                related_test_or_observer,
+                candidate_value_or_observer,
                 missing_discriminators: audit_actionable_gap_missing_discriminators(
                     record,
                     canonical_item,
@@ -19283,23 +19312,17 @@ impl Lane1EvidenceAuditBuilder {
                 verify_command,
                 repair_route_source,
                 verify_command_source,
+                receipt_command,
                 receipt_command_or_path,
                 receipt_source,
                 public_projection_eligible,
                 projection_exclusion_reasons,
-                raw_findings: audit_json_array_owned(canonical_item, &["raw_findings"])
-                    .or_else(|| audit_json_array_owned(record, &["raw_findings"]))
-                    .unwrap_or_default(),
+                raw_evidence_refs: raw_evidence_refs.clone(),
+                raw_findings: raw_evidence_refs,
                 raw_findings_supporting_only: true,
-                static_limitations: audit_json_array_owned(canonical_item, &["static_limitations"])
-                    .or_else(|| audit_json_array_owned(record, &["static_limitations"]))
-                    .unwrap_or_default(),
-                confidence_basis: audit_non_empty_string(canonical_item, &["confidence", "basis"])
-                    .or_else(|| audit_non_empty_string(record, &["calibration", "confidence"]))
-                    .unwrap_or_else(|| "unknown".to_string()),
-                must_not_change: audit_string_array(canonical_item, &["must_not_change"])
-                    .or_else(|| audit_string_array(record, &["must_not_change"]))
-                    .unwrap_or_else(default_actionable_gap_packet_must_not_change),
+                static_limitations,
+                confidence_basis,
+                must_not_change,
             },
         );
     }
@@ -20216,6 +20239,7 @@ fn audit_actionable_gap_packet_json(packet: &Lane1ActionableGapPacket) -> Value 
         "repair_kind": packet.repair_kind,
         "target_test_type": packet.target_test_type,
         "assertion_shape": packet.assertion_shape,
+        "target_test_shape": packet.target_test_shape,
         "recommended_repair": packet.recommended_repair,
         "why": packet.why,
         "related_test_or_observer": packet.related_test_or_observer,
@@ -20224,13 +20248,18 @@ fn audit_actionable_gap_packet_json(packet: &Lane1ActionableGapPacket) -> Value 
         "verify_command": packet.verify_command,
         "repair_route_source": packet.repair_route_source,
         "verify_command_source": packet.verify_command_source,
+        "receipt_command": packet.receipt_command,
         "receipt_command_or_path": packet.receipt_command_or_path,
         "receipt_source": packet.receipt_source,
         "public_projection_eligible": packet.public_projection_eligible,
         "projection_exclusion_reasons": packet.projection_exclusion_reasons,
+        "raw_evidence_refs": packet.raw_evidence_refs,
         "raw_findings": packet.raw_findings,
         "raw_findings_supporting_only": packet.raw_findings_supporting_only,
         "static_limitations": packet.static_limitations,
+        "confidence": {
+            "basis": packet.confidence_basis,
+        },
         "confidence_basis": packet.confidence_basis,
         "must_not_change": packet.must_not_change,
     })
@@ -21270,7 +21299,9 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     let verify_command = audit_non_empty_string(packet, &["verify_command"]);
     let receipt_command_or_path = audit_non_empty_string(packet, &["receipt_command_or_path"])
         .or_else(|| audit_non_empty_string(packet, &["receipt_command"]));
-    let raw_findings_count = audit_array(packet, &["raw_findings"]).len();
+    let raw_findings_count = audit_array(packet, &["raw_evidence_refs"])
+        .len()
+        .max(audit_array(packet, &["raw_findings"]).len());
     let static_limitations_count = audit_array(packet, &["static_limitations"]).len();
     let must_not_change_count = audit_array(packet, &["must_not_change"]).len();
     let public_projection_eligible =
@@ -21312,6 +21343,9 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     }
     if must_not_change_count == 0 {
         missing_context.push("must_not_change".to_string());
+    }
+    if raw_findings_count == 0 {
+        missing_context.push("raw_evidence_refs".to_string());
     }
     if ripr_swarm_plan_field_missing(&confidence_basis) {
         missing_context.push("confidence_basis".to_string());
@@ -23634,6 +23668,18 @@ fn audit_actionable_gap_repair_route_fields(
     )
 }
 
+fn audit_actionable_gap_target_test_shape(target_test_type: &str, assertion_shape: &str) -> String {
+    if audit_guidance_field_is_missing(target_test_type)
+        || audit_guidance_field_is_missing(assertion_shape)
+        || target_test_type == "target_test_type_unknown"
+        || assertion_shape == "assertion_shape_unknown"
+    {
+        "target_test_shape_unknown".to_string()
+    } else {
+        format!("{target_test_type}: {assertion_shape}")
+    }
+}
+
 fn audit_actionable_gap_verify_command_with_source(
     record: &Value,
     canonical_item: &Value,
@@ -23723,10 +23769,17 @@ struct AuditActionableGapProjectionInput<'a> {
     repair_kind: &'a str,
     target_test_type: &'a str,
     assertion_shape: &'a str,
+    target_test_shape: &'a str,
     repair_route_source: &'a str,
     verify_command: &'a str,
     verify_command_source: &'a str,
     receipt_command_or_path: Option<&'a str>,
+    receipt_source: &'a str,
+    related_test_or_observer_present: bool,
+    confidence_basis: &'a str,
+    must_not_change_count: usize,
+    raw_evidence_refs_count: usize,
+    static_limitations_count: usize,
 }
 
 fn audit_actionable_gap_projection_exclusion_reasons(
@@ -23769,6 +23822,7 @@ fn audit_actionable_gap_projection_exclusion_reasons(
         || input.repair_kind == "repair_route_unknown"
         || input.target_test_type == "target_test_type_unknown"
         || input.assertion_shape == "assertion_shape_unknown"
+        || input.target_test_shape == "target_test_shape_unknown"
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_repair_route");
     }
@@ -23781,8 +23835,29 @@ fn audit_actionable_gap_projection_exclusion_reasons(
     if input
         .receipt_command_or_path
         .is_none_or(audit_guidance_field_is_missing)
+        || !input.receipt_source.ends_with(".receipt_command")
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_receipt_path");
+    }
+    if !input.related_test_or_observer_present {
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_related_test_or_observer");
+    }
+    if audit_guidance_field_is_missing(input.confidence_basis)
+        || matches!(
+            input.confidence_basis.trim(),
+            "unknown" | "confidence_basis_unknown"
+        )
+    {
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_confidence");
+    }
+    if input.must_not_change_count == 0 {
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_must_not_change");
+    }
+    if input.raw_evidence_refs_count == 0 {
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_raw_evidence_refs");
+    }
+    if input.static_limitations_count > 0 {
+        audit_push_projection_exclusion_reason(&mut reasons, "static_limitation_present");
     }
     reasons
 }
@@ -23864,8 +23939,8 @@ fn default_actionable_gap_packet_must_not_change() -> Vec<String> {
     ]
 }
 
-fn audit_is_actionable_canonical_item(item_kind: &str, gap_state: &str) -> bool {
-    item_kind == "gap" || gap_state == "actionable"
+fn audit_is_actionable_canonical_item(_item_kind: &str, gap_state: &str) -> bool {
+    gap_state == "actionable"
 }
 
 fn audit_has_structured_repair_route(canonical_item: &Value) -> bool {
@@ -71125,6 +71200,7 @@ covered_by = ["cargo xtask check-file-policy"]
                       },
                       "verify_command": "cargo xtask evidence-quality-scorecard",
                       "receipt_command": "cargo xtask receipts check",
+                      "related_test": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "reason": "direct_owner_call"},
                       "confidence": {"basis": "static_only", "notes": []}
                     }
                   }
@@ -71157,8 +71233,24 @@ covered_by = ["cargo xtask check-file-policy"]
             "cargo xtask receipts check"
         );
         assert_eq!(
+            packet_value["packets"][0]["receipt_command"],
+            "cargo xtask receipts check"
+        );
+        assert_eq!(
             packet_value["packets"][0]["receipt_source"],
             "canonical_item.receipt_command"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["target_test_shape"],
+            "boundary_discriminator: assert_eq!(discounted_total(threshold), expected)"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["confidence"]["basis"],
+            "static_only"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["raw_evidence_refs"][0]["kind"],
+            "weakly_exposed"
         );
         Ok(())
     }
@@ -72197,7 +72289,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     "candidate_value_or_observer": "tests/lib.rs::structured",
                     "confidence_basis": "calibrated",
                     "must_not_change": ["Do not edit production code by default."],
-                    "raw_findings": [],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
                     "static_limitations": [],
                     "public_projection_eligible": true
                 },
@@ -72287,7 +72379,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     "receipt_command": "cargo xtask receipts check",
                     "confidence_basis": "fixture_backed",
                     "must_not_change": ["Do not edit production code by default."],
-                    "raw_findings": [],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
                     "static_limitations": [],
                     "public_projection_eligible": true
                 }
@@ -72312,6 +72404,54 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn ripr_swarm_plan_blocks_missing_raw_evidence_refs() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:no-raw-evidence",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(value, expected)"
+                    },
+                    "verify_command": "cargo test no_raw_evidence",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": "tests/lib.rs::no_raw_evidence",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_evidence_refs": [],
+                    "raw_findings": [],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "raw_evidence_refs")
+        );
+    }
+
+    #[test]
     fn ripr_swarm_plan_blocks_incomplete_structured_repair_routes() {
         let actionable_gaps = serde_json::json!({
             "summary": {"actionable_gaps": 1},
@@ -72330,7 +72470,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     "related_test_or_observer": "tests/lib.rs::incomplete_route",
                     "confidence_basis": "fixture_backed",
                     "must_not_change": ["Do not edit production code by default."],
-                    "raw_findings": [],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
                     "static_limitations": [],
                     "public_projection_eligible": true
                 }
@@ -72377,7 +72517,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     "related_test_or_observer": "tests/lib.rs::suggested_assertion",
                     "confidence_basis": "fixture_backed",
                     "must_not_change": ["Do not edit production code by default."],
-                    "raw_findings": [],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
                     "static_limitations": [],
                     "public_projection_eligible": true
                 }
@@ -73134,7 +73274,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             packet_value["packets"][0]["projection_exclusion_reasons"],
-            serde_json::json!(["missing_repair_route"])
+            serde_json::json!(["missing_repair_route", "missing_related_test_or_observer"])
         );
         assert_eq!(
             packet_value["summary"]["public_projection_eligible_packets"],
@@ -73600,16 +73740,9 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             packet_value["summary"]["public_projection_excluded_packets"],
-            serde_json::Value::from(1)
+            serde_json::Value::from(0)
         );
-        assert_eq!(
-            packet_value["packets"][0]["public_projection_eligible"],
-            serde_json::Value::Bool(false)
-        );
-        assert_eq!(
-            packet_value["packets"][0]["projection_exclusion_reasons"],
-            serde_json::json!(["already_observed"])
-        );
+        assert_eq!(packet_value["packets"], serde_json::json!([]));
         Ok(())
     }
 
@@ -73705,7 +73838,8 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::json!([
                 "missing_repair_route",
                 "missing_verify_command",
-                "missing_receipt_path"
+                "missing_receipt_path",
+                "missing_related_test_or_observer"
             ])
         );
         let actionable_static_limitation_reasons =

@@ -1938,6 +1938,7 @@ runtime execution.
         "repair_kind": "add_boundary_assertion",
         "target_test_type": "boundary_discriminator",
         "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+        "target_test_shape": "boundary_discriminator: assert_eq!(price(/* boundary input where amount == threshold */), expected)",
         "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
         "why": "Related tests reach the seam but miss equality at the threshold.",
         "related_test_or_observer": {
@@ -1949,15 +1950,20 @@ runtime execution.
         "verify_command": "cargo xtask evidence-quality-scorecard",
         "repair_route_source": "canonical_item.repair_route",
         "verify_command_source": "canonical_item.verify_command",
+        "receipt_command": null,
         "receipt_command_or_path": null,
         "receipt_source": "missing",
         "public_projection_eligible": false,
         "projection_exclusion_reasons": ["missing_receipt_path"],
+        "raw_evidence_refs": [
+          {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
+        ],
         "raw_findings": [
           {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
         ],
         "raw_findings_supporting_only": true,
         "static_limitations": [],
+        "confidence": {"basis": "static_only"},
         "confidence_basis": "static_only",
         "must_not_change": [
           "Do not infer actionability from raw static class."
@@ -2247,16 +2253,18 @@ Field contract:
 - `finding_alignment.actionable_gap_packets` - bounded top actionable
   canonical gap packets derived from `evidence_record.canonical_item`. Packets
   are agent-safe work items: they carry stable identity, evidence class, repair
-  kind, target test/assertion shape, related test or observer when known,
-  verification command, raw findings as supporting evidence, confidence basis,
-  and conservative `must_not_change` boundaries. They do not create user work
-  from raw static class alone.
+  kind, `target_test_shape`, related test or observer, verification command,
+  receipt command, raw evidence references as supporting evidence, confidence
+  basis, and conservative `must_not_change` boundaries. They do not create user
+  work from raw static class alone.
 - `finding_alignment.actionable_gap_packet_public_projection` - packet-level
   badge-readiness diagnostics for the emitted packet set. It counts
   public-projection eligible packets, excluded packets, and stable
-  `projection_exclusion_reasons` rows such as `missing_receipt_path`. This is
-  advisory report evidence only and does not change public badge endpoint
-  semantics.
+  `projection_exclusion_reasons` rows such as `missing_receipt_path`,
+  `missing_related_test_or_observer`, `missing_confidence`,
+  `missing_must_not_change`, `missing_raw_evidence_refs`, and
+  `static_limitation_present`. This is advisory report evidence only and does
+  not change public badge endpoint semantics.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
   count, calibrated-supported, fixture-backed, static-only, unknown-confidence,
