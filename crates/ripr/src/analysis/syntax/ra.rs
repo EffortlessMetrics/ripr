@@ -13,7 +13,7 @@ use crate::analysis::rust_index::{
     PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
     PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, TestFact,
     classify_assertion, extract_call_facts, extract_identifier_tokens,
-    extract_line_scanned_oracles, extract_literal_facts, extract_return_facts, is_test_file,
+    extract_line_scanned_oracles, extract_literal_facts, extract_return_facts,
 };
 
 impl RustSyntaxAdapter for RaRustSyntaxAdapter {
@@ -81,7 +81,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             attrs: attrs.clone(),
         };
 
-        if is_test || is_test_file(path) {
+        if is_test {
             tests.push(TestFact {
                 name,
                 file: path_buf.clone(),
@@ -210,6 +210,8 @@ fn has_test_attribute(function: &ast::Fn) -> bool {
         compact == "#[test]"
             || compact.starts_with("#[tokio::test")
             || compact.starts_with("#[async_std::test")
+            || compact == "#[rstest]"
+            || compact.starts_with("#[rstest(")
     })
 }
 
@@ -862,6 +864,55 @@ fn test_calculate() {
         assert!(!facts.functions.is_empty());
         assert!(!facts.tests.is_empty());
         assert!(!facts.probe_shapes.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn ra_adapter_ignores_unannotated_helpers_in_test_files_and_keeps_rstest()
+    -> Result<(), Box<dyn Error>> {
+        let root = temp_dir("ra_test_helpers")?;
+        fs::create_dir_all(root.join("tests"))?;
+        write_manifest(&root)?;
+        fs::write(
+            root.join("tests/pipeline.rs"),
+            r#"
+fn helper() {
+    run_pipeline();
+}
+
+#[rstest]
+#[case("alpha")]
+fn parameterized_case(input: &str) {
+    helper();
+    assert_eq!(input, "alpha");
+}
+
+#[test]
+fn integration_smoke() {
+    helper();
+}
+"#,
+        )?;
+
+        let adapter = RaRustSyntaxAdapter;
+        let text = fs::read_to_string(root.join("tests/pipeline.rs"))?;
+        let facts = adapter.summarize_file(&root.join("tests/pipeline.rs"), &text)?;
+        let test_names = facts
+            .tests
+            .iter()
+            .map(|test| test.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(facts.functions.len(), 3);
+        assert_eq!(test_names, vec!["parameterized_case", "integration_smoke"]);
+        assert!(
+            facts
+                .tests
+                .iter()
+                .find(|test| test.name == "parameterized_case")
+                .is_some_and(|test| test.attrs.iter().any(|attr| attr.contains("rstest"))),
+            "rstest attrs should remain available for value resolution"
+        );
         Ok(())
     }
 

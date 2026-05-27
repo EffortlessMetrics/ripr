@@ -229,9 +229,12 @@ type HelperOwnerCallsByFile = BTreeMap<PathBuf, BTreeMap<String, BTreeSet<String
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
     let function_names_by_file = local_function_names_by_file(index);
+    let production_owner_names = production_owner_names(index);
     for function in index.functions.iter().filter(|function| !function.is_test) {
         let helper_name_lower = function.name.to_ascii_lowercase();
         let local_function_names = function_names_by_file.get(&function.file);
+        let external_owner_names =
+            rust_index::is_test_file(&function.file).then_some(&production_owner_names);
         let owner_calls = function
             .calls
             .iter()
@@ -241,6 +244,7 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
                         function,
                         call,
                         local_function_names,
+                        external_owner_names,
                     ))
                     && call.text.contains(&format!("{}(", call.name))
             })
@@ -268,10 +272,20 @@ fn local_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet
     names_by_file
 }
 
+fn production_owner_names(index: &RustIndex) -> BTreeSet<String> {
+    index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && !rust_index::is_test_file(&function.file))
+        .map(|function| function.name.clone())
+        .collect()
+}
+
 fn helper_directly_delegates_to_specific_owner(
     function: &FunctionSummary,
     call: &CallFact,
     local_function_names: Option<&BTreeSet<String>>,
+    external_owner_names: Option<&BTreeSet<String>>,
 ) -> bool {
     if call.name == function.name {
         return false;
@@ -281,7 +295,7 @@ fn helper_directly_delegates_to_specific_owner(
     };
     let owner_name_lower = call.name.to_ascii_lowercase();
     if !owner_token_is_specific_enough(&owner_name_lower)
-        || !local_function_names.contains(&call.name)
+        || !supported_helper_owner_call_name(&call.name, local_function_names, external_owner_names)
     {
         return false;
     }
@@ -293,8 +307,11 @@ fn helper_directly_delegates_to_specific_owner(
         if candidate.name == function.name {
             continue;
         }
-        if local_function_names.contains(&candidate.name)
-            && candidate.text.contains(&format!("{}(", candidate.name))
+        if supported_helper_owner_call_name(
+            &candidate.name,
+            local_function_names,
+            external_owner_names,
+        ) && candidate.text.contains(&format!("{}(", candidate.name))
             && owner_token_is_specific_enough(&candidate.name.to_ascii_lowercase())
         {
             direct_local_owner_call_count += 1;
@@ -307,6 +324,15 @@ fn helper_directly_delegates_to_specific_owner(
     }
 
     direct_local_owner_call_count == 1 && delegates_to_call && !has_disallowed_extra_call
+}
+
+fn supported_helper_owner_call_name(
+    call_name: &str,
+    local_function_names: &BTreeSet<String>,
+    external_owner_names: Option<&BTreeSet<String>>,
+) -> bool {
+    local_function_names.contains(call_name)
+        || external_owner_names.is_some_and(|owner_names| owner_names.contains(call_name))
 }
 
 fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
@@ -3828,6 +3854,134 @@ mod tests {
                 .contains("one-hop helper owner call for value-insensitive seam"),
             "activation summary should explain the wrapper owner-call route: {}",
             evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_directly_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected test-local one-hop helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence test-local helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("one-hop helper owner call for value-insensitive seam"),
+            "activation summary should explain the test-local helper owner-call route: {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn outer_pipeline() -> String {
+    exercise_pipeline()
+}
+
+#[test]
+fn outer_helper_reaches_pipeline_indirectly() {
+    let output = outer_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "test-local two-hop helper must not get one-hop helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "test-local two-hop helper must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
