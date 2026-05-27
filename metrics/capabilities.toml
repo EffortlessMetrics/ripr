@@ -372,20 +372,23 @@ metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_comma
 [[capability]]
 id = "lane1_canonical_actionability_contract"
 name = "Lane 1 canonical actionability contract"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0061"
 evidence = [
   "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md defines the rule that actionable means a safe bounded repair route with canonical identity, repair kind, target shape, verify command, receipt command, confidence, must-not-change boundaries, and raw evidence references",
   "docs/specs/RIPR-SPEC-0021-evidence-record.md defines canonical_item identity, gap_state, repair_route, static limitations, raw spans, and receipt command compatibility",
   "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md keeps public projection deny-by-default when canonical identity, repair route, verify, receipt, freshness, or safety checks are missing",
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md blocks swarm-ready ranking for missing verify command, missing receipt command, static limitations, and missing must-not-change boundaries",
-  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while false-actionable fixture work remains the next analyzer proof"
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_iterator_local_then_activation_is_static_limitation keeps idx >= offset style local/iterator operands as named static limitations without invented candidate values",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories maps activation_boundary_input_unresolved to analysis/local-iterator-boundary-operand-resolution",
+  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while repair-packet completeness remains the next proof"
 ]
 fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
   "fixtures/swarm-plan-packet-corpus",
   "fixtures/editor_actionable_gap_queue"
 ]
-next = "false-actionable fixtures for unresolved activation boundary operands"
+next = "repair packet quality pass for public packet completeness"
 metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets"
 
 [[capability]]

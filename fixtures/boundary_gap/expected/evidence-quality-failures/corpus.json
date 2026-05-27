@@ -320,6 +320,110 @@
       ]
     },
     {
+      "id": "iterator_local_boundary_operand_static_limitation",
+      "case_kind": "failure_mode",
+      "description": "A predicate boundary whose activation operand is local or iterator-derived is a named limitation, not an actionable boundary assertion.",
+      "source": "repo-exposure-json seams[].evidence_record for an idx >= offset boundary",
+      "audit_signal": {
+        "category": "static_limitation",
+        "metric_path": "static_limitations.by_category.activation_boundary_input_unresolved",
+        "observed_count": 1,
+        "evidence": "idx >= offset has an iterator-local input operand and cannot safely project an exact activation value"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "fixture_iterator_local_boundary",
+          "canonical_gap_id": "gap:fixture_iterator_local_boundary",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "fixtures::sum_from_offset",
+          "location": {
+            "file": "fixtures/boundary_gap/src/lib.rs",
+            "line": 1
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach sum_from_offset"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low",
+              "summary": "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to return_value sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "unknown",
+              "confidence": "low",
+              "summary": "No exact boundary discriminator can be named until activation values are resolved"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 1,
+            "related_tests_total": 1
+          },
+          "top_related_test": {
+            "name": "sums_after_offset",
+            "file": "tests/pricing_tests.rs",
+            "line": 1,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "inspect_static_limitation",
+            "reason": "static evidence is opaque or unknown for this seam",
+            "candidate_values_count": 0,
+            "verify_command": null
+          },
+          "actionability": {
+            "class": "static_limitation",
+            "has_concrete_guidance": false
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "reason": "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+              "category": "activation_boundary_input_unresolved",
+              "repair_route": "analysis/local-iterator-boundary-operand-resolution"
+            }
+          ]
+        }
+      },
+      "expected_claims": [
+        "Keep iterator-local boundary operands as named static limitations.",
+        "Route the limitation to analyzer support for local/iterator operand resolution."
+      ],
+      "must_not_claim": [
+        "Do not emit an exact candidate value for idx >= offset.",
+        "Do not project add_boundary_assertion or a public repair packet for unresolved iterator-local activation."
+      ]
+    },
+    {
       "id": "side_effect_observer_not_static_limitation",
       "case_kind": "negative_guard",
       "description": "Mock-expectation semantics are recognized as observer evidence and must not be collapsed into unknown oracle evidence.",

@@ -1268,6 +1268,8 @@ fn activate_evidence(
 ) -> (StageEvidence, Vec<ValueFact>, Vec<MissingDiscriminatorFact>) {
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let mut observed: Vec<ValueFact> = Vec::new();
+    let boundary_activation_operands_unresolved =
+        !owner_name.is_empty() && boundary_activation_operands_unresolved(seam, index, owner_name);
 
     if !owner_name.is_empty() {
         for indexed in related {
@@ -1278,7 +1280,8 @@ fn activate_evidence(
     }
     sort_value_facts(&mut observed);
 
-    let missing = missing_discriminators_for(seam, &observed);
+    let missing =
+        missing_discriminators_for(seam, &observed, boundary_activation_operands_unresolved);
     let direct_value_insensitive_owner_call = !owner_name.is_empty()
         && !requires_concrete_activation_values(seam)
         && related
@@ -1337,6 +1340,14 @@ fn activate_evidence(
                     .next()
                     .unwrap_or(seam.expression())
             )
+        } else if boundary_activation_operands_unresolved && !related.is_empty() {
+            format!(
+                "Boundary activation operands are local, iterator-derived, or computed for seam `{}`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+                seam.expression()
+                    .lines()
+                    .next()
+                    .unwrap_or(seam.expression())
+            )
         } else if requires_concrete_activation_values(seam) {
             format!(
                 "No concrete activation values observed for seam `{}`",
@@ -1362,6 +1373,12 @@ fn requires_concrete_activation_values(seam: &RepoSeam) -> bool {
     matches!(seam.kind(), SeamKind::PredicateBoundary)
 }
 
+enum ObservedArgumentSelection {
+    AllArguments,
+    ArgumentIndices(Vec<usize>),
+    UnresolvedBoundaryOperands,
+}
+
 fn observed_value_facts_for_test(
     seam: &RepoSeam,
     indexed: &CompactTest<'_>,
@@ -1369,6 +1386,13 @@ fn observed_value_facts_for_test(
     owner_name: &str,
 ) -> Vec<ValueFact> {
     let mut observed: Vec<ValueFact> = Vec::new();
+    let observed_argument_selection = observed_argument_selection(seam, index, owner_name);
+    if matches!(
+        observed_argument_selection,
+        ObservedArgumentSelection::UnresolvedBoundaryOperands
+    ) {
+        return observed;
+    }
     // Per-test resolution facts (let bindings, rstest cases, table
     // rows, same-file consts) are built lazily and then reused across
     // all owner calls in this test. Per `analysis/value-extraction-v2`.
@@ -1376,7 +1400,6 @@ fn observed_value_facts_for_test(
         .value_facts
         .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
-    let observed_argument_indices = observed_argument_indices(seam, index, owner_name);
     for call in &indexed.test.calls {
         if call.name != owner_name {
             continue;
@@ -1385,10 +1408,15 @@ fn observed_value_facts_for_test(
             continue;
         };
         for (arg_index, arg) in args.into_iter().enumerate() {
-            if let Some(indices) = &observed_argument_indices
-                && !indices.contains(&arg_index)
-            {
-                continue;
+            match &observed_argument_selection {
+                ObservedArgumentSelection::ArgumentIndices(indices)
+                    if !indices.contains(&arg_index) =>
+                {
+                    continue;
+                }
+                ObservedArgumentSelection::AllArguments
+                | ObservedArgumentSelection::ArgumentIndices(_) => {}
+                ObservedArgumentSelection::UnresolvedBoundaryOperands => continue,
             }
             let mut emitted = false;
             // Direct literal first (matches pre-v2 behavior).
@@ -1439,27 +1467,78 @@ fn has_owner_call_via_one_hop_helper(indexed: &CompactTest<'_>, owner_name: &str
     indexed.helper_owner_call_names.contains(owner_name)
 }
 
-fn observed_argument_indices(
+fn observed_argument_selection(
     seam: &RepoSeam,
     index: &RustIndex,
     owner_name: &str,
-) -> Option<Vec<usize>> {
+) -> ObservedArgumentSelection {
     if seam.kind() != SeamKind::PredicateBoundary {
-        return None;
+        return ObservedArgumentSelection::AllArguments;
     }
-    let owner_fn = find_owner_function(seam, index)?;
+    let Some(owner_fn) = find_owner_function(seam, index) else {
+        return ObservedArgumentSelection::AllArguments;
+    };
     if owner_fn.name != owner_name {
-        return None;
+        return ObservedArgumentSelection::AllArguments;
     }
-    let (left, right) = comparison_operands(seam.expression())?;
+    let Some((left, right)) = comparison_operands(seam.expression()) else {
+        return ObservedArgumentSelection::AllArguments;
+    };
     let parameters = function_parameters(owner_fn);
     if let Some(left_index) = parameters.iter().position(|param| param == &left) {
-        return Some(vec![left_index]);
+        return ObservedArgumentSelection::ArgumentIndices(vec![left_index]);
     }
-    parameters
-        .iter()
-        .position(|param| param == &right)
-        .map(|right_index| vec![right_index])
+    if let Some(left_index) = boundary_local_operand_parameter_index(owner_fn, &parameters, &left) {
+        return ObservedArgumentSelection::ArgumentIndices(vec![left_index]);
+    }
+    if let Some(right_index) = parameters.iter().position(|param| param == &right)
+        && !scalar_values(&left).is_empty()
+    {
+        return ObservedArgumentSelection::ArgumentIndices(vec![right_index]);
+    }
+    if !scalar_values(&left).is_empty()
+        && let Some(right_index) =
+            boundary_local_operand_parameter_index(owner_fn, &parameters, &right)
+    {
+        return ObservedArgumentSelection::ArgumentIndices(vec![right_index]);
+    }
+    ObservedArgumentSelection::UnresolvedBoundaryOperands
+}
+
+fn boundary_activation_operands_unresolved(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_name: &str,
+) -> bool {
+    matches!(
+        observed_argument_selection(seam, index, owner_name),
+        ObservedArgumentSelection::UnresolvedBoundaryOperands
+    )
+}
+
+fn boundary_local_operand_parameter_index(
+    owner_fn: &FunctionSummary,
+    parameters: &[String],
+    operand: &str,
+) -> Option<usize> {
+    if operand.is_empty() {
+        return None;
+    }
+    for (index, parameter) in parameters.iter().enumerate() {
+        if owner_fn
+            .body
+            .contains(&format!("if let Some({operand}) = {parameter}"))
+            || owner_fn
+                .body
+                .contains(&format!("if let Ok({operand}) = {parameter}"))
+            || (owner_fn.body.contains(&format!("match {parameter}"))
+                && (owner_fn.body.contains(&format!("Some({operand})"))
+                    || owner_fn.body.contains(&format!("Ok({operand})"))))
+        {
+            return Some(index);
+        }
+    }
+    None
 }
 
 fn activation_overlap_score(
@@ -1623,9 +1702,13 @@ fn compact_activate_evidence(
 fn missing_discriminators_for(
     seam: &RepoSeam,
     observed: &[ValueFact],
+    boundary_activation_operands_unresolved: bool,
 ) -> Vec<MissingDiscriminatorFact> {
     match seam.kind() {
         SeamKind::PredicateBoundary => {
+            if boundary_activation_operands_unresolved {
+                return Vec::new();
+            }
             // Without a value model we cannot prove the boundary value is
             // tested. Surface a hypothesis if the predicate uses a
             // strict-or-equal operator and at least one observed value is
@@ -4608,6 +4691,56 @@ mod tests {
             values,
             vec!["50".to_string()],
             "observed values should describe the tested input operand, not the boundary parameter"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_input_operand_is_iterator_local_then_activation_is_static_limitation()
+    -> Result<(), String> {
+        let prod_src = "pub fn sum_from_offset(values: &[i32], offset: usize) -> i32 { \
+                            let mut total = 0; \
+                            for (idx, value) in values.iter().enumerate() { \
+                                if idx >= offset { total += *value; } \
+                            } \
+                            total \
+                        }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn sums_after_offset() { \
+                 assert_eq!(sum_from_offset(&[1, 2, 3], 1), 5); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("local, iterator-derived, or computed"),
+            "unresolved iterator-local boundary must explain why it is limited; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "iterator-local activation values must not be invented from owner-call args; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "unresolved iterator-local boundary must not emit exact candidate discriminator; got {:?}",
+            evidence.missing_discriminators
         );
         Ok(())
     }

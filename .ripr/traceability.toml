@@ -3997,21 +3997,26 @@ tests = [
   "xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection",
   "xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context",
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_iterator_local_then_activation_is_static_limitation",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_actionable_packet_without_identity",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_repair_guidance",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_receipt_command_or_path",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_verify_command",
 ]
 fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
   "fixtures/swarm-plan-packet-corpus",
   "fixtures/editor_actionable_gap_queue",
 ]
 code = [
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
+  "docs/OUTPUT_SCHEMA.md",
   "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md",
   "docs/specs/README.md",
   "docs/CAPABILITY_MATRIX.md",

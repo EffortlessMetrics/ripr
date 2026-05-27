@@ -940,6 +940,10 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
         "side_effect_sink_unknown"
     } else if reason.contains("no direct owner call observed for value-insensitive seam") {
         "activation_owner_call_unresolved"
+    } else if reason.contains("boundary activation operands")
+        && (reason.contains("local") || reason.contains("iterator") || reason.contains("computed"))
+    {
+        "activation_boundary_input_unresolved"
     } else if reason.contains("no concrete activation values observed")
         || reason.contains("no literal activation values")
     {
@@ -961,6 +965,9 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
+        "activation_boundary_input_unresolved" => {
+            "analysis/local-iterator-boundary-operand-resolution"
+        }
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
@@ -1530,6 +1537,12 @@ mod tests {
             (
                 "activate",
                 "unknown",
+                "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+                "activation_boundary_input_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
                 "cross-file constant boundary is unresolved",
                 "cross_file_constant_unresolved",
             ),
@@ -1623,6 +1636,10 @@ mod tests {
             (
                 "activation_owner_call_unresolved",
                 "analysis/related-test-ranking-audit-fixes",
+            ),
+            (
+                "activation_boundary_input_unresolved",
+                "analysis/local-iterator-boundary-operand-resolution",
             ),
             (
                 "activation_value_unresolved",

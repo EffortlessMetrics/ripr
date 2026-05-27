@@ -1389,6 +1389,10 @@ Field contract:
   focused-test instructions. Each entry carries the original `stage`, `state`,
   and `reason` plus a normalized `category` and `repair_route` so Lane 1 can
   group analyzer limits without treating them as user test gaps.
+  Predicate boundaries whose activation operand is local, iterator-derived, or
+  computed use category `activation_boundary_input_unresolved` with repair
+  route `analysis/local-iterator-boundary-operand-resolution`; they must not
+  emit exact boundary candidate values or public repair packets.
 - `seams[].evidence_record.presentation_text` - reserved presentation-text
   evidence-class projection. It is `null` until a fixture-backed presentation
   text slice classifies visibility, observer shape, and output actionability.
