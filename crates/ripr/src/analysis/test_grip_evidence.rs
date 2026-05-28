@@ -99,8 +99,8 @@ impl<'a> CompactGripContext<'a> {
         let mut tests_by_file_stem: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_import_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let helper_owner_calls_by_file = helper_owner_calls_by_file(index);
-        let unique_test_helper_owner_calls_by_name =
-            unique_test_helper_owner_calls_by_name(&helper_owner_calls_by_file);
+        let unambiguous_test_helper_owner_calls_by_name =
+            unambiguous_test_helper_owner_calls_by_name(&helper_owner_calls_by_file);
         let tests = index
             .tests
             .iter()
@@ -126,7 +126,7 @@ impl<'a> CompactGripContext<'a> {
                     test,
                     &call_names,
                     &helper_owner_calls_by_file,
-                    &unique_test_helper_owner_calls_by_name,
+                    &unambiguous_test_helper_owner_calls_by_name,
                 );
                 for call_name in &call_names {
                     tests_by_call_name
@@ -265,7 +265,7 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     helpers
 }
 
-fn unique_test_helper_owner_calls_by_name(
+fn unambiguous_test_helper_owner_calls_by_name(
     helpers: &HelperOwnerCallsByFile,
 ) -> HelperOwnerCallsByName {
     let mut by_name: BTreeMap<String, Vec<BTreeSet<String>>> = BTreeMap::new();
@@ -282,7 +282,7 @@ fn unique_test_helper_owner_calls_by_name(
     }
     by_name
         .into_iter()
-        .filter_map(|(helper_name, owner_sets)| unique_helper_owner_calls(helper_name, owner_sets))
+        .filter_map(|(helper_name, owner_sets)| common_helper_owner_calls(helper_name, owner_sets))
         .collect()
 }
 
@@ -396,13 +396,19 @@ fn is_helper_token_boundary(ch: Option<char>) -> bool {
     ch.is_none_or(|ch| ch == '_' || !ch.is_alphanumeric())
 }
 
-fn unique_helper_owner_calls(
+fn common_helper_owner_calls(
     helper_name: String,
     owner_sets: Vec<BTreeSet<String>>,
 ) -> Option<(String, BTreeSet<String>)> {
     let mut owner_sets = owner_sets.into_iter();
-    let first = owner_sets.next()?;
-    owner_sets.next().is_none().then_some((helper_name, first))
+    let mut common = owner_sets.next()?;
+    for owner_set in owner_sets {
+        common = common.intersection(&owner_set).cloned().collect();
+        if common.is_empty() {
+            return None;
+        }
+    }
+    Some((helper_name, common))
 }
 
 fn helper_owner_call_names_for_test(
@@ -4114,6 +4120,80 @@ fn pipeline_from_support_helper() {
         Ok(())
     }
 
+    #[test]
+    fn given_call_presence_when_duplicate_test_support_helpers_share_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let support_a = PathBuf::from("tests/support_a.rs");
+        let support_a_src = r#"
+use pipeline::render_pipeline;
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+"#;
+        let support_b = PathBuf::from("tests/support_b.rs");
+        let support_b_src = r#"
+use pipeline::render_pipeline;
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("beta")
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use support_a::exercise_pipeline;
+
+#[test]
+fn pipeline_from_support_helper() {
+    let rendered = exercise_pipeline();
+    assert_eq!(rendered, "alpha");
+}
+"#;
+        let index = index_from_files(&[
+            (prod, prod_src),
+            (support_a, support_a_src),
+            (support_b, support_b_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected duplicate same-owner support helpers to prove helper-owner relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence duplicate support helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
     #[test]
     fn given_call_presence_when_test_support_helper_name_is_ambiguous_then_activation_stays_unknown()
     -> Result<(), String> {
