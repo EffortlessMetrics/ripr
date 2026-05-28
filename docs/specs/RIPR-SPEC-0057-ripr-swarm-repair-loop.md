@@ -162,6 +162,11 @@ raw_findings[] as supporting evidence
 The runner may also use projection eligibility and prior outcome state for
 ranking and blocking decisions. It must not derive work items from raw findings,
 Markdown text, PR annotations, or static class labels.
+When the source audit has no safely actionable packets, the swarm plan and
+readiness reports may still forward a static-limitation backlog with top
+limitation categories and analyzer repair routes. That backlog is advisory
+analyzer routing evidence only; it must not become a repair-ready packet or
+public actionable count.
 
 ## Required Packet Fields
 
@@ -526,6 +531,9 @@ Current implementation coverage:
 - `xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context`
   pins that blocked/static-limitation packets stay visible without becoming
   repair-ready;
+- `xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context`
+  pins static-limitation backlog forwarding from actionable gaps into swarm
+  plan output without making limitations repair-ready;
 - `xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest`
   pins durable attempt history and latest-attempt selection;
 - `xtask::tests::ripr_swarm_attempt_ledger_drops_stale_synthetic_not_attempted_rows`
@@ -536,7 +544,9 @@ Current implementation coverage:
   pins typed route context, per-`repair_kind` route-quality metrics, top
   failing routes, and missing evidence fields;
 - `xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts`
-  pins readiness consumption of the attempt ledger and repair-route quality.
+  pins readiness consumption of the attempt ledger and repair-route quality,
+  plus forwarding of the swarm-plan static-limitation backlog into readiness
+  output.
 
 Follow-up implementation PRs should add tests for:
 

@@ -2347,6 +2347,10 @@ mutation execution.
 The Markdown sibling includes a `Runtime Status` table with the same
 completeness fields as JSON so human readers can see whether packet counts are
 full or limited before acting on them.
+`static_limitation_backlog` carries the same named limitation categories and
+analyzer repair routes from the source Lane 1 audit so downstream swarm
+surfaces can explain why no packet is safely actionable without turning those
+limitations into user repair work.
 
 ```json
 {
@@ -2386,6 +2390,22 @@ full or limited before acting on them.
     "verify_command_unknowns": 0
   },
   "run_limitations": [],
+  "static_limitation_backlog": {
+    "source": "lane1-evidence-audit.static_limitations",
+    "top_categories": [
+      {
+        "category": "activation_value_unresolved",
+        "count": 141,
+        "repair_route": "analysis/value-resolution-audit-fixes"
+      }
+    ],
+    "top_repair_routes": [
+      {
+        "repair_route": "analysis/value-resolution-audit-fixes",
+        "count": 141
+      }
+    ]
+  },
   "packets": [
     {
       "canonical_gap_id": "gap:abc",
@@ -2484,6 +2504,10 @@ a bounded blocked report with the input path, input state, and limitation text.
 It does not silently drop the plan or infer work from stale Markdown.
 The Markdown sibling includes a `Runtime Status` table with the same
 completeness fields as JSON before listing plan inputs.
+`static_limitation_backlog` is copied from the actionable-gap source audit so
+operators can see which named analyzer limitations are blocking routeable
+packets. It is backlog routing evidence only; it must not be counted as
+repair-ready packet work.
 
 ```json
 {
@@ -2503,6 +2527,22 @@ completeness fields as JSON before listing plan inputs.
     "canonical_items": 38445,
     "actionable_gaps": 162,
     "packets_emitted": 25
+  },
+  "static_limitation_backlog": {
+    "source": "lane1-evidence-audit.static_limitations",
+    "top_categories": [
+      {
+        "category": "activation_value_unresolved",
+        "count": 141,
+        "repair_route": "analysis/value-resolution-audit-fixes"
+      }
+    ],
+    "top_repair_routes": [
+      {
+        "repair_route": "analysis/value-resolution-audit-fixes",
+        "count": 141
+      }
+    ]
   },
   "top_limit": 10,
   "summary": {
@@ -3029,6 +3069,10 @@ present, and otherwise forwards attempt-ledger `summary`,
 "try the next packet" from "fix the noisy repair route first." These fields are
 advisory quality signals and do not change badge, LSP, PR, or CI gate
 semantics.
+Readiness forwards `static_limitation_backlog` from `swarm-plan` so thin
+surfaces can show the leading analyzer repair routes when no packet is safely
+actionable. This field is advisory limitation backlog, not a public actionable
+count and not a CI gate predicate.
 `top_next_action` is a single-object projection of `next_actions[0]` for
 thin downstream surfaces that need one canonical next route without
 reinterpreting the full advisory queue.
@@ -3097,6 +3141,22 @@ limits.
     "regressed_packets": 0,
     "resolved_packets": 1,
     "orphaned_receipts": 0
+  },
+  "static_limitation_backlog": {
+    "source": "lane1-evidence-audit.static_limitations",
+    "top_categories": [
+      {
+        "category": "activation_value_unresolved",
+        "count": 141,
+        "repair_route": "analysis/value-resolution-audit-fixes"
+      }
+    ],
+    "top_repair_routes": [
+      {
+        "repair_route": "analysis/value-resolution-audit-fixes",
+        "count": 141
+      }
+    ]
   },
   "repair_route_quality": [
     {
