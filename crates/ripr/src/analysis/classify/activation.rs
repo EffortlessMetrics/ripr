@@ -793,6 +793,27 @@ mod tests {
     }
 
     #[test]
+    fn activation_evidence_ignores_inline_commented_match_boundary_operand_alias() {
+        let owner = function(
+            "pub fn score(raw_amount: Option<i32>, threshold: i32) -> bool {\n    let _note = 0; // match raw_amount { Some(amount) => amount >= threshold, _ => false }\n    let amount = 1;\n    amount >= threshold\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(Some(100), 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(!has_observed_boundary_equality(&activation));
+        assert_eq!(activation.missing_discriminators.len(), 1);
+        assert!(
+            activation.missing_discriminators[0]
+                .reason
+                .contains("observed amount values: unknown"),
+            "inline commented match aliases must not resolve boundary operands; got {:?}",
+            activation.missing_discriminators
+        );
+    }
+
+    #[test]
     fn activation_evidence_ignores_commented_match_wrapper_pattern() {
         let owner = function(
             "pub fn score(raw_amount: Option<i32>, threshold: i32) -> bool {\n    let _seen = match raw_amount { _ => false };\n    // Some(amount)\n    let amount = 1;\n    amount >= threshold\n}",

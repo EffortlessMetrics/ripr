@@ -5028,6 +5028,47 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     }
 
     #[test]
+    fn given_boundary_owner_call_when_inline_match_alias_is_comment_then_operand_stays_unresolved()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
+    let _note = 0; // match raw_amount { Some(amount) => if amount >= threshold { amount - 10 } else { amount }, _ => 0 }
+    let amount = 1;
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#;
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn at_threshold() { \
+                 assert_eq!(discounted_total(Some(50), 50), -9); \
+             }\n",
+        );
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
+        files.push((PathBuf::from(test.0), test.1));
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("amount >= threshold")
+            })
+            .ok_or_else(|| "amount predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "inline commented match aliases must not resolve boundary operands; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "unresolved inline commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_boundary_owner_call_when_match_wrapper_is_comment_then_operand_stays_unresolved()
     -> Result<(), String> {
         let prod_src = r#"
