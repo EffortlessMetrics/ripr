@@ -23713,7 +23713,12 @@ fn ripr_swarm_readiness_top_failing_repair_routes(
 fn ripr_swarm_readiness_top_missing_evidence_fields(
     attempt_ledger: &Value,
 ) -> Vec<Lane1EvidenceAuditTopCount> {
-    let rows = audit_array(attempt_ledger, &["top_missing_evidence_fields"])
+    let attempts = ripr_swarm_attempt_ledger_entries_from_value(attempt_ledger);
+    if !attempts.is_empty() {
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        return ripr_swarm_attempt_ledger_top_missing_evidence_fields(&latest_attempts);
+    }
+    audit_array(attempt_ledger, &["top_missing_evidence_fields"])
         .iter()
         .filter_map(|row| {
             Some(Lane1EvidenceAuditTopCount {
@@ -23721,14 +23726,7 @@ fn ripr_swarm_readiness_top_missing_evidence_fields(
                 count: audit_usize(row, &["count"]).unwrap_or_default(),
             })
         })
-        .collect::<Vec<_>>();
-    if rows.is_empty() {
-        ripr_swarm_attempt_ledger_top_missing_evidence_fields(
-            &ripr_swarm_attempt_ledger_entries_from_value(attempt_ledger),
-        )
-    } else {
-        rows
-    }
+        .collect::<Vec<_>>()
 }
 
 fn ripr_swarm_repair_route_quality_row_from_value(
@@ -78778,6 +78776,108 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["summary"]["improved_packets"], 1);
         assert_eq!(value["summary"]["unchanged_packets"], 0);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_recomputes_missing_evidence_from_attempts_when_rows_are_stale()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-plan",
+            "summary": {
+                "swarm_ready_packets": 1,
+                "blocked_packets": 0,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 0,
+                "high_confidence_packets": 1
+            },
+            "source_summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 1
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gap-outcomes",
+            "summary": {
+                "outcomes_total": 1,
+                "not_attempted": 0,
+                "evidence_improved": 1,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "summary": {
+                "attempts_total": 1,
+                "canonical_gaps_total": 1,
+                "not_attempted": 0,
+                "evidence_improved": 1,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            },
+            "top_missing_evidence_fields": [
+                {
+                    "label": "receipt_command",
+                    "count": 1
+                }
+            ],
+            "attempts": [
+                {
+                    "packet_id": "packet-output-001",
+                    "canonical_gap_id": "gap:output-observer",
+                    "attempt_id": "attempt:newer-improved",
+                    "actor_kind": "agent",
+                    "repair_kind": "add_output_observer",
+                    "verify_command": "cargo test -p ripr output_observer",
+                    "receipt_command": "cargo xtask receipts write --packet packet-output-001",
+                    "outcome": "evidence_improved",
+                    "timestamp": "unix_ms:10"
+                }
+            ]
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        assert!(report.top_missing_evidence_fields.is_empty());
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["top_missing_evidence_fields"],
+            serde_json::Value::Array(Vec::new())
+        );
         Ok(())
     }
 

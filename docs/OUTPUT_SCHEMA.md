@@ -2946,10 +2946,11 @@ incomplete. If outcomes are present while the attempt ledger is missing,
 readiness may display those outcome counts as advisory context, but the report
 remains non-consumable until durable attempt history is available.
 
-Readiness recomputes attempt/outcome summary counts and repair-route quality
-from durable attempt-ledger `attempts[]` when present, and otherwise forwards
-attempt-ledger `summary`, `repair_route_quality[]`, `top_failing_repair_routes[]`,
-and `top_missing_evidence_fields[]` so the next operator action can distinguish
+Readiness recomputes attempt/outcome summary counts, repair-route quality, and
+missing-evidence-field counts from durable attempt-ledger `attempts[]` when
+present, and otherwise forwards attempt-ledger `summary`,
+`repair_route_quality[]`, `top_failing_repair_routes[]`, and
+`top_missing_evidence_fields[]` so the next operator action can distinguish
 "try the next packet" from "fix the noisy repair route first." These fields are
 advisory quality signals and do not change badge, LSP, PR, or CI gate
 semantics.
