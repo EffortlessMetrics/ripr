@@ -3795,6 +3795,7 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
   "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest",
+  "xtask::tests::lane1_static_limitation_backlog_emits_analyzer_packets",
   "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts",
   "xtask::tests::ripr_swarm_readiness_audits_blocked_state_routes",
   "xtask::tests::dogfood_surface_projection_alignment_receipts_are_checked",

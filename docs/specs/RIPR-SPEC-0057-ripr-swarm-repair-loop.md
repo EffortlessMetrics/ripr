@@ -172,6 +172,11 @@ readiness reports may still forward a static-limitation backlog with top
 limitation categories and analyzer repair routes. That backlog is advisory
 analyzer routing evidence only; it must not become a repair-ready packet or
 public actionable count.
+The backlog may include `limitation_backlog_packets[]` for analyzer work. Those
+packets must include limitation category, repair route, signal count, sample
+canonical gap IDs or source samples when available, dominant evidence class, why
+the item is not actionable, the analyzer unlock condition, and non-claims. They
+remain non-actionable and must not be placed in `top_ready_packets`.
 
 ## Required Packet Fields
 
@@ -561,6 +566,9 @@ Current implementation coverage:
 - `xtask::tests::ripr_swarm_readiness_audits_blocked_state_routes`
   pins blocked-state counts, reasons, next action kinds, repair routes, and
   Markdown/JSON parity for readiness route auditing.
+- `xtask::tests::lane1_static_limitation_backlog_emits_analyzer_packets`
+  pins analyzer backlog packets for named limitations without emitting public
+  repair packets.
 
 Follow-up implementation PRs should add tests for:
 

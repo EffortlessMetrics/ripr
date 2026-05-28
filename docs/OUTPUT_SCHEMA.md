@@ -2404,6 +2404,31 @@ limitations into user repair work.
         "repair_route": "analysis/value-resolution-audit-fixes",
         "count": 141
       }
+    ],
+    "limitation_backlog_packets": [
+      {
+        "packet_id": "limitation:activation_boundary_input_unresolved",
+        "limitation_category": "activation_boundary_input_unresolved",
+        "repair_route": "analysis/local-computed-boundary-operand-resolution",
+        "signal_count": 297,
+        "sample_canonical_gap_ids": ["gap:idx-offset-local"],
+        "sample_sources": [
+          {
+            "canonical_gap_id": "gap:idx-offset-local",
+            "evidence_class": "predicate_boundary",
+            "source_file": "src/window.rs"
+          }
+        ],
+        "dominant_evidence_class": "predicate_boundary",
+        "why_not_actionable": "activation inputs cannot yet be mapped to a safe concrete test value",
+        "unlock_condition": "implement `analysis/local-computed-boundary-operand-resolution` so local, iterator, or computed operands can be resolved before candidate values are recommended",
+        "non_claims": [
+          "not a public repair packet",
+          "not swarm-ready work",
+          "do not edit tests from this backlog item alone",
+          "do not invent exact boundary candidate values"
+        ]
+      }
     ]
   },
   "packets": [
@@ -2508,6 +2533,10 @@ completeness fields as JSON before listing plan inputs.
 operators can see which named analyzer limitations are blocking routeable
 packets. It is backlog routing evidence only; it must not be counted as
 repair-ready packet work.
+`static_limitation_backlog.limitation_backlog_packets[]` turns top limitation
+routes into analyzer work packets with sample IDs, dominant evidence class,
+unlock condition, and non-claims. These packets are not public repair packets
+and must not enter the swarm-ready queue.
 
 ```json
 {

@@ -18072,6 +18072,7 @@ struct Lane1EvidenceAuditReport {
     static_limitation_stage_counts: BTreeMap<String, usize>,
     static_limitation_category_counts: BTreeMap<String, usize>,
     static_limitation_repair_route_counts: BTreeMap<String, usize>,
+    static_limitation_backlog_packets: Vec<Lane1StaticLimitationBacklogPacket>,
     oracle_semantics_counts: BTreeMap<String, usize>,
     oracle_kind_counts: BTreeMap<String, usize>,
     oracle_strength_counts: BTreeMap<String, usize>,
@@ -18101,6 +18102,37 @@ struct Lane1EvidenceAuditActionableGapTopLists {
 struct Lane1EvidenceAuditTopCount {
     label: String,
     count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1StaticLimitationBacklogPacket {
+    packet_id: String,
+    limitation_category: String,
+    repair_route: String,
+    signal_count: usize,
+    sample_canonical_gap_ids: Vec<String>,
+    sample_sources: Vec<Lane1StaticLimitationBacklogSample>,
+    dominant_evidence_class: String,
+    why_not_actionable: String,
+    unlock_condition: String,
+    non_claims: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1StaticLimitationBacklogSample {
+    canonical_gap_id: Option<String>,
+    evidence_class: String,
+    source_file: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1StaticLimitationBacklogPacketBuilder {
+    limitation_category: String,
+    signal_count: usize,
+    repair_route_counts: BTreeMap<String, usize>,
+    evidence_class_counts: BTreeMap<String, usize>,
+    sample_canonical_gap_ids: BTreeSet<String>,
+    sample_sources: Vec<Lane1StaticLimitationBacklogSample>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -19379,6 +19411,8 @@ struct Lane1EvidenceAuditBuilder {
     static_stage_counts: BTreeMap<String, usize>,
     static_category_counts: BTreeMap<String, usize>,
     static_repair_route_counts: BTreeMap<String, usize>,
+    static_limitation_backlog_packet_builders:
+        BTreeMap<String, Lane1StaticLimitationBacklogPacketBuilder>,
     oracle_semantics_counts: BTreeMap<String, usize>,
     oracle_kind_counts: BTreeMap<String, usize>,
     oracle_strength_counts: BTreeMap<String, usize>,
@@ -19476,6 +19510,13 @@ impl Lane1EvidenceAuditBuilder {
         }
 
         let static_limitations = audit_array(record, &["static_limitations"]);
+        let canonical_item =
+            audit_get(record, &["canonical_item"]).filter(|value| value.is_object());
+        let evidence_class = audit_alignment_evidence_class(record, canonical_item);
+        let sample_canonical_gap_id = canonical_item
+            .and_then(|item| audit_non_empty_string(item, &["canonical_gap_id"]))
+            .or_else(|| canonical_gap_id.clone());
+        let mut static_limitation_backlog_samples = Vec::new();
         self.summary.static_limitations_total += static_limitations.len();
         debt.debt_score += static_limitations.len();
         debt.static_limitations += static_limitations.len();
@@ -19494,6 +19535,7 @@ impl Lane1EvidenceAuditBuilder {
             audit_increment(&mut self.static_stage_counts, &stage);
             audit_increment(&mut self.static_category_counts, &category);
             audit_increment(&mut self.static_repair_route_counts, &repair_route);
+            static_limitation_backlog_samples.push((category, repair_route));
         }
 
         let unknown_stage_count = audit_unknown_stage_count(record);
@@ -19535,6 +19577,16 @@ impl Lane1EvidenceAuditBuilder {
             audit_increment(
                 &mut self.oracle_semantics_counts,
                 &audit_oracle_semantics_key(related),
+            );
+        }
+
+        for (category, repair_route) in static_limitation_backlog_samples {
+            self.ingest_static_limitation_backlog_packet_sample(
+                &category,
+                &repair_route,
+                sample_canonical_gap_id.as_deref(),
+                &evidence_class,
+                &file,
             );
         }
 
@@ -19711,6 +19763,42 @@ impl Lane1EvidenceAuditBuilder {
             && !audit_has_named_static_limitation(record, canonical_item)
         {
             self.static_unknown_without_named_limitation += 1;
+        }
+    }
+
+    fn ingest_static_limitation_backlog_packet_sample(
+        &mut self,
+        category: &str,
+        repair_route: &str,
+        canonical_gap_id: Option<&str>,
+        evidence_class: &str,
+        source_file: &str,
+    ) {
+        let entry = self
+            .static_limitation_backlog_packet_builders
+            .entry(category.to_string())
+            .or_insert_with(|| Lane1StaticLimitationBacklogPacketBuilder {
+                limitation_category: category.to_string(),
+                ..Lane1StaticLimitationBacklogPacketBuilder::default()
+            });
+        entry.signal_count += 1;
+        audit_increment(&mut entry.repair_route_counts, repair_route);
+        audit_increment(&mut entry.evidence_class_counts, evidence_class);
+        if let Some(canonical_gap_id) = canonical_gap_id
+            && entry.sample_canonical_gap_ids.len() < 3
+        {
+            entry
+                .sample_canonical_gap_ids
+                .insert(canonical_gap_id.to_string());
+        }
+        if entry.sample_sources.len() < 3 {
+            entry
+                .sample_sources
+                .push(Lane1StaticLimitationBacklogSample {
+                    canonical_gap_id: canonical_gap_id.map(ToOwned::to_owned),
+                    evidence_class: evidence_class.to_string(),
+                    source_file: source_file.to_string(),
+                });
         }
     }
 
@@ -20020,6 +20108,18 @@ impl Lane1EvidenceAuditBuilder {
                 .then_with(|| left.line.cmp(&right.line))
         });
         same_line_duplicate_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+        let mut static_limitation_backlog_packets = self
+            .static_limitation_backlog_packet_builders
+            .into_values()
+            .map(lane1_static_limitation_backlog_packet_from_builder)
+            .collect::<Vec<_>>();
+        static_limitation_backlog_packets.sort_by(|left, right| {
+            right
+                .signal_count
+                .cmp(&left.signal_count)
+                .then_with(|| left.limitation_category.cmp(&right.limitation_category))
+        });
+        static_limitation_backlog_packets.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
         let actionable_gap_top_lists = Lane1EvidenceAuditActionableGapTopLists {
             top_actionable_gap_classes: audit_top_counts(self.actionable_gap_class_counts),
@@ -20088,6 +20188,7 @@ impl Lane1EvidenceAuditBuilder {
             static_limitation_stage_counts: self.static_stage_counts,
             static_limitation_category_counts: self.static_category_counts,
             static_limitation_repair_route_counts: self.static_repair_route_counts,
+            static_limitation_backlog_packets,
             oracle_semantics_counts: self.oracle_semantics_counts,
             oracle_kind_counts: self.oracle_kind_counts,
             oracle_strength_counts: self.oracle_strength_counts,
@@ -20973,7 +21074,132 @@ fn lane1_static_limitation_backlog_json(report: &Lane1EvidenceAuditReport) -> Va
                 })
             })
             .collect::<Vec<_>>(),
+        "limitation_backlog_packets": lane1_static_limitation_backlog_packets_json(
+            &report.static_limitation_backlog_packets
+        ),
     })
+}
+
+fn lane1_static_limitation_backlog_packet_from_builder(
+    builder: Lane1StaticLimitationBacklogPacketBuilder,
+) -> Lane1StaticLimitationBacklogPacket {
+    let repair_route = audit_top_counts(builder.repair_route_counts)
+        .first()
+        .map(|row| row.label.clone())
+        .unwrap_or_else(|| {
+            static_limitation_repair_route(&builder.limitation_category).to_string()
+        });
+    let dominant_evidence_class = audit_top_counts(builder.evidence_class_counts)
+        .first()
+        .map(|row| row.label.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+    Lane1StaticLimitationBacklogPacket {
+        packet_id: format!("limitation:{}", builder.limitation_category),
+        limitation_category: builder.limitation_category.clone(),
+        repair_route: repair_route.clone(),
+        signal_count: builder.signal_count,
+        sample_canonical_gap_ids: builder.sample_canonical_gap_ids.into_iter().collect(),
+        sample_sources: builder.sample_sources,
+        dominant_evidence_class,
+        why_not_actionable: static_limitation_why_not_actionable(&builder.limitation_category)
+            .to_string(),
+        unlock_condition: static_limitation_unlock_condition(
+            &builder.limitation_category,
+            &repair_route,
+        )
+        .to_string(),
+        non_claims: static_limitation_backlog_packet_non_claims(&builder.limitation_category),
+    }
+}
+
+fn lane1_static_limitation_backlog_packets_json(
+    packets: &[Lane1StaticLimitationBacklogPacket],
+) -> Vec<Value> {
+    packets
+        .iter()
+        .map(|packet| {
+            serde_json::json!({
+                "packet_id": packet.packet_id,
+                "limitation_category": packet.limitation_category,
+                "repair_route": packet.repair_route,
+                "signal_count": packet.signal_count,
+                "sample_canonical_gap_ids": packet.sample_canonical_gap_ids,
+                "sample_sources": packet
+                    .sample_sources
+                    .iter()
+                    .map(lane1_static_limitation_backlog_sample_json)
+                    .collect::<Vec<_>>(),
+                "dominant_evidence_class": packet.dominant_evidence_class,
+                "why_not_actionable": packet.why_not_actionable,
+                "unlock_condition": packet.unlock_condition,
+                "non_claims": packet.non_claims,
+            })
+        })
+        .collect()
+}
+
+fn lane1_static_limitation_backlog_sample_json(
+    sample: &Lane1StaticLimitationBacklogSample,
+) -> Value {
+    serde_json::json!({
+        "canonical_gap_id": sample.canonical_gap_id,
+        "evidence_class": sample.evidence_class,
+        "source_file": sample.source_file,
+    })
+}
+
+fn static_limitation_why_not_actionable(category: &str) -> &'static str {
+    match category {
+        "activation_boundary_input_unresolved" => {
+            "activation inputs cannot yet be mapped to a safe concrete test value"
+        }
+        "activation_owner_call_absent_affinity_only" => {
+            "related-test affinity is not enough to prove the owner is exercised"
+        }
+        "activation_owner_call_absent_same_file_only" => {
+            "same-file proximity is not enough to prove the owner is exercised"
+        }
+        "observer_target_unknown" => {
+            "the analyzer cannot name a bounded observer target for a safe repair packet"
+        }
+        _ => "static evidence is insufficient to provide a bounded repair packet",
+    }
+}
+
+fn static_limitation_unlock_condition(category: &str, repair_route: &str) -> String {
+    match category {
+        "activation_boundary_input_unresolved" => {
+            format!(
+                "implement `{repair_route}` so local, iterator, or computed operands can be resolved before candidate values are recommended"
+            )
+        }
+        "activation_owner_call_absent_affinity_only"
+        | "activation_owner_call_absent_same_file_only" => {
+            format!(
+                "implement `{repair_route}` so related tests can be tied to direct or helper owner calls"
+            )
+        }
+        "observer_target_unknown" => {
+            format!(
+                "implement `{repair_route}` so the observer target and assertion surface are explicit"
+            )
+        }
+        _ => format!(
+            "implement `{repair_route}` and preserve the item as non-actionable until the packet contract is complete"
+        ),
+    }
+}
+
+fn static_limitation_backlog_packet_non_claims(category: &str) -> Vec<String> {
+    let mut claims = vec![
+        "not a public repair packet".to_string(),
+        "not swarm-ready work".to_string(),
+        "do not edit tests from this backlog item alone".to_string(),
+    ];
+    if category == "activation_boundary_input_unresolved" {
+        claims.push("do not invent exact boundary candidate values".to_string());
+    }
+    claims
 }
 
 fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> String {
@@ -22724,12 +22950,48 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
 fn ripr_swarm_push_static_limitation_backlog_markdown(out: &mut String, backlog: &Value) {
     let top_categories = audit_array(backlog, &["top_categories"]);
     let top_repair_routes = audit_array(backlog, &["top_repair_routes"]);
-    if top_categories.is_empty() && top_repair_routes.is_empty() {
+    let limitation_backlog_packets = audit_array(backlog, &["limitation_backlog_packets"]);
+    if top_categories.is_empty()
+        && top_repair_routes.is_empty()
+        && limitation_backlog_packets.is_empty()
+    {
         return;
     }
 
     out.push_str("## Static Limitation Backlog\n\n");
     out.push_str("Named limitations are analyzer backlog, not repair-ready packet work.\n\n");
+    if !limitation_backlog_packets.is_empty() {
+        out.push_str("### Backlog Packets\n\n");
+        out.push_str(
+            "| Packet | Category | Count | Dominant class | Repair route | Unlock condition |\n",
+        );
+        out.push_str("| --- | --- | ---: | --- | --- | --- |\n");
+        for packet in limitation_backlog_packets {
+            let packet_id = audit_non_empty_string(packet, &["packet_id"])
+                .unwrap_or_else(|| "limitation:unknown".to_string());
+            let category = audit_non_empty_string(packet, &["limitation_category"])
+                .unwrap_or_else(|| "unknown".to_string());
+            let repair_route = audit_non_empty_string(packet, &["repair_route"])
+                .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
+            let dominant_evidence_class =
+                audit_non_empty_string(packet, &["dominant_evidence_class"])
+                    .unwrap_or_else(|| "unknown".to_string());
+            let unlock_condition = audit_non_empty_string(packet, &["unlock_condition"])
+                .unwrap_or_else(|| {
+                    "inspect the analyzer route before attempting repairs".to_string()
+                });
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} | `{}` | `{}` | {} |\n",
+                audit_markdown_cell(&packet_id),
+                audit_markdown_cell(&category),
+                audit_usize(packet, &["signal_count"]).unwrap_or_default(),
+                audit_markdown_cell(&dominant_evidence_class),
+                audit_markdown_cell(&repair_route),
+                audit_markdown_cell(&unlock_condition)
+            ));
+        }
+        out.push('\n');
+    }
     if !top_categories.is_empty() {
         out.push_str("### Top Categories\n\n");
         out.push_str("| Category | Count | Repair route |\n");
@@ -76014,6 +76276,116 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains(
             "| File | Line | Raw findings | Evidence classes | Kinds | Example expression |"
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_emits_analyzer_packets() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "idx-offset-local",
+                  "headline_eligible": true,
+                  "file": "src/window.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "idx-offset-local",
+                    "canonical_gap_id": "gap:idx-offset-local",
+                    "owner": "window::read",
+                    "location": {"file": "src/window.rs", "line": 44},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "local boundary operand unresolved", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "local/computed operand cannot be mapped to a safe test input",
+                        "category": "activation_boundary_input_unresolved",
+                        "repair_route": "analysis/local-computed-boundary-operand-resolution"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "src/window.rs", "line": 44, "kind": "static_unknown", "probe_kind": "predicate_boundary", "expression": "idx >= offset"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:idx-offset-local",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/window.rs", "line": 44, "kind": "static_unknown", "expression": "idx >= offset"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "local/computed boundary operand cannot be mapped to a safe test input",
+                      "recommended_repair": "Improve local/computed operand resolution before emitting a repair packet.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let actionable_json = lane1_actionable_gap_packets_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&actionable_json).map_err(|err| err.to_string())?;
+        let packet = &value["static_limitation_backlog"]["limitation_backlog_packets"][0];
+        assert_eq!(
+            packet["packet_id"],
+            "limitation:activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            packet["limitation_category"],
+            "activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            packet["repair_route"],
+            "analysis/local-computed-boundary-operand-resolution"
+        );
+        assert_eq!(packet["signal_count"], serde_json::Value::from(1));
+        assert_eq!(packet["dominant_evidence_class"], "predicate_boundary");
+        assert_eq!(
+            packet["sample_canonical_gap_ids"][0],
+            "gap:idx-offset-local"
+        );
+        assert!(
+            packet["why_not_actionable"]
+                .as_str()
+                .is_some_and(|why| why.contains("activation inputs"))
+        );
+        assert!(packet["unlock_condition"].as_str().is_some_and(|unlock| {
+            unlock.contains("analysis/local-computed-boundary-operand-resolution")
+        }));
+        assert!(packet["non_claims"].as_array().is_some_and(|claims| {
+            claims
+                .iter()
+                .any(|claim| claim == "do not invent exact boundary candidate values")
+        }));
+        assert_eq!(
+            value["summary"]["actionable_gaps"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(value["packets"].as_array().map(Vec::len), Some(0));
+
+        let markdown = lane1_actionable_gap_packets_markdown(&report);
+        assert!(markdown.contains("### Backlog Packets"));
+        assert!(markdown.contains("limitation:activation_boundary_input_unresolved"));
+        assert!(markdown.contains("analysis/local-computed-boundary-operand-resolution"));
         Ok(())
     }
 
