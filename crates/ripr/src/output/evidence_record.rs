@@ -954,7 +954,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
         "activation_owner_call_absent"
     } else if reason.contains("owner call") {
         "activation_owner_call_unresolved"
-    } else if reason.contains("boundary activation operands")
+    } else if reason.contains("boundary activation operand")
         && (reason.contains("local") || reason.contains("iterator") || reason.contains("computed"))
     {
         "activation_boundary_input_unresolved"
@@ -981,7 +981,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_boundary_input_unresolved" => {
-            "analysis/local-iterator-boundary-operand-resolution"
+            "analysis/local-computed-boundary-operand-resolution"
         }
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
@@ -1008,9 +1008,18 @@ fn static_limitation_repair_route_for_entry(
 ) -> &'static str {
     if category == "activation_owner_call_absent" && owner_call_absence_is_affinity_only(entry) {
         "analysis/related-test-affinity-owner-call-tracing"
+    } else if category == "activation_boundary_input_unresolved"
+        && boundary_input_limitation_is_iterator_derived(entry)
+    {
+        "analysis/iterator-boundary-operand-resolution"
     } else {
         static_limitation_repair_route(category)
     }
+}
+
+fn boundary_input_limitation_is_iterator_derived(entry: &ClassifiedSeam) -> bool {
+    let reason = entry.evidence.activate.summary.to_ascii_lowercase();
+    reason.contains("boundary activation operand") && reason.contains("iterator-derived")
 }
 
 fn owner_call_absence_is_affinity_only(entry: &ClassifiedSeam) -> bool {
@@ -1539,7 +1548,7 @@ mod tests {
         let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
         entry.evidence.activate = stage(
             StageState::Unknown,
-            "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+            "Boundary activation operand is iterator-derived for seam `idx >= offset`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet",
         );
         entry.evidence.observed_values.clear();
         entry.evidence.missing_discriminators.clear();
@@ -1563,7 +1572,7 @@ mod tests {
         );
         assert_eq!(
             json["canonical_item"]["static_limitations"][0]["repair_route"],
-            "analysis/local-iterator-boundary-operand-resolution"
+            "analysis/iterator-boundary-operand-resolution"
         );
         assert!(
             !json["canonical_item"]["recommended_repair"]
@@ -1680,7 +1689,7 @@ mod tests {
             (
                 "activate",
                 "unknown",
-                "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+                "Boundary activation operand is iterator-derived for seam `idx >= offset`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet",
                 "activation_boundary_input_unresolved",
             ),
             (
@@ -1786,7 +1795,7 @@ mod tests {
             ),
             (
                 "activation_boundary_input_unresolved",
-                "analysis/local-iterator-boundary-operand-resolution",
+                "analysis/local-computed-boundary-operand-resolution",
             ),
             (
                 "activation_value_unresolved",

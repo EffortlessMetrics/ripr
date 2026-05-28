@@ -355,7 +355,7 @@
             "activate": {
               "state": "unknown",
               "confidence": "low",
-              "summary": "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet"
+              "summary": "Boundary activation operand is iterator-derived for seam `idx >= offset`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet"
             },
             "propagate": {
               "state": "yes",
@@ -407,16 +407,16 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "reason": "Boundary activation operands are local, iterator-derived, or computed for seam `idx >= offset`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
+              "reason": "Boundary activation operand is iterator-derived for seam `idx >= offset`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet",
               "category": "activation_boundary_input_unresolved",
-              "repair_route": "analysis/local-iterator-boundary-operand-resolution"
+              "repair_route": "analysis/iterator-boundary-operand-resolution"
             }
           ]
         }
       },
       "expected_claims": [
         "Keep iterator-local boundary operands as named static limitations.",
-        "Route the limitation to analyzer support for local/iterator operand resolution."
+        "Route the limitation to analyzer support for iterator boundary operand resolution."
       ],
       "must_not_claim": [
         "Do not emit an exact candidate value for idx >= offset.",

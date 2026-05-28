@@ -1500,13 +1500,7 @@ fn activate_evidence(
                     .unwrap_or(seam.expression())
             )
         } else if boundary_activation_operands_unresolved && !related.is_empty() {
-            format!(
-                "Boundary activation operands are local, iterator-derived, or computed for seam `{}`; add analyzer support for local/iterator operand resolution before emitting an actionable repair packet",
-                seam.expression()
-                    .lines()
-                    .next()
-                    .unwrap_or(seam.expression())
-            )
+            boundary_activation_operands_unresolved_summary(seam, index, owner_name)
         } else if requires_concrete_activation_values(seam) {
             format!(
                 "No concrete activation values observed for seam `{}`",
@@ -1669,6 +1663,96 @@ fn boundary_activation_operands_unresolved(
         observed_argument_selection(seam, index, owner_name),
         ObservedArgumentSelection::UnresolvedBoundaryOperands
     )
+}
+
+fn boundary_activation_operands_unresolved_summary(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_name: &str,
+) -> String {
+    let expression = seam
+        .expression()
+        .lines()
+        .next()
+        .unwrap_or(seam.expression());
+    if boundary_activation_operands_are_iterator_derived(seam, index, owner_name) {
+        format!(
+            "Boundary activation operand is iterator-derived for seam `{expression}`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet"
+        )
+    } else {
+        format!(
+            "Boundary activation operands are local or computed for seam `{expression}`; add analyzer support for local/computed boundary operand resolution before emitting an actionable repair packet"
+        )
+    }
+}
+
+fn boundary_activation_operands_are_iterator_derived(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_name: &str,
+) -> bool {
+    if seam.kind() != SeamKind::PredicateBoundary {
+        return false;
+    }
+    let Some(owner_fn) = find_owner_function(seam, index) else {
+        return false;
+    };
+    if owner_fn.name != owner_name {
+        return false;
+    }
+    let Some((left, right)) = comparison_operands(seam.expression()) else {
+        return false;
+    };
+    boundary_operand_is_iterator_derived(owner_fn, &left)
+        || boundary_operand_is_iterator_derived(owner_fn, &right)
+}
+
+fn boundary_operand_is_iterator_derived(owner_fn: &FunctionSummary, operand: &str) -> bool {
+    let operand = operand.trim();
+    if !is_boundary_operand_identifier(operand) {
+        return false;
+    }
+    owner_fn
+        .body
+        .lines()
+        .any(|line| loop_binds_operand_from_iterator(line, operand))
+}
+
+fn loop_binds_operand_from_iterator(line: &str, operand: &str) -> bool {
+    let Some(for_index) = line.find("for ") else {
+        return false;
+    };
+    let rest = &line[for_index + "for ".len()..];
+    let Some((binding, source)) = rest.split_once(" in ") else {
+        return false;
+    };
+    boundary_loop_source_is_iterator(source)
+        && loop_binding_contains_boundary_operand(binding, operand)
+}
+
+fn boundary_loop_source_is_iterator(source: &str) -> bool {
+    let source = source.split('{').next().unwrap_or(source);
+    source.contains(".iter()")
+        || source.contains(".iter_mut()")
+        || source.contains(".into_iter()")
+        || source.contains(".enumerate()")
+        || source.contains(".keys()")
+        || source.contains(".values()")
+}
+
+fn loop_binding_contains_boundary_operand(binding: &str, operand: &str) -> bool {
+    binding
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .any(|token| token == operand)
+}
+
+fn is_boundary_operand_identifier(operand: &str) -> bool {
+    let mut chars = operand.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn boundary_operand_parameter_index(
@@ -6137,10 +6221,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
 
         assert_eq!(evidence.activate.state, StageState::Unknown);
         assert!(
-            evidence
-                .activate
-                .summary
-                .contains("local, iterator-derived, or computed"),
+            evidence.activate.summary.contains("iterator-derived"),
             "unresolved iterator-local boundary must explain why it is limited; got {}",
             evidence.activate.summary
         );
@@ -6184,11 +6265,13 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
 
         assert_eq!(evidence.activate.state, StageState::Unknown);
         assert!(
-            evidence
-                .activate
-                .summary
-                .contains("local, iterator-derived, or computed"),
+            evidence.activate.summary.contains("local or computed"),
             "computed local boundary operands must remain a named limitation; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            !evidence.activate.summary.contains("iterator-derived"),
+            "computed local boundary operands must not be routed as iterator-derived; got {}",
             evidence.activate.summary
         );
         assert!(
@@ -6202,6 +6285,50 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
             evidence.missing_discriminators
         );
         Ok(())
+    }
+
+    #[test]
+    fn iterator_boundary_operand_route_only_matches_iterator_loop_bindings() {
+        for source in [
+            "for (idx, value) in values.iter().enumerate() {",
+            "for item in values.iter() {",
+            "for item in values.iter_mut() {",
+            "for item in values.into_iter() {",
+            "for key in values.keys() {",
+            "for value in values.values() {",
+            "if ready { for idx in values.iter() {",
+        ] {
+            let operand = if source.contains("idx") {
+                "idx"
+            } else if source.contains("key") {
+                "key"
+            } else if source.contains("value in") {
+                "value"
+            } else {
+                "item"
+            };
+            assert!(
+                loop_binds_operand_from_iterator(source, operand),
+                "iterator loop should bind {operand}: {source}"
+            );
+        }
+
+        for (source, operand) in [
+            ("let idx = offset + 1;", "idx"),
+            ("for idx in 0..values.len() {", "idx"),
+            ("for (idx, value) in values.iter().enumerate() {", "offset"),
+            ("perform idx boundary checks", "idx"),
+        ] {
+            assert!(
+                !loop_binds_operand_from_iterator(source, operand),
+                "non-iterator or unbound operand must not match: {source}"
+            );
+        }
+
+        assert!(is_boundary_operand_identifier("idx"));
+        assert!(is_boundary_operand_identifier("_idx2"));
+        assert!(!is_boundary_operand_identifier("idx + 1"));
+        assert!(!is_boundary_operand_identifier("100"));
     }
 
     #[test]

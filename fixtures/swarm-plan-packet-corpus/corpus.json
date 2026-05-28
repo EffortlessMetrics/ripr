@@ -376,7 +376,7 @@
     },
     {
       "id": "activation_boundary_input_unresolved_packet",
-      "description": "Unresolved local or iterator-derived activation-boundary operands stay blocked as a named limitation even if stale boundary repair fields are present.",
+      "description": "Unresolved iterator-derived activation-boundary operands stay blocked as a named limitation even if stale boundary repair fields are present.",
       "packet": {
         "canonical_gap_id": "gap:activation-boundary-input-unresolved",
         "evidence_class": "predicate_boundary",
@@ -411,7 +411,7 @@
         "static_limitations": [
           {
             "category": "activation_boundary_input_unresolved",
-            "repair_route": "analysis/local-iterator-boundary-operand-resolution"
+            "repair_route": "analysis/iterator-boundary-operand-resolution"
           }
         ],
         "public_projection_eligible": true

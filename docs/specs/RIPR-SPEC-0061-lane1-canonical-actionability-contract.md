@@ -203,8 +203,13 @@ That case must become:
 ```text
 gap_state = static_limitation
 category = activation_boundary_input_unresolved
-repair_route = add analyzer support for local/iterator operand resolution
+repair_route = add analyzer support for iterator, local, or computed operand resolution
 ```
+
+Iterator-derived operands should route to
+`analysis/iterator-boundary-operand-resolution`; local or computed operands should
+route to `analysis/local-computed-boundary-operand-resolution`. Both remain
+static limitations until the analyzer can safely name activation values.
 
 The same rule applies to any class where RIPR cannot safely name the activation
 value, observer shape, verify command, or receipt command.
