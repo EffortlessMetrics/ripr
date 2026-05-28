@@ -39163,6 +39163,22 @@ fn dogfood_user_surface_projection_runtime_state_errors(
                 scenario.run_status
             ));
         }
+        if let Some((category, command)) =
+            user_surface_projection_expected_runtime_route(&scenario.run_status)
+        {
+            if scenario.limitation_category != category {
+                errors.push(format!(
+                    "{} limitation_category must be {}, got {}",
+                    scenario.run_status, category, scenario.limitation_category
+                ));
+            }
+            if scenario.runtime_repair_command != command {
+                errors.push(format!(
+                    "{} runtime_repair_command must be {}, got {}",
+                    scenario.run_status, command, scenario.runtime_repair_command
+                ));
+            }
+        }
         if scenario.run_status == "limited_stale_input" {
             if !headline.contains("stale") {
                 errors
@@ -39187,6 +39203,23 @@ fn dogfood_user_surface_projection_runtime_state_errors(
         ));
     }
     errors
+}
+
+fn user_surface_projection_expected_runtime_route(
+    run_status: &str,
+) -> Option<(&'static str, &'static str)> {
+    match run_status {
+        "limited_large_cache_skip" => Some((
+            "limited_large_cache_skip",
+            "cargo xtask cache report && cargo xtask cache gc --dry-run",
+        )),
+        "limited_incomplete_input" => Some((
+            "lane1_repo_exposure_sampled",
+            "cargo xtask lane1-evidence-audit",
+        )),
+        "limited_stale_input" => Some(("limited_stale_input", "cargo xtask lane1-evidence-audit")),
+        _ => None,
+    }
 }
 
 fn dogfood_surface_projection_alignment_scenarios() -> Vec<DogfoodSurfaceProjectionAlignmentScenario>
@@ -63879,6 +63912,35 @@ fn exact_owner_call_has_external_expected_value() {
         let run = dogfood_user_surface_projection_run(&scenario);
 
         assert!(run.errors.is_empty(), "{:?}", run.errors);
+    }
+
+    #[test]
+    fn dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route() {
+        let mut scenario = valid_user_surface_projection_scenario();
+        scenario.name = "badge_limited_state_from_canonical_runtime".to_string();
+        scenario.headline = "ripr: limited".to_string();
+        scenario.run_status = "limited_large_cache_skip".to_string();
+        scenario.projection_basis = "canonical_runtime_status".to_string();
+        scenario.canonical_gap_id.clear();
+        scenario.packet_id.clear();
+        scenario.repair_kind.clear();
+        scenario.top_next_action_kind = "resolve_limited_runtime_status".to_string();
+        scenario.verify_command.clear();
+        scenario.receipt_command.clear();
+        scenario.source_alignment_case.clear();
+        scenario.limitation_category = "lane1_repo_exposure_sampled".to_string();
+        scenario.runtime_repair_command = "cargo xtask lane1-evidence-audit".to_string();
+
+        let report = dogfood_user_surface_projection_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains(
+            "limited_large_cache_skip limitation_category must be limited_large_cache_skip"
+        ));
+        assert!(report.contains(
+            "limited_large_cache_skip runtime_repair_command must be cargo xtask cache report && cargo xtask cache gc --dry-run"
+        ));
     }
 
     #[test]

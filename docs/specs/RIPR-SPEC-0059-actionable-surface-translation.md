@@ -192,7 +192,11 @@ Limited-state projections use `projection_basis = canonical_runtime_status`,
 name a limitation category and runtime repair command, and carry no
 `canonical_gap_id`, `packet_id`, `repair_kind`, `verify_command`, or
 `receipt_command`. Those packet fields belong only to full runs where a safe
-actionable repair packet is ready.
+actionable repair packet is ready. The limitation category and runtime repair
+command must match the named runtime state; for example,
+`limited_large_cache_skip` routes to
+`cargo xtask cache report && cargo xtask cache gc --dry-run`, while
+`limited_incomplete_input` routes to `cargo xtask lane1-evidence-audit`.
 For full runtime states with a ready packet, the top next action may be
 `attempt_ready_packet`. Full actionable projection examples name a
 `source_alignment_case` from the repair-loop surface projection corpus and must
@@ -233,6 +237,9 @@ Validation should use existing guardrails plus focused evidence checks:
   an actionable count.
 - `xtask::tests::dogfood_user_surface_projection_alignment_accepts_limited_runtime_status`
   pins limited runtime-state projection without packet identity.
+- `xtask::tests::dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route`
+  pins limited runtime-state categories and repair commands to their named
+  status.
 - `xtask::tests::dogfood_user_surface_projection_alignment_matches_surface_projection_source`
   pins full user-surface projection to the canonical repair-loop source case.
 
