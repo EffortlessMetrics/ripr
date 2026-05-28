@@ -833,11 +833,14 @@ fn call_presence_assertion_affinity_token_is_specific_enough(token: &str) -> boo
             | "counts"
             | "data"
             | "dedup"
+            | "description"
             | "entry"
             | "evidence"
+            | "field"
             | "file"
             | "files"
             | "input"
+            | "is_empty"
             | "iter"
             | "item"
             | "items"
@@ -854,6 +857,7 @@ fn call_presence_assertion_affinity_token_is_specific_enough(token: &str) -> boo
             | "result"
             | "results"
             | "side_effect"
+            | "sink"
             | "sort"
             | "summary"
             | "target"
@@ -3905,14 +3909,23 @@ fn wrapper_mentions_owner_only_in_non_code() {
     -> Result<(), String> {
         // Live Lane 1 audit showed many call_presence limitations where
         // assertion-target affinity came from generic argument names
-        // such as `path`. That is not enough evidence that the test
-        // reaches the owner or observes the call site.
-        assert!(!call_presence_assertion_affinity_token_is_specific_enough(
-            "path"
-        ));
-        assert!(!call_presence_assertion_affinity_token_is_specific_enough(
-            "side_effect"
-        ));
+        // such as `path`, plus generic field/method targets such as
+        // `description.clone()` and `is_empty()`. That is not enough
+        // evidence that the test reaches the owner or observes the call
+        // site.
+        for token in [
+            "path",
+            "side_effect",
+            "description",
+            "field",
+            "is_empty",
+            "sink",
+        ] {
+            assert!(
+                !call_presence_assertion_affinity_token_is_specific_enough(token),
+                "generic call-presence token must not create assertion-target affinity: {token}"
+            );
+        }
         assert!(call_presence_assertion_affinity_token_is_specific_enough(
             "zq_quote_target_token"
         ));
@@ -3922,17 +3935,24 @@ fn wrapper_mentions_owner_only_in_non_code() {
                         fn zq_render_target_token(path: &std::path::Path) -> String { \
                             path.display().to_string() \
                         }\n\
-                        fn zq_quote_target_token(input: &str) -> String { input.to_string() }\n";
+                        fn zq_quote_target_token(input: &str) -> String { input.to_string() }\n\
+                        pub fn zq_description_owner(description: &str) -> bool { \
+                            description.is_empty() \
+                        }\n";
         let test = (
             "tests/unrelated.rs",
             "#[test] fn unrelated_path_assertion() { \
                 let path = \"target/ripr\"; \
                 assert_eq!(path, \"target/ripr\"); \
             }\n\
-            #[test] fn unrelated_side_effect_assertion() { \
-                let side_effect = \"target/ripr\"; \
-                assert_eq!(side_effect, \"target/ripr\"); \
-            }\n",
+             #[test] fn unrelated_side_effect_assertion() { \
+                 let side_effect = \"target/ripr\"; \
+                 assert_eq!(side_effect, \"target/ripr\"); \
+             }\n\
+             #[test] fn unrelated_description_assertion() { \
+                 let description = \"target/ripr\"; \
+                 assert!(!description.is_empty()); \
+             }\n",
         );
         let files: Vec<(PathBuf, &str)> = vec![
             (PathBuf::from("src/agent_paths.rs"), prod_src),
@@ -3955,6 +3975,18 @@ fn wrapper_mentions_owner_only_in_non_code() {
             "generic argument token `path` must not create assertion-target affinity; got {:?}",
             evidence.related_tests
         );
+
+        let description_call_presence = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::CallPresence && s.expression().contains("is_empty"))
+            .ok_or_else(|| "description is_empty call_presence seam present".to_string())?;
+        let description_evidence = evidence_for_seam(description_call_presence, &index);
+        assert!(
+            description_evidence.related_tests.is_empty(),
+            "generic field/method tokens `description` and `is_empty` must not create assertion-target affinity; got {:?}",
+            description_evidence.related_tests
+        );
+        assert_eq!(description_evidence.reach.state, StageState::No);
         assert_eq!(evidence.reach.state, StageState::No);
         Ok(())
     }

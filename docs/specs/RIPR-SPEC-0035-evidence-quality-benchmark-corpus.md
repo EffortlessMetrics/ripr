@@ -188,7 +188,8 @@ affinity.
   pins fixture-backed call-presence activation for a direct owner call plus an
   explicit mock expectation without synthetic observed values.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity`
-  pins the negative guard for generic call argument tokens such as `path`.
+  pins the negative guard for generic call argument, field, and common method
+  tokens such as `path`, `description`, and `is_empty`.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains`
   pins that specific call targets remain eligible for assertion-target
   affinity without satisfying activation by themselves. The benchmark records
