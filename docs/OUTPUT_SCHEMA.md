@@ -2796,6 +2796,7 @@ badges.
     "not_attempted": 1,
     "attempted_no_receipt": 0,
     "receipt_present": 0,
+    "missing_verify_result": 0,
     "evidence_improved": 2,
     "evidence_unchanged": 1,
     "evidence_regressed": 0,
@@ -2915,7 +2916,8 @@ swarm-plan input is consumable but explicitly limited because packet ids may be
 less complete.
 `verify_result` is preserved when supplied by outcome or prior-ledger rows.
 Attempted rows with no `verify_result` contribute to
-`top_missing_evidence_fields[]` as `verify_result`.
+`summary.missing_verify_result` and to `top_missing_evidence_fields[]` as
+`verify_result`.
 
 Generated `attempt_id` values include a stable attempt-instance suffix when the
 outcome carries one, preferring explicit outcome `attempt_instance`, then
@@ -3023,6 +3025,7 @@ reinterpreting the full advisory queue.
     "swarm_ready_packets": 10,
     "blocked_packets": 15,
     "missing_verify_command": 0,
+    "missing_verify_result": 0,
     "missing_receipt_command": 0,
     "static_limitation_packets": 2,
     "high_confidence_packets": 4,

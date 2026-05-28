@@ -311,6 +311,9 @@ attempt/outcome summary counts, repair-route quality, and missing-evidence-field
 counts when they are present. Stored `summary`, `repair_route_quality[]`, and
 `top_missing_evidence_fields[]` rows are summary output; they must not override
 recomputed latest-attempt state if the two disagree.
+The explicit `missing_verify_result` summary count is the closeout counter for
+attempted rows whose verification command is known but whose typed pass/fail or
+not-run result was not preserved.
 
 ## Dry-Run Commands
 
@@ -559,6 +562,7 @@ Future reports should expose:
 - `swarm_ready_packets`;
 - `swarm_blocked_packets`;
 - `swarm_missing_verify_command`;
+- `swarm_missing_verify_result`;
 - `swarm_missing_receipt_command`;
 - `swarm_static_limitation_packets`;
 - `swarm_high_confidence_packets`;

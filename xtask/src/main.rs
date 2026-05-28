@@ -21118,6 +21118,7 @@ struct RiprSwarmAttemptLedgerSummary {
     not_attempted: usize,
     attempted_no_receipt: usize,
     receipt_present: usize,
+    missing_verify_result: usize,
     evidence_improved: usize,
     evidence_unchanged: usize,
     evidence_regressed: usize,
@@ -21170,6 +21171,7 @@ struct RiprSwarmReadinessSummary {
     swarm_ready_packets: usize,
     blocked_packets: usize,
     missing_verify_command: usize,
+    missing_verify_result: usize,
     missing_receipt_command: usize,
     static_limitation_packets: usize,
     high_confidence_packets: usize,
@@ -22359,6 +22361,7 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
         "swarm_ready_packets",
         "blocked_packets",
         "missing_verify_command",
+        "missing_verify_result",
         "missing_receipt_command",
         "missing_repair_route",
         "missing_must_not_change",
@@ -22920,6 +22923,9 @@ fn ripr_swarm_attempt_ledger_summary(
             .copied()
             .unwrap_or(0),
         receipt_present: state_counts.get("receipt_present").copied().unwrap_or(0),
+        missing_verify_result: ripr_swarm_attempt_ledger_missing_verify_result_count(
+            &report.latest_attempts,
+        ),
         evidence_improved: state_counts.get("evidence_improved").copied().unwrap_or(0),
         evidence_unchanged: state_counts.get("evidence_unchanged").copied().unwrap_or(0),
         evidence_regressed: state_counts.get("evidence_regressed").copied().unwrap_or(0),
@@ -23010,12 +23016,7 @@ fn ripr_swarm_attempt_ledger_top_missing_evidence_fields(
         if ripr_swarm_plan_field_missing(&attempt.verify_command) {
             audit_increment(&mut counts, "verify_command");
         }
-        if attempt.outcome != "not_attempted"
-            && attempt
-                .verify_result
-                .as_deref()
-                .is_none_or(ripr_swarm_plan_field_missing)
-        {
+        if ripr_swarm_attempt_missing_verify_result(attempt) {
             audit_increment(&mut counts, "verify_result");
         }
         if attempt
@@ -23030,6 +23031,23 @@ fn ripr_swarm_attempt_ledger_top_missing_evidence_fields(
         }
     }
     audit_top_counts(counts)
+}
+
+fn ripr_swarm_attempt_ledger_missing_verify_result_count(
+    attempts: &[RiprSwarmAttemptLedgerEntry],
+) -> usize {
+    attempts
+        .iter()
+        .filter(|attempt| ripr_swarm_attempt_missing_verify_result(attempt))
+        .count()
+}
+
+fn ripr_swarm_attempt_missing_verify_result(attempt: &RiprSwarmAttemptLedgerEntry) -> bool {
+    attempt.outcome != "not_attempted"
+        && attempt
+            .verify_result
+            .as_deref()
+            .is_none_or(ripr_swarm_plan_field_missing)
 }
 
 fn ripr_swarm_repair_route_quality_success_rate(row: &RiprSwarmRepairRouteQualityRow) -> Value {
@@ -23148,6 +23166,7 @@ fn ripr_swarm_attempt_ledger_summary_json(summary: &RiprSwarmAttemptLedgerSummar
         "not_attempted": summary.not_attempted,
         "attempted_no_receipt": summary.attempted_no_receipt,
         "receipt_present": summary.receipt_present,
+        "missing_verify_result": summary.missing_verify_result,
         "evidence_improved": summary.evidence_improved,
         "evidence_unchanged": summary.evidence_unchanged,
         "evidence_regressed": summary.evidence_regressed,
@@ -23226,6 +23245,7 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
         ("not_attempted", summary.not_attempted),
         ("attempted_no_receipt", summary.attempted_no_receipt),
         ("receipt_present", summary.receipt_present),
+        ("missing_verify_result", summary.missing_verify_result),
         ("evidence_improved", summary.evidence_improved),
         ("evidence_unchanged", summary.evidence_unchanged),
         ("evidence_regressed", summary.evidence_regressed),
@@ -23558,6 +23578,12 @@ fn ripr_swarm_readiness_summary(
             let not_attempted =
                 audit_usize(ledger, &["summary", "not_attempted"]).unwrap_or_default();
             summary.attempted_packets = attempts_total.saturating_sub(not_attempted);
+            summary.missing_verify_result =
+                audit_usize(ledger, &["summary", "missing_verify_result"])
+                    .or_else(|| {
+                        ripr_swarm_top_missing_evidence_field_count(ledger, "verify_result")
+                    })
+                    .unwrap_or_default();
             summary.improved_packets =
                 audit_usize(ledger, &["summary", "evidence_improved"]).unwrap_or_default();
             summary.unchanged_packets =
@@ -23573,6 +23599,8 @@ fn ripr_swarm_readiness_summary(
             let state_counts = actionable_gap_outcome_state_counts_from_entries(&latest_attempts);
             let not_attempted = state_counts.get("not_attempted").copied().unwrap_or(0);
             summary.attempted_packets = attempts.len().saturating_sub(not_attempted);
+            summary.missing_verify_result =
+                ripr_swarm_attempt_ledger_missing_verify_result_count(&latest_attempts);
             summary.improved_packets = state_counts
                 .get("evidence_improved")
                 .copied()
@@ -23599,6 +23627,8 @@ fn ripr_swarm_readiness_summary(
         let not_attempted =
             audit_usize(outcomes, &["summary", "not_attempted"]).unwrap_or_default();
         summary.attempted_packets = outcomes_total.saturating_sub(not_attempted);
+        summary.missing_verify_result =
+            actionable_gap_outcomes_missing_verify_result_count(outcomes);
         summary.improved_packets =
             audit_usize(outcomes, &["summary", "evidence_improved"]).unwrap_or_default();
         summary.unchanged_packets =
@@ -23675,6 +23705,7 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "swarm_ready_packets": summary.swarm_ready_packets,
         "blocked_packets": summary.blocked_packets,
         "missing_verify_command": summary.missing_verify_command,
+        "missing_verify_result": summary.missing_verify_result,
         "missing_receipt_command": summary.missing_receipt_command,
         "static_limitation_packets": summary.static_limitation_packets,
         "high_confidence_packets": summary.high_confidence_packets,
@@ -23746,6 +23777,27 @@ fn ripr_swarm_readiness_top_missing_evidence_fields(
             })
         })
         .collect::<Vec<_>>()
+}
+
+fn ripr_swarm_top_missing_evidence_field_count(report: &Value, label: &str) -> Option<usize> {
+    audit_array(report, &["top_missing_evidence_fields"])
+        .iter()
+        .find(|row| audit_non_empty_string(row, &["label"]).as_deref() == Some(label))
+        .and_then(|row| audit_usize(row, &["count"]))
+}
+
+fn actionable_gap_outcomes_missing_verify_result_count(outcomes: &Value) -> usize {
+    audit_array(outcomes, &["outcomes"])
+        .iter()
+        .filter(|outcome| {
+            let outcome_state = audit_non_empty_string(outcome, &["outcome_state"])
+                .unwrap_or_else(|| "unknown".to_string());
+            outcome_state != "not_attempted"
+                && audit_non_empty_string(outcome, &["verify_result"])
+                    .as_deref()
+                    .is_none_or(ripr_swarm_plan_field_missing)
+        })
+        .count()
 }
 
 fn ripr_swarm_repair_route_quality_row_from_value(
@@ -23847,6 +23899,20 @@ fn ripr_swarm_readiness_next_actions(
             reason: format!(
                 "{} packet(s) are missing verify commands; improve canonical item verify routing before ranking them as repair-ready",
                 summary.missing_verify_command
+            ),
+        });
+    }
+    if summary.missing_verify_result > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "inspect_missing_verify_results".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
+            reason: format!(
+                "{} attempted packet(s) are missing typed verify_result evidence; preserve pass/fail/not-run from receipts or targeted-test outcomes before claiming route quality",
+                summary.missing_verify_result
             ),
         });
     }
@@ -78019,6 +78085,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["report"], "swarm-attempt-ledger");
         assert_eq!(value["summary"]["attempts_total"], 2);
         assert_eq!(value["summary"]["evidence_improved"], 1);
+        assert_eq!(value["summary"]["missing_verify_result"], 0);
         assert_eq!(value["summary"]["orphaned_receipts"], 1);
         assert_eq!(
             value["latest_attempts"][0]["attempt_id"],
@@ -78436,10 +78503,18 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_failing_repair_routes"][0]["repair_kind"],
             "add_output_observer"
         );
+        assert_eq!(value["summary"]["missing_verify_result"], 4);
         assert!(
             value["top_missing_evidence_fields"]
                 .as_array()
                 .is_some_and(|rows| rows.iter().any(|row| row["label"] == "repair_kind"))
+        );
+        assert!(
+            value["top_missing_evidence_fields"]
+                .as_array()
+                .is_some_and(|rows| rows
+                    .iter()
+                    .any(|row| row["label"] == "verify_result" && row["count"] == 4))
         );
         assert_eq!(
             value["attempts"][0]["target_test_type"],

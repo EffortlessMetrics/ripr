@@ -3831,6 +3831,7 @@ metrics = [
   "swarm_ready_packets",
   "swarm_blocked_packets",
   "swarm_missing_verify_command",
+  "swarm_missing_verify_result",
   "swarm_missing_receipt_command",
   "swarm_static_limitation_packets",
   "swarm_high_confidence_packets",
@@ -4051,6 +4052,7 @@ metrics = [
   "lane1_actionable_gap_packets",
   "swarm_ready_packets",
   "swarm_missing_verify_command",
+  "swarm_missing_verify_result",
   "swarm_missing_receipt_command",
   "swarm_static_limitation_packets",
 ]
