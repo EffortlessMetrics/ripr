@@ -296,6 +296,11 @@ is available: `evidence_class`, `source_file`, `repair_kind`,
 become analyzer-improvement signals instead of disappearing into aggregate
 attempt counts.
 
+Readiness must treat durable `attempts[]` as the source of truth for
+repair-route quality when they are present. Stored `repair_route_quality[]`
+rows are summary output; they must not override recomputed latest-attempt state
+if the two disagree.
+
 ## Dry-Run Commands
 
 The first implementation surface should be dry-run only:

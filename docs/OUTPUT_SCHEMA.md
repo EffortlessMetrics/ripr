@@ -2946,11 +2946,13 @@ incomplete. If outcomes are present while the attempt ledger is missing,
 readiness may display those outcome counts as advisory context, but the report
 remains non-consumable until durable attempt history is available.
 
-Readiness forwards attempt-ledger `repair_route_quality[]`,
-`top_failing_repair_routes[]`, and `top_missing_evidence_fields[]` so the next
-operator action can distinguish "try the next packet" from "fix the noisy
-repair route first." These fields are advisory quality signals and do not
-change badge, LSP, PR, or CI gate semantics.
+Readiness recomputes repair-route quality from durable attempt-ledger
+`attempts[]` when present, and otherwise forwards attempt-ledger
+`repair_route_quality[]`, `top_failing_repair_routes[]`, and
+`top_missing_evidence_fields[]` so the next operator action can distinguish
+"try the next packet" from "fix the noisy repair route first." These fields are
+advisory quality signals and do not change badge, LSP, PR, or CI gate
+semantics.
 `top_next_action` is a single-object projection of `next_actions[0]` for
 thin downstream surfaces that need one canonical next route without
 reinterpreting the full advisory queue.
