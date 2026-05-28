@@ -101,6 +101,8 @@ impl<'a> CompactGripContext<'a> {
         let helper_owner_calls_by_file = helper_owner_calls_by_file(index);
         let unambiguous_test_helper_owner_calls_by_name =
             unambiguous_test_helper_owner_calls_by_name(&helper_owner_calls_by_file);
+        let helper_owner_calls_by_module_path =
+            helper_owner_calls_by_module_path(&helper_owner_calls_by_file);
         let tests = index
             .tests
             .iter()
@@ -127,6 +129,7 @@ impl<'a> CompactGripContext<'a> {
                     &call_names,
                     &helper_owner_calls_by_file,
                     &unambiguous_test_helper_owner_calls_by_name,
+                    &helper_owner_calls_by_module_path,
                 );
                 for call_name in &call_names {
                     tests_by_call_name
@@ -229,6 +232,7 @@ impl<'a> CompactGripContext<'a> {
 
 type HelperOwnerCallsByFile = BTreeMap<PathBuf, BTreeMap<String, BTreeSet<String>>>;
 type HelperOwnerCallsByName = BTreeMap<String, BTreeSet<String>>;
+type HelperOwnerCallsByModulePath = BTreeMap<String, BTreeMap<String, BTreeSet<String>>>;
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
@@ -283,6 +287,21 @@ fn unambiguous_test_helper_owner_calls_by_name(
     by_name
         .into_iter()
         .filter_map(|(helper_name, owner_sets)| common_helper_owner_calls(helper_name, owner_sets))
+        .collect()
+}
+
+fn helper_owner_calls_by_module_path(
+    helpers: &HelperOwnerCallsByFile,
+) -> HelperOwnerCallsByModulePath {
+    helpers
+        .iter()
+        .filter_map(|(file, file_helpers)| {
+            if !rust_index::is_test_file(file) {
+                return None;
+            }
+            let module_path = module_path_for(file)?.replace('/', "::");
+            Some((module_path, file_helpers.clone()))
+        })
         .collect()
 }
 
@@ -416,11 +435,17 @@ fn helper_owner_call_names_for_test(
     call_names: &BTreeSet<String>,
     helpers: &HelperOwnerCallsByFile,
     unique_helpers: &HelperOwnerCallsByName,
+    qualified_helpers: &HelperOwnerCallsByModulePath,
 ) -> BTreeSet<String> {
+    let mut owner_names =
+        helper_owner_call_names_from_qualified_calls(&test.calls, qualified_helpers);
     let Some(file_helpers) = helpers.get(&test.file) else {
-        return helper_owner_call_names_from_unique_helpers(call_names, unique_helpers);
+        owner_names.extend(helper_owner_call_names_from_unique_helpers(
+            call_names,
+            unique_helpers,
+        ));
+        return owner_names;
     };
-    let mut owner_names = BTreeSet::new();
     for helper_name in call_names {
         if let Some(helper_owner_names) = file_helpers.get(helper_name) {
             owner_names.extend(helper_owner_names.iter().cloned());
@@ -430,6 +455,39 @@ fn helper_owner_call_names_for_test(
         }
     }
     owner_names
+}
+
+fn helper_owner_call_names_from_qualified_calls(
+    calls: &[CallFact],
+    qualified_helpers: &HelperOwnerCallsByModulePath,
+) -> BTreeSet<String> {
+    let mut owner_names = BTreeSet::new();
+    for call in calls {
+        let cleaned = strip_comments_and_strings(&call.text);
+        for (module_path, helpers) in qualified_helpers {
+            let Some(helper_owner_names) = helpers.get(&call.name) else {
+                continue;
+            };
+            if code_contains_qualified_helper_call(&cleaned, module_path, &call.name) {
+                owner_names.extend(helper_owner_names.iter().cloned());
+            }
+        }
+    }
+    owner_names
+}
+
+fn code_contains_qualified_helper_call(code: &str, module_path: &str, helper_name: &str) -> bool {
+    let pattern = format!("{module_path}::{helper_name}(");
+    code.match_indices(&pattern).any(|(start, _)| {
+        code[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|before| !is_rust_path_identifier_char(before))
+    })
+}
+
+fn is_rust_path_identifier_char(ch: char) -> bool {
+    ch == '_' || ch == ':' || ch.is_ascii_alphanumeric()
 }
 
 fn helper_owner_call_names_from_unique_helpers(
@@ -4273,6 +4331,194 @@ fn pipeline_from_support_helper() {
             evidence.related_tests
         );
         Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_ambiguous_support_helper_is_module_qualified_then_activation_is_yes()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let support_a = PathBuf::from("tests/support_a.rs");
+        let support_a_src = r#"
+use pipeline::render_pipeline;
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+"#;
+        let support_b = PathBuf::from("tests/support_b.rs");
+        let support_b_src = r#"
+use report::render_report;
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+#[test]
+fn qualified_support_helper_reaches_pipeline() {
+    let rendered = support_a::exercise_pipeline();
+    assert_eq!(rendered, "alpha");
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (support_a, support_a_src),
+            (support_b, support_b_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected qualified support helper to disambiguate helper-owner relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "qualified call_presence helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_qualified_support_helper_targets_other_owner_then_no_helper_relation()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let support_a = PathBuf::from("tests/support_a.rs");
+        let support_a_src = r#"
+use pipeline::render_pipeline;
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+"#;
+        let support_b = PathBuf::from("tests/support_b.rs");
+        let support_b_src = r#"
+use report::render_report;
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+#[test]
+fn qualified_support_helper_reaches_report() {
+    let rendered = support_b::exercise_pipeline();
+    assert_eq!(rendered, "beta");
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (support_a, support_a_src),
+            (support_b, support_b_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "qualified helper for another owner must not prove pipeline owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "other-owner qualified helper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_qualified_support_helper_only_in_comment_or_string_then_call_match_is_ignored() {
+        let cleaned = strip_comments_and_strings(
+            "let doc = \"support_a::exercise_pipeline()\"; // support_a::exercise_pipeline()",
+        );
+        assert!(!code_contains_qualified_helper_call(
+            &cleaned,
+            "support_a",
+            "exercise_pipeline"
+        ));
+        assert!(code_contains_qualified_helper_call(
+            "let rendered = support_a::exercise_pipeline();",
+            "support_a",
+            "exercise_pipeline"
+        ));
+        assert!(!code_contains_qualified_helper_call(
+            "let rendered = other_support_a::exercise_pipeline();",
+            "support_a",
+            "exercise_pipeline"
+        ));
     }
 
     #[test]
