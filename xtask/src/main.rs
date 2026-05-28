@@ -23303,21 +23303,26 @@ fn ripr_swarm_push_repair_route_quality_table(
         out.push_str("No repair-route quality rows are available.\n\n");
         return;
     }
-    out.push_str("| Repair kind | Attempted | Improved | Unchanged | Regressed | Resolved | Success rate |\n");
-    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| Repair kind | Attempted | Improved | Unchanged | Regressed | Resolved | Failure count | Dominant failure | Success rate |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |\n");
     for row in rows {
         let success_rate = match ripr_swarm_repair_route_quality_success_rate(row) {
             Value::Number(number) => number.to_string(),
             _ => "n/a".to_string(),
         };
+        let failure_count = ripr_swarm_repair_route_quality_failure_count(row);
+        let dominant_failure =
+            ripr_swarm_repair_route_quality_dominant_failure_reason(row).unwrap_or("n/a");
         out.push_str(&format!(
-            "| `{}` | {} | {} | {} | {} | {} | {} |\n",
+            "| `{}` | {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
             audit_markdown_cell(&row.repair_kind),
             row.attempted,
             row.improved,
             row.unchanged,
             row.regressed,
             row.resolved,
+            failure_count,
+            audit_markdown_cell(dominant_failure),
             success_rate
         ));
     }
@@ -78644,6 +78649,8 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = ripr_swarm_attempt_ledger_markdown(&report);
         assert!(markdown.contains("## Repair Route Quality"));
         assert!(markdown.contains("add_output_observer"));
+        assert!(markdown.contains("Failure count | Dominant failure"));
+        assert!(markdown.contains("missing_verify_result"));
         Ok(())
     }
 
@@ -78786,6 +78793,9 @@ covered_by = ["cargo xtask check-file-policy"]
                             .is_some_and(|reason| reason.contains("dominant reason `regressed`"))
                 }))
         );
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("Failure count | Dominant failure"));
+        assert!(markdown.contains("regressed"));
         assert_eq!(
             value["top_missing_evidence_fields"][0]["label"],
             "receipt_command"

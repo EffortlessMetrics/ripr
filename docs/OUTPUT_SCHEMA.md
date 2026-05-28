@@ -2943,6 +2943,9 @@ missing-verify-result, and unknown latest attempts.
 `repair_kind_dominant_failure_reason` is the highest-count failing bucket, with
 deterministic tie preference for regressed, missing-verify-result, unchanged,
 no-receipt, then unknown.
+The Markdown attempt-ledger and readiness repair-route quality tables include
+both fields so human readers see the same failure explanation as JSON
+consumers.
 
 ## RIPR Swarm Readiness
 
