@@ -315,6 +315,10 @@ recomputed latest-attempt state if the two disagree.
 The explicit `missing_verify_result` summary count is the closeout counter for
 attempted rows whose verification command is known but whose typed pass/fail or
 not-run result was not preserved.
+Readiness must route `attempted_no_receipt` and `receipt_present` separately:
+no-receipt attempts require collecting the packet receipt, while receipt-present
+attempts require joining before/after evidence movement before route quality can
+claim improvement, regression, or unchanged evidence.
 
 ## Dry-Run Commands
 

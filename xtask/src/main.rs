@@ -24115,6 +24115,34 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
+    if summary.attempted_no_receipt_packets > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "collect_missing_attempt_receipts".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
+            reason: format!(
+                "{} attempted packet(s) have no matching receipt; run the packet receipt command and refresh the attempt ledger before claiming outcomes",
+                summary.attempted_no_receipt_packets
+            ),
+        });
+    }
+    if summary.receipt_present_packets > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "join_receipt_evidence_movement".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask actionable-gap-outcomes".to_string()),
+            reason: format!(
+                "{} receipt-backed packet(s) still need before/after evidence movement joined before route quality can claim improvement or regression",
+                summary.receipt_present_packets
+            ),
+        });
+    }
     if summary.orphaned_receipts > 0 {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "reconcile_orphaned_receipts".to_string(),
@@ -76192,18 +76220,22 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["next_actions"][0]["kind"],
-            serde_json::Value::from("inspect_unchanged_attempts")
+            serde_json::Value::from("collect_missing_attempt_receipts")
         );
         assert_eq!(
             value["top_next_action"]["kind"],
-            serde_json::Value::from("inspect_unchanged_attempts")
+            serde_json::Value::from("collect_missing_attempt_receipts")
         );
         assert_eq!(
-            value["next_actions"][2]["kind"],
+            value["next_actions"][1]["kind"],
+            serde_json::Value::from("join_receipt_evidence_movement")
+        );
+        assert_eq!(
+            value["next_actions"][4]["kind"],
             serde_json::Value::from("attempt_ready_packet")
         );
         assert_eq!(
-            value["next_actions"][2]["packet_id"],
+            value["next_actions"][4]["packet_id"],
             serde_json::Value::from("packet-boundary-001")
         );
         let markdown = ripr_swarm_readiness_markdown(&report);
