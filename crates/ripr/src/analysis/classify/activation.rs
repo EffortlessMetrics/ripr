@@ -452,6 +452,9 @@ fn body_contains_wrapped_local_alias(
 fn body_contains_match_parameter(body: &str, parameter: &str) -> bool {
     body.lines().any(|line| {
         let line = line.trim();
+        if line.starts_with("//") || line.starts_with("/*") || line.starts_with('*') {
+            return false;
+        }
         line.find("match ")
             .map(|index| &line[index + "match ".len()..])
             .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
@@ -744,6 +747,27 @@ mod tests {
                 .reason
                 .contains("observed amount values: 101"),
             "prefix parameter matches must not make raw_amount look like amount; got {:?}",
+            activation.missing_discriminators
+        );
+    }
+
+    #[test]
+    fn activation_evidence_ignores_commented_match_boundary_operand_alias() {
+        let owner = function(
+            "pub fn score(raw_amount: Option<i32>, threshold: i32) -> bool {\n    // match raw_amount { Some(amount) => amount >= threshold, _ => false }\n    let amount = 1;\n    amount >= threshold\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(Some(100), 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(!has_observed_boundary_equality(&activation));
+        assert_eq!(activation.missing_discriminators.len(), 1);
+        assert!(
+            activation.missing_discriminators[0]
+                .reason
+                .contains("observed amount values: unknown"),
+            "commented match aliases must not resolve boundary operands; got {:?}",
             activation.missing_discriminators
         );
     }
