@@ -2816,6 +2816,8 @@ badges.
       "repair_kind_receipt_present": 0,
       "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5
     }
   ],
@@ -2831,6 +2833,8 @@ badges.
       "repair_kind_receipt_present": 0,
       "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5
     }
   ],
@@ -2934,6 +2938,11 @@ receipt-only, missing-verify-result, unknown, and success-rate counts.
 no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. `top_missing_evidence_fields[]`
 counts missing route/verify/receipt fields that prevent route-quality analysis.
+`repair_kind_failure_count` is the sum of unchanged, regressed, no-receipt,
+missing-verify-result, and unknown latest attempts.
+`repair_kind_dominant_failure_reason` is the highest-count failing bucket, with
+deterministic tie preference for regressed, missing-verify-result, unchanged,
+no-receipt, then unknown.
 
 ## RIPR Swarm Readiness
 
@@ -3051,6 +3060,8 @@ reinterpreting the full advisory queue.
       "repair_kind_receipt_present": 0,
       "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5
     }
   ],
@@ -3066,6 +3077,8 @@ reinterpreting the full advisory queue.
       "repair_kind_receipt_present": 0,
       "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5
     }
   ],

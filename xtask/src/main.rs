@@ -23077,6 +23077,8 @@ fn ripr_swarm_repair_route_quality_json(rows: &[RiprSwarmRepairRouteQualityRow])
                 "repair_kind_receipt_present": row.receipt_present,
                 "repair_kind_missing_verify_result": row.missing_verify_result,
                 "repair_kind_unknown": row.unknown,
+                "repair_kind_failure_count": ripr_swarm_repair_route_quality_failure_count(row),
+                "repair_kind_dominant_failure_reason": ripr_swarm_repair_route_quality_dominant_failure_reason(row),
                 "repair_kind_success_rate": ripr_swarm_repair_route_quality_success_rate(row),
             })
         })
@@ -23088,23 +23090,17 @@ fn ripr_swarm_top_failing_repair_routes_json(
 ) -> Vec<Value> {
     let mut rows = rows
         .iter()
-        .filter(|row| {
-            row.regressed > 0
-                || row.unchanged > 0
-                || row.attempted_no_receipt > 0
-                || row.missing_verify_result > 0
-                || row.unknown > 0
-        })
+        .filter(|row| ripr_swarm_repair_route_quality_failure_count(row) > 0)
         .cloned()
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
-        let left_failures = ripr_swarm_repair_route_quality_failure_count(left);
-        let right_failures = ripr_swarm_repair_route_quality_failure_count(right);
-        right_failures
-            .cmp(&left_failures)
+        ripr_swarm_repair_route_quality_failure_count(right)
+            .cmp(&ripr_swarm_repair_route_quality_failure_count(left))
             .then_with(|| right.regressed.cmp(&left.regressed))
             .then_with(|| right.missing_verify_result.cmp(&left.missing_verify_result))
             .then_with(|| right.unchanged.cmp(&left.unchanged))
+            .then_with(|| right.attempted_no_receipt.cmp(&left.attempted_no_receipt))
+            .then_with(|| right.unknown.cmp(&left.unknown))
             .then_with(|| left.repair_kind.cmp(&right.repair_kind))
     });
     rows.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
@@ -23742,23 +23738,17 @@ fn ripr_swarm_readiness_top_failing_repair_routes(
 ) -> Vec<RiprSwarmRepairRouteQualityRow> {
     let mut rows = rows
         .iter()
-        .filter(|row| {
-            row.regressed > 0
-                || row.unchanged > 0
-                || row.attempted_no_receipt > 0
-                || row.unknown > 0
-        })
+        .filter(|row| ripr_swarm_repair_route_quality_failure_count(row) > 0)
         .cloned()
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
-        let left_failures =
-            left.regressed + left.unchanged + left.attempted_no_receipt + left.unknown;
-        let right_failures =
-            right.regressed + right.unchanged + right.attempted_no_receipt + right.unknown;
-        right_failures
-            .cmp(&left_failures)
+        ripr_swarm_repair_route_quality_failure_count(right)
+            .cmp(&ripr_swarm_repair_route_quality_failure_count(left))
             .then_with(|| right.regressed.cmp(&left.regressed))
+            .then_with(|| right.missing_verify_result.cmp(&left.missing_verify_result))
             .then_with(|| right.unchanged.cmp(&left.unchanged))
+            .then_with(|| right.attempted_no_receipt.cmp(&left.attempted_no_receipt))
+            .then_with(|| right.unknown.cmp(&left.unknown))
             .then_with(|| left.repair_kind.cmp(&right.repair_kind))
     });
     rows.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
@@ -23771,6 +23761,39 @@ fn ripr_swarm_repair_route_quality_failure_count(row: &RiprSwarmRepairRouteQuali
         + row.attempted_no_receipt
         + row.missing_verify_result
         + row.unknown
+}
+
+fn ripr_swarm_repair_route_quality_dominant_failure_reason(
+    row: &RiprSwarmRepairRouteQualityRow,
+) -> Option<&'static str> {
+    let mut dominant = None;
+    for (reason, count) in [
+        ("regressed", row.regressed),
+        ("missing_verify_result", row.missing_verify_result),
+        ("unchanged", row.unchanged),
+        ("attempted_no_receipt", row.attempted_no_receipt),
+        ("unknown", row.unknown),
+    ] {
+        if count > dominant.map(|(_reason, current)| current).unwrap_or(0) {
+            dominant = Some((reason, count));
+        }
+    }
+    dominant.map(|(reason, _count)| reason)
+}
+
+fn ripr_swarm_repair_route_quality_dominant_failure_count(
+    row: &RiprSwarmRepairRouteQualityRow,
+) -> usize {
+    [
+        row.regressed,
+        row.missing_verify_result,
+        row.unchanged,
+        row.attempted_no_receipt,
+        row.unknown,
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0)
 }
 
 fn ripr_swarm_readiness_top_missing_evidence_fields(
@@ -23961,6 +23984,9 @@ fn ripr_swarm_readiness_next_actions(
     }
     if let Some(route) = top_failing_repair_routes.first() {
         let failures = ripr_swarm_repair_route_quality_failure_count(route);
+        let dominant_reason =
+            ripr_swarm_repair_route_quality_dominant_failure_reason(route).unwrap_or("unknown");
+        let dominant_count = ripr_swarm_repair_route_quality_dominant_failure_count(route);
         actions.push(RiprSwarmReadinessNextAction {
             kind: "improve_repair_route_quality".to_string(),
             packet_id: None,
@@ -23969,8 +23995,8 @@ fn ripr_swarm_readiness_next_actions(
             repair_kind: Some(route.repair_kind.clone()),
             command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
             reason: format!(
-                "`{}` has {} unchanged/regressed/no-receipt/missing-verify-result/unknown latest attempt(s); inspect route guidance before increasing packet volume",
-                route.repair_kind, failures
+                "`{}` has {} failing latest attempt(s); dominant reason `{}` appears {} time(s); inspect route guidance before increasing packet volume",
+                route.repair_kind, failures, dominant_reason, dominant_count
             ),
         });
     }
@@ -78518,12 +78544,24 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(2)
         );
         assert_eq!(
+            value["repair_route_quality"][0]["repair_kind_failure_count"],
+            serde_json::Value::from(4)
+        );
+        assert_eq!(
+            value["repair_route_quality"][0]["repair_kind_dominant_failure_reason"],
+            "missing_verify_result"
+        );
+        assert_eq!(
             value["top_failing_repair_routes"][0]["repair_kind"],
             "add_output_observer"
         );
         assert_eq!(
             value["top_failing_repair_routes"][0]["repair_kind_missing_verify_result"],
             serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind_dominant_failure_reason"],
+            "missing_verify_result"
         );
         assert_eq!(value["summary"]["missing_verify_result"], 4);
         assert!(
@@ -78670,6 +78708,24 @@ covered_by = ["cargo xtask check-file-policy"]
             "add_output_observer"
         );
         assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind_failure_count"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind_dominant_failure_reason"],
+            "regressed"
+        );
+        assert!(
+            value["next_actions"]
+                .as_array()
+                .is_some_and(|actions| actions.iter().any(|action| {
+                    action["kind"] == "improve_repair_route_quality"
+                        && action["reason"]
+                            .as_str()
+                            .is_some_and(|reason| reason.contains("dominant reason `regressed`"))
+                }))
+        );
+        assert_eq!(
             value["top_missing_evidence_fields"][0]["label"],
             "receipt_command"
         );
@@ -78808,6 +78864,127 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["top_failing_repair_routes"],
             serde_json::Value::Array(Vec::new())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_routes_missing_verify_result_quality() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-plan",
+            "summary": {
+                "swarm_ready_packets": 1,
+                "blocked_packets": 0,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 0,
+                "high_confidence_packets": 1
+            },
+            "source_summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 1
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gap-outcomes",
+            "summary": {
+                "outcomes_total": 2,
+                "not_attempted": 0,
+                "evidence_improved": 0,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "summary": {
+                "attempts_total": 2,
+                "canonical_gaps_total": 2,
+                "not_attempted": 0,
+                "attempted_no_receipt": 0,
+                "receipt_present": 2,
+                "missing_verify_result": 2,
+                "evidence_improved": 0,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "unknown": 0,
+                "orphaned_receipts": 0
+            },
+            "repair_route_quality": [
+                {
+                    "repair_kind": "add_exact_error_variant_observer",
+                    "repair_kind_attempted": 2,
+                    "repair_kind_improved": 0,
+                    "repair_kind_unchanged": 0,
+                    "repair_kind_regressed": 0,
+                    "repair_kind_resolved": 0,
+                    "repair_kind_attempted_no_receipt": 0,
+                    "repair_kind_receipt_present": 2,
+                    "repair_kind_missing_verify_result": 2,
+                    "repair_kind_unknown": 0,
+                    "repair_kind_success_rate": 0.0
+                }
+            ],
+            "top_missing_evidence_fields": [
+                {"label": "verify_result", "count": 2}
+            ]
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind"],
+            "add_exact_error_variant_observer"
+        );
+        assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind_dominant_failure_reason"],
+            "missing_verify_result"
+        );
+        assert_eq!(
+            value["top_next_action"]["kind"],
+            "inspect_missing_verify_results"
+        );
+        assert!(
+            value["next_actions"]
+                .as_array()
+                .is_some_and(|actions| actions.iter().any(|action| {
+                    action["kind"] == "improve_repair_route_quality"
+                        && action["reason"].as_str().is_some_and(|reason| {
+                            reason.contains("dominant reason `missing_verify_result`")
+                        })
+                }))
         );
         Ok(())
     }
