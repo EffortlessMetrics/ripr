@@ -1677,7 +1677,8 @@ Field contract:
   because reasons are free-form evidence strings.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
-  `activation_owner_call_unresolved`, `opaque_helper_call`,
+  `activation_owner_call_absent`, `activation_owner_call_unresolved`,
+  `opaque_helper_call`,
   `cross_file_constant_unresolved`, `dynamic_dispatch`,
   `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.

@@ -939,6 +939,8 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
     {
         "side_effect_sink_unknown"
     } else if reason.contains("no direct owner call observed for value-insensitive seam") {
+        "activation_owner_call_absent"
+    } else if reason.contains("owner call") {
         "activation_owner_call_unresolved"
     } else if reason.contains("boundary activation operands")
         && (reason.contains("local") || reason.contains("iterator") || reason.contains("computed"))
@@ -964,6 +966,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
+        "activation_owner_call_absent" => "analysis/related-test-ranking-audit-fixes",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_boundary_input_unresolved" => {
             "analysis/local-iterator-boundary-operand-resolution"
@@ -1565,6 +1568,12 @@ mod tests {
                 "activate",
                 "unknown",
                 "No direct owner call observed for value-insensitive seam `Vec::new()`",
+                "activation_owner_call_absent",
+            ),
+            (
+                "activate",
+                "unknown",
+                "owner call target is unresolved for value-insensitive seam `Vec::new()`",
                 "activation_owner_call_unresolved",
             ),
             (
@@ -1672,6 +1681,10 @@ mod tests {
         }
 
         for (category, expected) in [
+            (
+                "activation_owner_call_absent",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
             (
                 "activation_owner_call_unresolved",
                 "analysis/related-test-ranking-audit-fixes",

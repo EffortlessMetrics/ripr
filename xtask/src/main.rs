@@ -26777,6 +26777,8 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
     {
         "side_effect_sink_unknown"
     } else if reason.contains("no direct owner call observed for value-insensitive seam") {
+        "activation_owner_call_absent"
+    } else if reason.contains("owner call") {
         "activation_owner_call_unresolved"
     } else if reason.contains("no concrete activation values observed")
         || reason.contains("no literal activation values")
@@ -26798,6 +26800,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
+        "activation_owner_call_absent" => "analysis/related-test-ranking-audit-fixes",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
@@ -81033,6 +81036,12 @@ covered_by = ["cargo xtask check-file-policy"]
                 "activate",
                 "unknown",
                 "No direct owner call observed for value-insensitive seam `Vec::new()`",
+                "activation_owner_call_absent",
+            ),
+            (
+                "activate",
+                "unknown",
+                "owner call target is unresolved for value-insensitive seam `Vec::new()`",
                 "activation_owner_call_unresolved",
             ),
             (
@@ -81134,6 +81143,10 @@ covered_by = ["cargo xtask check-file-policy"]
         }
 
         for (category, expected) in [
+            (
+                "activation_owner_call_absent",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
             (
                 "activation_owner_call_unresolved",
                 "analysis/related-test-ranking-audit-fixes",
