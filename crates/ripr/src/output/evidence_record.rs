@@ -966,7 +966,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
-        "activation_owner_call_absent" => "analysis/related-test-ranking-audit-fixes",
+        "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_boundary_input_unresolved" => {
             "analysis/local-iterator-boundary-operand-resolution"
@@ -1683,7 +1683,7 @@ mod tests {
         for (category, expected) in [
             (
                 "activation_owner_call_absent",
-                "analysis/related-test-ranking-audit-fixes",
+                "analysis/owner-call-absence-triage",
             ),
             (
                 "activation_owner_call_unresolved",

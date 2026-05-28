@@ -26800,7 +26800,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
-        "activation_owner_call_absent" => "analysis/related-test-ranking-audit-fixes",
+        "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
@@ -81145,7 +81145,7 @@ covered_by = ["cargo xtask check-file-policy"]
         for (category, expected) in [
             (
                 "activation_owner_call_absent",
-                "analysis/related-test-ranking-audit-fixes",
+                "analysis/owner-call-absence-triage",
             ),
             (
                 "activation_owner_call_unresolved",

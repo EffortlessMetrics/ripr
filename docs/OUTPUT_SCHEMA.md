@@ -1682,6 +1682,10 @@ Field contract:
   `cross_file_constant_unresolved`, `dynamic_dispatch`,
   `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
+- `activation_owner_call_absent` routes to
+  `analysis/owner-call-absence-triage`; it means static analysis found related
+  context but no direct owner call, so it remains a named limitation rather than
+  user-facing test repair debt.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.
