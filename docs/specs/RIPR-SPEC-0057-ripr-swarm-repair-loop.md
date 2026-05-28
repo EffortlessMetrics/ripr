@@ -97,6 +97,8 @@ Before a packet can be ranked as swarm-ready, typed evidence must show:
 Before an attempt can claim improvement, typed evidence must show:
 
 - attempted packet identity;
+- stable attempt instance identity when a receipt or targeted outcome backs the
+  attempt;
 - receipt presence or explicit receipt absence;
 - evidence movement state joined to the same canonical gap;
 - outcome state in `actionable-gap-outcomes`;

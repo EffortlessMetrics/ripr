@@ -1213,6 +1213,8 @@ struct ActionableGapOutcome {
     receipt_command_or_path: Option<String>,
     receipt_state: String,
     outcome_state: String,
+    timestamp: Option<String>,
+    attempt_instance: Option<String>,
     seam_id: Option<String>,
     before: Option<String>,
     after: Option<String>,
@@ -22723,12 +22725,14 @@ fn ripr_swarm_attempt_ledger_entry_from_outcome(
         &outcome_state,
     );
     let outcome_timestamp = audit_non_empty_string(outcome, &["timestamp"]);
-    let attempt_instance = ripr_swarm_attempt_ledger_attempt_instance(
-        outcome_timestamp.as_deref(),
-        entry_receipt_path.as_deref(),
-        movement_source.as_deref(),
-        targeted_test_outcome_path,
-    );
+    let attempt_instance = audit_non_empty_string(outcome, &["attempt_instance"]).or_else(|| {
+        ripr_swarm_attempt_ledger_attempt_instance(
+            outcome_timestamp.as_deref(),
+            entry_receipt_path.as_deref(),
+            movement_source.as_deref(),
+            targeted_test_outcome_path,
+        )
+    });
 
     RiprSwarmAttemptLedgerEntry {
         packet_id,
@@ -24270,6 +24274,8 @@ fn actionable_gap_outcomes_report_from_values(
                 packet,
                 &receipt_values,
                 targeted_test_outcome,
+                agent_receipt_path.as_deref(),
+                targeted_test_outcome_path.as_deref(),
                 agent_receipt.is_some(),
                 !orphaned_receipts.is_empty(),
             )
@@ -24344,6 +24350,8 @@ fn actionable_gap_outcome_from_packet(
     packet: &Value,
     receipts: &[&Value],
     targeted_test_outcome: Option<&Value>,
+    agent_receipt_path: Option<&str>,
+    targeted_test_outcome_path: Option<&str>,
     receipt_input_present: bool,
     orphaned_receipt_present: bool,
 ) -> ActionableGapOutcome {
@@ -24357,6 +24365,7 @@ fn actionable_gap_outcome_from_packet(
     let targeted_movement = targeted_test_outcome
         .and_then(|outcome| actionable_gap_targeted_movement(outcome, packet, &id_candidates));
     let receipt_movement = receipt.and_then(actionable_gap_receipt_movement);
+    let receipt_timestamp = receipt.and_then(actionable_gap_receipt_timestamp);
     let receipt_state = if let Some(movement) = receipt_movement.as_ref() {
         receipt_lifecycle_state_from_movement(movement.direction.as_deref())
     } else if receipt.is_some() {
@@ -24389,6 +24398,18 @@ fn actionable_gap_outcome_from_packet(
         }
         None => "No receipt or targeted-test outcome artifact matched this packet.".to_string(),
     };
+    let timestamp = receipt_timestamp.or_else(|| {
+        movement
+            .as_ref()
+            .and_then(|movement| movement.timestamp.clone())
+    });
+    let attempt_instance = actionable_gap_outcome_attempt_instance(
+        timestamp.as_deref(),
+        receipt.is_some(),
+        agent_receipt_path,
+        movement.as_ref().map(|movement| movement.source.as_str()),
+        targeted_test_outcome_path,
+    );
 
     ActionableGapOutcome {
         canonical_gap_id,
@@ -24404,6 +24425,8 @@ fn actionable_gap_outcome_from_packet(
         receipt_command_or_path: audit_non_empty_string(packet, &["receipt_command_or_path"]),
         receipt_state,
         outcome_state,
+        timestamp,
+        attempt_instance,
         seam_id: movement
             .as_ref()
             .and_then(|movement| movement.seam_id.clone()),
@@ -24433,6 +24456,7 @@ struct ActionableGapMovement {
     before: Option<String>,
     after: Option<String>,
     direction: Option<String>,
+    timestamp: Option<String>,
     evidence_delta: Vec<String>,
     reason: String,
 }
@@ -24504,6 +24528,7 @@ fn actionable_gap_targeted_movement(
     packet: &Value,
     candidates: &BTreeSet<String>,
 ) -> Option<ActionableGapMovement> {
+    let timestamp = actionable_gap_targeted_timestamp(targeted);
     for bucket in ["moved", "unchanged", "regressed"] {
         for item in audit_array(targeted, &[bucket]) {
             if actionable_gap_targeted_item_matches_packet(item, packet, candidates) {
@@ -24517,6 +24542,7 @@ fn actionable_gap_targeted_movement(
                     before: audit_non_empty_string(item, &["before"]),
                     after: audit_non_empty_string(item, &["after"]),
                     direction: Some(direction),
+                    timestamp: timestamp.clone(),
                     evidence_delta: audit_string_array(item, &["evidence_delta"])
                         .unwrap_or_default(),
                     reason: format!("Matched targeted-test outcome `{bucket}` bucket."),
@@ -24533,6 +24559,7 @@ fn actionable_gap_targeted_movement(
                 before: audit_non_empty_string(item, &["grip_class"]),
                 after: None,
                 direction: Some("resolved".to_string()),
+                timestamp: timestamp.clone(),
                 evidence_delta: Vec::new(),
                 reason: "Matched targeted-test outcome `removed` bucket.".to_string(),
             });
@@ -24547,6 +24574,7 @@ fn actionable_gap_targeted_movement(
                 before: None,
                 after: audit_non_empty_string(item, &["grip_class"]),
                 direction: Some("new".to_string()),
+                timestamp: timestamp.clone(),
                 evidence_delta: Vec::new(),
                 reason: "Matched targeted-test outcome `new` bucket; this is not repair progress."
                     .to_string(),
@@ -24587,10 +24615,46 @@ fn actionable_gap_receipt_movement(receipt: &Value) -> Option<ActionableGapMovem
         after: audit_non_empty_string(receipt, &["seam", "after"])
             .or_else(|| audit_non_empty_string(receipt, &["provenance", "after_class"])),
         direction: Some(direction),
+        timestamp: actionable_gap_receipt_timestamp(receipt),
         evidence_delta: audit_string_array(receipt, &["seam", "evidence_delta"])
             .unwrap_or_default(),
         reason: "Matched agent receipt artifact.".to_string(),
     })
+}
+
+fn actionable_gap_receipt_timestamp(receipt: &Value) -> Option<String> {
+    audit_non_empty_string(receipt, &["timestamp"])
+        .or_else(|| audit_non_empty_string(receipt, &["generated_at"]))
+        .or_else(|| audit_non_empty_string(receipt, &["recorded_at"]))
+        .or_else(|| audit_non_empty_string(receipt, &["provenance", "timestamp"]))
+        .or_else(|| audit_non_empty_string(receipt, &["provenance", "generated_at"]))
+        .or_else(|| audit_non_empty_string(receipt, &["provenance", "recorded_at"]))
+}
+
+fn actionable_gap_targeted_timestamp(targeted: &Value) -> Option<String> {
+    audit_non_empty_string(targeted, &["timestamp"])
+        .or_else(|| audit_non_empty_string(targeted, &["generated_at"]))
+        .or_else(|| audit_non_empty_string(targeted, &["provenance", "timestamp"]))
+        .or_else(|| audit_non_empty_string(targeted, &["provenance", "generated_at"]))
+}
+
+fn actionable_gap_outcome_attempt_instance(
+    timestamp: Option<&str>,
+    receipt_present: bool,
+    agent_receipt_path: Option<&str>,
+    movement_source: Option<&str>,
+    targeted_test_outcome_path: Option<&str>,
+) -> Option<String> {
+    if let Some(timestamp) = timestamp {
+        return Some(format!("timestamp:{timestamp}"));
+    }
+    if receipt_present && let Some(path) = agent_receipt_path {
+        return Some(format!("receipt_path:{path}"));
+    }
+    if movement_source == Some("targeted_test_outcome") {
+        return targeted_test_outcome_path.map(|path| format!("targeted_test_outcome_path:{path}"));
+    }
+    None
 }
 
 fn actionable_gap_outcome_state_for_direction(direction: &str, bucket: &str) -> String {
@@ -24744,6 +24808,8 @@ fn actionable_gap_outcome_json(outcome: &ActionableGapOutcome) -> Value {
         "receipt_command_or_path": outcome.receipt_command_or_path,
         "receipt_state": outcome.receipt_state,
         "outcome_state": outcome.outcome_state,
+        "timestamp": outcome.timestamp,
+        "attempt_instance": outcome.attempt_instance,
         "seam_id": outcome.seam_id,
         "before": outcome.before,
         "after": outcome.after,
@@ -77653,10 +77719,15 @@ covered_by = ["cargo xtask check-file-policy"]
                 "change": "improved",
                 "evidence_delta": ["missing discriminator no longer reported: threshold equality"]
             },
-            "provenance": {"seam_id": "seam-a", "movement": "improved"}
+            "provenance": {
+                "seam_id": "seam-a",
+                "movement": "improved",
+                "generated_at": "unix_ms:2"
+            }
         });
         let targeted = serde_json::json!({
             "schema_version": "0.1",
+            "generated_at": "unix_ms:3",
             "moved": [],
             "unchanged": [
                 {
@@ -77747,6 +77818,20 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["outcomes"][0]["reason"],
             "Matched agent receipt artifact."
+        );
+        assert_eq!(value["outcomes"][0]["timestamp"], "unix_ms:2");
+        assert_eq!(
+            value["outcomes"][0]["attempt_instance"],
+            "timestamp:unix_ms:2"
+        );
+        assert_eq!(value["outcomes"][1]["timestamp"], "unix_ms:3");
+        assert_eq!(
+            value["outcomes"][1]["attempt_instance"],
+            "timestamp:unix_ms:3"
+        );
+        assert_eq!(
+            value["outcomes"][3]["attempt_instance"],
+            serde_json::Value::Null
         );
         let markdown = actionable_gap_outcomes_markdown(&report);
         assert!(markdown.contains("# Actionable Gap Outcomes"));
@@ -77917,7 +78002,8 @@ covered_by = ["cargo xtask check-file-policy"]
                     "before": "weakly_gripped",
                     "after": "weakly_gripped",
                     "movement_source": "agent_receipt",
-                    "timestamp": "unix_ms:2"
+                    "timestamp": "unix_ms:2",
+                    "attempt_instance": "receipt:agent-new"
                 }
             ]
         });
@@ -77975,7 +78061,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(report.latest_attempts[0].outcome, "evidence_unchanged");
         assert_eq!(
             report.latest_attempts[0].attempt_id,
-            "attempt:gap-seam-a:evidence-unchanged:receipt-movement-unchanged:agent-receipt:seam-a:timestamp-unix-ms-2"
+            "attempt:gap-seam-a:evidence-unchanged:receipt-movement-unchanged:agent-receipt:seam-a:receipt-agent-new"
         );
         assert!(
             report.attempts.iter().any(|attempt| attempt.attempt_id.as_str()

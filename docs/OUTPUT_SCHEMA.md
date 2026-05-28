@@ -2667,6 +2667,8 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
       "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
       "receipt_state": "receipt_movement_improved",
       "outcome_state": "evidence_improved",
+      "timestamp": "unix_ms:1778240100000",
+      "attempt_instance": "timestamp:unix_ms:1778240100000",
       "seam_id": "abc",
       "before": "weakly_gripped",
       "after": "strongly_gripped",
@@ -2703,6 +2705,11 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
 `evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
 and `unknown`. Raw findings do not determine outcome state; the join is based
 on canonical packet identity, seam identity, or the packet primary anchor.
+`timestamp` and `attempt_instance` carry stable attempt identity when an
+outcome is backed by a matching receipt or targeted-test outcome. The attempt
+instance prefers a receipt/targeted timestamp when available, then the matched
+receipt artifact path, then the targeted-test outcome artifact path; missing
+identity remains `null` for not-attempted packets.
 `receipt_state` uses the canonical receipt lifecycle vocabulary:
 `receipt_missing`, `receipt_found`, `receipt_stale`,
 `receipt_gap_mismatch`, `receipt_movement_improved`,
@@ -2895,10 +2902,10 @@ swarm-plan input is consumable but explicitly limited because packet ids may be
 less complete.
 
 Generated `attempt_id` values include a stable attempt-instance suffix when the
-outcome carries one, preferring outcome `timestamp`, then receipt artifact path,
-then targeted-test-outcome artifact path. This keeps repeated same-state
-attempts visible without creating a new history row from a plain ledger rerun
-over the same artifacts.
+outcome carries one, preferring explicit outcome `attempt_instance`, then
+outcome `timestamp`, then receipt artifact path, then targeted-test-outcome
+artifact path. This keeps repeated same-state attempts visible without creating
+a new history row from a plain ledger rerun over the same artifacts.
 
 `repair_route_quality[]` is grouped from latest attempts by `repair_kind` and
 reports attempted, improved, unchanged, regressed, resolved, no-receipt,
