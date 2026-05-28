@@ -152,13 +152,19 @@ fn observed_discriminator_values(
     };
     let parameters = function_parameters(owner);
     let call_values = owner_call_parameter_values(related_tests, &owner.name, &parameters);
+    let Some(left_parameter) = boundary_operand_parameter(owner, &parameters, &left) else {
+        return Vec::new();
+    };
+    let right_parameter = boundary_operand_parameter(owner, &parameters, &right);
     let mut facts = Vec::new();
 
     for row in call_values {
-        let Some(left_value) = parameter_value(&row, &left) else {
+        let Some(left_value) = parameter_value(&row, &left_parameter) else {
             continue;
         };
-        let right_value = parameter_value(&row, &right)
+        let right_value = right_parameter
+            .as_deref()
+            .and_then(|parameter| parameter_value(&row, parameter))
             .map(|value| value.value)
             .or_else(|| literal_operand_value(&right));
         if right_value
@@ -222,24 +228,35 @@ fn missing_boundary_discriminator(
     if call_values.is_empty() {
         return None;
     }
+    let left_parameter = boundary_operand_parameter(owner, &parameters, &left);
+    let right_parameter = boundary_operand_parameter(owner, &parameters, &right);
 
-    let equality_observed = call_values.iter().any(|row| {
-        let Some(left_value) = parameter_value(row, &left) else {
-            return false;
-        };
-        let right_value = parameter_value(row, &right)
-            .map(|value| value.value)
-            .or_else(|| literal_operand_value(&right));
-        right_value
-            .as_deref()
-            .is_some_and(|value| comparable_value(value) == comparable_value(&left_value.value))
+    let equality_observed = left_parameter.as_deref().is_some_and(|left_parameter| {
+        call_values.iter().any(|row| {
+            let Some(left_value) = parameter_value(row, left_parameter) else {
+                return false;
+            };
+            let right_value = right_parameter
+                .as_deref()
+                .and_then(|parameter| parameter_value(row, parameter))
+                .map(|value| value.value)
+                .or_else(|| literal_operand_value(&right));
+            right_value
+                .as_deref()
+                .is_some_and(|value| comparable_value(value) == comparable_value(&left_value.value))
+        })
     });
     if equality_observed {
         return None;
     }
 
-    let left_values = observed_parameter_values(&call_values, &left);
-    let right_parameter_values = parameter_value_set(&call_values, &right);
+    let left_values = left_parameter
+        .as_deref()
+        .map(|parameter| observed_parameter_values(&call_values, parameter))
+        .unwrap_or_default();
+    let right_parameter_values = right_parameter
+        .as_deref()
+        .and_then(|parameter| parameter_value_set(&call_values, parameter));
     let right_literal = literal_operand_value(&right);
     let reason = if let Some(right_values) = right_parameter_values {
         format!(
@@ -384,6 +401,58 @@ fn function_parameters(function: &FunctionSummary) -> Vec<String> {
         })
         .filter(|name| !name.is_empty() && name != "self" && name != "&self" && name != "mut self")
         .collect()
+}
+
+fn boundary_operand_parameter(
+    function: &FunctionSummary,
+    parameters: &[String],
+    operand: &str,
+) -> Option<String> {
+    parameters
+        .iter()
+        .find(|parameter| parameter.as_str() == operand)
+        .cloned()
+        .or_else(|| boundary_local_operand_parameter(function, parameters, operand))
+}
+
+fn boundary_local_operand_parameter(
+    function: &FunctionSummary,
+    parameters: &[String],
+    operand: &str,
+) -> Option<String> {
+    if operand.is_empty() {
+        return None;
+    }
+    for parameter in parameters {
+        if function
+            .body
+            .contains(&format!("if let Some({operand}) = {parameter}"))
+            || function
+                .body
+                .contains(&format!("if let Ok({operand}) = {parameter}"))
+            || body_contains_direct_local_alias(&function.body, operand, parameter)
+            || (function.body.contains(&format!("match {parameter}"))
+                && (function.body.contains(&format!("Some({operand})"))
+                    || function.body.contains(&format!("Ok({operand})"))))
+        {
+            return Some(parameter.clone());
+        }
+    }
+    None
+}
+
+fn body_contains_direct_local_alias(body: &str, operand: &str, parameter: &str) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim().trim_end_matches(';').trim();
+        let Some(binding) = line.strip_prefix("let ") else {
+            return false;
+        };
+        let Some((left, right)) = binding.split_once('=') else {
+            return false;
+        };
+        let local_name = left.split_once(':').map(|(name, _)| name).unwrap_or(left);
+        local_name.trim() == operand && right.trim() == parameter
+    })
 }
 
 fn comparison_operands(expression: &str) -> Option<(String, String)> {
@@ -614,6 +683,46 @@ mod tests {
         assert!(activation.observed_values.iter().any(|fact| {
             fact.context == ValueContext::FunctionArgument && fact.value == "amount == threshold"
         }));
+    }
+
+    #[test]
+    fn activation_evidence_resolves_direct_local_boundary_operand_alias() {
+        let owner = function(
+            "pub fn score(raw_amount: i32, threshold: i32) -> bool {\n    let amount = raw_amount;\n    amount >= threshold\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(100, 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(has_observed_boundary_equality(&activation));
+        assert!(activation.missing_discriminators.is_empty());
+        assert!(activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "amount == threshold"
+        }));
+    }
+
+    #[test]
+    fn activation_evidence_keeps_computed_local_boundary_operand_unresolved() {
+        let owner = function(
+            "pub fn score(raw_amount: i32, threshold: i32) -> bool {\n    let amount = raw_amount + 1;\n    amount >= threshold\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(100, 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(!has_observed_boundary_equality(&activation));
+        assert_eq!(activation.missing_discriminators.len(), 1);
+        assert_eq!(
+            activation.missing_discriminators[0].value,
+            "amount == threshold"
+        );
+        assert!(
+            activation.missing_discriminators[0]
+                .reason
+                .contains("observed amount values: unknown")
+        );
     }
 
     #[test]
