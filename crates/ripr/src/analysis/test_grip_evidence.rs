@@ -382,7 +382,16 @@ fn supported_helper_owner_call_name(
 fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
     matches!(
         call_name,
-        "clone" | "default" | "from" | "into" | "new" | "to_string" | "Ok" | "Some"
+        "clone"
+            | "default"
+            | "expect"
+            | "from"
+            | "into"
+            | "new"
+            | "to_string"
+            | "unwrap"
+            | "Ok"
+            | "Some"
     )
 }
 
@@ -4751,6 +4760,130 @@ fn helper_exercises_pipeline() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "result-wrapped call_presence helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_unwraps_owner_call_result_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> Result<String, ()> {
+    Ok(format_output(input))
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha").unwrap()
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected unwrap helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "unwrap helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "unwrap helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_expects_owner_call_result_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> Result<String, ()> {
+    Ok(format_output(input))
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha").expect("pipeline should render")
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected expect helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "expect helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "expect helper activation must not create boundary debt"
         );
         Ok(())
     }
