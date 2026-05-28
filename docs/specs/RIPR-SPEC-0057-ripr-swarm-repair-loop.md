@@ -297,9 +297,9 @@ become analyzer-improvement signals instead of disappearing into aggregate
 attempt counts.
 
 Readiness must treat durable `attempts[]` as the source of truth for
-repair-route quality when they are present. Stored `repair_route_quality[]`
-rows are summary output; they must not override recomputed latest-attempt state
-if the two disagree.
+attempt/outcome summary counts and repair-route quality when they are present.
+Stored `summary` and `repair_route_quality[]` rows are summary output; they must
+not override recomputed latest-attempt state if the two disagree.
 
 ## Dry-Run Commands
 

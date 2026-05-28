@@ -23532,20 +23532,48 @@ fn ripr_swarm_readiness_summary(
             audit_usize(plan, &["summary", "high_confidence_packets"]).unwrap_or_default();
     }
     if let Some(ledger) = attempt_ledger {
-        let attempts_total =
-            audit_usize(ledger, &["summary", "attempts_total"]).unwrap_or_default();
-        let not_attempted = audit_usize(ledger, &["summary", "not_attempted"]).unwrap_or_default();
-        summary.attempted_packets = attempts_total.saturating_sub(not_attempted);
-        summary.improved_packets =
-            audit_usize(ledger, &["summary", "evidence_improved"]).unwrap_or_default();
-        summary.unchanged_packets =
-            audit_usize(ledger, &["summary", "evidence_unchanged"]).unwrap_or_default();
-        summary.regressed_packets =
-            audit_usize(ledger, &["summary", "evidence_regressed"]).unwrap_or_default();
-        summary.resolved_packets =
-            audit_usize(ledger, &["summary", "resolved"]).unwrap_or_default();
-        summary.orphaned_receipts =
-            audit_usize(ledger, &["summary", "orphaned_receipts"]).unwrap_or_default();
+        let attempts = ripr_swarm_attempt_ledger_entries_from_value(ledger);
+        if attempts.is_empty() {
+            let attempts_total =
+                audit_usize(ledger, &["summary", "attempts_total"]).unwrap_or_default();
+            let not_attempted =
+                audit_usize(ledger, &["summary", "not_attempted"]).unwrap_or_default();
+            summary.attempted_packets = attempts_total.saturating_sub(not_attempted);
+            summary.improved_packets =
+                audit_usize(ledger, &["summary", "evidence_improved"]).unwrap_or_default();
+            summary.unchanged_packets =
+                audit_usize(ledger, &["summary", "evidence_unchanged"]).unwrap_or_default();
+            summary.regressed_packets =
+                audit_usize(ledger, &["summary", "evidence_regressed"]).unwrap_or_default();
+            summary.resolved_packets =
+                audit_usize(ledger, &["summary", "resolved"]).unwrap_or_default();
+            summary.orphaned_receipts =
+                audit_usize(ledger, &["summary", "orphaned_receipts"]).unwrap_or_default();
+        } else {
+            let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+            let state_counts = actionable_gap_outcome_state_counts_from_entries(&latest_attempts);
+            let not_attempted = state_counts.get("not_attempted").copied().unwrap_or(0);
+            summary.attempted_packets = attempts.len().saturating_sub(not_attempted);
+            summary.improved_packets = state_counts
+                .get("evidence_improved")
+                .copied()
+                .unwrap_or_default();
+            summary.unchanged_packets = state_counts
+                .get("evidence_unchanged")
+                .copied()
+                .unwrap_or_default();
+            summary.regressed_packets = state_counts
+                .get("evidence_regressed")
+                .copied()
+                .unwrap_or_default();
+            summary.resolved_packets = state_counts.get("resolved").copied().unwrap_or_default();
+            let orphaned_receipts = audit_array(ledger, &["orphaned_receipts"]).len();
+            summary.orphaned_receipts = if orphaned_receipts > 0 {
+                orphaned_receipts
+            } else {
+                audit_usize(ledger, &["summary", "orphaned_receipts"]).unwrap_or_default()
+            };
+        }
     } else if let Some(outcomes) = actionable_gap_outcomes {
         let outcomes_total =
             audit_usize(outcomes, &["summary", "outcomes_total"]).unwrap_or_default();
@@ -78651,6 +78679,105 @@ covered_by = ["cargo xtask check-file-policy"]
             value["repair_route_quality"][0]["repair_kind_unchanged"],
             serde_json::Value::from(0)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_recomputes_summary_from_attempts_when_summary_is_stale()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-plan",
+            "summary": {
+                "swarm_ready_packets": 1,
+                "blocked_packets": 0,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 0,
+                "high_confidence_packets": 1
+            },
+            "source_summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 1
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gap-outcomes",
+            "summary": {
+                "outcomes_total": 1,
+                "not_attempted": 0,
+                "evidence_improved": 1,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "summary": {
+                "attempts_total": 1,
+                "canonical_gaps_total": 1,
+                "not_attempted": 0,
+                "attempted_no_receipt": 0,
+                "receipt_present": 0,
+                "evidence_improved": 0,
+                "evidence_unchanged": 1,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "unknown": 0,
+                "orphaned_receipts": 0
+            },
+            "attempts": [
+                {
+                    "packet_id": "packet-output-001",
+                    "canonical_gap_id": "gap:output-observer",
+                    "attempt_id": "attempt:newer-improved",
+                    "actor_kind": "agent",
+                    "repair_kind": "add_output_observer",
+                    "verify_command": "cargo test -p ripr output_observer",
+                    "receipt_command": "cargo xtask receipts write --packet packet-output-001",
+                    "outcome": "evidence_improved",
+                    "timestamp": "unix_ms:10"
+                }
+            ]
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        assert_eq!(report.summary.attempted_packets, 1);
+        assert_eq!(report.summary.improved_packets, 1);
+        assert_eq!(report.summary.unchanged_packets, 0);
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["summary"]["improved_packets"], 1);
+        assert_eq!(value["summary"]["unchanged_packets"], 0);
         Ok(())
     }
 
