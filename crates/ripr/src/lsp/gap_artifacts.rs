@@ -386,6 +386,11 @@ fn validate_actionable_gaps(
             "actionable-gaps report must not carry run_limitations for editor projection",
         ));
     }
+    if !actionable_gaps_runtime_status_is_editor_consumable(artifact) {
+        return Err(GapArtifactRejection::MalformedArtifact(
+            "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection",
+        ));
+    }
     let packets = artifact.get("packets").and_then(Value::as_array).ok_or(
         GapArtifactRejection::MalformedArtifact("actionable-gaps report must contain packets"),
     )?;
@@ -535,6 +540,28 @@ fn report_has_run_limitations(artifact: &Value) -> bool {
         .get("run_limitations")
         .and_then(Value::as_array)
         .is_some_and(|items| !items.is_empty())
+}
+
+fn actionable_gaps_runtime_status_is_editor_consumable(artifact: &Value) -> bool {
+    if path_value(Some(artifact), &["run_status"])
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some_and(|state| state != "full")
+    {
+        return false;
+    }
+    let runtime_status = artifact.get("runtime_status");
+    if path_value(runtime_status, &["state"])
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some_and(|state| state != "full")
+    {
+        return false;
+    }
+    !matches!(
+        path_value(runtime_status, &["downstream_consumable"]).and_then(Value::as_bool),
+        Some(false)
+    )
 }
 
 fn actionable_gaps_empty_queue_is_complete(artifact: &Value) -> bool {
@@ -1684,6 +1711,34 @@ mod tests {
             validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
             Err(GapArtifactRejection::MalformedArtifact(
                 "actionable-gaps report must not carry run_limitations for editor projection"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_limited_runtime_status_without_run_limitations() {
+        let mut artifact = actionable_gaps_report();
+        artifact["run_status"] = json!("limited_stale_input");
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection"
+            ))
+        );
+
+        artifact["run_status"] = json!("full");
+        artifact["runtime_status"] = json!({
+            "state": "limited_large_cache_skip",
+            "phase": "repo_seam_facts_cache",
+            "downstream_consumable": false,
+            "repair_route": "cargo xtask cache report && cargo xtask cache gc --dry-run"
+        });
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection"
             ))
         );
     }
