@@ -21,7 +21,7 @@ env:
 jobs:
   route:
     name: Route Ripr Rust Small
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       router_target: ${{ steps.route.outputs.router_target }}
       router_reason: ${{ steps.route.outputs.router_reason }}
@@ -291,7 +291,7 @@ jobs:
     name: Ripr Rust Small on GitHub Hosted
     needs: route
     if: needs.route.outputs.router_target == 'github'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
@@ -370,7 +370,7 @@ jobs:
     name: Ripr Rust Small Result
     needs: [route, rust-cx53, rust-cx43, rust-github]
     if: always()
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Summarize routed result
         env:
