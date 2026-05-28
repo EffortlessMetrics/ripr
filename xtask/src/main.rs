@@ -23722,7 +23722,7 @@ fn ripr_swarm_readiness_summary(
             let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
             let state_counts = actionable_gap_outcome_state_counts_from_entries(&latest_attempts);
             let not_attempted = state_counts.get("not_attempted").copied().unwrap_or(0);
-            summary.attempted_packets = attempts.len().saturating_sub(not_attempted);
+            summary.attempted_packets = latest_attempts.len().saturating_sub(not_attempted);
             summary.missing_verify_result =
                 ripr_swarm_attempt_ledger_missing_verify_result_count(&latest_attempts);
             summary.attempted_no_receipt_packets = state_counts
@@ -76704,6 +76704,119 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(value["top_next_action"]["reason"]
             .as_str()
             .is_some_and(|reason| reason.contains("repair route: run cargo xtask actionable-gap-outcomes before building the attempt ledger")));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_counts_latest_attempt_per_canonical_gap() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "swarm_ready_packets": 2
+            }
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 2,
+                "not_attempted": 1,
+                "evidence_improved": 1,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "attempts": [
+                {
+                    "packet_id": "packet-001",
+                    "canonical_gap_id": "gap-001",
+                    "attempt_id": "attempt:gap-001:evidence-unchanged:older",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test -p ripr gap_001",
+                    "verify_result": "passed",
+                    "receipt_command": "cargo xtask receipts write --packet packet-001",
+                    "outcome": "evidence_unchanged",
+                    "timestamp": "unix_ms:1000",
+                    "receipt_state": "present"
+                },
+                {
+                    "packet_id": "packet-001",
+                    "canonical_gap_id": "gap-001",
+                    "attempt_id": "attempt:gap-001:evidence-improved:newer",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test -p ripr gap_001",
+                    "verify_result": "passed",
+                    "receipt_command": "cargo xtask receipts write --packet packet-001",
+                    "outcome": "evidence_improved",
+                    "timestamp": "unix_ms:2000",
+                    "receipt_state": "present"
+                },
+                {
+                    "packet_id": "packet-002",
+                    "canonical_gap_id": "gap-002",
+                    "attempt_id": "attempt:gap-002:not-attempted",
+                    "actor_kind": "none",
+                    "verify_command": "cargo test -p ripr gap_002",
+                    "outcome": "not_attempted",
+                    "timestamp": "unix_ms:1500",
+                    "receipt_state": "not_applicable"
+                }
+            ]
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
+            .map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["attempted_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["improved_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["unchanged_packets"],
+            serde_json::Value::from(0)
+        );
         Ok(())
     }
 
