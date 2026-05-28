@@ -2664,6 +2664,7 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
       "repair_kind": "add_boundary_assertion",
       "source_file": "src/pricing.rs",
       "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
       "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
       "receipt_state": "receipt_movement_improved",
       "outcome_state": "evidence_improved",
@@ -2714,6 +2715,8 @@ Targeted-test outcome movement without a matching receipt is classified as
 `attempted_no_receipt`; its movement fields remain visible for debugging, but it
 does not count as `evidence_improved`, `evidence_unchanged`,
 `evidence_regressed`, or `resolved` until receipt evidence is joined.
+`receipt_command` is the normalized command for downstream consumers;
+`receipt_command_or_path` remains as compatibility for older packet artifacts.
 `receipt_state` uses the canonical receipt lifecycle vocabulary:
 `receipt_missing`, `receipt_found`, `receipt_stale`,
 `receipt_gap_mismatch`, `receipt_movement_improved`,

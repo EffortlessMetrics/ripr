@@ -105,6 +105,8 @@ Before an attempt can claim improvement, typed evidence must show:
 - targeted-test movement without a matching receipt remains
   `attempted_no_receipt` and cannot claim improvement, regression, unchanged
   evidence, or resolution;
+- outcome rows expose normalized `receipt_command` so downstream ledgers and
+  readiness reports do not reinterpret legacy command/path fields;
 - no production-code edit claim unless explicitly operator-authorized outside
   the default swarm contract.
 

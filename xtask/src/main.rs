@@ -1210,6 +1210,7 @@ struct ActionableGapOutcome {
     repair_kind: String,
     source_file: String,
     verify_command: String,
+    receipt_command: Option<String>,
     receipt_command_or_path: Option<String>,
     receipt_state: String,
     outcome_state: String,
@@ -24394,6 +24395,8 @@ fn actionable_gap_outcome_from_packet(
         }
         None => "No receipt or targeted-test outcome artifact matched this packet.".to_string(),
     };
+    let receipt_command = audit_non_empty_string(packet, &["receipt_command"])
+        .or_else(|| audit_non_empty_string(packet, &["receipt_command_or_path"]));
     let timestamp = receipt_timestamp.or_else(|| {
         movement
             .as_ref()
@@ -24418,7 +24421,9 @@ fn actionable_gap_outcome_from_packet(
             .unwrap_or_else(|| "source_file_unknown".to_string()),
         verify_command: audit_non_empty_string(packet, &["verify_command"])
             .unwrap_or_else(|| "verify_command_unknown".to_string()),
-        receipt_command_or_path: audit_non_empty_string(packet, &["receipt_command_or_path"]),
+        receipt_command_or_path: audit_non_empty_string(packet, &["receipt_command_or_path"])
+            .or_else(|| receipt_command.clone()),
+        receipt_command,
         receipt_state,
         outcome_state,
         timestamp,
@@ -24801,6 +24806,7 @@ fn actionable_gap_outcome_json(outcome: &ActionableGapOutcome) -> Value {
         "repair_kind": outcome.repair_kind,
         "source_file": outcome.source_file,
         "verify_command": outcome.verify_command,
+        "receipt_command": outcome.receipt_command,
         "receipt_command_or_path": outcome.receipt_command_or_path,
         "receipt_state": outcome.receipt_state,
         "outcome_state": outcome.outcome_state,
@@ -77792,6 +77798,10 @@ covered_by = ["cargo xtask check-file-policy"]
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["report"], "actionable-gap-outcomes");
+        assert_eq!(
+            value["outcomes"][0]["receipt_command"],
+            "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a"
+        );
         assert_eq!(value["summary"]["evidence_improved"], 1);
         assert_eq!(value["summary"]["evidence_unchanged"], 0);
         assert_eq!(value["summary"]["resolved"], 0);
