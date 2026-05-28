@@ -19776,7 +19776,7 @@ impl Lane1EvidenceAuditBuilder {
     ) {
         let entry = self
             .static_limitation_backlog_packet_builders
-            .entry(category.to_string())
+            .entry(format!("{category}|{repair_route}"))
             .or_insert_with(|| Lane1StaticLimitationBacklogPacketBuilder {
                 limitation_category: category.to_string(),
                 ..Lane1StaticLimitationBacklogPacketBuilder::default()
@@ -20118,6 +20118,7 @@ impl Lane1EvidenceAuditBuilder {
                 .signal_count
                 .cmp(&left.signal_count)
                 .then_with(|| left.limitation_category.cmp(&right.limitation_category))
+                .then_with(|| left.repair_route.cmp(&right.repair_route))
         });
         static_limitation_backlog_packets.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
@@ -21094,7 +21095,11 @@ fn lane1_static_limitation_backlog_packet_from_builder(
         .map(|row| row.label.clone())
         .unwrap_or_else(|| "unknown".to_string());
     Lane1StaticLimitationBacklogPacket {
-        packet_id: format!("limitation:{}", builder.limitation_category),
+        packet_id: format!(
+            "limitation:{}:{}",
+            builder.limitation_category,
+            audit_slug(&repair_route)
+        ),
         limitation_category: builder.limitation_category.clone(),
         repair_route: repair_route.clone(),
         signal_count: builder.signal_count,
@@ -76347,7 +76352,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let packet = &value["static_limitation_backlog"]["limitation_backlog_packets"][0];
         assert_eq!(
             packet["packet_id"],
-            "limitation:activation_boundary_input_unresolved"
+            "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution"
         );
         assert_eq!(
             packet["limitation_category"],
@@ -76384,8 +76389,174 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let markdown = lane1_actionable_gap_packets_markdown(&report);
         assert!(markdown.contains("### Backlog Packets"));
-        assert!(markdown.contains("limitation:activation_boundary_input_unresolved"));
+        assert!(markdown.contains(
+            "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution"
+        ));
         assert!(markdown.contains("analysis/local-computed-boundary-operand-resolution"));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_splits_same_category_by_repair_route() -> Result<(), String>
+    {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "idx-offset-local",
+                  "headline_eligible": true,
+                  "file": "src/window.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "idx-offset-local",
+                    "canonical_gap_id": "gap:idx-offset-local",
+                    "owner": "window::read",
+                    "location": {"file": "src/window.rs", "line": 44},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "local boundary operand unresolved", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "local/computed operand cannot be mapped to a safe test input",
+                        "category": "activation_boundary_input_unresolved",
+                        "repair_route": "analysis/local-computed-boundary-operand-resolution"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "src/window.rs", "line": 44, "kind": "static_unknown", "probe_kind": "predicate_boundary", "expression": "idx >= offset"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:idx-offset-local",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/window.rs", "line": 44, "kind": "static_unknown", "expression": "idx >= offset"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "local/computed boundary operand cannot be mapped to a safe test input",
+                      "recommended_repair": "Improve local/computed operand resolution before emitting a repair packet.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                },
+                {
+                  "seam_id": "idx-offset-iterator",
+                  "headline_eligible": true,
+                  "file": "src/window.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "idx-offset-iterator",
+                    "canonical_gap_id": "gap:idx-offset-iterator",
+                    "owner": "window::scan",
+                    "location": {"file": "src/window.rs", "line": 77},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "iterator boundary operand unresolved", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "iterator operand cannot be mapped to a safe test input",
+                        "category": "activation_boundary_input_unresolved",
+                        "repair_route": "analysis/iterator-boundary-operand-resolution"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "src/window.rs", "line": 77, "kind": "static_unknown", "probe_kind": "predicate_boundary", "expression": "idx >= offset"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:idx-offset-iterator",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/window.rs", "line": 77, "kind": "static_unknown", "expression": "idx >= offset"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "iterator boundary operand cannot be mapped to a safe test input",
+                      "recommended_repair": "Improve iterator operand resolution before emitting a repair packet.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let actionable_json = lane1_actionable_gap_packets_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&actionable_json).map_err(|err| err.to_string())?;
+        let packets = value["static_limitation_backlog"]["limitation_backlog_packets"]
+            .as_array()
+            .ok_or_else(|| "missing limitation backlog packets".to_string())?;
+
+        let local_packet = packets
+            .iter()
+            .find(|packet| {
+                packet["packet_id"]
+                    == "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution"
+            })
+            .ok_or_else(|| "missing local/computed backlog packet".to_string())?;
+        let iterator_packet = packets
+            .iter()
+            .find(|packet| {
+                packet["packet_id"]
+                    == "limitation:activation_boundary_input_unresolved:analysis-iterator-boundary-operand-resolution"
+            })
+            .ok_or_else(|| "missing iterator backlog packet".to_string())?;
+
+        assert_eq!(packets.len(), 2);
+        assert_eq!(
+            local_packet["limitation_category"],
+            "activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            iterator_packet["limitation_category"],
+            "activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            local_packet["repair_route"],
+            "analysis/local-computed-boundary-operand-resolution"
+        );
+        assert_eq!(
+            iterator_packet["repair_route"],
+            "analysis/iterator-boundary-operand-resolution"
+        );
+        assert_eq!(
+            local_packet["sample_canonical_gap_ids"][0],
+            "gap:idx-offset-local"
+        );
+        assert_eq!(
+            iterator_packet["sample_canonical_gap_ids"][0],
+            "gap:idx-offset-iterator"
+        );
+        assert_eq!(value["packets"].as_array().map(Vec::len), Some(0));
         Ok(())
     }
 

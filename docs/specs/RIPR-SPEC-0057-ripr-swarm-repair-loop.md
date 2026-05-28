@@ -175,8 +175,10 @@ public actionable count.
 The backlog may include `limitation_backlog_packets[]` for analyzer work. Those
 packets must include limitation category, repair route, signal count, sample
 canonical gap IDs or source samples when available, dominant evidence class, why
-the item is not actionable, the analyzer unlock condition, and non-claims. They
-remain non-actionable and must not be placed in `top_ready_packets`.
+the item is not actionable, the analyzer unlock condition, and non-claims. Packet
+identity is route-grained so one limitation category can produce separate
+analyzer backlog packets for separate repair routes. They remain non-actionable
+and must not be placed in `top_ready_packets`.
 
 ## Required Packet Fields
 
@@ -569,6 +571,9 @@ Current implementation coverage:
 - `xtask::tests::lane1_static_limitation_backlog_emits_analyzer_packets`
   pins analyzer backlog packets for named limitations without emitting public
   repair packets.
+- `xtask::tests::lane1_static_limitation_backlog_splits_same_category_by_repair_route`
+  pins route-grained analyzer backlog packet identity when one limitation
+  category has multiple repair routes.
 
 Follow-up implementation PRs should add tests for:
 

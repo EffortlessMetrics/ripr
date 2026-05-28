@@ -2407,7 +2407,7 @@ limitations into user repair work.
     ],
     "limitation_backlog_packets": [
       {
-        "packet_id": "limitation:activation_boundary_input_unresolved",
+        "packet_id": "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution",
         "limitation_category": "activation_boundary_input_unresolved",
         "repair_route": "analysis/local-computed-boundary-operand-resolution",
         "signal_count": 297,
@@ -2535,8 +2535,10 @@ packets. It is backlog routing evidence only; it must not be counted as
 repair-ready packet work.
 `static_limitation_backlog.limitation_backlog_packets[]` turns top limitation
 routes into analyzer work packets with sample IDs, dominant evidence class,
-unlock condition, and non-claims. These packets are not public repair packets
-and must not enter the swarm-ready queue.
+unlock condition, and non-claims. Packet identity is route-grained:
+the same limitation category can emit separate backlog packets for separate
+analyzer repair routes. These packets are not public repair packets and must not
+enter the swarm-ready queue.
 
 ```json
 {
