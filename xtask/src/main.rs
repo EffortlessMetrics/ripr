@@ -7891,6 +7891,10 @@ const SWARM_PLAN_PACKET_REQUIRED_CASES: &[(&str, &str)] = &[
         "blocked_by_missing_context",
     ),
     (
+        "inconsistent_repair_route_packet",
+        "blocked_by_missing_context",
+    ),
+    (
         "must_not_change_boundary_packet",
         "blocked_by_missing_context",
     ),
