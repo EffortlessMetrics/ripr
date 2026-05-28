@@ -141,7 +141,7 @@ stable reason strings where practical:
 - `static_limited`;
 - `missing_repair_route`;
 - `missing_verify_command`;
-- `missing_receipt_path`;
+- `missing_receipt_command`;
 - `preview_unpromoted`;
 - `runtime_only`;
 - `raw_only`;
@@ -371,7 +371,7 @@ Packet exclusion:
 
 - Given an actionable canonical gap packet without a receipt command or path,
   `actionable-gaps.json` and the scorecard keep the packet internal, name
-  `missing_receipt_path`, and leave public badge counts unchanged.
+  `missing_receipt_command`, and leave public badge counts unchanged.
 
 ## Test Mapping
 

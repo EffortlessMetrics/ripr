@@ -26007,7 +26007,7 @@ fn audit_actionable_gap_projection_exclusion_reasons(
         .is_none_or(audit_guidance_field_is_missing)
         || !input.receipt_source.ends_with(".receipt_command")
     {
-        audit_push_projection_exclusion_reason(&mut reasons, "missing_receipt_path");
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_receipt_command");
     }
     if !input.typed_related_target_available {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_related_test_or_observer");
@@ -75217,7 +75217,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             audit_value["finding_alignment"]["actionable_gap_packet_public_projection"]["projection_exclusion_reasons"]
                 [0]["label"],
-            "missing_receipt_path"
+            "missing_receipt_command"
         );
 
         let packet_json = lane1_actionable_gap_packets_json(&report)?;
@@ -75255,7 +75255,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             packet_value["packets"][0]["projection_exclusion_reasons"][0],
-            "missing_receipt_path"
+            "missing_receipt_command"
         );
         assert_eq!(
             packet_value["summary"]["public_projection_eligible_packets"],
@@ -75282,7 +75282,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# Actionable Canonical Gap Packets"));
         assert!(markdown.contains("gap:packet-boundary-gap"));
         assert!(markdown.contains("discount_threshold (equality boundary)"));
-        assert!(markdown.contains("excluded: missing_receipt_path"));
+        assert!(markdown.contains("excluded: missing_receipt_command"));
         assert!(markdown.contains("cargo xtask evidence-quality-scorecard"));
         Ok(())
     }
@@ -80030,7 +80030,7 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::json!([
                 "missing_repair_route",
                 "missing_verify_command",
-                "missing_receipt_path",
+                "missing_receipt_command",
                 "missing_related_test_or_observer"
             ])
         );
@@ -81103,7 +81103,7 @@ covered_by = ["cargo xtask check-file-policy"]
                         "public_projection_eligible_packets": 2,
                         "public_projection_excluded_packets": 1,
                         "projection_exclusion_reasons": [
-                            {"label": "missing_receipt_path", "count": 1}
+                            {"label": "missing_receipt_command", "count": 1}
                         ]
                     }
                 }),
@@ -81142,13 +81142,13 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["actionable_gap_packet_public_projection"]["projection_exclusion_reasons"][0]["label"],
-            "missing_receipt_path"
+            "missing_receipt_command"
         );
 
         let markdown = evidence_quality_scorecard_markdown(&report);
         assert!(markdown.contains("Actionable Gap Packet Public Projection Readiness"));
         assert!(markdown.contains("Public projection eligible packets"));
-        assert!(markdown.contains("missing_receipt_path"));
+        assert!(markdown.contains("missing_receipt_command"));
         Ok(())
     }
 

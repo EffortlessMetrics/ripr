@@ -1959,7 +1959,7 @@ runtime execution.
         "receipt_command_or_path": null,
         "receipt_source": "missing",
         "public_projection_eligible": false,
-        "projection_exclusion_reasons": ["missing_receipt_path"],
+        "projection_exclusion_reasons": ["missing_receipt_command"],
         "raw_evidence_refs": [
           {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
         ],
@@ -1980,7 +1980,7 @@ runtime execution.
       "public_projection_eligible_packets": 0,
       "public_projection_excluded_packets": 1,
       "projection_exclusion_reasons": [
-        {"label": "missing_receipt_path", "count": 1}
+        {"label": "missing_receipt_command", "count": 1}
       ]
     },
     "runtime_confidence_by_class": [
@@ -2273,7 +2273,7 @@ Field contract:
   badge-readiness diagnostics for the emitted packet set. It counts
   public-projection eligible packets, excluded packets, and stable
   `projection_exclusion_reasons` rows such as `not_actionable_gap_state`,
-  `missing_receipt_path`, `missing_related_test_or_observer`, `missing_confidence`,
+  `missing_receipt_command`, `missing_related_test_or_observer`, `missing_confidence`,
   `missing_must_not_change`, `missing_raw_evidence_refs`, and
   `static_limitation_present`. This is advisory report evidence only and does
   not change public badge endpoint semantics.

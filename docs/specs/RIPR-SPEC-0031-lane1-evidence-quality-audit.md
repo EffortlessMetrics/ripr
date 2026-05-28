@@ -324,7 +324,7 @@ public projection readiness. `public_projection_eligible` is true only when the
 packet has canonical repair and verify sources plus a receipt command or path.
 Packets that are useful for humans or agents but not badge-ready remain in the
 artifact with stable `projection_exclusion_reasons[]` such as
-`missing_receipt_path`; this does not change public badge semantics.
+`missing_receipt_command`; this does not change public badge semantics.
 
 Given an actionable-gap packet artifact, an optional agent receipt artifact, and
 an optional targeted-test outcome artifact, `cargo xtask actionable-gap-outcomes`
