@@ -21275,6 +21275,8 @@ struct RiprSwarmReadinessSummary {
     static_limitation_packets: usize,
     high_confidence_packets: usize,
     attempted_packets: usize,
+    attempted_no_receipt_packets: usize,
+    receipt_present_packets: usize,
     improved_packets: usize,
     unchanged_packets: usize,
     regressed_packets: usize,
@@ -23702,6 +23704,10 @@ fn ripr_swarm_readiness_summary(
                         ripr_swarm_top_missing_evidence_field_count(ledger, "verify_result")
                     })
                     .unwrap_or_default();
+            summary.attempted_no_receipt_packets =
+                audit_usize(ledger, &["summary", "attempted_no_receipt"]).unwrap_or_default();
+            summary.receipt_present_packets =
+                audit_usize(ledger, &["summary", "receipt_present"]).unwrap_or_default();
             summary.improved_packets =
                 audit_usize(ledger, &["summary", "evidence_improved"]).unwrap_or_default();
             summary.unchanged_packets =
@@ -23719,6 +23725,14 @@ fn ripr_swarm_readiness_summary(
             summary.attempted_packets = attempts.len().saturating_sub(not_attempted);
             summary.missing_verify_result =
                 ripr_swarm_attempt_ledger_missing_verify_result_count(&latest_attempts);
+            summary.attempted_no_receipt_packets = state_counts
+                .get("attempted_no_receipt")
+                .copied()
+                .unwrap_or_default();
+            summary.receipt_present_packets = state_counts
+                .get("receipt_present")
+                .copied()
+                .unwrap_or_default();
             summary.improved_packets = state_counts
                 .get("evidence_improved")
                 .copied()
@@ -23747,6 +23761,10 @@ fn ripr_swarm_readiness_summary(
         summary.attempted_packets = outcomes_total.saturating_sub(not_attempted);
         summary.missing_verify_result =
             actionable_gap_outcomes_missing_verify_result_count(outcomes);
+        summary.attempted_no_receipt_packets =
+            audit_usize(outcomes, &["summary", "attempted_no_receipt"]).unwrap_or_default();
+        summary.receipt_present_packets =
+            audit_usize(outcomes, &["summary", "receipt_present"]).unwrap_or_default();
         summary.improved_packets =
             audit_usize(outcomes, &["summary", "evidence_improved"]).unwrap_or_default();
         summary.unchanged_packets =
@@ -23829,6 +23847,8 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "static_limitation_packets": summary.static_limitation_packets,
         "high_confidence_packets": summary.high_confidence_packets,
         "attempted_packets": summary.attempted_packets,
+        "attempted_no_receipt_packets": summary.attempted_no_receipt_packets,
+        "receipt_present_packets": summary.receipt_present_packets,
         "improved_packets": summary.improved_packets,
         "unchanged_packets": summary.unchanged_packets,
         "regressed_packets": summary.regressed_packets,
@@ -24376,6 +24396,8 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
         "static_limitation_packets",
         "high_confidence_packets",
         "attempted_packets",
+        "attempted_no_receipt_packets",
+        "receipt_present_packets",
         "improved_packets",
         "unchanged_packets",
         "regressed_packets",
@@ -76093,6 +76115,8 @@ covered_by = ["cargo xtask check-file-policy"]
             "summary": {
                 "attempts_total": 25,
                 "not_attempted": 22,
+                "attempted_no_receipt": 1,
+                "receipt_present": 1,
                 "evidence_improved": 2,
                 "evidence_unchanged": 1,
                 "evidence_regressed": 0,
@@ -76145,6 +76169,14 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["summary"]["attempted_packets"],
             serde_json::Value::from(3)
+        );
+        assert_eq!(
+            value["summary"]["attempted_no_receipt_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["receipt_present_packets"],
+            serde_json::Value::from(1)
         );
         assert_eq!(
             value["summary"]["improved_packets"],

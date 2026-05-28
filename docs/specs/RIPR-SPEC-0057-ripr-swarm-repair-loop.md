@@ -574,6 +574,8 @@ Future reports should expose:
 - `swarm_static_limitation_packets`;
 - `swarm_high_confidence_packets`;
 - `swarm_attempted_packets`;
+- `swarm_attempted_no_receipt_packets`;
+- `swarm_receipt_present_packets`;
 - `swarm_verified_improved`;
 - `swarm_verified_unchanged`;
 - `swarm_verified_regressed`;

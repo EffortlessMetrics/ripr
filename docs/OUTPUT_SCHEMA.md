@@ -3070,6 +3070,8 @@ limits.
     "static_limitation_packets": 2,
     "high_confidence_packets": 4,
     "attempted_packets": 3,
+    "attempted_no_receipt_packets": 0,
+    "receipt_present_packets": 0,
     "improved_packets": 2,
     "unchanged_packets": 1,
     "regressed_packets": 0,
