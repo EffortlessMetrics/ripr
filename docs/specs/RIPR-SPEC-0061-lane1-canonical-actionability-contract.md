@@ -106,6 +106,17 @@ are present and internally consistent:
 - `must_not_change[]`
 - `raw_evidence_refs[]`
 
+`raw_evidence_refs[]` is evidence lineage, not a placeholder slot. Each public
+or swarm-ready item must include at least one structured reference with:
+
+- an anchor field: `file`, `path`, or `source_file`;
+- an identity field: `kind`, `source_id`, `evidence_record_ref`, or
+  `canonical_gap_id`.
+
+Empty objects, prose strings, raw duplicate counts, or placeholder values do not
+satisfy the evidence reference requirement. Downstream surfaces must treat those
+as missing evidence context and suppress the item from public repair queues.
+
 The item must also have one of:
 
 - a related test or observer that can safely be extended;
@@ -129,6 +140,10 @@ Every public or swarm-ready repair packet must include:
 - `confidence`
 - `must_not_change[]`
 - `raw_evidence_refs[]`
+
+The packet form uses the same structured `raw_evidence_refs[]` rule as the
+canonical item. A packet with only placeholder refs is not swarm-ready even when
+it carries `repair_kind`, `verify_command`, and `receipt_command`.
 
 `must_not_change[]` is required because packets are intended to bound repair
 attempts. Typical entries include:

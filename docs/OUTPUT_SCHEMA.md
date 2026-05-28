@@ -1997,6 +1997,7 @@ runtime execution.
       }
     ]
   },
+
   "canonical_gap_groups": {
     "total": 4800,
     "largest": [
@@ -2262,6 +2263,12 @@ Field contract:
   receipt command, raw evidence references as supporting evidence, confidence
   basis, and conservative `must_not_change` boundaries. They do not create user
   work from raw static class alone.
+  `raw_evidence_refs[]` entries are structured evidence anchors. For public
+  projection and swarm planning, at least one entry must carry an anchor field
+  (`file`, `path`, or `source_file`) and an identity field (`kind`,
+  `source_id`, `evidence_record_ref`, or `canonical_gap_id`). Empty objects,
+  strings, counts, or other placeholders are treated as
+  `missing_raw_evidence_refs`.
 - `finding_alignment.actionable_gap_packet_public_projection` - packet-level
   badge-readiness diagnostics for the emitted packet set. It counts
   public-projection eligible packets, excluded packets, and stable
