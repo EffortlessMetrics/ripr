@@ -424,21 +424,46 @@ fn boundary_local_operand_parameter(
         return None;
     }
     for parameter in parameters {
-        if function
-            .body
-            .contains(&format!("if let Some({operand}) = {parameter}"))
-            || function
-                .body
-                .contains(&format!("if let Ok({operand}) = {parameter}"))
+        if body_contains_wrapped_local_alias(&function.body, "Some", operand, parameter)
+            || body_contains_wrapped_local_alias(&function.body, "Ok", operand, parameter)
             || body_contains_direct_local_alias(&function.body, operand, parameter)
-            || (function.body.contains(&format!("match {parameter}"))
-                && (function.body.contains(&format!("Some({operand})"))
-                    || function.body.contains(&format!("Ok({operand})"))))
         {
             return Some(parameter.clone());
         }
     }
     None
+}
+
+fn body_contains_wrapped_local_alias(
+    body: &str,
+    wrapper: &str,
+    operand: &str,
+    parameter: &str,
+) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim();
+        let prefix = format!("if let {wrapper}({operand}) = ");
+        line.strip_prefix(&prefix)
+            .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
+    }) || (body_contains_match_parameter(body, parameter)
+        && body.contains(&format!("{wrapper}({operand})")))
+}
+
+fn body_contains_match_parameter(body: &str, parameter: &str) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim();
+        line.find("match ")
+            .map(|index| &line[index + "match ".len()..])
+            .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
+    })
+}
+
+fn starts_with_identifier_token(text: &str, token: &str) -> bool {
+    let text = text.trim_start();
+    let end = text
+        .find(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .unwrap_or(text.len());
+    end > 0 && &text[..end] == token
 }
 
 fn body_contains_direct_local_alias(body: &str, operand: &str, parameter: &str) -> bool {
@@ -700,6 +725,27 @@ mod tests {
         assert!(activation.observed_values.iter().any(|fact| {
             fact.context == ValueContext::FunctionArgument && fact.value == "amount == threshold"
         }));
+    }
+
+    #[test]
+    fn activation_evidence_uses_exact_if_let_parameter_name_for_boundary_operand_alias() {
+        let owner = function(
+            "pub fn score(raw_amount: Option<i32>, raw_amount_extra: Option<i32>, threshold: i32) -> bool {\n    if let Some(amount) = raw_amount_extra { amount >= threshold } else { false }\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(Some(100), Some(101), 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(!has_observed_boundary_equality(&activation));
+        assert_eq!(activation.missing_discriminators.len(), 1);
+        assert!(
+            activation.missing_discriminators[0]
+                .reason
+                .contains("observed amount values: 101"),
+            "prefix parameter matches must not make raw_amount look like amount; got {:?}",
+            activation.missing_discriminators
+        );
     }
 
     #[test]

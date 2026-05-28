@@ -1558,21 +1558,46 @@ fn boundary_local_operand_parameter_index(
         return None;
     }
     for (index, parameter) in parameters.iter().enumerate() {
-        if owner_fn
-            .body
-            .contains(&format!("if let Some({operand}) = {parameter}"))
-            || owner_fn
-                .body
-                .contains(&format!("if let Ok({operand}) = {parameter}"))
+        if body_contains_wrapped_local_alias(&owner_fn.body, "Some", operand, parameter)
+            || body_contains_wrapped_local_alias(&owner_fn.body, "Ok", operand, parameter)
             || body_contains_direct_local_alias(&owner_fn.body, operand, parameter)
-            || (owner_fn.body.contains(&format!("match {parameter}"))
-                && (owner_fn.body.contains(&format!("Some({operand})"))
-                    || owner_fn.body.contains(&format!("Ok({operand})"))))
         {
             return Some(index);
         }
     }
     None
+}
+
+fn body_contains_wrapped_local_alias(
+    body: &str,
+    wrapper: &str,
+    operand: &str,
+    parameter: &str,
+) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim();
+        let prefix = format!("if let {wrapper}({operand}) = ");
+        line.strip_prefix(&prefix)
+            .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
+    }) || (body_contains_match_parameter(body, parameter)
+        && body.contains(&format!("{wrapper}({operand})")))
+}
+
+fn body_contains_match_parameter(body: &str, parameter: &str) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim();
+        line.find("match ")
+            .map(|index| &line[index + "match ".len()..])
+            .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
+    })
+}
+
+fn starts_with_identifier_token(text: &str, token: &str) -> bool {
+    let text = text.trim_start();
+    let end = text
+        .find(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .unwrap_or(text.len());
+    end > 0 && &text[..end] == token
 }
 
 fn body_contains_direct_local_alias(body: &str, operand: &str, parameter: &str) -> bool {
@@ -4891,6 +4916,49 @@ pub fn discounted_total(raw_amount: i32, threshold: i32) -> i32 {
             values,
             vec!["50".to_string()],
             "direct local aliases of owner parameters should resolve to the original owner-call argument"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_if_let_alias_parameter_name_has_prefix_then_exact_parameter_is_used()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub fn discounted_total(raw_amount: Option<i32>, raw_amount_extra: Option<i32>, threshold: i32) -> i32 {
+    if let Some(amount) = raw_amount_extra {
+        if amount >= threshold { amount - 10 } else { amount }
+    } else {
+        0
+    }
+}
+"#;
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn below_threshold() { \
+                 assert_eq!(discounted_total(Some(50), Some(60), 50), 60); \
+             }\n",
+        );
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
+        files.push((PathBuf::from(test.0), test.1));
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("amount >= threshold")
+            })
+            .ok_or_else(|| "amount predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let values: Vec<String> = evidence
+            .observed_values
+            .iter()
+            .map(|v| v.value.clone())
+            .collect();
+        assert_eq!(
+            values,
+            vec!["60".to_string()],
+            "prefix parameter matches must resolve amount from raw_amount_extra, not raw_amount"
         );
         Ok(())
     }
