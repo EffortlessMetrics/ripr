@@ -8985,11 +8985,6 @@ fn validate_user_surface_projection_alignment_fixture_corpus_at(
     let surface_projection_scenarios = dogfood_surface_projection_alignment_scenarios();
     let mut seen_names = BTreeSet::new();
     let mut seen_surfaces = BTreeSet::new();
-    let mut canonical_gap_id: Option<String> = None;
-    let mut packet_id: Option<String> = None;
-    let mut repair_kind: Option<String> = None;
-    let mut verify_command: Option<String> = None;
-    let mut receipt_command: Option<String> = None;
     for scenario in &scenarios {
         if !seen_names.insert(scenario.name.clone()) {
             violations.push(format!(
@@ -9011,36 +9006,6 @@ fn validate_user_surface_projection_alignment_fixture_corpus_at(
                 "user surface projection alignment case {}: {error}",
                 scenario.name
             ));
-        }
-        if scenario.run_status == "full" {
-            for (label, expected, actual) in [
-                (
-                    "canonical_gap_id",
-                    &mut canonical_gap_id,
-                    &scenario.canonical_gap_id,
-                ),
-                ("packet_id", &mut packet_id, &scenario.packet_id),
-                ("repair_kind", &mut repair_kind, &scenario.repair_kind),
-                (
-                    "verify_command",
-                    &mut verify_command,
-                    &scenario.verify_command,
-                ),
-                (
-                    "receipt_command",
-                    &mut receipt_command,
-                    &scenario.receipt_command,
-                ),
-            ] {
-                match expected {
-                    Some(value) if value != actual => violations.push(format!(
-                        "user surface projection alignment case {} {label} must match shared {}, got {}",
-                        scenario.name, value, actual
-                    )),
-                    Some(_) => {}
-                    None => *expected = Some(actual.clone()),
-                }
-            }
         }
     }
 
@@ -39104,9 +39069,12 @@ fn dogfood_user_surface_projection_runtime_state_errors(
         if scenario.raw_findings_total <= scenario.actionable_count {
             errors.push("raw_findings_total must exceed actionable_count to prove raw counts are not the headline".to_string());
         }
-        if scenario.top_next_action_kind != "attempt_ready_packet" {
+        if !matches!(
+            scenario.top_next_action_kind.as_str(),
+            "attempt_ready_packet" | "improve_repair_route_quality" | "inspect_unchanged_attempts"
+        ) {
             errors.push(format!(
-                "full run_status must route attempt_ready_packet, got {}",
+                "full run_status must route a canonical repair-loop next action, got {}",
                 scenario.top_next_action_kind
             ));
         }
@@ -39330,7 +39298,11 @@ fn dogfood_surface_projection_alignment_run(
     }
     if !matches!(
         scenario.evidence_class.as_str(),
-        "predicate_boundary" | "presentation_text" | "config_or_policy_constant" | "call_presence"
+        "predicate_boundary"
+            | "presentation_text"
+            | "config_or_policy_constant"
+            | "call_presence"
+            | "output_observer"
     ) {
         errors.push(format!(
             "unsupported evidence class for surface projection alignment: {}",
@@ -39481,38 +39453,57 @@ fn dogfood_surface_projection_alignment_run(
                 &scenario.expected_top_next_action_kind,
                 "readiness top_next_action.kind",
             );
-            surface_projection_expect_string(
-                &mut errors,
-                top,
-                &["packet_id"],
-                &scenario.packet_id,
-                "readiness top_next_action.packet_id",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                top,
-                &["canonical_gap_id"],
-                &scenario.canonical_gap_id,
-                "readiness top_next_action.canonical_gap_id",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                top,
-                &["repair_kind"],
-                &scenario.repair_kind,
-                "readiness top_next_action.repair_kind",
-            );
-            let expected_attempt_command = format!(
-                "cargo xtask ripr-swarm attempt --packet {} --dry-run",
-                scenario.packet_id
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                top,
-                &["command"],
-                &expected_attempt_command,
-                "readiness top_next_action.command",
-            );
+            if scenario.expected_top_next_action_kind == "attempt_ready_packet" {
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["packet_id"],
+                    &scenario.packet_id,
+                    "readiness top_next_action.packet_id",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["canonical_gap_id"],
+                    &scenario.canonical_gap_id,
+                    "readiness top_next_action.canonical_gap_id",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["repair_kind"],
+                    &scenario.repair_kind,
+                    "readiness top_next_action.repair_kind",
+                );
+                let expected_attempt_command = format!(
+                    "cargo xtask ripr-swarm attempt --packet {} --dry-run",
+                    scenario.packet_id
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["command"],
+                    &expected_attempt_command,
+                    "readiness top_next_action.command",
+                );
+            } else {
+                if scenario.expected_top_next_action_kind == "improve_repair_route_quality" {
+                    surface_projection_expect_string(
+                        &mut errors,
+                        top,
+                        &["repair_kind"],
+                        &scenario.repair_kind,
+                        "readiness top_next_action.repair_kind",
+                    );
+                }
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["command"],
+                    "cargo xtask ripr-swarm attempt-ledger",
+                    "readiness top_next_action.command",
+                );
+            }
             if !json_string_array_field(&value, "must_not_infer")
                 .iter()
                 .any(|item| item.contains("not a separate ranking source"))
@@ -63941,6 +63932,90 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(report.contains(
             "limited_large_cache_skip runtime_repair_command must be cargo xtask cache report && cargo xtask cache gc --dry-run"
         ));
+    }
+
+    #[test]
+    fn dogfood_surface_projection_alignment_covers_route_quality_non_success() -> Result<(), String>
+    {
+        with_repo_cwd(|| {
+            let fixture = std::fs::read_to_string(super::SURFACE_PROJECTION_ALIGNMENT_CORPUS)
+                .map_err(|err| err.to_string())?;
+            let value: serde_json::Value =
+                serde_json::from_str(&fixture).map_err(|err| err.to_string())?;
+            let cases = value["cases"]
+                .as_array()
+                .ok_or("surface projection corpus cases must be an array")?;
+
+            let has_non_success_route_quality = cases.iter().any(|case| {
+                let outcome = case["expected"]["outcome"].as_str().unwrap_or("");
+                let top_next_action_kind = case["expected"]["top_next_action_kind"]
+                    .as_str()
+                    .unwrap_or("");
+                let route_quality_has_non_success =
+                    case["artifacts"]["swarm_attempt_ledger"]["repair_route_quality"]
+                        .as_array()
+                        .is_some_and(|rows| {
+                            rows.iter().any(|row| {
+                                row["repair_kind_failure_count"].as_u64().unwrap_or(0) > 0
+                                    || row["repair_kind_unchanged"].as_u64().unwrap_or(0) > 0
+                                    || row["repair_kind_regressed"].as_u64().unwrap_or(0) > 0
+                                    || row["repair_kind_attempted_no_receipt"]
+                                        .as_u64()
+                                        .unwrap_or(0)
+                                        > 0
+                            })
+                        });
+
+                matches!(outcome, "evidence_unchanged" | "attempted_no_receipt")
+                    && top_next_action_kind != "attempt_ready_packet"
+                    && route_quality_has_non_success
+            });
+
+            if has_non_success_route_quality {
+                Ok(())
+            } else {
+                Err(
+                    "surface projection corpus must include a non-success route-quality case"
+                        .to_string(),
+                )
+            }
+        })
+    }
+
+    #[test]
+    fn dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let sources = super::dogfood_surface_projection_alignment_scenarios();
+            let mut scenario = valid_user_surface_projection_scenario();
+            scenario.name = "pr_comment_route_quality_degraded_from_canonical_outcome".to_string();
+            scenario.surface = "pr_comment".to_string();
+            scenario.artifact = "pr evidence summary".to_string();
+            scenario.headline =
+                "Repair route quality needs attention: add_output_observer unchanged".to_string();
+            scenario.canonical_gap_id = "gap:output-observer-009".to_string();
+            scenario.packet_id = "output-observer-009".to_string();
+            scenario.repair_kind = "add_output_observer".to_string();
+            scenario.top_next_action_kind = "improve_repair_route_quality".to_string();
+            scenario.verify_command = "cargo test -p ripr-swarm output_observer_009".to_string();
+            scenario.receipt_command =
+                "cargo xtask receipts write --packet output-observer-009 --canonical-gap gap:output-observer-009".to_string();
+            scenario.source_alignment_case =
+                "receipt_unchanged_route_quality_alignment".to_string();
+            scenario.reason =
+                "PR comments should preserve canonical non-success route-quality state."
+                    .to_string();
+
+            let report =
+                super::user_surface_projection_source_alignment_errors(&scenario, &sources);
+
+            assert!(
+                report.is_empty(),
+                "route-quality non-success source should align cleanly: {report:?}"
+            );
+
+            Ok(())
+        })
     }
 
     #[test]

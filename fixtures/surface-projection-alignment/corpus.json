@@ -157,6 +157,163 @@
         }
       },
       "reason": "A single improved receipt should keep the same canonical gap, packet, repair kind, verify command, receipt command/state, and top readiness route while badge, LSP, PR, and CI remain advisory consumers."
+    },
+    {
+      "id": "receipt_unchanged_route_quality_alignment",
+      "canonical_gap_id": "gap:output-observer-009",
+      "packet_id": "output-observer-009",
+      "evidence_class": "output_observer",
+      "repair_kind": "add_output_observer",
+      "verify_command": "cargo test -p ripr-swarm output_observer_009",
+      "receipt_command": "cargo xtask receipts write --packet output-observer-009 --canonical-gap gap:output-observer-009",
+      "must_not_change": [
+        "production behavior",
+        "public API",
+        "snapshot format"
+      ],
+      "advisory_consumers": [
+        "badge",
+        "lsp",
+        "pr_comment",
+        "ci"
+      ],
+      "expected": {
+        "outcome": "evidence_unchanged",
+        "receipt_state": "receipt_movement_unchanged",
+        "top_next_action_kind": "improve_repair_route_quality"
+      },
+      "artifacts": {
+        "swarm_plan": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "swarm-plan",
+          "source_summary": {
+            "actionable_gaps": 1,
+            "public_projection_eligible_packets": 1
+          },
+          "summary": {
+            "swarm_ready_packets": 1,
+            "blocked_packets": 0,
+            "missing_verify_command": 0,
+            "missing_receipt_command": 0,
+            "static_limitation_packets": 0,
+            "high_confidence_packets": 1
+          },
+          "top_ready_packets": [
+            {
+              "packet_id": "output-observer-009",
+              "canonical_gap_id": "gap:output-observer-009",
+              "evidence_class": "output_observer",
+              "repair_kind": "add_output_observer",
+              "swarm_state": "queued",
+              "verify_command": "cargo test -p ripr-swarm output_observer_009",
+              "receipt_command_or_path": "cargo xtask receipts write --packet output-observer-009 --canonical-gap gap:output-observer-009"
+            }
+          ],
+          "top_blocked_packets": []
+        },
+        "actionable_gap_outcomes": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "actionable-gap-outcomes",
+          "summary": {
+            "outcomes_total": 1,
+            "not_attempted": 0,
+            "evidence_improved": 0,
+            "evidence_unchanged": 1,
+            "evidence_regressed": 0,
+            "resolved": 0,
+            "orphaned_receipts": 0
+          }
+        },
+        "swarm_attempt_ledger": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "swarm-attempt-ledger",
+          "summary": {
+            "attempts_total": 1,
+            "canonical_gaps_total": 1,
+            "not_attempted": 0,
+            "attempted_no_receipt": 0,
+            "receipt_present": 0,
+            "missing_verify_result": 0,
+            "evidence_improved": 0,
+            "evidence_unchanged": 1,
+            "evidence_regressed": 0,
+            "resolved": 0,
+            "unknown": 0,
+            "orphaned_receipts": 0
+          },
+          "repair_route_quality": [
+            {
+              "repair_kind": "add_output_observer",
+              "repair_kind_attempted": 1,
+              "repair_kind_improved": 0,
+              "repair_kind_unchanged": 1,
+              "repair_kind_regressed": 0,
+              "repair_kind_resolved": 0,
+              "repair_kind_attempted_no_receipt": 0,
+              "repair_kind_receipt_present": 0,
+              "repair_kind_unknown": 0,
+              "repair_kind_success_rate": 0.0,
+              "repair_kind_missing_verify_result": 0,
+              "repair_kind_failure_count": 1,
+              "repair_kind_dominant_failure_reason": "unchanged"
+            }
+          ],
+          "top_missing_evidence_fields": [],
+          "latest_attempts": [
+            {
+              "packet_id": "output-observer-009",
+              "canonical_gap_id": "gap:output-observer-009",
+              "attempt_id": "attempt:output-observer-009:evidence-unchanged",
+              "evidence_class": "output_observer",
+              "source_file": "crates/ripr/tests/output_observer.rs",
+              "repair_kind": "add_output_observer",
+              "target_test_type": "output_observer_test",
+              "assertion_shape": "assert!(report.contains(\"observer\"))",
+              "actor_kind": "human",
+              "receipt_path": "target/ripr/receipts/output-observer-009.json",
+              "verify_command": "cargo test -p ripr-swarm output_observer_009",
+              "verify_result": "pass",
+              "receipt_command": "cargo xtask receipts write --packet output-observer-009 --canonical-gap gap:output-observer-009",
+              "before_gap_state": "actionable",
+              "after_gap_state": "actionable",
+              "outcome": "evidence_unchanged",
+              "timestamp": "2026-05-27T20:30:00Z",
+              "receipt_state": "receipt_movement_unchanged",
+              "movement_source": "agent_receipt",
+              "reason": "receipt-backed dogfood attempt did not improve the canonical evidence state"
+            }
+          ],
+          "attempts": [
+            {
+              "packet_id": "output-observer-009",
+              "canonical_gap_id": "gap:output-observer-009",
+              "attempt_id": "attempt:output-observer-009:evidence-unchanged",
+              "evidence_class": "output_observer",
+              "source_file": "crates/ripr/tests/output_observer.rs",
+              "repair_kind": "add_output_observer",
+              "target_test_type": "output_observer_test",
+              "assertion_shape": "assert!(report.contains(\"observer\"))",
+              "actor_kind": "human",
+              "receipt_path": "target/ripr/receipts/output-observer-009.json",
+              "verify_command": "cargo test -p ripr-swarm output_observer_009",
+              "verify_result": "pass",
+              "receipt_command": "cargo xtask receipts write --packet output-observer-009 --canonical-gap gap:output-observer-009",
+              "before_gap_state": "actionable",
+              "after_gap_state": "actionable",
+              "outcome": "evidence_unchanged",
+              "timestamp": "2026-05-27T20:30:00Z",
+              "receipt_state": "receipt_movement_unchanged",
+              "movement_source": "agent_receipt",
+              "reason": "receipt-backed dogfood attempt did not improve the canonical evidence state"
+            }
+          ],
+          "orphaned_receipts": []
+        }
+      },
+      "reason": "A receipt-backed unchanged attempt should keep the same canonical packet identity while routing surfaces toward repair-route quality improvement instead of another blind packet attempt."
     }
   ]
 }

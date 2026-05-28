@@ -3797,6 +3797,7 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest",
   "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts",
   "xtask::tests::dogfood_surface_projection_alignment_receipts_are_checked",
+  "xtask::tests::dogfood_surface_projection_alignment_covers_route_quality_non_success",
   "xtask::tests::dogfood_real_repair_attempt_receipts_are_checked",
 ]
 fixtures = [
@@ -3904,6 +3905,7 @@ tests = [
   "xtask/src/main.rs::evidence_quality_trend_reports_no_history_explicitly",
   "xtask/src/main.rs::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas",
   "xtask::tests::dogfood_user_surface_projection_alignment_receipts_are_checked",
+  "xtask::tests::dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source",
 ]
 fixtures = [
   "fixtures/editor_actionable_gap_queue",

@@ -43,6 +43,9 @@ The behavior is intentionally narrow:
 - a verify command and receipt command are required for a swarm-ready packet;
 - outcome reporting keeps missing receipts, unchanged repairs, and regressions
   visible;
+- route-quality projection preserves non-success outcomes such as unchanged
+  attempts as first-class next actions instead of converting every full
+  actionable packet into another blind attempt;
 - default operation is dry-run and human-reviewable.
 
 ## Scope

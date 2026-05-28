@@ -198,11 +198,14 @@ command must match the named runtime state; for example,
 `cargo xtask cache report && cargo xtask cache gc --dry-run`, while
 `limited_incomplete_input` routes to `cargo xtask lane1-evidence-audit`.
 For full runtime states with a ready packet, the top next action may be
-`attempt_ready_packet`. Full actionable projection examples name a
-`source_alignment_case` from the repair-loop surface projection corpus and must
-match that source case's canonical gap, packet, repair kind, verify command,
-receipt command, and top next action. User-facing surfaces stay thin consumers
-of the canonical repair source instead of maintaining independent packet truth.
+`attempt_ready_packet`. Full runtime states with degraded route-quality or
+non-success outcomes may instead route `improve_repair_route_quality`,
+`inspect_unchanged_attempts`, or another canonical repair-loop next action.
+Full actionable projection examples name a `source_alignment_case` from the
+repair-loop surface projection corpus and must match that source case's
+canonical gap, packet, repair kind, verify command, receipt command, and top
+next action. User-facing surfaces stay thin consumers of the canonical repair
+source instead of maintaining independent packet truth.
 
 ## Acceptance Examples
 
@@ -240,6 +243,11 @@ Validation should use existing guardrails plus focused evidence checks:
 - `xtask::tests::dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route`
   pins limited runtime-state categories and repair commands to their named
   status.
+- `xtask::tests::dogfood_surface_projection_alignment_covers_route_quality_non_success`
+  requires a non-success route-quality source case for downstream surfaces.
+- `xtask::tests::dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source`
+  pins full user-surface rows to degraded route-quality source state without
+  converting it into `attempt_ready_packet`.
 - `xtask::tests::dogfood_user_surface_projection_alignment_matches_surface_projection_source`
   pins full user-surface projection to the canonical repair-loop source case.
 
