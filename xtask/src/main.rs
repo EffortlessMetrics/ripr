@@ -75841,7 +75841,13 @@ covered_by = ["cargo xtask check-file-policy"]
         let outcomes = serde_json::json!({
             "report": "actionable-gap-outcomes",
             "summary": {
-                "outcomes_total": 0
+                "outcomes_total": 8,
+                "not_attempted": 5,
+                "evidence_improved": 1,
+                "evidence_unchanged": 1,
+                "evidence_regressed": 1,
+                "resolved": 1,
+                "orphaned_receipts": 2
             }
         });
 
@@ -75877,6 +75883,30 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["runtime_status"]["repair_route"],
             "run cargo xtask ripr-swarm attempt-ledger before claiming durable attempt history"
+        );
+        assert_eq!(
+            value["summary"]["attempted_packets"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(
+            value["summary"]["improved_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["unchanged_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["regressed_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["resolved_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["orphaned_receipts"],
+            serde_json::Value::from(2)
         );
         assert!(value["next_actions"].as_array().is_some_and(|actions| {
             actions

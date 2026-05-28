@@ -2933,7 +2933,9 @@ required plan input as `limited_incomplete_input` instead of turning absent
 packets into a clean zero-ready state. Missing outcomes or attempt ledger inputs
 also report `limited_incomplete_input` with `downstream_consumable = false`
 because the repair queue can still be inspected, but attempt history and outcome
-quality are incomplete.
+quality are incomplete. If outcomes are present while the attempt ledger is
+missing, readiness may display those outcome counts as advisory context, but the
+report remains non-consumable until durable attempt history is available.
 
 Readiness forwards attempt-ledger `repair_route_quality[]`,
 `top_failing_repair_routes[]`, and `top_missing_evidence_fields[]` so the next
