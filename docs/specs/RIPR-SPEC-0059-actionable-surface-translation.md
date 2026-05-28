@@ -248,6 +248,9 @@ Validation should use existing guardrails plus focused evidence checks:
 - `xtask::tests::dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source`
   pins full user-surface rows to degraded route-quality source state without
   converting it into `attempt_ready_packet`.
+- `xtask::tests::dogfood_user_surface_projection_alignment_covers_route_quality_non_success_all_surfaces`
+  requires badge, LSP, PR comment, and CI examples to consume the degraded
+  route-quality source state as the same canonical next action.
 - `xtask::tests::dogfood_user_surface_projection_alignment_matches_surface_projection_source`
   pins full user-surface projection to the canonical repair-loop source case.
 

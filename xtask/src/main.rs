@@ -64019,6 +64019,39 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn dogfood_user_surface_projection_alignment_covers_route_quality_non_success_all_surfaces()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = super::dogfood_user_surface_projection_scenarios();
+            let surfaces = scenarios
+                .iter()
+                .filter(|scenario| {
+                    scenario.source_alignment_case == "receipt_unchanged_route_quality_alignment"
+                        && scenario.top_next_action_kind == "improve_repair_route_quality"
+                        && scenario.canonical_gap_id == "gap:output-observer-009"
+                        && scenario.packet_id == "output-observer-009"
+                        && scenario.repair_kind == "add_output_observer"
+                })
+                .map(|scenario| scenario.surface.as_str())
+                .collect::<std::collections::BTreeSet<_>>();
+
+            let missing = ["badge", "lsp", "pr_comment", "ci"]
+                .into_iter()
+                .filter(|surface| !surfaces.contains(surface))
+                .collect::<Vec<_>>();
+
+            if missing.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "route-quality non-success user-surface projection is missing consumers: {}",
+                    missing.join(", ")
+                ))
+            }
+        })
+    }
+
+    #[test]
     fn dogfood_user_surface_projection_alignment_matches_surface_projection_source() {
         let sources = vec![super::DogfoodSurfaceProjectionAlignmentScenario {
             name: "receipt_improved_top_next_action_alignment".to_string(),
