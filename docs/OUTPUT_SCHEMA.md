@@ -2982,6 +2982,8 @@ repair queue can still be inspected, but attempt history and outcome quality are
 incomplete. If outcomes are present while the attempt ledger is missing,
 readiness may display those outcome counts as advisory context, but the report
 remains non-consumable until durable attempt history is available.
+The Markdown input table mirrors the JSON `inputs` object and includes swarm
+plan, actionable-gap outcomes, and attempt-ledger rows.
 
 Readiness recomputes attempt/outcome summary counts, repair-route quality, and
 missing-evidence-field counts from durable attempt-ledger `attempts[]` when
@@ -2994,6 +2996,10 @@ semantics.
 `top_next_action` is a single-object projection of `next_actions[0]` for
 thin downstream surfaces that need one canonical next route without
 reinterpreting the full advisory queue.
+When all required inputs are readable but a non-consumable limited runtime state
+is preserved from one input, readiness emits
+`resolve_limited_runtime_status` before packet or route-quality actions so
+downstream surfaces do not treat limited zero counts as work-ready truth.
 
 ```json
 {
@@ -3095,7 +3101,7 @@ reinterpreting the full advisory queue.
     "evidence_class": null,
     "repair_kind": "add_boundary_assertion",
     "command": "cargo xtask ripr-swarm attempt-ledger",
-    "reason": "`add_boundary_assertion` has 1 unchanged/regressed/no-receipt/unknown latest attempt(s); inspect route guidance before increasing packet volume"
+    "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); inspect route guidance before increasing packet volume"
   },
   "next_actions": [
     {
@@ -3105,7 +3111,7 @@ reinterpreting the full advisory queue.
       "evidence_class": null,
       "repair_kind": "add_boundary_assertion",
       "command": "cargo xtask ripr-swarm attempt-ledger",
-      "reason": "`add_boundary_assertion` has 1 unchanged/regressed/no-receipt/unknown latest attempt(s); inspect route guidance before increasing packet volume"
+      "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); inspect route guidance before increasing packet volume"
     },
     {
       "kind": "inspect_unchanged_attempts",

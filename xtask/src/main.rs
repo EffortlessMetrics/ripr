@@ -23427,6 +23427,8 @@ fn ripr_swarm_readiness_from_values(
         .value
         .map(ripr_swarm_readiness_top_missing_evidence_fields)
         .unwrap_or_default();
+    let runtime_status =
+        ripr_swarm_readiness_runtime_status(&swarm_plan, &actionable_gap_outcomes, &attempt_ledger);
     let next_actions = ripr_swarm_readiness_next_actions(
         &summary,
         swarm_plan.value,
@@ -23434,15 +23436,14 @@ fn ripr_swarm_readiness_from_values(
         &swarm_plan,
         &actionable_gap_outcomes,
         &attempt_ledger,
+        &runtime_status,
     );
-    let status = if swarm_plan.value.is_some() {
+    let status = if swarm_plan.value.is_some() && runtime_status.downstream_consumable {
         "advisory"
     } else {
         "blocked"
     }
     .to_string();
-    let runtime_status =
-        ripr_swarm_readiness_runtime_status(&swarm_plan, &actionable_gap_outcomes, &attempt_ledger);
 
     RiprSwarmReadinessReport {
         status,
@@ -23865,8 +23866,17 @@ fn ripr_swarm_readiness_next_actions(
     swarm_plan_input: &RiprSwarmReadinessInput<'_>,
     actionable_gap_outcomes_input: &RiprSwarmReadinessInput<'_>,
     attempt_ledger_input: &RiprSwarmReadinessInput<'_>,
+    runtime_status: &Lane1RuntimeStatus,
 ) -> Vec<RiprSwarmReadinessNextAction> {
     let mut actions = Vec::new();
+    if runtime_status.state != "full"
+        && !runtime_status.downstream_consumable
+        && swarm_plan_input.state == "read"
+        && actionable_gap_outcomes_input.state == "read"
+        && attempt_ledger_input.state == "read"
+    {
+        actions.push(ripr_swarm_readiness_limited_runtime_action(runtime_status));
+    }
     if swarm_plan_input.state != "read" {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "refresh_swarm_plan".to_string(),
@@ -24048,6 +24058,36 @@ fn ripr_swarm_readiness_next_actions(
     actions
 }
 
+fn ripr_swarm_readiness_limited_runtime_action(
+    runtime_status: &Lane1RuntimeStatus,
+) -> RiprSwarmReadinessNextAction {
+    let phase = runtime_status.phase.as_deref().unwrap_or("unknown_phase");
+    let input_kind = runtime_status
+        .input_kind
+        .as_deref()
+        .unwrap_or("unknown_input");
+    let limitation_category = runtime_status
+        .limitation_category
+        .as_deref()
+        .unwrap_or("unknown_limitation");
+    let repair_route = runtime_status
+        .repair_route
+        .as_deref()
+        .unwrap_or("inspect the limited input and regenerate the readiness source artifacts");
+    RiprSwarmReadinessNextAction {
+        kind: "resolve_limited_runtime_status".to_string(),
+        packet_id: None,
+        canonical_gap_id: None,
+        evidence_class: None,
+        repair_kind: None,
+        command: None,
+        reason: format!(
+            "readiness input `{input_kind}` is `{}` during `{phase}` with limitation `{limitation_category}`; repair route: {repair_route}",
+            runtime_status.state
+        ),
+    }
+}
+
 fn ripr_swarm_readiness_operator_judgment_action(
     swarm_plan: &Value,
 ) -> Option<RiprSwarmReadinessNextAction> {
@@ -24147,7 +24187,7 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
         audit_markdown_cell(report.swarm_plan_limitation.as_deref().unwrap_or(""))
     ));
     out.push_str(&format!(
-        "| actionable gap outcomes | `{}` | `{}` | {} |\n\n",
+        "| actionable gap outcomes | `{}` | `{}` | {} |\n",
         audit_markdown_cell(&report.actionable_gap_outcomes_state),
         audit_markdown_cell(&report.actionable_gap_outcomes_path),
         audit_markdown_cell(
@@ -24156,6 +24196,12 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
                 .as_deref()
                 .unwrap_or("")
         )
+    ));
+    out.push_str(&format!(
+        "| attempt ledger | `{}` | `{}` | {} |\n\n",
+        audit_markdown_cell(&report.attempt_ledger_state),
+        audit_markdown_cell(&report.attempt_ledger_path),
+        audit_markdown_cell(report.attempt_ledger_limitation.as_deref().unwrap_or(""))
     ));
     out.push_str("## Summary\n\n");
     out.push_str("| Metric | Count |\n");
@@ -76171,6 +76217,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
             .map_err(|err| err.to_string())?;
+        assert_eq!(value["status"], "blocked");
         assert_eq!(value["run_status"], "limited_incomplete_input");
         assert_eq!(
             value["runtime_status"]["phase"],
@@ -76185,6 +76232,13 @@ covered_by = ["cargo xtask check-file-policy"]
             "run cargo xtask actionable-gap-outcomes before building the attempt ledger"
         );
         assert_eq!(value["runtime_status"]["downstream_consumable"], false);
+        assert_eq!(
+            value["top_next_action"]["kind"],
+            "resolve_limited_runtime_status"
+        );
+        assert!(value["top_next_action"]["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("repair route: run cargo xtask actionable-gap-outcomes before building the attempt ledger")));
         Ok(())
     }
 
@@ -76231,6 +76285,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
             .map_err(|err| err.to_string())?;
+        assert_eq!(value["status"], "blocked");
         assert_eq!(value["run_status"], "limited_incomplete_input");
         assert_eq!(
             value["runtime_status"]["limitation_category"],
@@ -76298,6 +76353,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
             .map_err(|err| err.to_string())?;
+        assert_eq!(value["status"], "blocked");
         assert_eq!(value["run_status"], "limited_incomplete_input");
         assert_eq!(
             value["runtime_status"]["limitation_category"],
@@ -76308,6 +76364,10 @@ covered_by = ["cargo xtask check-file-policy"]
             value["runtime_status"]["repair_route"],
             "run cargo xtask ripr-swarm attempt-ledger before claiming durable attempt history"
         );
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains(
+            "| attempt ledger | `missing` | `target/ripr/reports/swarm-attempt-ledger.json` | failed to read attempt ledger |"
+        ));
         assert_eq!(
             value["summary"]["attempted_packets"],
             serde_json::Value::from(3)
@@ -76390,6 +76450,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 limitation: Some("failed to read attempt ledger".to_string()),
                 value: None,
             },
+            &crate::lane1_runtime_status_full(),
         );
         assert!(
             actions
