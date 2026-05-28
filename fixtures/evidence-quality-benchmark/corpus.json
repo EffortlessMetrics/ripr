@@ -837,11 +837,11 @@
       "case_kind": "negative_guard",
       "evidence_class": "call_presence",
       "maturity_scope": "fixture_backed",
-      "description": "A call-presence seam whose call expression only shares a generic argument, field, or common method token with an unrelated assertion must not gain assertion-target affinity.",
+      "description": "A call-presence seam whose call expression only shares a generic argument, field, common method, enum-field, or match-arm token with an unrelated assertion must not gain assertion-target affinity.",
       "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity",
       "sample": {
         "file": "tests/unrelated.rs",
-        "source": "let path = \"target/ripr\";\nassert_eq!(path, \"target/ripr\");\nlet description = \"target/ripr\";\nassert!(!description.is_empty());"
+        "source": "let path = \"target/ripr\";\nassert_eq!(path, \"target/ripr\");\nlet description = \"target/ripr\";\nassert!(!description.is_empty());\nlet variant = \"NotFound\";\nlet arm = \"fallback\";\nassert_eq!(variant, \"NotFound\");\nassert_eq!(arm, \"fallback\");"
       },
       "expected_repo_exposure": {
         "static_gap_created": true,
@@ -880,10 +880,11 @@
         "metric": "activation_owner_call_unresolved",
         "direction": "decrease"
       },
-      "expected_claim": "Generic call argument, field, and common method tokens such as path, description, and is_empty are insufficient to relate a test to a call-presence seam; RIPR should keep raw findings as evidence instead of manufacturing an affinity-only activation limitation.",
+      "expected_claim": "Generic call argument, field, common method, enum-field, and match-arm tokens such as path, description, is_empty, variant, and arm are insufficient to relate a test to a call-presence seam; RIPR should keep raw findings as evidence instead of manufacturing an affinity-only activation limitation.",
       "must_not_claim": [
         "Do not treat generic argument tokens such as path, value, text, line, or file as call-presence assertion-target affinity.",
         "Do not treat generic field or common method tokens such as description, field, sink, or is_empty as call-presence assertion-target affinity.",
+        "Do not treat generic enum-field or match-arm tokens such as variant or arm as call-presence assertion-target affinity.",
         "Do not turn generic token affinity into activation for value-insensitive call-presence seams.",
         "Do not drop specific call-target tokens such as zq_quote_target_token or zq_render_target_token when an assertion actually mentions them."
       ],

@@ -827,6 +827,7 @@ fn call_presence_assertion_affinity_token_is_specific_enough(token: &str) -> boo
         token,
         "arg"
             | "args"
+            | "arm"
             | "class"
             | "clone"
             | "count"
@@ -866,6 +867,7 @@ fn call_presence_assertion_affinity_token_is_specific_enough(token: &str) -> boo
             | "text"
             | "value"
             | "values"
+            | "variant"
     ) {
         return false;
     }
@@ -3910,16 +3912,18 @@ fn wrapper_mentions_owner_only_in_non_code() {
         // Live Lane 1 audit showed many call_presence limitations where
         // assertion-target affinity came from generic argument names
         // such as `path`, plus generic field/method targets such as
-        // `description.clone()` and `is_empty()`. That is not enough
-        // evidence that the test reaches the owner or observes the call
-        // site.
+        // `description.clone()` and `is_empty()`, and enum/match field
+        // names such as `variant` and `arm`. That is not enough evidence
+        // that the test reaches the owner or observes the call site.
         for token in [
+            "arm",
             "path",
             "side_effect",
             "description",
             "field",
             "is_empty",
             "sink",
+            "variant",
         ] {
             assert!(
                 !call_presence_assertion_affinity_token_is_specific_enough(token),
@@ -3938,6 +3942,10 @@ fn wrapper_mentions_owner_only_in_non_code() {
                         fn zq_quote_target_token(input: &str) -> String { input.to_string() }\n\
                         pub fn zq_description_owner(description: &str) -> bool { \
                             description.is_empty() \
+                        }\n\
+                        pub fn zq_variant_owner(variant: &str, arm: &str) -> String { \
+                            let _arm = arm.clone(); \
+                            variant.to_string() \
                         }\n";
         let test = (
             "tests/unrelated.rs",
@@ -3952,6 +3960,12 @@ fn wrapper_mentions_owner_only_in_non_code() {
              #[test] fn unrelated_description_assertion() { \
                  let description = \"target/ripr\"; \
                  assert!(!description.is_empty()); \
+             }\n\
+             #[test] fn unrelated_variant_assertion() { \
+                 let variant = \"NotFound\"; \
+                 let arm = \"fallback\"; \
+                 assert_eq!(variant, \"NotFound\"); \
+                 assert_eq!(arm, \"fallback\"); \
              }\n",
         );
         let files: Vec<(PathBuf, &str)> = vec![
@@ -3987,6 +4001,32 @@ fn wrapper_mentions_owner_only_in_non_code() {
             description_evidence.related_tests
         );
         assert_eq!(description_evidence.reach.state, StageState::No);
+
+        let variant_call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence && s.expression().contains("variant.to_string")
+            })
+            .ok_or_else(|| "variant to_string call_presence seam present".to_string())?;
+        let variant_evidence = evidence_for_seam(variant_call_presence, &index);
+        assert!(
+            variant_evidence.related_tests.is_empty(),
+            "generic enum/match tokens `variant` and `arm` must not create assertion-target affinity; got {:?}",
+            variant_evidence.related_tests
+        );
+        assert_eq!(variant_evidence.reach.state, StageState::No);
+
+        let arm_call_presence = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::CallPresence && s.expression().contains("arm.clone"))
+            .ok_or_else(|| "arm clone call_presence seam present".to_string())?;
+        let arm_evidence = evidence_for_seam(arm_call_presence, &index);
+        assert!(
+            arm_evidence.related_tests.is_empty(),
+            "generic match-arm token `arm` must not create assertion-target affinity; got {:?}",
+            arm_evidence.related_tests
+        );
+        assert_eq!(arm_evidence.reach.state, StageState::No);
         assert_eq!(evidence.reach.state, StageState::No);
         Ok(())
     }
