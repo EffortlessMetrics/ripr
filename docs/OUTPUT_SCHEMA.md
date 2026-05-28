@@ -2814,6 +2814,7 @@ badges.
       "repair_kind_resolved": 0,
       "repair_kind_attempted_no_receipt": 0,
       "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
       "repair_kind_success_rate": 0.5
     }
@@ -2828,6 +2829,7 @@ badges.
       "repair_kind_resolved": 0,
       "repair_kind_attempted_no_receipt": 0,
       "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
       "repair_kind_success_rate": 0.5
     }
@@ -2927,8 +2929,9 @@ a new history row from a plain ledger rerun over the same artifacts.
 
 `repair_route_quality[]` is grouped from latest attempts by `repair_kind` and
 reports attempted, improved, unchanged, regressed, resolved, no-receipt,
-receipt-only, unknown, and success-rate counts. `top_failing_repair_routes[]`
-is the subset with unchanged, regressed, no-receipt, or unknown outcomes,
+receipt-only, missing-verify-result, unknown, and success-rate counts.
+`top_failing_repair_routes[]` is the subset with unchanged, regressed,
+no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. `top_missing_evidence_fields[]`
 counts missing route/verify/receipt fields that prevent route-quality analysis.
 
@@ -3046,6 +3049,7 @@ reinterpreting the full advisory queue.
       "repair_kind_resolved": 0,
       "repair_kind_attempted_no_receipt": 0,
       "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
       "repair_kind_success_rate": 0.5
     }
@@ -3060,6 +3064,7 @@ reinterpreting the full advisory queue.
       "repair_kind_resolved": 0,
       "repair_kind_attempted_no_receipt": 0,
       "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
       "repair_kind_unknown": 0,
       "repair_kind_success_rate": 0.5
     }

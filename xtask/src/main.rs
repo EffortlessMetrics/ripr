@@ -21137,6 +21137,7 @@ struct RiprSwarmRepairRouteQualityRow {
     resolved: usize,
     attempted_no_receipt: usize,
     receipt_present: usize,
+    missing_verify_result: usize,
     unknown: usize,
 }
 
@@ -22977,6 +22978,9 @@ fn ripr_swarm_attempt_ledger_repair_route_quality(
         if attempt.outcome != "not_attempted" {
             row.attempted += 1;
         }
+        if ripr_swarm_attempt_missing_verify_result(attempt) {
+            row.missing_verify_result += 1;
+        }
         match attempt.outcome.as_str() {
             "attempted_no_receipt" => row.attempted_no_receipt += 1,
             "receipt_present" => row.receipt_present += 1,
@@ -23071,6 +23075,7 @@ fn ripr_swarm_repair_route_quality_json(rows: &[RiprSwarmRepairRouteQualityRow])
                 "repair_kind_resolved": row.resolved,
                 "repair_kind_attempted_no_receipt": row.attempted_no_receipt,
                 "repair_kind_receipt_present": row.receipt_present,
+                "repair_kind_missing_verify_result": row.missing_verify_result,
                 "repair_kind_unknown": row.unknown,
                 "repair_kind_success_rate": ripr_swarm_repair_route_quality_success_rate(row),
             })
@@ -23087,18 +23092,18 @@ fn ripr_swarm_top_failing_repair_routes_json(
             row.regressed > 0
                 || row.unchanged > 0
                 || row.attempted_no_receipt > 0
+                || row.missing_verify_result > 0
                 || row.unknown > 0
         })
         .cloned()
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
-        let left_failures =
-            left.regressed + left.unchanged + left.attempted_no_receipt + left.unknown;
-        let right_failures =
-            right.regressed + right.unchanged + right.attempted_no_receipt + right.unknown;
+        let left_failures = ripr_swarm_repair_route_quality_failure_count(left);
+        let right_failures = ripr_swarm_repair_route_quality_failure_count(right);
         right_failures
             .cmp(&left_failures)
             .then_with(|| right.regressed.cmp(&left.regressed))
+            .then_with(|| right.missing_verify_result.cmp(&left.missing_verify_result))
             .then_with(|| right.unchanged.cmp(&left.unchanged))
             .then_with(|| left.repair_kind.cmp(&right.repair_kind))
     });
@@ -23760,6 +23765,14 @@ fn ripr_swarm_readiness_top_failing_repair_routes(
     rows
 }
 
+fn ripr_swarm_repair_route_quality_failure_count(row: &RiprSwarmRepairRouteQualityRow) -> usize {
+    row.regressed
+        + row.unchanged
+        + row.attempted_no_receipt
+        + row.missing_verify_result
+        + row.unknown
+}
+
 fn ripr_swarm_readiness_top_missing_evidence_fields(
     attempt_ledger: &Value,
 ) -> Vec<Lane1EvidenceAuditTopCount> {
@@ -23814,6 +23827,8 @@ fn ripr_swarm_repair_route_quality_row_from_value(
         attempted_no_receipt: audit_usize(row, &["repair_kind_attempted_no_receipt"])
             .unwrap_or_default(),
         receipt_present: audit_usize(row, &["repair_kind_receipt_present"]).unwrap_or_default(),
+        missing_verify_result: audit_usize(row, &["repair_kind_missing_verify_result"])
+            .unwrap_or_default(),
         unknown: audit_usize(row, &["repair_kind_unknown"]).unwrap_or_default(),
     })
 }
@@ -23945,8 +23960,7 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if let Some(route) = top_failing_repair_routes.first() {
-        let failures =
-            route.regressed + route.unchanged + route.attempted_no_receipt + route.unknown;
+        let failures = ripr_swarm_repair_route_quality_failure_count(route);
         actions.push(RiprSwarmReadinessNextAction {
             kind: "improve_repair_route_quality".to_string(),
             packet_id: None,
@@ -23955,7 +23969,7 @@ fn ripr_swarm_readiness_next_actions(
             repair_kind: Some(route.repair_kind.clone()),
             command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
             reason: format!(
-                "`{}` has {} unchanged/regressed/no-receipt/unknown latest attempt(s); inspect route guidance before increasing packet volume",
+                "`{}` has {} unchanged/regressed/no-receipt/missing-verify-result/unknown latest attempt(s); inspect route guidance before increasing packet volume",
                 route.repair_kind, failures
             ),
         });
@@ -78500,8 +78514,16 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(2)
         );
         assert_eq!(
+            value["repair_route_quality"][0]["repair_kind_missing_verify_result"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
             value["top_failing_repair_routes"][0]["repair_kind"],
             "add_output_observer"
+        );
+        assert_eq!(
+            value["top_failing_repair_routes"][0]["repair_kind_missing_verify_result"],
+            serde_json::Value::from(2)
         );
         assert_eq!(value["summary"]["missing_verify_result"], 4);
         assert!(

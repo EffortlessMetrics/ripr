@@ -577,6 +577,7 @@ Future reports should expose:
 - `repair_kind_unchanged`;
 - `repair_kind_regressed`;
 - `repair_kind_resolved`;
+- `repair_kind_missing_verify_result`;
 - `repair_kind_success_rate`;
 - `top_failing_repair_routes`;
 - `top_missing_evidence_fields`.
