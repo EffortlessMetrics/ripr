@@ -24101,20 +24101,6 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
-    if summary.missing_verify_result > 0 {
-        actions.push(RiprSwarmReadinessNextAction {
-            kind: "inspect_missing_verify_results".to_string(),
-            packet_id: None,
-            canonical_gap_id: None,
-            evidence_class: None,
-            repair_kind: None,
-            command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
-            reason: format!(
-                "{} attempted packet(s) are missing typed verify_result evidence; preserve pass/fail/not-run from receipts or targeted-test outcomes before claiming route quality",
-                summary.missing_verify_result
-            ),
-        });
-    }
     if summary.attempted_no_receipt_packets > 0 {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "collect_missing_attempt_receipts".to_string(),
@@ -24126,6 +24112,20 @@ fn ripr_swarm_readiness_next_actions(
             reason: format!(
                 "{} attempted packet(s) have no matching receipt; run the packet receipt command and refresh the attempt ledger before claiming outcomes",
                 summary.attempted_no_receipt_packets
+            ),
+        });
+    }
+    if summary.missing_verify_result > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "inspect_missing_verify_results".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
+            reason: format!(
+                "{} attempted packet(s) are missing typed verify_result evidence; preserve pass/fail/not-run from receipts or targeted-test outcomes before claiming route quality",
+                summary.missing_verify_result
             ),
         });
     }
@@ -76816,6 +76816,102 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["summary"]["unchanged_packets"],
             serde_json::Value::from(0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_routes_missing_attempt_receipt_before_verify_result()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "swarm_ready_packets": 1
+            }
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 1,
+                "not_attempted": 0,
+                "attempted_no_receipt": 1,
+                "evidence_improved": 0,
+                "evidence_unchanged": 0,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "attempts": [
+                {
+                    "packet_id": "packet-001",
+                    "canonical_gap_id": "gap-001",
+                    "attempt_id": "attempt:gap-001:attempted-no-receipt",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test -p ripr gap_001",
+                    "receipt_command": "cargo xtask receipts write --packet packet-001",
+                    "outcome": "attempted_no_receipt",
+                    "timestamp": "unix_ms:1000",
+                    "receipt_state": "missing"
+                }
+            ]
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
+            .map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["attempted_no_receipt_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["missing_verify_result"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["top_next_action"]["kind"],
+            serde_json::Value::from("collect_missing_attempt_receipts")
+        );
+        assert_eq!(
+            value["next_actions"][1]["kind"],
+            serde_json::Value::from("inspect_missing_verify_results")
         );
         Ok(())
     }
