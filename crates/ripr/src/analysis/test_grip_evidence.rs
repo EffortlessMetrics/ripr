@@ -1580,19 +1580,31 @@ fn body_contains_wrapped_local_alias(
         line.strip_prefix(&prefix)
             .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
     }) || (body_contains_match_parameter(body, parameter)
-        && body.contains(&format!("{wrapper}({operand})")))
+        && body_contains_wrapper_pattern(body, wrapper, operand))
 }
 
 fn body_contains_match_parameter(body: &str, parameter: &str) -> bool {
     body.lines().any(|line| {
         let line = line.trim();
-        if line.starts_with("//") || line.starts_with("/*") || line.starts_with('*') {
+        if is_comment_line(line) {
             return false;
         }
         line.find("match ")
             .map(|index| &line[index + "match ".len()..])
             .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
     })
+}
+
+fn body_contains_wrapper_pattern(body: &str, wrapper: &str, operand: &str) -> bool {
+    let pattern = format!("{wrapper}({operand})");
+    body.lines().any(|line| {
+        let line = line.trim();
+        !is_comment_line(line) && line.contains(&pattern)
+    })
+}
+
+fn is_comment_line(line: &str) -> bool {
+    line.starts_with("//") || line.starts_with("/*") || line.starts_with('*')
 }
 
 fn starts_with_identifier_token(text: &str, token: &str) -> bool {
@@ -5002,6 +5014,48 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "unresolved commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_match_wrapper_is_comment_then_operand_stays_unresolved()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
+    let _seen = match raw_amount { _ => false };
+    // Some(amount)
+    let amount = 1;
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#;
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn at_threshold() { \
+                 assert_eq!(discounted_total(Some(50), 50), -9); \
+             }\n",
+        );
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
+        files.push((PathBuf::from(test.0), test.1));
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("amount >= threshold")
+            })
+            .ok_or_else(|| "amount predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "commented wrapper patterns must not resolve boundary operands; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "unresolved commented wrapper pattern should stay a limitation, not an exact repair candidate; got {:?}",
             evidence.missing_discriminators
         );
         Ok(())

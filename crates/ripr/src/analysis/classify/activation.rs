@@ -446,19 +446,31 @@ fn body_contains_wrapped_local_alias(
         line.strip_prefix(&prefix)
             .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
     }) || (body_contains_match_parameter(body, parameter)
-        && body.contains(&format!("{wrapper}({operand})")))
+        && body_contains_wrapper_pattern(body, wrapper, operand))
 }
 
 fn body_contains_match_parameter(body: &str, parameter: &str) -> bool {
     body.lines().any(|line| {
         let line = line.trim();
-        if line.starts_with("//") || line.starts_with("/*") || line.starts_with('*') {
+        if is_comment_line(line) {
             return false;
         }
         line.find("match ")
             .map(|index| &line[index + "match ".len()..])
             .is_some_and(|rest| starts_with_identifier_token(rest, parameter))
     })
+}
+
+fn body_contains_wrapper_pattern(body: &str, wrapper: &str, operand: &str) -> bool {
+    let pattern = format!("{wrapper}({operand})");
+    body.lines().any(|line| {
+        let line = line.trim();
+        !is_comment_line(line) && line.contains(&pattern)
+    })
+}
+
+fn is_comment_line(line: &str) -> bool {
+    line.starts_with("//") || line.starts_with("/*") || line.starts_with('*')
 }
 
 fn starts_with_identifier_token(text: &str, token: &str) -> bool {
@@ -768,6 +780,27 @@ mod tests {
                 .reason
                 .contains("observed amount values: unknown"),
             "commented match aliases must not resolve boundary operands; got {:?}",
+            activation.missing_discriminators
+        );
+    }
+
+    #[test]
+    fn activation_evidence_ignores_commented_match_wrapper_pattern() {
+        let owner = function(
+            "pub fn score(raw_amount: Option<i32>, threshold: i32) -> bool {\n    let _seen = match raw_amount { _ => false };\n    // Some(amount)\n    let amount = 1;\n    amount >= threshold\n}",
+        );
+        let test = test_with_call("score_uses_boundary", "score(Some(100), 100);");
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+
+        let activation = activation_evidence(&probe, Some(&owner), &[&test], &[]);
+
+        assert!(!has_observed_boundary_equality(&activation));
+        assert_eq!(activation.missing_discriminators.len(), 1);
+        assert!(
+            activation.missing_discriminators[0]
+                .reason
+                .contains("observed amount values: unknown"),
+            "commented wrapper patterns must not resolve boundary operands; got {:?}",
             activation.missing_discriminators
         );
     }
