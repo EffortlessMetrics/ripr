@@ -1132,7 +1132,7 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "category": "activation_owner_call_absent",
+              "category": "activation_owner_call_absent_affinity_only",
               "repair_route": "analysis/related-test-affinity-owner-call-tracing"
             }
           ]
@@ -1140,10 +1140,10 @@
       },
       "expected_audit_signal": {
         "section": "static_limitation_categories",
-        "metric": "activation_owner_call_absent",
+        "metric": "activation_owner_call_absent_affinity_only",
         "value": 1
       },
-      "static_limitation_category": "activation_owner_call_absent",
+      "static_limitation_category": "activation_owner_call_absent_affinity_only",
       "expected_claim": "Specific call-target affinity is relation evidence only; without an owner call it remains a named activation limitation and not user test debt.",
       "must_not_claim": [
         "Do not turn call-target token affinity into activation.",

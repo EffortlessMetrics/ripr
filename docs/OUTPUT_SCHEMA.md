@@ -1678,17 +1678,21 @@ Field contract:
   because reasons are free-form evidence strings.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
-  `activation_owner_call_absent`, `activation_owner_call_unresolved`,
-  `opaque_helper_call`,
+  `activation_owner_call_absent`, `activation_owner_call_absent_affinity_only`,
+  `activation_owner_call_absent_same_file_only`,
+  `activation_owner_call_unresolved`, `opaque_helper_call`,
   `cross_file_constant_unresolved`, `dynamic_dispatch`,
   `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
 - `activation_owner_call_absent` routes to
   `analysis/owner-call-absence-triage`; it means static analysis found related
   context but no direct owner call, so it remains a named limitation rather than
-  user-facing test repair debt. When the related-test evidence is affinity-only
-  and has no direct or helper owner-call relation, the route is refined to
-  `analysis/related-test-affinity-owner-call-tracing`.
+  user-facing test repair debt. When the related-test evidence has no direct or
+  helper owner-call relation, the category is split into
+  `activation_owner_call_absent_affinity_only` routed to
+  `analysis/related-test-affinity-owner-call-tracing` or
+  `activation_owner_call_absent_same_file_only` routed to
+  `analysis/same-file-owner-call-tracing`.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.
