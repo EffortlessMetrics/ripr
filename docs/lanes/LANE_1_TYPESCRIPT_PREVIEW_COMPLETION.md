@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: owner facts landed; test/assertion facts next
+Status: test/assertion facts landed; related-test matching next
 
 Date: 2026-05-29
 
@@ -85,7 +85,8 @@ Adapter facts:
   `owner_kind` through human and JSON output.
 - Test files are detected by `.test` and `.spec` suffixes for `.ts`, `.tsx`,
   `.js`, and `.jsx`.
-- Test extraction covers top-level `test(...)` and `it(...)` calls.
+- Test extraction covers top-level and nested `test(...)` / `it(...)` calls,
+  including array-form `test.each(...)` and `it.each(...)`.
 - Assertion extraction covers exact-value matchers, broad `toThrow`, async
   `resolves`/`rejects` chains, snapshot matchers, mock expectations, smoke
   matchers, and relational matchers.
@@ -109,7 +110,9 @@ Projection and proof:
   cross-language related-test routing.
 - Existing TypeScript fixture families cover boundary gap, strong oracle,
   return-value shape, owner-file matching, broad `toThrow`, awaited rejected
-  promise, effect probes, and mocked-module static limit.
+  promise, effect probes, mocked-module static limit, nested `describe`,
+  `test.each`, `it.each`, snapshot downgrade, smoke downgrade, mock
+  interaction, and async `resolves` evidence.
 
 ## Missing Slices
 
@@ -131,6 +134,10 @@ Completed after the initial audit:
 - Owner facts now project structural owner ids and `owner_kind` for functions,
   arrow functions, methods, class methods, TSX/JSX components, and module
   initializers.
+- Test and assertion facts now cover nested `describe` discovery,
+  `test.each`, `it.each`, exact-value assertions, async `resolves`, mock
+  interaction assertions, snapshots, and smoke-only assertions, with snapshot
+  and smoke evidence staying weak.
 - The current `check` parser still has no `--languages rust,typescript`
   override. Config remains the supported opt-in surface for this lane; CLI
   override support is deferred to a later app/config contract change.
@@ -154,13 +161,15 @@ Completed after the initial audit:
      related-test context instead of claiming safe call guidance.
 
 3. Test and assertion facts
-   - Current extraction handles common matcher chains, but only inside
-     top-level `test`/`it` bodies.
-   - Missing or under-fixtured shapes: nested `describe`, `test.each`,
-     `it.each`, table-driven tests, snapshot downgrade fixtures, smoke-only
-     downgrade fixtures, and top-level expect handling when safe.
-   - Next step: extend fixture-backed test and assertion facts without
-     turning weak or snapshot evidence into strong proof.
+   - Status: done.
+   - Extraction now handles nested `describe`, top-level `test`/`it`, and
+     array-form `test.each` / `it.each` bodies.
+   - Fixture coverage pins exact-value, async `resolves`, mock interaction,
+     snapshot, and smoke-only oracles.
+   - Snapshot, mock, and smoke evidence stays advisory/weak unless a later
+     strict repair packet can name a safe target shape.
+   - Top-level expect handling remains deferred until the adapter can avoid
+     unsafe file-level assertion association.
 
 4. Related-test matching
    - Current related-test matching is direct owner-call text matching with
@@ -240,18 +249,21 @@ PR 1: spec(ts): accept TypeScript preview static-facts contract
 PR 2: analysis(ts): route TypeScript preview files through language adapter
 PR 3: analysis(ts): add TypeScript preview fixture harness
 PR 4: analysis(ts): emit TypeScript owner facts
+PR 5: analysis(ts): emit Jest and Vitest assertion facts
 ```
 
 PR 2 landed the core route/config behavior and separate JavaScript preview
 labels. It deliberately deferred a `--languages` CLI override because the
 current `check` parser has no such option. PR 4 landed structural owner ids and
 `owner_kind` projection without changing support-tier, gate, badge, baseline,
-RIPR Zero, runtime, provider, generated-test, or source-edit behavior.
+RIPR Zero, runtime, provider, generated-test, or source-edit behavior. PR 5
+landed nested Jest/Vitest test discovery plus table-test and weak-oracle
+fixture coverage without promoting TypeScript evidence.
 
 The next safe PR is:
 
 ```text
-PR 5: analysis(ts): emit Jest and Vitest assertion facts
+PR 6: analysis(ts): relate TypeScript tests by token-aware owner references
 ```
 
 ## Validation

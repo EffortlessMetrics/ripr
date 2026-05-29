@@ -1,0 +1,166 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_jest_vitest_assertion_facts/input
+
+Summary: 5 probe(s), 2 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/signals.ts:2
+
+Changed
+  after:    if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/signals.ts::applyDiscount
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 2 related test(s) found for owner `applyDiscount`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/signals.test.ts:12 pricing discounts pins threshold uses strong exact value oracle: expect(...).toStrictEqual(...)
+  - related test tests/signals.test.ts:18 discount table %# uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+Next step
+  TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+WARNING src/signals.ts:9
+
+Changed
+  after:    return `summary:${status.trim()}`;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/signals.ts::renderSummary
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `renderSummary`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `snapshot` (rank 4)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/signals.test.ts:24 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)
+
+Weakness
+  - Related test reaches `renderSummary` but the strongest extracted oracle is `snapshot`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+
+Next step
+  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+
+WARNING src/signals.ts:13
+
+Changed
+  after:    return count >= 1;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/signals.ts::isReady
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `isReady`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/signals.test.ts:28 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `isReady` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+
+Next step
+  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+
+WARNING src/signals.ts:17
+
+Changed
+  after:    sink.record(status);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  typescript:src/signals.ts::notifyStatus
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `notifyStatus`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/signals.test.ts:32 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)
+
+Weakness
+  - Related test reaches `notifyStatus` but the strongest extracted oracle is `mock_expectation`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+
+Next step
+  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+
+INFO src/signals.ts:21
+
+Changed
+  after:    return await Promise.resolve(`profile:${id}`);
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/signals.ts::loadProfile
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `loadProfile`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/signals.test.ts:40 loads profile uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `loadProfile` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+Next step
+  TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

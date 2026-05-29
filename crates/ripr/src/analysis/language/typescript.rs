@@ -3,8 +3,9 @@
 //! See `docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md` and
 //! `docs/adr/0008-typescript-parser-substrate.md`.
 //!
-//! This sub-slice extracts syntax-first owner facts and `test(...)` /
-//! `it(...)` blocks from TypeScript / JavaScript files,
+//! This sub-slice extracts syntax-first owner facts and Jest/Vitest
+//! `test(...)` / `it(...)` / `.each(...)` blocks from TypeScript /
+//! JavaScript files,
 //! matches related tests by name reference, and emits one preview-tagged
 //! `Finding` per changed line that falls within an owner. The classifier
 //! is intentionally minimal — it produces a two-way gradient:
@@ -17,7 +18,8 @@
 //! exact-value oracles), probe-family shape detection, and explicit
 //! static-limit reporting land in follow-up issues:
 //! #767 (assertion shapes), #768 (probe shapes), #769 (static limits).
-//! Per-test-file recursion into nested `describe(...)` blocks is deferred.
+//! Nested `describe(...)` blocks are syntax-walked for test discovery, but
+//! related-test matching remains intentionally bounded to owner-call tokens.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
@@ -79,8 +81,9 @@ impl TypeScriptOwner {
 
 /// Test block extracted from a TypeScript / JavaScript test file.
 ///
-/// Currently covers top-level `test('name', fn)` and `it('name', fn)`
-/// expression statements. Nested `describe(...)` recursion is deferred.
+/// Covers syntax-first Jest/Vitest `test('name', fn)`, `it('name', fn)`,
+/// and array-form `.each(...)('name', fn)` expression statements, including
+/// nested `describe(...)` blocks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptTest {
     name: String,
@@ -110,8 +113,8 @@ struct TypeScriptParseLimit {
 /// `toMatchSnapshot`, `toHaveBeenCalledWith`, ...). The full Jest/Vitest
 /// matcher surface is large; this preview slice maps the most common
 /// matchers to oracle vocabulary and tags the rest as `Unknown`.
-/// Async-aware (`.resolves` / `.rejects`) chains and custom matchers
-/// land in follow-up work covered by issue #767.
+/// Async-aware (`.resolves` / `.rejects`) chains are recognised by syntax;
+/// custom matchers stay `Unknown`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptAssertion {
     matcher: String,
@@ -505,12 +508,14 @@ fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     }
     let mocks = extract_mocks_from_statements(&ret.program.body);
     let mut tests = Vec::new();
-    for stmt in &ret.program.body {
-        if let Some(mut test) = test_from_statement(stmt, file, source) {
-            test.mocks_in_file = mocks.clone();
-            tests.push(test);
-        }
-    }
+    collect_tests_from_statements(
+        &ret.program.body,
+        file,
+        source,
+        &mocks,
+        &mut Vec::new(),
+        &mut tests,
+    );
     tests
 }
 
@@ -560,7 +565,31 @@ fn extract_mocks_from_statements(
     out
 }
 
-fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Option<TypeScriptTest> {
+fn collect_tests_from_statements(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+    file: &Path,
+    source: &str,
+    mocks: &[String],
+    describe_stack: &mut Vec<String>,
+    tests: &mut Vec<TypeScriptTest>,
+) {
+    for stmt in statements {
+        if let Some((describe_name, body)) = describe_body_from_statement(stmt) {
+            describe_stack.push(describe_name);
+            collect_tests_from_statements(body, file, source, mocks, describe_stack, tests);
+            describe_stack.pop();
+            continue;
+        }
+        if let Some(mut test) = test_from_statement(stmt, file, source, describe_stack) {
+            test.mocks_in_file = mocks.to_vec();
+            tests.push(test);
+        }
+    }
+}
+
+fn describe_body_from_statement<'a>(
+    stmt: &'a Statement<'a>,
+) -> Option<(String, &'a oxc_allocator::Vec<'a, Statement<'a>>)> {
     let Statement::ExpressionStatement(expr_stmt) = stmt else {
         return None;
     };
@@ -570,30 +599,29 @@ fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Optio
     let Expression::Identifier(ident) = &call.callee else {
         return None;
     };
-    let callee_name = ident.name.as_str();
-    if callee_name != "test" && callee_name != "it" {
+    if ident.name.as_str() != "describe" {
         return None;
     }
-    // First argument should be a string literal naming the test.
-    let mut args = call.arguments.iter();
-    let name_arg = args.next()?;
-    let name = match name_arg {
-        oxc_ast::ast::Argument::StringLiteral(literal) => literal.value.to_string(),
-        _ => return None,
+    let name = string_argument(call.arguments.first()?)?;
+    let body = function_body_statements_from_argument(call.arguments.get(1)?)?;
+    Some((name, body))
+}
+
+fn test_from_statement(
+    stmt: &Statement<'_>,
+    file: &Path,
+    source: &str,
+    describe_stack: &[String],
+) -> Option<TypeScriptTest> {
+    let Statement::ExpressionStatement(expr_stmt) = stmt else {
+        return None;
     };
-    // Walk the second argument (the test body fn) for expect() chains.
-    let assertions = match args.next() {
-        Some(oxc_ast::ast::Argument::ArrowFunctionExpression(arrow)) => {
-            collect_expect_assertions_in_statements(&arrow.body.statements, source)
-        }
-        Some(oxc_ast::ast::Argument::FunctionExpression(func)) => match &func.body {
-            Some(body) => collect_expect_assertions_in_statements(&body.statements, source),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
+    let Expression::CallExpression(call) = &expr_stmt.expression else {
+        return None;
     };
+    let (name, assertions) = test_name_and_assertions_from_call(call, source)?;
     Some(TypeScriptTest {
-        name,
+        name: qualified_test_name(describe_stack, &name),
         file: file.to_path_buf(),
         line: line_for_offset(source, call.span.start as usize),
         body_text: source[call.span.start as usize..call.span.end as usize].to_string(),
@@ -602,6 +630,80 @@ fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Optio
         // per file before the test is returned to the caller.
         mocks_in_file: Vec::new(),
     })
+}
+
+fn test_name_and_assertions_from_call(
+    call: &oxc_ast::ast::CallExpression<'_>,
+    source: &str,
+) -> Option<(String, Vec<TypeScriptAssertion>)> {
+    if test_callee_is_identifier(call) {
+        let name = string_argument(call.arguments.first()?)?;
+        let assertions = function_body_statements_from_argument(call.arguments.get(1)?)
+            .map(|statements| collect_expect_assertions_in_statements(statements, source))
+            .unwrap_or_default();
+        return Some((name, assertions));
+    }
+
+    if test_callee_is_each(call) {
+        let name = string_argument(call.arguments.first()?)?;
+        let assertions = function_body_statements_from_argument(call.arguments.get(1)?)
+            .map(|statements| collect_expect_assertions_in_statements(statements, source))
+            .unwrap_or_default();
+        return Some((name, assertions));
+    }
+
+    None
+}
+
+fn test_callee_is_identifier(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    let Expression::Identifier(ident) = &call.callee else {
+        return false;
+    };
+    matches!(ident.name.as_str(), "test" | "it")
+}
+
+fn test_callee_is_each(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    let Expression::CallExpression(each_call) = &call.callee else {
+        return false;
+    };
+    let Expression::StaticMemberExpression(member) = &each_call.callee else {
+        return false;
+    };
+    if member.property.name.as_str() != "each" {
+        return false;
+    }
+    let Expression::Identifier(ident) = &member.object else {
+        return false;
+    };
+    matches!(ident.name.as_str(), "test" | "it")
+}
+
+fn string_argument(arg: &oxc_ast::ast::Argument<'_>) -> Option<String> {
+    match arg {
+        oxc_ast::ast::Argument::StringLiteral(literal) => Some(literal.value.to_string()),
+        _ => None,
+    }
+}
+
+fn function_body_statements_from_argument<'a>(
+    arg: &'a oxc_ast::ast::Argument<'a>,
+) -> Option<&'a oxc_allocator::Vec<'a, Statement<'a>>> {
+    match arg {
+        oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => Some(&arrow.body.statements),
+        oxc_ast::ast::Argument::FunctionExpression(func) => {
+            func.body.as_ref().map(|body| &body.statements)
+        }
+        _ => None,
+    }
+}
+
+fn qualified_test_name(describe_stack: &[String], name: &str) -> String {
+    if describe_stack.is_empty() {
+        return name.to_string();
+    }
+    let mut parts = describe_stack.to_vec();
+    parts.push(name.to_string());
+    parts.join(" ")
 }
 
 /// Walk a list of statements (e.g., a function body) and collect every
@@ -1907,6 +2009,68 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             OracleStrength::Strong
         );
         assert_eq!(tests[0].assertions[1].matcher, "toEqual");
+    }
+
+    #[test]
+    fn extract_tests_recurses_nested_describe_blocks() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"describe("pricing", () => {
+    describe("discounts", () => {
+        it("pins threshold", () => {
+            expect(applyDiscount(100, 100)).toStrictEqual(90);
+        });
+    });
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "pricing discounts pins threshold");
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toStrictEqual");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::ExactValue);
+    }
+
+    #[test]
+    fn extract_tests_recognizes_test_each_table_calls() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test.each([
+    [100, 100, 90],
+    [150, 100, 140],
+])("discounts %#", (amount, threshold, expected) => {
+    expect(applyDiscount(amount, threshold)).toBe(expected);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "discounts %#");
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert!(tests[0].body_text.contains("applyDiscount("));
+    }
+
+    #[test]
+    fn extract_tests_recognizes_it_each_table_calls() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"it.each([
+    ["ready"],
+])("notifies %s", (status) => {
+    const sink = { record: vi.fn() };
+    notifyStatus(status, sink);
+    expect(sink.record).toHaveBeenCalledWith(status);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "notifies %s");
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toHaveBeenCalledWith");
+        assert_eq!(
+            tests[0].assertions[0].oracle_kind,
+            OracleKind::MockExpectation
+        );
     }
 
     #[test]

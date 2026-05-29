@@ -192,7 +192,7 @@ git diff --check
 
 ## Work Item: analysis/typescript-test-assertion-facts
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -204,6 +204,29 @@ Blocked by: analysis/typescript-owner-facts
 Fixture-backed Jest/Vitest `describe`, `test`, `it`, `.each`, exact-value,
 error-path, async resolve/reject, mock interaction, snapshot, and smoke oracle
 facts, with weak oracles kept weak.
+
+### Acceptance
+
+- Test discovery recurses through nested `describe(...)` bodies.
+- Array-form `test.each(...)` and `it.each(...)` calls are discovered.
+- Exact-value matchers, async `resolves`, mock interaction assertions,
+  snapshot assertions, and smoke-only assertions are fixture-backed.
+- Snapshot, mock, and smoke evidence stays weak/advisory instead of becoming
+  strong TypeScript repair proof.
+- No support-tier promotion, default gate, badge, baseline, RIPR Zero, runtime
+  test execution, provider call, generated-test, source-edit, or Rust behavior
+  change.
+
+### Proof Commands
+
+```bash
+cargo test -p ripr typescript --lib
+cargo xtask fixtures typescript_jest_vitest_assertion_facts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+git diff --check
+```
 
 ## Work Item: analysis/typescript-related-test-matching
 

@@ -1545,8 +1545,10 @@ evidence = [
   "fixtures/typescript_disabled",
   "fixtures/typescript_parse_error_unsupported_syntax",
   "fixtures/typescript_owner_kinds",
+  "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/mixed_rust_typescript_preview",
   "TypeScript/JavaScript findings project structural owner ids and owner_kind metadata for functions, arrow functions, methods, class methods, TSX/JSX components, and module initializers",
+  "TypeScript/Jest/Vitest assertion facts cover nested describe, test.each, it.each, exact-value, async resolves, mock interaction, snapshot, and smoke-only evidence while keeping weak oracles weak",
   "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing"
 ]
 fixtures = [
@@ -1562,10 +1564,11 @@ fixtures = [
   "fixtures/typescript_disabled",
   "fixtures/typescript_parse_error_unsupported_syntax",
   "fixtures/typescript_owner_kinds",
+  "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/mixed_rust_typescript_preview"
 ]
-next = "analysis/typescript-test-assertion-facts"
-metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax"
+next = "analysis/typescript-related-test-matching"
+metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax"
 
 [[capability]]
 id = "sarif_ci_policy"
