@@ -133,7 +133,7 @@ packet safety, or before/after receipt movement.
 | `dict_field_change` | Partial: `python_field_assignment_shape` | Attribute assignment probe with exact related assertion. | Add dict/object/dataclass return-field fixtures and field-specific repair cards. |
 | `pytest_exact_assert` | `python_strong_oracle`, `python_owner_file_match`, `python_return_value_shape` | `assert ... == ...` becomes `exact_value` / strong and can classify as `exposed`. | Tie exact assertions to a canonical gap closing receipt, not just a preview finding class. |
 | `pytest_smoke_assert` | `python_boundary_gap`, `python_broad_boolean_assertion` | Unknown, reach-only, or smoke oracle keeps finding `weakly_exposed`, and JSON evidence records the non-exact oracle shape. | Prefer strengthening the existing weak test when safe instead of always adding a new test. |
-| `unittest_assert_equal` | `python_unittest_assertions` | `self.assertEqual(...)` becomes `exact_value` / strong. | Build unittest verify-command selection and add remaining unittest assertion shapes. |
+| `unittest_assert_equal` | `python_unittest_assertions`, `python_unittest_oracle_shapes` | `self.assertEqual(...)` becomes `exact_value` / strong; unittest related tests now carry `python -m unittest module.Class.test_method` verify-command evidence, and `assertIn` / `assertRegex` / `assertDictEqual` feed output, status-code, and field oracle shapes. | Tie unittest verify commands to repair cards and agent packets once canonical Python gaps exist. |
 | `fastapi_route_optional` | Missing | FastAPI/Flask decorators currently look like decorator or call syntax, not framework facts. | Add HTTP/API fixture pack with route owner, status-code, and JSON-field repair cards; keep dynamic routing limited. |
 | `cli_output_optional` | Missing | Generic call and side-effect shapes exist, but CLI runners and stdout/stderr assertions are not modeled. | Add Click/Typer/argparse output fixtures, output assertion cards, and exit-code verify guidance. |
 | `dynamic_unsupported` | Static-limit fixture family | Dynamic dispatch, decorator, mocked module, missing import graph, metaprogramming, and unsupported syntax limits are visible. | Convert applicable limits into non-actionable stop reasons so repair queues do not assign unsafe work. |
@@ -166,7 +166,7 @@ packet safety, or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `analysis/python-unittest-oracles`, can start from this
+The next work item, `analysis/python-related-test-linking`, can start from this
 boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
@@ -184,7 +184,10 @@ boundary:
   discovery, output/status/field/boundary/smoke/custom-helper oracle shapes,
   and conservative reach-only evidence without changing support tier or
   emitting repair cards.
+- Unittest preview evidence now records class-qualified selectors,
+  framework-shaped `python -m unittest` verify commands, and
+  output/status/field oracle shapes from common assertion-call arguments.
 
-Acceptance for the next behavior PR should finish the remaining unittest
-assertion vocabulary and keep those facts in the same oracle taxonomy without
-adding verify commands before the placement slice.
+Acceptance for the next behavior PR should improve related-test ranking and
+uncertainty evidence without changing Python's preview support tier or
+emitting repair cards before canonical Python gaps exist.

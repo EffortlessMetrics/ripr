@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `<module>`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_constants.py:4 test_base_discount uses unknown unknown oracle"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: <module>", "owner_kind: module_function", "test_framework: pytest (test_base_discount)", "related_test_relation: same_stem (test_base_discount)"],
+      "evidence": ["owner: <module>", "owner_kind: module_function", "test_framework: pytest (test_base_discount)", "test_verify_command: pytest tests/test_constants.py::test_base_discount (test_base_discount)", "related_test_relation: same_stem (test_base_discount)"],
       "missing": ["Related Python test reaches `<module>` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [

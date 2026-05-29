@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_tax`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_checkout_tax.py:4 test_checkout_tax_alias_import uses strong exact value oracle: assert taxed(10) == 12"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: apply_tax", "owner_kind: function", "test_framework: pytest (test_checkout_tax_alias_import)", "related_test_relation: import_alias_call (test_checkout_tax_alias_import)", "test_oracle: exact_value strong (test_checkout_tax_alias_import)"],
+      "evidence": ["owner: apply_tax", "owner_kind: function", "test_framework: pytest (test_checkout_tax_alias_import)", "test_verify_command: pytest tests/test_checkout_tax.py::test_checkout_tax_alias_import (test_checkout_tax_alias_import)", "related_test_relation: import_alias_call (test_checkout_tax_alias_import)", "test_oracle: exact_value strong (test_checkout_tax_alias_import)"],
       "missing": ["Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [

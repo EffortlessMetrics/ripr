@@ -426,6 +426,76 @@ def test_fixture_args(amount, *extras, client, **kw):
 }
 
 #[test]
+fn verify_command_for_test_selects_pytest_and_unittest_runners() -> Result<(), String> {
+    let tests = extract_tests(
+        Path::new("tests/test_checkout.py"),
+        r#"
+import unittest
+
+class TestCheckout:
+    def test_pytest_route(self):
+        assert checkout() == "ok"
+
+class CheckoutTests(unittest.TestCase):
+    def test_unittest_route(self):
+        self.assertEqual(checkout(), "ok")
+"#,
+    );
+    let pytest_test = tests
+        .iter()
+        .find(|test| test.name == "test_pytest_route")
+        .ok_or_else(|| "missing pytest class test".to_string())?;
+    let unittest_test = tests
+        .iter()
+        .find(|test| test.name == "test_unittest_route")
+        .ok_or_else(|| "missing unittest class test".to_string())?;
+
+    assert_eq!(pytest_test.qualified_name, "TestCheckout.test_pytest_route");
+    assert_eq!(
+        verify_command_for_test(pytest_test).as_deref(),
+        Some("pytest tests/test_checkout.py::TestCheckout::test_pytest_route")
+    );
+    assert_eq!(
+        unittest_test.qualified_name,
+        "CheckoutTests.test_unittest_route"
+    );
+    assert_eq!(
+        verify_command_for_test(unittest_test).as_deref(),
+        Some("python -m unittest tests.test_checkout.CheckoutTests.test_unittest_route")
+    );
+    Ok(())
+}
+
+#[test]
+fn unittest_oracle_shapes_use_assertion_arguments() -> Result<(), String> {
+    let source = r#"
+import unittest
+
+class ResponseTests(unittest.TestCase):
+    def test_shapes(self):
+        self.assertEqual(response.status_code, 422)
+        self.assertDictEqual(payload, {"status": "paid"})
+        self.assertIn("expired", result.output)
+        self.assertRegex(result.stderr, "expired")
+"#;
+    let shapes: BTreeSet<_> = assertion_shapes(source).into_iter().collect();
+    for expected in [
+        PythonOracleShape::StatusCodeAssertion,
+        PythonOracleShape::FieldAssertion,
+        PythonOracleShape::OutputAssertion,
+    ] {
+        if !shapes.contains(&expected) {
+            return Err(format!(
+                "expected unittest oracle shape `{}` in {:?}",
+                expected.as_str(),
+                shapes
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn oracle_for_call_recognizes_all_unittest_and_mock_variants() -> Result<(), String> {
     let source = r#"
 import unittest
@@ -875,6 +945,7 @@ fn same_stem_related_handles_missing_stems() {
     };
     let test = PythonTest {
         name: "test_x".to_string(),
+        qualified_name: "test_x".to_string(),
         file: PathBuf::from("tests/test_pricing.py"),
         line: 1,
         body_text: String::new(),
@@ -1208,6 +1279,7 @@ def test_apply_discount(amount):
 fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
     let mocked = PythonTest {
         name: "test_x".to_string(),
+        qualified_name: "test_x".to_string(),
         file: PathBuf::from("tests/test_x.py"),
         line: 1,
         body_text: String::new(),
@@ -1223,6 +1295,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
     assert!(test_has_mocked_module(&mocked));
     let bare = PythonTest {
         name: "test_y".to_string(),
+        qualified_name: "test_y".to_string(),
         file: PathBuf::from("tests/test_y.py"),
         line: 1,
         body_text: String::new(),
@@ -1236,6 +1309,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
     assert!(test_has_mocked_module(&bare));
     let clean = PythonTest {
         name: "test_z".to_string(),
+        qualified_name: "test_z".to_string(),
         file: PathBuf::from("tests/test_z.py"),
         line: 1,
         body_text: String::new(),

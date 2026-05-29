@@ -417,7 +417,7 @@ Recognize common pytest tests and classify assertion strength.
 
 ### Work item: analysis/python-unittest-oracles
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -434,6 +434,22 @@ Support common `unittest` repos without a separate output model.
   `assertDictEqual`.
 - Verify commands can use pytest or `python -m unittest` when appropriate.
 - Unittest facts enter the same oracle taxonomy as pytest.
+
+#### Delivered
+
+- Python test facts now preserve a class-qualified test name, so pytest class
+  methods and `unittest.TestCase` methods can be addressed by stable static
+  selectors.
+- Preview evidence now records framework-shaped verify commands for related
+  tests: `pytest path::node` for pytest and
+  `python -m unittest module.Class.test_method` for unittest.
+- Unittest assertion calls now use assertion arguments to preserve output,
+  status-code, and dict/object field oracle shapes while keeping the shared
+  `OracleKind` / `OracleStrength` vocabulary.
+- `python_unittest_oracle_shapes` pins a unittest `self.assertIn(...)`
+  output assertion and the generated `python -m unittest` verify command;
+  existing Python preview fixtures record verify-command evidence without
+  emitting repair cards yet.
 
 ### Work item: analysis/python-related-test-linking
 

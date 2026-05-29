@@ -126,6 +126,7 @@ impl PythonOwner {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PythonTest {
     name: String,
+    qualified_name: String,
     file: PathBuf,
     line: usize,
     body_text: String,
@@ -335,6 +336,7 @@ fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFacts {
         file,
         source,
         &module.body,
+        None,
         false,
         &imports,
         &mut snapshot.tests,
@@ -1407,6 +1409,7 @@ fn collect_tests_from_statements(
     file: &Path,
     source: &str,
     statements: &[Stmt],
+    class_context: Option<&str>,
     in_unittest_class: bool,
     imports: &[PythonImport],
     out: &mut Vec<PythonTest>,
@@ -1419,8 +1422,10 @@ fn collect_tests_from_statements(
                 } else {
                     "pytest"
                 };
+                let name = function.name.to_string();
                 out.push(PythonTest {
-                    name: function.name.to_string(),
+                    qualified_name: qualified_test_name(class_context, &name),
+                    name,
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
@@ -1438,8 +1443,10 @@ fn collect_tests_from_statements(
                 } else {
                     "pytest"
                 };
+                let name = function.name.to_string();
                 out.push(PythonTest {
-                    name: function.name.to_string(),
+                    qualified_name: qualified_test_name(class_context, &name),
+                    name,
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
@@ -1454,10 +1461,13 @@ fn collect_tests_from_statements(
             Stmt::ClassDef(class) => {
                 let class_is_unittest = is_unittest_class(class) || in_unittest_class;
                 if class_is_unittest || is_pytest_class(class) {
+                    let class_name = class.name.to_string();
+                    let nested_class_context = qualified_test_name(class_context, &class_name);
                     collect_tests_from_statements(
                         file,
                         source,
                         &class.body,
+                        Some(&nested_class_context),
                         class_is_unittest,
                         imports,
                         out,
@@ -1467,6 +1477,12 @@ fn collect_tests_from_statements(
             _ => {}
         }
     }
+}
+
+fn qualified_test_name(class_context: Option<&str>, name: &str) -> String {
+    class_context
+        .map(|class| format!("{class}.{name}"))
+        .unwrap_or_else(|| name.to_string())
 }
 
 fn fixture_parameter_names(args: &ast::Arguments, framework: &str) -> Vec<String> {
@@ -1803,20 +1819,25 @@ fn oracle_for_call(
     let name = expr_full_name(call.func.as_ref())?;
     let last_segment = name.rsplit('.').next().unwrap_or(name.as_str());
     match last_segment {
-        "assertEqual" | "assertDictEqual" => Some((
+        "assertEqual" => Some((
             OracleKind::ExactValue,
             OracleStrength::Strong,
-            PythonOracleShape::ExactAssertion,
+            oracle_shape_for_call_arguments(call, PythonOracleShape::ExactAssertion),
+        )),
+        "assertDictEqual" => Some((
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            oracle_shape_for_call_arguments(call, PythonOracleShape::FieldAssertion),
         )),
         "assertIn" | "assertRegex" => Some((
             OracleKind::RelationalCheck,
             OracleStrength::Weak,
-            PythonOracleShape::FieldAssertion,
+            oracle_shape_for_call_arguments(call, PythonOracleShape::FieldAssertion),
         )),
         "assertNotEqual" => Some((
             OracleKind::RelationalCheck,
             OracleStrength::Weak,
-            PythonOracleShape::BoundaryAssertion,
+            oracle_shape_for_call_arguments(call, PythonOracleShape::BoundaryAssertion),
         )),
         "assertTrue" | "assertFalse" => Some((
             OracleKind::SmokeOnly,
@@ -1850,6 +1871,36 @@ fn oracle_for_call(
             PythonOracleShape::UnknownCustomHelper,
         )),
         _ => None,
+    }
+}
+
+fn oracle_shape_for_call_arguments(
+    call: &ast::ExprCall,
+    fallback: PythonOracleShape,
+) -> PythonOracleShape {
+    if call.args.iter().any(expr_observes_output)
+        || call
+            .keywords
+            .iter()
+            .any(|keyword| expr_observes_output(&keyword.value))
+    {
+        PythonOracleShape::OutputAssertion
+    } else if call.args.iter().any(expr_observes_status_code)
+        || call
+            .keywords
+            .iter()
+            .any(|keyword| expr_observes_status_code(&keyword.value))
+    {
+        PythonOracleShape::StatusCodeAssertion
+    } else if call.args.iter().any(expr_observes_field)
+        || call
+            .keywords
+            .iter()
+            .any(|keyword| expr_observes_field(&keyword.value))
+    {
+        PythonOracleShape::FieldAssertion
+    } else {
+        fallback
     }
 }
 
@@ -1957,6 +2008,27 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
             }
         })
         .collect()
+}
+
+fn verify_command_for_test(test: &PythonTest) -> Option<String> {
+    let path = normalized_path(&test.file);
+    match test.framework {
+        "pytest" => {
+            let node = test.qualified_name.replace('.', "::");
+            Some(format!("pytest {path}::{node}"))
+        }
+        "unittest" => {
+            let module = path
+                .strip_suffix(".py")
+                .unwrap_or(path.as_str())
+                .replace('/', ".");
+            Some(format!(
+                "python -m unittest {module}.{}",
+                test.qualified_name
+            ))
+        }
+        _ => None,
+    }
 }
 
 fn strongest_assertion(assertions: &[PythonAssertion]) -> Option<&PythonAssertion> {
@@ -2423,6 +2495,9 @@ fn classify_change(
         if test.parametrized {
             evidence.push(format!("test_parametrized: pytest ({})", test.name));
         }
+        if let Some(command) = verify_command_for_test(test) {
+            evidence.push(format!("test_verify_command: {command} ({})", test.name));
+        }
         evidence.push(format!(
             "related_test_relation: {} ({})",
             candidate.relation.as_str(),
@@ -2765,9 +2840,12 @@ class PriceTests(unittest.TestCase):
         );
         assert!(tests[0].parametrized);
         assert_eq!(tests[0].fixtures, vec!["amount".to_string()]);
+        assert_eq!(tests[0].qualified_name, "test_apply_discount");
         assert_eq!(tests[0].framework, "pytest");
         assert_eq!(tests[1].fixtures, vec!["client".to_string()]);
+        assert_eq!(tests[1].qualified_name, "TestPytestStyle.test_class_style");
         assert_eq!(tests[1].framework, "pytest");
+        assert_eq!(tests[2].qualified_name, "PriceTests.test_apply_method");
         assert_eq!(tests[2].framework, "unittest");
         assert!(
             tests

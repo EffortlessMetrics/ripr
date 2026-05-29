@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+add Python test verify-command evidence
+
+Command:
+`cargo xtask goldens bless python_broad_boolean_assertion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

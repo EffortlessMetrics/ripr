@@ -2028,6 +2028,7 @@ fixtures = [
   "fixtures/python_pytest_raises",
   "fixtures/python_pytest_oracle_shapes",
   "fixtures/python_unittest_assertions",
+  "fixtures/python_unittest_oracle_shapes",
   "fixtures/python_mock_assert_called",
   "fixtures/python_broad_boolean_assertion",
   "fixtures/python_return_value_shape",

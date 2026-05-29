@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_unittest_oracle_shapes/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/notifications.py:3
+
+Changed
+  after:          return "coupon expired"
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/notifications.py::warn_coupon
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `warn_coupon`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
+  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - related test tests/test_notifications.py:7 test_warn_coupon_output_message uses weak relational check oracle: self.assertIn("coupon expired", result.output)
+
+Weakness
+  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger.
+
+Next step
+  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
