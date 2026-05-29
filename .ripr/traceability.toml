@@ -1984,6 +1984,7 @@ fixtures = [
   "fixtures/typescript_owner_kinds",
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_related_test_matching",
+  "fixtures/typescript_related_test_name_proximity",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
@@ -2007,6 +2008,7 @@ outputs = [
   "fixtures/typescript_owner_kinds/expected/check.json",
   "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json",
   "fixtures/typescript_related_test_matching/expected/check.json",
+  "fixtures/typescript_related_test_name_proximity/expected/check.json",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

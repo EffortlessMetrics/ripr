@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_related_test_name_proximity/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/pricing.ts:2
+
+Changed
+  after:      if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::applyDiscount
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 3 related test(s) found for owner `applyDiscount`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/pricing.test.ts:1 threshold documented elsewhere uses unknown unknown oracle
+  - related test tests/checkout.test.ts:2 applyDiscount threshold documented elsewhere uses unknown unknown oracle
+  - related test tests/cart.test.ts:1 applyDiscount boundary uses unknown unknown oracle
+
+Weakness
+  - Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+
+Next step
+  TypeScript preview: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.

@@ -6,7 +6,7 @@
 //! This sub-slice extracts syntax-first owner facts and Jest/Vitest
 //! `test(...)` / `it(...)` / `.each(...)` blocks from TypeScript /
 //! JavaScript files,
-//! matches related tests by name reference, and emits one preview-tagged
+//! matches related tests by owner-call or bounded proximity signals, and emits one preview-tagged
 //! `Finding` per changed line that falls within an owner. The classifier
 //! is intentionally minimal — it produces a two-way gradient:
 //!
@@ -18,8 +18,8 @@
 //! exact-value oracles), probe-family shape detection, and explicit
 //! static-limit reporting land in follow-up issues:
 //! #767 (assertion shapes), #768 (probe shapes), #769 (static limits).
-//! Nested `describe(...)` blocks are syntax-walked for test discovery, but
-//! related-test matching remains intentionally bounded to owner-call tokens.
+//! Nested `describe(...)` blocks are syntax-walked for test discovery and
+//! bounded name/proximity matching. Heuristic links stay uncertainty-only.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
@@ -87,7 +87,13 @@ impl TypeScriptOwner {
 /// nested `describe(...)` blocks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptTest {
+    /// Qualified display name. Nested `describe(...)` names are joined with the
+    /// local `test(...)` / `it(...)` name so user surfaces can show context.
     name: String,
+    /// The local `test(...)` / `it(...)` string before describe qualification.
+    local_name: String,
+    /// Nested describe names in outer-to-inner order.
+    describe_names: Vec<String>,
     file: PathBuf,
     line: usize,
     body_text: String,
@@ -117,6 +123,51 @@ struct TypeScriptImport {
 struct TypeScriptParseLimit {
     file: PathBuf,
     reason: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TypeScriptRelationKind {
+    DirectOwnerCall,
+    ImportedOwnerCall,
+    SameFileProximity,
+    DescribeName,
+    TestName,
+}
+
+impl TypeScriptRelationKind {
+    fn rank(self) -> u8 {
+        match self {
+            Self::DirectOwnerCall => 5,
+            Self::ImportedOwnerCall => 4,
+            Self::SameFileProximity => 3,
+            Self::DescribeName => 2,
+            Self::TestName => 1,
+        }
+    }
+
+    fn uses_oracle(self) -> bool {
+        matches!(self, Self::DirectOwnerCall | Self::ImportedOwnerCall)
+    }
+
+    fn is_uncertain(self) -> bool {
+        !self.uses_oracle()
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectOwnerCall => "direct_owner_call",
+            Self::ImportedOwnerCall => "imported_owner_call",
+            Self::SameFileProximity => "same_file_proximity",
+            Self::DescribeName => "describe_name",
+            Self::TestName => "test_name",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TypeScriptRelatedCandidate<'a> {
+    test: &'a TypeScriptTest,
+    relation: TypeScriptRelationKind,
 }
 
 /// Assertion shape extracted from a single `expect(actual).matcher(...)`
@@ -723,6 +774,8 @@ fn test_from_statement(
     let (name, assertions) = test_name_and_assertions_from_call(call, source)?;
     Some(TypeScriptTest {
         name: qualified_test_name(describe_stack, &name),
+        local_name: name,
+        describe_names: describe_stack.to_vec(),
         file: file.to_path_buf(),
         line: line_for_offset(source, call.span.start as usize),
         body_text: source[call.span.start as usize..call.span.end as usize].to_string(),
@@ -961,12 +1014,107 @@ fn expect_assertion_from_expression(
     })
 }
 
-fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> Vec<RelatedTest> {
-    all_tests
+fn related_test_candidates<'a>(
+    owner: &TypeScriptOwner,
+    all_tests: &'a [TypeScriptTest],
+) -> Vec<TypeScriptRelatedCandidate<'a>> {
+    let mut candidates: Vec<TypeScriptRelatedCandidate<'a>> = all_tests
         .iter()
-        .filter(|test| test_references_owner(test, owner))
-        .map(|test| {
-            let strongest = strongest_assertion(&test.assertions);
+        .filter_map(|test| {
+            owner_call_relation(test, owner)
+                .map(|relation| TypeScriptRelatedCandidate { test, relation })
+        })
+        .collect();
+    if candidates.is_empty() {
+        candidates = all_tests
+            .iter()
+            .filter_map(|test| {
+                heuristic_relation(test, owner)
+                    .map(|relation| TypeScriptRelatedCandidate { test, relation })
+            })
+            .collect();
+    }
+    sort_related_candidates(&mut candidates);
+    candidates
+}
+
+fn sort_related_candidates(candidates: &mut [TypeScriptRelatedCandidate<'_>]) {
+    candidates.sort_by(|left, right| {
+        right
+            .relation
+            .rank()
+            .cmp(&left.relation.rank())
+            .then_with(|| {
+                let left_rank = strongest_assertion(&left.test.assertions)
+                    .map(|assertion| assertion.oracle_strength.rank())
+                    .unwrap_or(0);
+                let right_rank = strongest_assertion(&right.test.assertions)
+                    .map(|assertion| assertion.oracle_strength.rank())
+                    .unwrap_or(0);
+                right_rank.cmp(&left_rank)
+            })
+            .then_with(|| left.test.file.cmp(&right.test.file))
+            .then_with(|| left.test.line.cmp(&right.test.line))
+            .then_with(|| left.test.name.cmp(&right.test.name))
+    });
+}
+
+fn owner_call_relation(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+) -> Option<TypeScriptRelationKind> {
+    if contains_call_name(&test.body_text, &owner.name)
+        && !owner_name_shadowed_by_unrelated_import(test, owner)
+    {
+        return Some(TypeScriptRelationKind::DirectOwnerCall);
+    }
+    if test.imports_in_file.iter().any(|import| {
+        import_source_matches_owner(import, &test.file, owner)
+            && import_references_owner_call(import, &test.body_text, owner)
+    }) {
+        return Some(TypeScriptRelationKind::ImportedOwnerCall);
+    }
+    None
+}
+
+fn heuristic_relation(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+) -> Option<TypeScriptRelationKind> {
+    if !heuristic_owner_supported(owner) {
+        return None;
+    }
+    if !heuristic_relation_allowed(test, owner) {
+        return None;
+    }
+    if same_file_proximity_related(test, owner) {
+        return Some(TypeScriptRelationKind::SameFileProximity);
+    }
+    if describe_name_similar_to_owner(test, owner) {
+        return Some(TypeScriptRelationKind::DescribeName);
+    }
+    if test_name_similar_to_owner(test, owner) {
+        return Some(TypeScriptRelationKind::TestName);
+    }
+    None
+}
+
+fn heuristic_owner_supported(owner: &TypeScriptOwner) -> bool {
+    matches!(
+        owner.owner_kind,
+        OwnerKind::Function | OwnerKind::ArrowFunction | OwnerKind::Component
+    )
+}
+
+fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> Vec<RelatedTest> {
+    related_test_candidates(owner, all_tests)
+        .into_iter()
+        .map(|candidate| {
+            let strongest = candidate
+                .relation
+                .uses_oracle()
+                .then(|| strongest_assertion(&candidate.test.assertions))
+                .flatten();
             let (oracle_kind, oracle_strength, oracle_text) = match strongest {
                 Some(assertion) => (
                     assertion.oracle_kind.clone(),
@@ -976,9 +1124,9 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
                 None => (OracleKind::Unknown, OracleStrength::Unknown, None),
             };
             RelatedTest {
-                name: test.name.clone(),
-                file: test.file.clone(),
-                line: test.line,
+                name: candidate.test.name.clone(),
+                file: candidate.test.file.clone(),
+                line: candidate.test.line,
                 oracle: oracle_text,
                 oracle_kind,
                 oracle_strength,
@@ -987,16 +1135,9 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
         .collect()
 }
 
-fn test_references_owner(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
-    if contains_call_name(&test.body_text, &owner.name)
-        && !owner_name_shadowed_by_unrelated_import(test, owner)
-    {
-        return true;
-    }
-    test.imports_in_file.iter().any(|import| {
-        import_source_matches_owner(import, &test.file, owner)
-            && import_references_owner_call(import, &test.body_text, owner)
-    })
+fn heuristic_relation_allowed(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    !owner_name_shadowed_by_unrelated_import(test, owner)
+        && !owner_export_imported_from_unrelated_source(test, owner)
 }
 
 fn contains_call_name(body_text: &str, call_name: &str) -> bool {
@@ -1026,6 +1167,16 @@ fn owner_name_shadowed_by_unrelated_import(test: &TypeScriptTest, owner: &TypeSc
                     imported != owner.name.as_str() && imported != "default"
                 })
         })
+}
+
+fn owner_export_imported_from_unrelated_source(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+) -> bool {
+    test.imports_in_file.iter().any(|import| {
+        import.imported.as_deref() == Some(owner.name.as_str())
+            && !import_source_matches_owner(import, &test.file, owner)
+    })
 }
 
 fn import_references_owner_call(
@@ -1142,6 +1293,107 @@ fn is_javascript_identifier_char(ch: char) -> bool {
     ch == '_' || ch == '$' || ch.is_ascii_alphanumeric()
 }
 
+fn same_file_proximity_related(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    let Some(owner_stem) = owner.file.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    let Some(test_stem) = test.file.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    let owner_key = normalize_typescript_test_stem(owner_stem);
+    let test_key = normalize_typescript_test_stem(test_stem);
+    !owner_key.is_empty() && owner_key == test_key
+}
+
+fn normalize_typescript_test_stem(stem: &str) -> String {
+    let mut value = stem.to_string();
+    for suffix in [".test", ".spec", "_test", "-test"] {
+        if let Some(stripped) = value.strip_suffix(suffix) {
+            value = stripped.to_string();
+            break;
+        }
+    }
+    for prefix in ["test.", "test_", "test-"] {
+        if let Some(stripped) = value.strip_prefix(prefix) {
+            value = stripped.to_string();
+            break;
+        }
+    }
+    normalize_similarity_key(&value)
+}
+
+fn describe_name_similar_to_owner(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    test.describe_names.iter().any(|name| {
+        let describe_key = normalize_similarity_key(name);
+        owner_similarity_keys(owner)
+            .into_iter()
+            .any(|key| similarity_key_contains(&describe_key, &key))
+    })
+}
+
+fn test_name_similar_to_owner(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    let test_key = normalize_similarity_key(&test.local_name);
+    owner_similarity_keys(owner)
+        .into_iter()
+        .any(|key| similarity_key_contains(&test_key, &key))
+}
+
+fn owner_similarity_keys(owner: &TypeScriptOwner) -> Vec<String> {
+    let mut keys = Vec::new();
+    push_unique_similarity_key(&mut keys, normalize_similarity_key(&owner.name));
+    keys
+}
+
+fn push_unique_similarity_key(keys: &mut Vec<String>, key: String) {
+    if !key.is_empty() && !keys.iter().any(|existing| existing == &key) {
+        keys.push(key);
+    }
+}
+
+fn normalize_similarity_key(input: &str) -> String {
+    let mut out = String::new();
+    let mut last_was_separator = true;
+    let mut previous_was_lower_or_digit = false;
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if ch.is_ascii_uppercase()
+                && !out.is_empty()
+                && !last_was_separator
+                && previous_was_lower_or_digit
+            {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+            last_was_separator = false;
+            previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        } else if !out.is_empty() && !last_was_separator {
+            out.push('_');
+            last_was_separator = true;
+            previous_was_lower_or_digit = false;
+        } else {
+            previous_was_lower_or_digit = false;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    out
+}
+
+fn similarity_key_contains(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    haystack == needle
+        || haystack
+            .strip_prefix(needle)
+            .is_some_and(|suffix| suffix.starts_with('_'))
+        || haystack
+            .strip_suffix(needle)
+            .is_some_and(|prefix| prefix.ends_with('_'))
+        || haystack.contains(&format!("_{needle}_"))
+}
+
 fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     if matches!(assertion.matcher.as_str(), "toThrow" | "toThrowError")
         && assertion.argument_count == 0
@@ -1163,21 +1415,19 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
 /// Collect the deduplicated set of module paths that any related test
 /// file mocks via syntactic `vi.mock("path")` / `jest.mock("path")`.
 ///
-/// Related tests are identified the same way `find_related_tests` does
-/// (by name-call reference to the owner); each test's
-/// `mocks_in_file` list is contributed once. The classifier uses the
-/// resulting list to surface the `mocked_module` static-limit per
-/// RIPR-SPEC-0026.
+/// Related tests are identified through the same fallback ordering as
+/// `find_related_tests`: trusted call/import relations first, then
+/// uncertainty-only name/proximity links only when no trusted relation exists.
+/// Each selected test's `mocks_in_file` list is contributed once. The
+/// classifier uses the resulting list to surface the `mocked_module`
+/// static-limit per RIPR-SPEC-0026.
 fn collect_related_mock_paths(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
 ) -> Vec<String> {
     let mut paths: Vec<String> = Vec::new();
-    for test in all_tests
-        .iter()
-        .filter(|test| test_references_owner(test, owner))
-    {
-        for path in &test.mocks_in_file {
+    for candidate in related_test_candidates(owner, all_tests) {
+        for path in &candidate.test.mocks_in_file {
             if !paths.iter().any(|existing| existing == path) {
                 paths.push(path.clone());
             }
@@ -1312,8 +1562,12 @@ fn classify_change(
         .iter()
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
+    let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
+    let has_oracle_eligible_relation = related_candidates
+        .iter()
+        .any(|candidate| candidate.relation.uses_oracle());
 
     let strongest_strength = related
         .iter()
@@ -1334,6 +1588,17 @@ fn classify_change(
             StageState::No,
             StageState::No,
             vec![no_static_path_missing(owner)],
+        )
+    } else if !has_oracle_eligible_relation {
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Weak,
+            StageState::Weak,
+            StageState::Weak,
+            vec![format!(
+                "Only heuristic TypeScript test links were found for `{}`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.",
+                owner.name
+            )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
         (
@@ -1431,6 +1696,9 @@ fn classify_change(
         ExposureClass::NoStaticPath => {
             no_static_path_recommendation(owner)
         }
+        _ if !has_oracle_eligible_relation => {
+            "TypeScript preview: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.".to_string()
+        }
         _ => {
             "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).".to_string()
         }
@@ -1442,6 +1710,21 @@ fn classify_change(
     };
 
     let mut evidence = vec![format!("owner: {}", owner.name)];
+    for candidate in related_candidates
+        .iter()
+        .filter(|candidate| candidate.relation.is_uncertain())
+    {
+        evidence.push(format!(
+            "related_test_relation: {} ({})",
+            candidate.relation.as_str(),
+            candidate.test.name
+        ));
+        evidence.push(format!(
+            "related_test_uncertain: {} ({})",
+            candidate.relation.as_str(),
+            candidate.test.name
+        ));
+    }
     for path in &mock_paths {
         evidence.push(format!("static_limit mocked_module: `{path}`"));
     }
@@ -1963,6 +2246,8 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         let tests = vec![
             TypeScriptTest {
                 name: "alpha".to_string(),
+                local_name: "alpha".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/lib.test.ts"),
                 line: 1,
                 body_text: r#"test("alpha", () => { expect(applyDiscount(50, 100)).toBe(50); });"#
@@ -1973,6 +2258,8 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             },
             TypeScriptTest {
                 name: "unrelated".to_string(),
+                local_name: "unrelated".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/other.test.ts"),
                 line: 1,
                 body_text: r#"test("unrelated", () => { expect(otherHelper()).toBe(true); });"#
@@ -1998,6 +2285,8 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         };
         let tests = vec![TypeScriptTest {
             name: "method call on another object".to_string(),
+            local_name: "method call on another object".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/cart.test.ts"),
             line: 1,
             body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
@@ -2106,6 +2395,8 @@ test("type only import", () => {
         };
         let tests = vec![TypeScriptTest {
             name: "string mention".to_string(),
+            local_name: "string mention".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/docs.test.ts"),
             line: 1,
             body_text: r#"expect("applyDiscount(").toContain("applyDiscount(");"#.to_string(),
@@ -2131,6 +2422,8 @@ test("type only import", () => {
         let tests = vec![
             TypeScriptTest {
                 name: "line comment mention".to_string(),
+                local_name: "line comment mention".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/docs.test.ts"),
                 line: 1,
                 body_text: "// applyDiscount(\nexpect(total).toBe(40);".to_string(),
@@ -2140,6 +2433,8 @@ test("type only import", () => {
             },
             TypeScriptTest {
                 name: "block comment mention".to_string(),
+                local_name: "block comment mention".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/docs.test.ts"),
                 line: 4,
                 body_text: "/* applyDiscount(\n */\nexpect(total).toBe(40);".to_string(),
@@ -2155,6 +2450,135 @@ test("type only import", () => {
     }
 
     #[test]
+    fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let mut tests = extract_tests(
+            Path::new("tests/pricing.test.ts"),
+            r#"test("threshold documented elsewhere", () => {
+    expect(90).toBe(90);
+});
+"#,
+        );
+        tests.extend(extract_tests(
+            Path::new("tests/checkout.test.ts"),
+            r#"describe("applyDiscount", () => {
+    test("threshold documented elsewhere", () => {
+        expect(90).toBe(90);
+    });
+});
+"#,
+        ));
+        tests.extend(extract_tests(
+            Path::new("tests/cart.test.ts"),
+            r#"test("applyDiscount boundary", () => {
+    expect(90).toBe(90);
+});
+"#,
+        ));
+
+        let candidates = related_test_candidates(&owner, &tests);
+        let relations: Vec<_> = candidates
+            .iter()
+            .map(|candidate| candidate.relation)
+            .collect();
+
+        assert_eq!(
+            relations,
+            vec![
+                TypeScriptRelationKind::SameFileProximity,
+                TypeScriptRelationKind::DescribeName,
+                TypeScriptRelationKind::TestName,
+            ]
+        );
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.relation.is_uncertain())
+        );
+
+        let related = find_related_tests(&owner, &tests);
+        assert_eq!(related.len(), 3);
+        assert!(
+            related
+                .iter()
+                .all(|test| test.oracle_kind == OracleKind::Unknown)
+        );
+    }
+
+    #[test]
+    fn related_test_name_proximity_ignores_partial_tokens() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let tests = extract_tests(
+            Path::new("tests/checkout.test.ts"),
+            r#"describe("application discounting", () => {
+    test("discount boundary", () => {
+        expect(90).toBe(90);
+    });
+});
+"#,
+        );
+
+        let candidates = related_test_candidates(&owner, &tests);
+
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn classify_change_uses_heuristic_links_as_weak_uncertain_proximity() -> Result<(), String> {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let tests = extract_tests(
+            Path::new("tests/pricing.test.ts"),
+            r#"test("threshold documented elsewhere", () => {
+    expect(90).toBe(90);
+});
+"#,
+        );
+
+        let finding = classify_change(
+            Path::new("src/pricing.ts"),
+            2,
+            "    if (amount >= threshold) {",
+            &[owner],
+            &tests,
+        )
+        .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(finding.ripr.reach.state, StageState::Weak);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::Unknown);
+        assert!(finding.evidence.iter().any(|item| item
+            == "related_test_relation: same_file_proximity (threshold documented elsewhere)"));
+        assert!(finding.evidence.iter().any(|item| item
+            == "related_test_uncertain: same_file_proximity (threshold documented elsewhere)"));
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("heuristic only"))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(), String> {
         let owner = TypeScriptOwner {
             name: "applyDiscount".to_string(),
@@ -2165,6 +2589,8 @@ test("type only import", () => {
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
+            local_name: "alpha".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/lib.test.ts"),
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),
@@ -2198,6 +2624,8 @@ test("type only import", () => {
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
+            local_name: "alpha".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/lib.test.js"),
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),
@@ -2241,6 +2669,8 @@ test("type only import", () => {
         let tests = vec![
             TypeScriptTest {
                 name: "alpha keeps its threshold".to_string(),
+                local_name: "alpha keeps its threshold".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/a.test.ts"),
                 line: 1,
                 body_text: "expect(alphaScore(12)).toBe(13);".to_string(),
@@ -2250,6 +2680,8 @@ test("type only import", () => {
             },
             TypeScriptTest {
                 name: "beta keeps its threshold".to_string(),
+                local_name: "beta keeps its threshold".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/b.test.ts"),
                 line: 1,
                 body_text: "expect(betaScore(12)).toBe(13);".to_string(),
@@ -2586,6 +3018,8 @@ test("type only import", () => {
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
+            local_name: "alpha".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/lib.test.ts"),
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),
@@ -2852,6 +3286,8 @@ test("alpha", () => {
         let tests = vec![
             TypeScriptTest {
                 name: "alpha".to_string(),
+                local_name: "alpha".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/lib.test.ts"),
                 line: 1,
                 body_text: "applyDiscount(1, 2)".to_string(),
@@ -2861,6 +3297,8 @@ test("alpha", () => {
             },
             TypeScriptTest {
                 name: "beta".to_string(),
+                local_name: "beta".to_string(),
+                describe_names: Vec::new(),
                 file: PathBuf::from("tests/lib.test.ts"),
                 line: 2,
                 body_text: "applyDiscount(3, 4)".to_string(),
@@ -2884,6 +3322,8 @@ test("alpha", () => {
         };
         let tests = vec![TypeScriptTest {
             name: "unrelated".to_string(),
+            local_name: "unrelated".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/other.test.ts"),
             line: 1,
             body_text: "otherHelper()".to_string(),
@@ -2906,6 +3346,8 @@ test("alpha", () => {
         };
         let tests = vec![TypeScriptTest {
             name: "unrelated method".to_string(),
+            local_name: "unrelated method".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/cart.test.ts"),
             line: 1,
             body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
@@ -2929,6 +3371,8 @@ test("alpha", () => {
         };
         let tests = vec![TypeScriptTest {
             name: "alpha".to_string(),
+            local_name: "alpha".to_string(),
+            describe_names: Vec::new(),
             file: PathBuf::from("tests/lib.test.ts"),
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),

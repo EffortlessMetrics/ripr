@@ -1550,10 +1550,11 @@ evidence = [
   "fixtures/typescript_owner_kinds",
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_related_test_matching",
+  "fixtures/typescript_related_test_name_proximity",
   "fixtures/mixed_rust_typescript_preview",
   "TypeScript/JavaScript findings project structural owner ids and owner_kind metadata for functions, arrow functions, methods, class methods, TSX/JSX components, and module initializers",
   "TypeScript/Jest/Vitest assertion facts cover nested describe, test.each, it.each, exact-value, async resolves, mock interaction, snapshot, and smoke-only evidence while keeping weak oracles weak",
-  "TypeScript related-test matching covers direct owner calls plus relative named import aliases and namespace import member calls while excluding unrelated imports, type-only imports, object methods, strings, and comments",
+  "TypeScript related-test matching covers direct owner calls, relative named import aliases, namespace import member calls, and uncertainty-only same-stem, describe-name, and test-name proximity while excluding unrelated imports, type-only imports, object methods, strings, comments, and partial owner-token names",
   "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing"
 ]
 fixtures = [
@@ -1571,9 +1572,10 @@ fixtures = [
   "fixtures/typescript_owner_kinds",
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_related_test_matching",
+  "fixtures/typescript_related_test_name_proximity",
   "fixtures/mixed_rust_typescript_preview"
 ]
-next = "analysis/typescript-related-test-name-proximity"
+next = "analysis/typescript-probe-facts"
 metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax"
 
 [[capability]]

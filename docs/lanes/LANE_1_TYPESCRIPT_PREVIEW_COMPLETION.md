@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: imported related-test matching landed; name/proximity heuristics next
+Status: name/proximity related-test matching landed; probe facts next
 
 Date: 2026-05-29
 
@@ -96,6 +96,10 @@ Adapter facts:
   member calls only when the relative import source resolves to the changed
   owner file. Type-only imports and unrelated import sources remain
   non-related.
+- Related-test matching also recognises same-stem file proximity,
+  `describe(...)` owner-name proximity, and test-name owner-token proximity as
+  explicit uncertain links. Those links do not borrow assertion strength or
+  become complete repair guidance.
 - Probe-family classification distinguishes predicate, return value, error
   path, field construction, and side-effect call line shapes.
 - Structured `static_limit_kind = "mocked_module"` is emitted when related
@@ -116,7 +120,8 @@ Projection and proof:
   return-value shape, owner-file matching, broad `toThrow`, awaited rejected
   promise, effect probes, mocked-module static limit, nested `describe`,
   `test.each`, `it.each`, snapshot downgrade, smoke downgrade, mock
-  interaction, and async `resolves` evidence.
+  interaction, async `resolves` evidence, imported owner calls, and
+  heuristic-only name/proximity links.
 
 ## Missing Slices
 
@@ -149,6 +154,11 @@ Completed after the initial audit:
   fixture-backed by `fixtures/typescript_related_test_matching`, including
   false-match guards for unrelated imports, type-only imports, arbitrary object
   methods, strings, and comments.
+- Same-stem file proximity, `describe(...)` owner-name proximity, and test-name
+  owner-token proximity are fixture-backed by
+  `fixtures/typescript_related_test_name_proximity` as uncertain links that
+  stay weak/advisory and do not use assertions as proof. Partial owner tokens
+  remain non-related.
 
 1. Fixture harness completion
    - Status: done.
@@ -180,13 +190,16 @@ Completed after the initial audit:
      unsafe file-level assertion association.
 
 4. Related-test matching
-   - Current related-test matching covers direct owner-call text matching plus
-     relative named import alias and namespace import owner calls with
-     important negative guards.
-   - Missing heuristics: same-file proximity, `describe` block naming, and
-     test-name token matching.
-   - Next step: add positive and negative fixtures for each heuristic and make
-     ambiguous matches limitations, not actionable recommendations.
+   - Status: done for the PR 6 scope.
+   - Current related-test matching covers direct owner-call text matching,
+     relative named import alias and namespace import owner calls, same-stem
+     file proximity, `describe(...)` owner-name proximity, and test-name
+     owner-token proximity.
+   - Negative guards keep unrelated imports, type-only imports, arbitrary object
+     methods, strings, comments, and partial owner-token names from becoming
+     trusted related-test evidence.
+   - Heuristic-only links are explicit uncertainty evidence and do not use
+     extracted assertions as proof.
 
 5. Probe facts and discriminator candidates
    - Current probe classification is line-shape based and does not attach
@@ -269,21 +282,23 @@ RIPR Zero, runtime, provider, generated-test, or source-edit behavior. PR 5
 landed nested Jest/Vitest test discovery plus table-test and weak-oracle
 fixture coverage without promoting TypeScript evidence.
 
-The first PR 6 sub-slice landed import-owner related-test matching:
+The PR 6 related-test matching slices have landed:
 
 ```text
 PR 6a: analysis(ts): relate imported TypeScript owner calls
+PR 6b: analysis(ts): relate TypeScript tests by name and proximity signals
 ```
 
-It recognises named import aliases and namespace imports when the relative
+PR 6a recognises named import aliases and namespace imports when the relative
 source maps to the changed owner file, while keeping unrelated imports,
 type-only imports, arbitrary object methods, strings, and comments out of
-related-test evidence.
+related-test evidence. PR 6b adds same-stem file, `describe(...)` name, and
+test-name token proximity as uncertainty-only related-test locations.
 
 The next safe PR is:
 
 ```text
-PR 6b: analysis(ts): relate TypeScript tests by name and proximity signals
+PR 7: analysis(ts): emit TypeScript preview probe facts
 ```
 
 ## Validation

@@ -230,7 +230,7 @@ git diff --check
 
 ## Work Item: analysis/typescript-related-test-matching
 
-Status: in progress; import-owner sub-slice landed
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -251,11 +251,15 @@ the relative import source resolves to the changed owner file. Unrelated import
 sources, type-only imports, arbitrary object method calls, comments, and string
 mentions stay non-related.
 
+Same-stem file proximity, `describe(...)` owner-name proximity, and test-name
+owner-token proximity are related as uncertainty-only links. They do not borrow
+strong assertions as proof, and partial owner-token names remain non-related.
+
 ### Remaining Delta
 
-Same-file proximity, `describe` block naming, and test-name token matching
-remain deferred until each has positive and negative fixtures and ambiguous
-matches can stay non-actionable.
+No remaining PR 6 related-test matching slice. Method receiver relation,
+module-initializer relation, and complete repair-packet actionability remain
+deferred to later work items.
 
 ## Work Item: analysis/typescript-probe-facts
 
