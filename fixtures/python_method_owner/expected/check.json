@@ -82,6 +82,35 @@
         "verify_command": "pytest tests/test_policy.py::test_apply_threshold_boundary",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "DiscountPolicy.apply",
+        "changed_behavior": "predicate_boundary changed at src/policy.py:3: `if amount >= threshold:`",
+        "current_test_evidence": "tests/test_policy.py:4 test_discount_policy_apply currently has oracle_strength=unknown, oracle_kind=unknown",
+        "missing_discriminator": "amount == threshold",
+        "recommended_test_shape": "Add or strengthen a pytest boundary assertion for `amount == threshold`.",
+        "suggested_assertion": "Assert the owner result or effect at the boundary `amount == threshold`.",
+        "suggested_location": {
+          "test_file": "tests/test_policy.py",
+          "test_name": "test_apply_threshold_boundary",
+          "pytest_node_id": "tests/test_policy.py::test_apply_threshold_boundary"
+         },
+        "verify": {
+          "command": "pytest tests/test_policy.py::test_apply_threshold_boundary",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",

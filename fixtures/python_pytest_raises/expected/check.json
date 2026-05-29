@@ -82,6 +82,35 @@
         "verify_command": "pytest tests/test_quantity.py::test_normalize_quantity_0_boundary",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "normalize_quantity",
+        "changed_behavior": "predicate_boundary changed at src/quantity.py:2: `if value <= 0:`",
+        "current_test_evidence": "tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
+        "missing_discriminator": "value == 0",
+        "recommended_test_shape": "Add or strengthen a pytest boundary assertion for `value == 0`.",
+        "suggested_assertion": "Assert the owner result or effect at the boundary `value == 0`.",
+        "suggested_location": {
+          "test_file": "tests/test_quantity.py",
+          "test_name": "test_normalize_quantity_0_boundary",
+          "pytest_node_id": "tests/test_quantity.py::test_normalize_quantity_0_boundary"
+         },
+        "verify": {
+          "command": "pytest tests/test_quantity.py::test_normalize_quantity_0_boundary",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",

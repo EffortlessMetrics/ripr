@@ -1,5 +1,6 @@
 use crate::config::RiprConfig;
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
 
@@ -78,7 +79,9 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
-    if let Some(placement) = repair_placement_from_evidence(finding) {
+    if let Some(card) = python_repair_card(finding) {
+        push_python_repair_card(&mut out, &card);
+    } else if let Some(placement) = repair_placement_from_evidence(finding) {
         out.push_str("\nRepair placement\n");
         out.push_str(&format!("  suggested file: {}\n", placement.test_file));
         out.push_str(&format!("  suggested test: {}\n", placement.test_name));
@@ -97,6 +100,56 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn push_python_repair_card(out: &mut String, card: &PythonRepairCard) {
+    out.push_str("\nPython repair card (preview/advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!("  canonical gap: {}\n", card.canonical_gap_id));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
+    out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
+    out.push_str(&format!(
+        "  current test evidence: {}\n",
+        card.current_test_evidence
+    ));
+    out.push_str(&format!(
+        "  missing discriminator: {}\n",
+        card.missing_discriminator
+    ));
+    out.push_str(&format!(
+        "  recommended test shape: {}\n",
+        card.recommended_test_shape
+    ));
+    out.push_str(&format!(
+        "  suggested assertion: {}\n",
+        card.suggested_assertion
+    ));
+    out.push_str(&format!("  suggested file: {}\n", card.suggested_test_file));
+    out.push_str(&format!("  suggested test: {}\n", card.suggested_test_name));
+    if let Some(node_id) = &card.suggested_test_node_id {
+        out.push_str(&format!("  pytest node: {node_id}\n"));
+    }
+    out.push_str(&format!(
+        "  verify: {} ({})\n",
+        card.verify_command, card.verify_command_confidence
+    ));
+    if let Some(command) = &card.receipt_command {
+        out.push_str(&format!("  receipt command: {command}\n"));
+    } else {
+        out.push_str(&format!("  receipt: {}\n", card.receipt_status));
+    }
+    out.push_str("  stop conditions:\n");
+    for condition in &card.stop_conditions {
+        out.push_str(&format!("    - {condition}\n"));
+    }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
 }
 
 struct RepairPlacement<'a> {

@@ -36,10 +36,28 @@ Weakness
   - Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   - missing discriminator amount == 100: changed Python equality-boundary at line 2 lacks a concrete repair discriminator
 
-Repair placement
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100
+  authority: preview_advisory_only (python/preview)
+  changed owner: risk_score
+  changed behavior: predicate_boundary changed at src/risk.py:2: `if amount >= 100:`
+  current test evidence: tests/test_risk.py:7 test_risk_score_high currently has oracle_strength=smoke, oracle_kind=smoke_only: self.assertTrue(value)
+  missing discriminator: amount == 100
+  recommended test shape: Add or strengthen a unittest boundary assertion for `amount == 100`.
+  suggested assertion: Assert the owner result or effect at the boundary `amount == 100`.
   suggested file: tests/test_risk.py
   suggested test: test_risk_score_100_boundary
   verify: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary (high)
+  receipt: unavailable_until_python_gap_ledger
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
   Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.

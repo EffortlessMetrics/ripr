@@ -82,6 +82,35 @@
         "verify_command": "pytest tests/test_invoice.py::test_invoice_payload_field_value",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "invoice_payload",
+        "changed_behavior": "field_value changed at src/invoice.py:2: `return {\"status\": \"paid\", \"id\": invoice_id}`",
+        "current_test_evidence": "tests/test_invoice.py:4 test_invoice_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload",
+        "missing_discriminator": "status == \"paid\"",
+        "recommended_test_shape": "Add or strengthen a pytest field/object assertion for `status == \"paid\"`.",
+        "suggested_assertion": "Assert the returned object or field satisfies `status == \"paid\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_invoice.py",
+          "test_name": "test_invoice_payload_field_value",
+          "pytest_node_id": "tests/test_invoice.py::test_invoice_payload_field_value"
+         },
+        "verify": {
+          "command": "pytest tests/test_invoice.py::test_invoice_payload_field_value",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",

@@ -374,6 +374,7 @@ adapter contributes:
 - `language_adapter_python_repair_guidance_suppressed_non_actionable`
 - `language_adapter_python_repair_ranking_noise_control`
 - `language_adapter_python_test_placement_verify`
+- `language_adapter_python_repair_card_v1`
 - `language_adapter_python_static_limit_stop_reasons`
 - `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`

@@ -43,10 +43,15 @@ Each actionable finding includes:
 - a suggested test name,
 - a pytest node ID when the related test framework is pytest,
 - a pytest or unittest verify command,
-- and command confidence.
+- command confidence,
+- and a Python repair card with changed owner, changed behavior, current test
+  evidence, missing discriminator, recommended test shape, suggested assertion,
+  suggested location, verify command, preview/advisory authority, deferred
+  receipt status, stop conditions, and limits.
 
 ## Must Not
 
 - Invent placement for missing-test, heuristic-only, or static-limit findings.
 - Run pytest, unittest, or import Python modules.
-- Emit a full repair card, agent packet, or receipt command in this slice.
+- Emit an agent packet, generate tests, or invent a receipt command before the
+  Python gap-ledger outcome slice exists.

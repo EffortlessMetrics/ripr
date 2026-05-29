@@ -36,11 +36,29 @@ Weakness
   - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
   - missing discriminator call includes "receipt.sent": changed Python output/log/call effect at line 2 lacks a concrete repair discriminator
 
-Repair placement
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:notifier_receipt.sent_order_id
+  authority: preview_advisory_only (python/preview)
+  changed owner: send_receipt
+  changed behavior: call_or_output_effect changed at src/notify.py:2: `notifier("receipt.sent", order_id)`
+  current test evidence: tests/test_notify.py:6 test_send_receipt_notifies_callback currently has oracle_strength=medium, oracle_kind=mock_expectation: notifier.assert_called_once_with("receipt.sent", "ord-123")
+  missing discriminator: call includes "receipt.sent"
+  recommended test shape: Add or strengthen a pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
+  suggested assertion: Assert the changed output, log text, or call effect for `call includes "receipt.sent"`.
   suggested file: tests/test_notify.py
   suggested test: test_send_receipt_output_effect
   pytest node: tests/test_notify.py::test_send_receipt_output_effect
   verify: pytest tests/test_notify.py::test_send_receipt_output_effect (high)
+  receipt: unavailable_until_python_gap_ledger
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
   Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.

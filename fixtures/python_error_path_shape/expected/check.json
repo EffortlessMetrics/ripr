@@ -82,6 +82,35 @@
         "verify_command": "pytest tests/test_validation.py::test_require_positive_exception_path",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "require_positive",
+        "changed_behavior": "exception_path changed at src/validation.py:3: `raise ValueError(\"positive required\")`",
+        "current_test_evidence": "tests/test_validation.py:6 test_rejects_zero_value currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
+        "missing_discriminator": "raises ValueError matching \"positive required\"",
+        "recommended_test_shape": "Add or strengthen a pytest exception assertion for `raises ValueError matching \"positive required\"`.",
+        "suggested_assertion": "with pytest.raises(ValueError, match=\"positive required\"): ...",
+        "suggested_location": {
+          "test_file": "tests/test_validation.py",
+          "test_name": "test_require_positive_exception_path",
+          "pytest_node_id": "tests/test_validation.py::test_require_positive_exception_path"
+         },
+        "verify": {
+          "command": "pytest tests/test_validation.py::test_require_positive_exception_path",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",

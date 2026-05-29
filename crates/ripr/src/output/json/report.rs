@@ -4,6 +4,7 @@ use crate::domain::{
     Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
 use std::collections::BTreeMap;
 
 use super::finding_alignment;
@@ -207,6 +208,10 @@ fn finding_json_with_config_and_counts(
     out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
     if let Some(placement) = repair_placement_from_evidence(finding) {
         repair_placement_json(out, &placement, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = python_repair_card(finding) {
+        python_repair_card_json(out, &card, indent + 1);
         out.push_str(",\n");
     }
     let stop_reasons = stop_reason_values(finding);
@@ -571,6 +576,116 @@ fn repair_placement_json(out: &mut String, placement: &RepairPlacement, indent: 
         false,
     );
     out.push_str(&format!("{} }}", "  ".repeat(indent)));
+}
+
+fn python_repair_card_json(out: &mut String, card: &PythonRepairCard, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"python_repair_card\": {{\n"));
+    field(out, indent + 1, "card_version", &card.card_version, true);
+    field(out, indent + 1, "source", &card.source, true);
+    field(
+        out,
+        indent + 1,
+        "canonical_gap_id",
+        &card.canonical_gap_id,
+        true,
+    );
+    field(out, indent + 1, "language", &card.language, true);
+    field(
+        out,
+        indent + 1,
+        "language_status",
+        &card.language_status,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "authority_boundary",
+        &card.authority_boundary,
+        true,
+    );
+    field(out, indent + 1, "changed_owner", &card.changed_owner, true);
+    field(
+        out,
+        indent + 1,
+        "changed_behavior",
+        &card.changed_behavior,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "current_test_evidence",
+        &card.current_test_evidence,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "missing_discriminator",
+        &card.missing_discriminator,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "recommended_test_shape",
+        &card.recommended_test_shape,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &card.suggested_assertion,
+        true,
+    );
+    out.push_str(&format!(
+        "{}\"suggested_location\": {{\n",
+        "  ".repeat(indent + 1)
+    ));
+    field(
+        out,
+        indent + 2,
+        "test_file",
+        &card.suggested_test_file,
+        true,
+    );
+    field(
+        out,
+        indent + 2,
+        "test_name",
+        &card.suggested_test_name,
+        card.suggested_test_node_id.is_some(),
+    );
+    if let Some(node_id) = &card.suggested_test_node_id {
+        field(out, indent + 2, "pytest_node_id", node_id, false);
+    }
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"verify\": {{\n", "  ".repeat(indent + 1)));
+    field(out, indent + 2, "command", &card.verify_command, true);
+    field(
+        out,
+        indent + 2,
+        "confidence",
+        &card.verify_command_confidence,
+        false,
+    );
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"receipt\": {{\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"command\": null,\n", "  ".repeat(indent + 2)));
+    field(out, indent + 2, "status", &card.receipt_status, false);
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    array_field(
+        out,
+        indent + 1,
+        "stop_conditions",
+        &card.stop_conditions,
+        true,
+    );
+    array_field(out, indent + 1, "limits", &card.limits, false);
+    out.push_str(&format!("{sp} }}"));
 }
 
 pub(super) fn stop_reason_values(finding: &Finding) -> Vec<String> {

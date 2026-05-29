@@ -36,11 +36,29 @@ Weakness
   - Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   - missing discriminator amount == threshold: changed Python equality-boundary at line 2 lacks a concrete repair discriminator
 
-Repair placement
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold
+  authority: preview_advisory_only (python/preview)
+  changed owner: calculate_discount
+  changed behavior: predicate_boundary changed at src/c_discount.py:2: `if amount >= threshold:`
+  current test evidence: tests/test_discount.py:4 test_calculate_discount_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result
+  missing discriminator: amount == threshold
+  recommended test shape: Add or strengthen a pytest boundary assertion for `amount == threshold`.
+  suggested assertion: Assert the owner result or effect at the boundary `amount == threshold`.
   suggested file: tests/test_discount.py
   suggested test: test_calculate_discount_threshold_boundary
   pytest node: tests/test_discount.py::test_calculate_discount_threshold_boundary
   verify: pytest tests/test_discount.py::test_calculate_discount_threshold_boundary (high)
+  receipt: unavailable_until_python_gap_ledger
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
   Python preview: add a focused boundary assertion for missing discriminator `amount == threshold`.

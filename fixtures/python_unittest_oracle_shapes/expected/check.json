@@ -81,6 +81,34 @@
         "verify_command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "warn_coupon",
+        "changed_behavior": "return_value changed at src/notifications.py:3: `return \"coupon expired\"`",
+        "current_test_evidence": "tests/test_notifications.py:7 test_warn_coupon_output_message currently has oracle_strength=weak, oracle_kind=relational_check: self.assertIn(\"coupon expired\", result.output)",
+        "missing_discriminator": "return value == \"coupon expired\"",
+        "recommended_test_shape": "Add or strengthen a unittest exact return-value assertion for `return value == \"coupon expired\"`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_notifications.py",
+          "test_name": "test_warn_coupon_return_value"
+         },
+        "verify": {
+          "command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "relational_check",
       "oracle_strength": "weak",

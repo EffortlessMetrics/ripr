@@ -429,6 +429,18 @@ The evidence-first fields are additive in schema `0.1`:
   unittest related test. It carries `suggested_test_file`,
   `suggested_test_name`, optional `suggested_test_node_id`, `verify_command`,
   and `verify_command_confidence`.
+- `python_repair_card` is an additive optional object for direct weak Python
+  findings that already have a canonical gap, concrete missing discriminator,
+  related-test evidence, placement, and verify command. It is intentionally
+  Python-scoped so it does not collide with the existing GapRecord
+  `repair_card` packet contract. The v1 card carries `card_version`, `source`,
+  `canonical_gap_id`, `language`, `language_status`, `authority_boundary`,
+  `changed_owner`, `changed_behavior`, `current_test_evidence`,
+  `missing_discriminator`, `recommended_test_shape`, `suggested_assertion`,
+  `suggested_location`, `verify`, `receipt`, `stop_conditions`, and `limits`.
+  In this preview slice, `receipt.command` is `null` and `receipt.status`
+  explains that Python gap-ledger receipts are unavailable until the dedicated
+  outcome work item.
 - `canonical_gap_id` is an additive optional stable identity for a
   language-qualified behavioral gap when the producer can name one without
   relying on line numbers alone. Python preview values use

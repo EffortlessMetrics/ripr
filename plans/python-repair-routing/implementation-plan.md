@@ -665,7 +665,7 @@ Recommend where and how to verify a Python repair.
 
 ### Work item: output/python-repair-card-v1
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -679,9 +679,26 @@ Produce copy-ready human Python repair cards.
 
 - Cards include changed owner, changed behavior, current test evidence,
   missing discriminator, recommended test shape, suggested location, verify
-  command, receipt command, and stop conditions.
+  command, receipt status, and stop conditions.
 - Cards are present in human CLI and JSON output.
 - Cards do not edit files.
+- Receipt commands remain deferred to `outcome/python-gap-ledger`; this v1 card
+  exposes the receipt slot honestly as unavailable instead of inventing a
+  before/after command before Python outcome records exist.
+
+#### Delivered
+
+- Direct weak Python findings that already have a canonical gap, concrete
+  missing discriminator, related-test evidence, placement, and verify command
+  now render a `Python repair card` in human output and an additive
+  `python_repair_card` object in JSON.
+- The v1 card names the changed owner and behavior, current weak test
+  evidence, missing discriminator, recommended pytest/unittest-shaped test
+  shape, suggested assertion, test location, verify command and confidence,
+  preview/advisory authority boundary, deferred receipt status, stop
+  conditions, and limits.
+- Static-limit, heuristic-only, no-path, and already-observed Python findings
+  still do not get repair cards.
 
 ### Work item: swarm/python-agent-packet-export
 

@@ -125,18 +125,18 @@ fixture families:
   and [`fixtures/python_unsupported_syntax_limit`](../../fixtures/python_unsupported_syntax_limit).
 
 The current fixtures prove preview facts, output metadata, placement guidance,
-and static verify commands for direct weak pytest/unittest findings. They do
-not yet prove Python repair cards, canonical gap closure, agent packet safety,
-or before/after receipt movement.
+repair cards, and static verify commands for direct weak pytest/unittest
+findings. They do not yet prove canonical gap closure, agent packet safety, or
+before/after receipt movement.
 
 ## First Fixture Matrix
 
 | Matrix case | Current fixture home | Current preview coverage | Repair-routing work still needed |
 | --- | --- | --- | --- |
 | `basic_function` | `python_owner_file_match`, `python_boundary_gap` | Top-level function owners, direct calls, exact and weak oracle examples. | Add Python-only project detection and a repair-card fixture that does not depend on Cargo workspace assumptions. |
-| `predicate_boundary` | `python_boundary_gap`, `python_strong_oracle`, `python_parametrize_basic`, `python_test_placement_verify` | Predicate probe, weak/strong related-test examples, canonical gap identity, simple equality-boundary missing discriminators such as `amount == threshold`, and pytest placement/verify guidance; strong-oracle examples suppress missing-discriminator repair guidance. | Convert the missing discriminator into a repair-card assertion shape and closure receipt. |
-| `changed_return_value` | `python_return_value_shape`, `python_broad_boolean_assertion`, `python_unittest_oracle_shapes` | Return-value probes now distinguish exact observed examples from weak direct examples carrying returned-value missing discriminators such as `return value == amount >= 100`, plus static placement/verify guidance for direct weak tests. | Produce a return-value repair card, suggested assertion, and receipt command. |
-| `changed_exception` | `python_error_path_shape`, `python_pytest_raises`, `python_unittest_assertions`, `python_test_placement_verify` | Error-path probes plus pytest/unittest broad-error observers now carry exception missing discriminators such as `raises ValueError matching "positive required"` when direct weak evidence exists, including unittest placement/verify guidance. | Convert exception discriminators into `pytest.raises(..., match=...)` or unittest-shaped repair cards. |
+| `predicate_boundary` | `python_boundary_gap`, `python_strong_oracle`, `python_parametrize_basic`, `python_test_placement_verify` | Predicate probe, weak/strong related-test examples, canonical gap identity, simple equality-boundary missing discriminators such as `amount == threshold`, pytest placement/verify guidance, and repair-card projection; strong-oracle examples suppress missing-discriminator repair guidance. | Add closure receipt support once Python outcome records exist. |
+| `changed_return_value` | `python_return_value_shape`, `python_broad_boolean_assertion`, `python_unittest_oracle_shapes` | Return-value probes now distinguish exact observed examples from weak direct examples carrying returned-value missing discriminators such as `return value == amount >= 100`, plus static placement/verify guidance and repair-card projection for direct weak tests. | Add receipt command support and richer expected-value guidance. |
+| `changed_exception` | `python_error_path_shape`, `python_pytest_raises`, `python_unittest_assertions`, `python_test_placement_verify` | Error-path probes plus pytest/unittest broad-error observers now carry exception missing discriminators such as `raises ValueError matching "positive required"` when direct weak evidence exists, including unittest placement/verify guidance and repair-card assertions. | Add closure receipt support once Python outcome records exist. |
 | `dict_field_change` | `python_field_assignment_shape`, `python_dict_field_repair_gap` | Attribute assignment probes and returned dict fields can carry field/object missing discriminators such as `self.status == "paid"` and `status == "paid"` while exact related assertions remain observed; direct weak findings carry placement/verify guidance. | Add richer dict/object/dataclass repair cards. |
 | `pytest_exact_assert` | `python_strong_oracle`, `python_owner_file_match`, `python_return_value_shape` | `assert ... == ...` becomes `exact_value` / strong and can classify as `exposed`. | Tie exact assertions to a canonical gap closing receipt, not just a preview finding class. |
 | `pytest_smoke_assert` | `python_boundary_gap`, `python_broad_boolean_assertion` | Unknown, reach-only, or smoke oracle keeps finding `weakly_exposed`, and JSON evidence records the non-exact oracle shape. | Prefer strengthening the existing weak test when safe instead of always adding a new test. |
@@ -160,8 +160,8 @@ or before/after receipt movement.
 
 | Surface | Current Python behavior | Work remaining for repair routing |
 | --- | --- | --- |
-| `ripr check --format human` | Renders Python preview findings and direct weak placement/verify guidance when config enables Python. | Add compact repair-card sections with changed owner, missing discriminator, test shape, location, receipt, and stop conditions. |
-| `ripr check --json` | Emits Python metadata fields, canonical gap IDs, and additive `repair_placement` objects on direct weak actionable findings. | Add full repair-card and receipt payloads. |
+| `ripr check --format human` | Renders Python preview findings and direct weak repair cards with changed owner, missing discriminator, test shape, location, verify command, preview/advisory authority, deferred receipt status, stop conditions, and limits when config enables Python. | Add receipt commands once Python outcome records exist. |
+| `ripr check --json` | Emits Python metadata fields, canonical gap IDs, additive `repair_placement` objects, and additive `python_repair_card` objects on direct weak actionable findings. | Add full receipt payloads and downstream packet projection. |
 | `ripr pilot` | Produces the existing Rust seam-oriented pilot packet. | Detect Python repos and select the top Python repairable gap without Cargo assumptions. |
 | `ripr first-pr` / start-here | Can display preview language/static-limit warnings when supplied by existing artifacts. | Generate Python start-here content directly from Python canonical gaps. |
 | SARIF | Renders generic diff finding locations and RIPR properties. | Preserve Python language/status/static-limit metadata and repair-card context. |
@@ -173,7 +173,7 @@ or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `output/python-repair-card-v1`, can start from this
+The next work item, `swarm/python-agent-packet-export`, can start from this
 boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
@@ -218,8 +218,13 @@ boundary:
 - Direct weak pytest and unittest findings now carry suggested test file,
   suggested test name, framework-shaped verify command, command confidence, and
   pytest node IDs when applicable.
+- Direct weak Python findings that already have canonical gap, concrete missing
+  discriminator, related-test evidence, placement, and verify-command evidence
+  now carry `python_repair_card` output in JSON and human reports.
 
-Acceptance for the next behavior PR should wrap the existing owner, evidence,
-missing discriminator, placement, and verify-command pieces into concise repair
-cards without adding receipt commands, agent packets, or generated tests before
-their dedicated work items.
+Acceptance for the next behavior PR should project those repair-card fields
+into deterministic agent packets with bounded allowed files, forbidden
+production files, task text, missing discriminator, test shape, verify command,
+deferred or explicit receipt status, and stop-if conditions. It should not add
+generated tests or claim before/after closure before Python outcome records
+exist.

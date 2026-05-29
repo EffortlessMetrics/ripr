@@ -81,6 +81,34 @@
         "verify_command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary",
         "verify_command_confidence": "high"
        },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "changed_owner": "risk_score",
+        "changed_behavior": "predicate_boundary changed at src/risk.py:2: `if amount >= 100:`",
+        "current_test_evidence": "tests/test_risk.py:7 test_risk_score_high currently has oracle_strength=smoke, oracle_kind=smoke_only: self.assertTrue(value)",
+        "missing_discriminator": "amount == 100",
+        "recommended_test_shape": "Add or strengthen a unittest boundary assertion for `amount == 100`.",
+        "suggested_assertion": "Assert the owner result or effect at the boundary `amount == 100`.",
+        "suggested_location": {
+          "test_file": "tests/test_risk.py",
+          "test_name": "test_risk_score_100_boundary"
+         },
+        "verify": {
+          "command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger"
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",

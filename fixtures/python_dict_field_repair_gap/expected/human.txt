@@ -36,11 +36,29 @@ Weakness
   - Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
   - missing discriminator status == "paid": changed Python field/object value at line 2 lacks a concrete repair discriminator
 
-Repair placement
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id
+  authority: preview_advisory_only (python/preview)
+  changed owner: invoice_payload
+  changed behavior: field_value changed at src/invoice.py:2: `return {"status": "paid", "id": invoice_id}`
+  current test evidence: tests/test_invoice.py:4 test_invoice_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload
+  missing discriminator: status == "paid"
+  recommended test shape: Add or strengthen a pytest field/object assertion for `status == "paid"`.
+  suggested assertion: Assert the returned object or field satisfies `status == "paid"`.
   suggested file: tests/test_invoice.py
   suggested test: test_invoice_payload_field_value
   pytest node: tests/test_invoice.py::test_invoice_payload_field_value
   verify: pytest tests/test_invoice.py::test_invoice_payload_field_value (high)
+  receipt: unavailable_until_python_gap_ledger
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
   Python preview: add or strengthen a field/object assertion for missing discriminator `status == "paid"`.
