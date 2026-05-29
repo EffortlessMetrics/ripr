@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `tax_band`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_tax.py:7 test_tax_band uses unknown unknown oracle: pytest.mark.parametrize"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: tax_band", "owner_kind: function", "test_framework: pytest (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)"],
+      "evidence": ["owner: tax_band", "owner_kind: function", "test_framework: pytest (test_tax_band)", "test_fixtures: amount (test_tax_band)", "test_parametrized: pytest (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)", "test_oracle_shape: reach_only (test_tax_band)"],
       "missing": ["Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [

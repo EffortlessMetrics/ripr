@@ -131,6 +131,7 @@ struct PythonTest {
     body_text: String,
     imports: Vec<PythonImport>,
     decorators: Vec<String>,
+    fixtures: Vec<String>,
     parametrized: bool,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
@@ -148,6 +149,36 @@ struct PythonAssertion {
     line: usize,
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
+    oracle_shape: PythonOracleShape,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum PythonOracleShape {
+    ExactAssertion,
+    BoundaryAssertion,
+    ExceptionAssertion,
+    FieldAssertion,
+    OutputAssertion,
+    StatusCodeAssertion,
+    BroadSmokeAssertion,
+    MockExpectation,
+    UnknownCustomHelper,
+}
+
+impl PythonOracleShape {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactAssertion => "exact_assertion",
+            Self::BoundaryAssertion => "boundary_assertion",
+            Self::ExceptionAssertion => "exception_assertion",
+            Self::FieldAssertion => "field_assertion",
+            Self::OutputAssertion => "output_assertion",
+            Self::StatusCodeAssertion => "status_code_assertion",
+            Self::BroadSmokeAssertion => "broad_smoke_assertion",
+            Self::MockExpectation => "mock_expectation",
+            Self::UnknownCustomHelper => "unknown_custom_helper",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1383,6 +1414,11 @@ fn collect_tests_from_statements(
     for stmt in statements {
         match stmt {
             Stmt::FunctionDef(function) if function.name.as_str().starts_with("test_") => {
+                let framework = if in_unittest_class {
+                    "unittest"
+                } else {
+                    "pytest"
+                };
                 out.push(PythonTest {
                     name: function.name.to_string(),
                     file: file.to_path_buf(),
@@ -1390,16 +1426,18 @@ fn collect_tests_from_statements(
                     body_text: text_for_range(source, function.range),
                     imports: imports.to_vec(),
                     decorators: decorator_names(&function.decorator_list),
+                    fixtures: fixture_parameter_names(&function.args, framework),
                     parametrized: is_parametrized(&function.decorator_list),
-                    framework: if in_unittest_class {
-                        "unittest"
-                    } else {
-                        "pytest"
-                    },
+                    framework,
                     assertions: collect_assertions_from_statements(&function.body, source),
                 });
             }
             Stmt::AsyncFunctionDef(function) if function.name.as_str().starts_with("test_") => {
+                let framework = if in_unittest_class {
+                    "unittest"
+                } else {
+                    "pytest"
+                };
                 out.push(PythonTest {
                     name: function.name.to_string(),
                     file: file.to_path_buf(),
@@ -1407,28 +1445,52 @@ fn collect_tests_from_statements(
                     body_text: text_for_range(source, function.range),
                     imports: imports.to_vec(),
                     decorators: decorator_names(&function.decorator_list),
+                    fixtures: fixture_parameter_names(&function.args, framework),
                     parametrized: is_parametrized(&function.decorator_list),
-                    framework: if in_unittest_class {
-                        "unittest"
-                    } else {
-                        "pytest"
-                    },
+                    framework,
                     assertions: collect_assertions_from_statements(&function.body, source),
                 });
             }
             Stmt::ClassDef(class) => {
-                collect_tests_from_statements(
-                    file,
-                    source,
-                    &class.body,
-                    is_unittest_class(class) || in_unittest_class,
-                    imports,
-                    out,
-                );
+                let class_is_unittest = is_unittest_class(class) || in_unittest_class;
+                if class_is_unittest || is_pytest_class(class) {
+                    collect_tests_from_statements(
+                        file,
+                        source,
+                        &class.body,
+                        class_is_unittest,
+                        imports,
+                        out,
+                    );
+                }
             }
             _ => {}
         }
     }
+}
+
+fn fixture_parameter_names(args: &ast::Arguments, framework: &str) -> Vec<String> {
+    let mut names: Vec<String> = args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+        .map(|arg| arg.def.arg.to_string())
+        .collect();
+    if let Some(arg) = &args.vararg {
+        names.push(arg.arg.to_string());
+    }
+    if let Some(arg) = &args.kwarg {
+        names.push(arg.arg.to_string());
+    }
+    names.retain(|name| {
+        name != "self"
+            && name != "cls"
+            && (framework == "pytest" || !matches!(name.as_str(), "subTest"))
+    });
+    names.sort();
+    names.dedup();
+    names
 }
 
 fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
@@ -1479,6 +1541,10 @@ fn is_unittest_class(class: &ast::StmtClassDef) -> bool {
     class.bases.iter().any(|base| {
         expr_full_name(base).is_some_and(|name| name == "TestCase" || name.ends_with(".TestCase"))
     })
+}
+
+fn is_pytest_class(class: &ast::StmtClassDef) -> bool {
+    class.name.as_str().starts_with("Test")
 }
 
 fn decorator_names(decorators: &[Expr]) -> Vec<String> {
@@ -1582,12 +1648,14 @@ fn collect_except_handler_assertions(
 }
 
 fn assertion_from_assert(assert_stmt: &ast::StmtAssert, source: &str) -> PythonAssertion {
-    let (oracle_kind, oracle_strength) = oracle_for_assert_expr(assert_stmt.test.as_ref());
+    let (oracle_kind, oracle_strength, oracle_shape) =
+        oracle_for_assert_expr(assert_stmt.test.as_ref());
     PythonAssertion {
         text: text_for_range(source, assert_stmt.range).trim().to_string(),
         line: line_for_range_start(source, assert_stmt.range),
         oracle_kind,
         oracle_strength,
+        oracle_shape,
     }
 }
 
@@ -1595,57 +1663,200 @@ fn assertion_from_expr(expr: &Expr, source: &str) -> Option<PythonAssertion> {
     let Expr::Call(call) = expr else {
         return None;
     };
-    let (oracle_kind, oracle_strength) = oracle_for_call(call)?;
+    let (oracle_kind, oracle_strength, oracle_shape) = oracle_for_call(call)?;
     Some(PythonAssertion {
         text: text_for_range(source, call.range).trim().to_string(),
         line: line_for_range_start(source, call.range),
         oracle_kind,
         oracle_strength,
+        oracle_shape,
     })
 }
 
-fn oracle_for_assert_expr(expr: &Expr) -> (OracleKind, OracleStrength) {
+fn oracle_for_assert_expr(expr: &Expr) -> (OracleKind, OracleStrength, PythonOracleShape) {
     match expr {
-        Expr::Compare(compare) => oracle_for_compare_ops(&compare.ops),
+        Expr::Compare(compare) => oracle_for_compare(compare),
         Expr::Call(call) => {
             if expr_full_name(call.func.as_ref()).is_some_and(|name| name == "isinstance") {
-                (OracleKind::RelationalCheck, OracleStrength::Weak)
+                (
+                    OracleKind::RelationalCheck,
+                    OracleStrength::Weak,
+                    PythonOracleShape::BoundaryAssertion,
+                )
             } else {
-                oracle_for_call(call).unwrap_or((OracleKind::SmokeOnly, OracleStrength::Smoke))
+                oracle_for_call(call).unwrap_or((
+                    OracleKind::SmokeOnly,
+                    OracleStrength::Smoke,
+                    PythonOracleShape::BroadSmokeAssertion,
+                ))
             }
         }
-        _ => (OracleKind::SmokeOnly, OracleStrength::Smoke),
+        _ => (
+            OracleKind::SmokeOnly,
+            OracleStrength::Smoke,
+            PythonOracleShape::BroadSmokeAssertion,
+        ),
     }
 }
 
-fn oracle_for_compare_ops(ops: &[ast::CmpOp]) -> (OracleKind, OracleStrength) {
-    if ops.iter().any(|op| matches!(op, ast::CmpOp::Eq)) {
+fn oracle_for_compare(
+    compare: &ast::ExprCompare,
+) -> (OracleKind, OracleStrength, PythonOracleShape) {
+    let has_exact = compare.ops.iter().any(|op| matches!(op, ast::CmpOp::Eq));
+    let (kind, strength) = if has_exact {
         (OracleKind::ExactValue, OracleStrength::Strong)
     } else {
         (OracleKind::RelationalCheck, OracleStrength::Weak)
+    };
+    let shape = if compare_observes_output(compare) {
+        PythonOracleShape::OutputAssertion
+    } else if compare_observes_status_code(compare) {
+        PythonOracleShape::StatusCodeAssertion
+    } else if compare_observes_field(compare) {
+        PythonOracleShape::FieldAssertion
+    } else if compare.ops.iter().any(|op| {
+        matches!(
+            op,
+            ast::CmpOp::Lt | ast::CmpOp::LtE | ast::CmpOp::Gt | ast::CmpOp::GtE
+        )
+    }) {
+        PythonOracleShape::BoundaryAssertion
+    } else if has_exact {
+        PythonOracleShape::ExactAssertion
+    } else {
+        PythonOracleShape::BoundaryAssertion
+    };
+    (kind, strength, shape)
+}
+
+fn compare_observes_output(compare: &ast::ExprCompare) -> bool {
+    expr_observes_output(compare.left.as_ref())
+        || compare.comparators.iter().any(expr_observes_output)
+}
+
+fn compare_observes_status_code(compare: &ast::ExprCompare) -> bool {
+    expr_observes_status_code(compare.left.as_ref())
+        || compare.comparators.iter().any(expr_observes_status_code)
+}
+
+fn compare_observes_field(compare: &ast::ExprCompare) -> bool {
+    expr_observes_field(compare.left.as_ref())
+        || compare.comparators.iter().any(expr_observes_field)
+}
+
+fn expr_observes_output(expr: &Expr) -> bool {
+    expr_full_name(expr).is_some_and(|name| {
+        name == "caplog.text"
+            || name == "capsys.readouterr.out"
+            || name.ends_with(".output")
+            || name.ends_with(".stdout")
+            || name.ends_with(".stderr")
+            || name.ends_with(".text")
+    }) || match expr {
+        Expr::Call(call) => {
+            expr_full_name(call.func.as_ref()).is_some_and(|name| name == "capsys.readouterr")
+                || call.args.iter().any(expr_observes_output)
+                || call
+                    .keywords
+                    .iter()
+                    .any(|keyword| expr_observes_output(&keyword.value))
+        }
+        Expr::Attribute(attribute) => expr_observes_output(attribute.value.as_ref()),
+        Expr::Subscript(subscript) => {
+            expr_observes_output(subscript.value.as_ref())
+                || expr_observes_output(subscript.slice.as_ref())
+        }
+        Expr::BoolOp(bool_op) => bool_op.values.iter().any(expr_observes_output),
+        _ => false,
     }
 }
 
-fn oracle_for_call(call: &ast::ExprCall) -> Option<(OracleKind, OracleStrength)> {
+fn expr_observes_status_code(expr: &Expr) -> bool {
+    expr_full_name(expr).is_some_and(|name| {
+        name.ends_with(".status_code") || name.ends_with(".status") || name.ends_with(".exit_code")
+    })
+}
+
+fn expr_observes_field(expr: &Expr) -> bool {
+    match expr {
+        Expr::Attribute(attribute) => {
+            !expr_observes_status_code(expr)
+                && !expr_observes_output(expr)
+                && !expr_observes_output(attribute.value.as_ref())
+        }
+        Expr::Subscript(_) => true,
+        Expr::Call(call) => {
+            call.args.iter().any(expr_observes_field)
+                || call
+                    .keywords
+                    .iter()
+                    .any(|keyword| expr_observes_field(&keyword.value))
+        }
+        Expr::BoolOp(bool_op) => bool_op.values.iter().any(expr_observes_field),
+        _ => false,
+    }
+}
+
+fn oracle_for_call(
+    call: &ast::ExprCall,
+) -> Option<(OracleKind, OracleStrength, PythonOracleShape)> {
     let name = expr_full_name(call.func.as_ref())?;
     let last_segment = name.rsplit('.').next().unwrap_or(name.as_str());
     match last_segment {
-        "assertEqual" => Some((OracleKind::ExactValue, OracleStrength::Strong)),
-        "assertNotEqual" => Some((OracleKind::RelationalCheck, OracleStrength::Weak)),
-        "assertTrue" | "assertFalse" => Some((OracleKind::SmokeOnly, OracleStrength::Smoke)),
-        "assertRaises" | "assertRaisesRegex" => {
-            Some((OracleKind::BroadError, OracleStrength::Weak))
-        }
-        "raises" if name == "pytest.raises" => Some((OracleKind::BroadError, OracleStrength::Weak)),
+        "assertEqual" | "assertDictEqual" => Some((
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            PythonOracleShape::ExactAssertion,
+        )),
+        "assertIn" | "assertRegex" => Some((
+            OracleKind::RelationalCheck,
+            OracleStrength::Weak,
+            PythonOracleShape::FieldAssertion,
+        )),
+        "assertNotEqual" => Some((
+            OracleKind::RelationalCheck,
+            OracleStrength::Weak,
+            PythonOracleShape::BoundaryAssertion,
+        )),
+        "assertTrue" | "assertFalse" => Some((
+            OracleKind::SmokeOnly,
+            OracleStrength::Smoke,
+            PythonOracleShape::BroadSmokeAssertion,
+        )),
+        "assertRaises" | "assertRaisesRegex" => Some((
+            OracleKind::BroadError,
+            OracleStrength::Weak,
+            PythonOracleShape::ExceptionAssertion,
+        )),
+        "raises" if name == "pytest.raises" || name == "raises" => Some((
+            OracleKind::BroadError,
+            OracleStrength::Weak,
+            PythonOracleShape::ExceptionAssertion,
+        )),
         "assert_called"
         | "assert_called_once"
         | "assert_called_with"
         | "assert_called_once_with"
         | "assert_any_call"
         | "assert_has_calls"
-        | "assert_not_called" => Some((OracleKind::MockExpectation, OracleStrength::Medium)),
+        | "assert_not_called" => Some((
+            OracleKind::MockExpectation,
+            OracleStrength::Medium,
+            PythonOracleShape::MockExpectation,
+        )),
+        _ if looks_like_custom_assertion_helper(&name) => Some((
+            OracleKind::Unknown,
+            OracleStrength::Unknown,
+            PythonOracleShape::UnknownCustomHelper,
+        )),
         _ => None,
     }
+}
+
+fn looks_like_custom_assertion_helper(name: &str) -> bool {
+    name.rsplit('.')
+        .next()
+        .is_some_and(|segment| segment.starts_with("assert_") || segment == "assert_that")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2202,6 +2413,16 @@ fn classify_change(
             "test_framework: {} ({})",
             test.framework, test.name
         ));
+        if !test.fixtures.is_empty() {
+            evidence.push(format!(
+                "test_fixtures: {} ({})",
+                test.fixtures.join(", "),
+                test.name
+            ));
+        }
+        if test.parametrized {
+            evidence.push(format!("test_parametrized: pytest ({})", test.name));
+        }
         evidence.push(format!(
             "related_test_relation: {} ({})",
             candidate.relation.as_str(),
@@ -2216,6 +2437,15 @@ fn classify_change(
                 assertion.oracle_strength.as_str(),
                 test.name
             ));
+            if assertion.oracle_shape != PythonOracleShape::ExactAssertion {
+                evidence.push(format!(
+                    "test_oracle_shape: {} ({})",
+                    assertion.oracle_shape.as_str(),
+                    test.name
+                ));
+            }
+        } else if candidate.relation.uses_oracle() {
+            evidence.push(format!("test_oracle_shape: reach_only ({})", test.name));
         }
     }
 
@@ -2508,6 +2738,14 @@ import pytest
 def test_apply_discount(amount):
     apply_discount(amount)
 
+class TestPytestStyle:
+    def test_class_style(self, client):
+        assert client.get("/discount").status_code == 200
+
+class Helper:
+    def test_not_a_pytest_class(self):
+        apply_discount(10)
+
 class PriceTests(unittest.TestCase):
     def test_apply_method(self):
         Policy().apply(10)
@@ -2519,11 +2757,23 @@ class PriceTests(unittest.TestCase):
                 .iter()
                 .map(|test| test.name.as_str())
                 .collect::<Vec<_>>(),
-            vec!["test_apply_discount", "test_apply_method"]
+            vec![
+                "test_apply_discount",
+                "test_class_style",
+                "test_apply_method"
+            ]
         );
         assert!(tests[0].parametrized);
+        assert_eq!(tests[0].fixtures, vec!["amount".to_string()]);
         assert_eq!(tests[0].framework, "pytest");
-        assert_eq!(tests[1].framework, "unittest");
+        assert_eq!(tests[1].fixtures, vec!["client".to_string()]);
+        assert_eq!(tests[1].framework, "pytest");
+        assert_eq!(tests[2].framework, "unittest");
+        assert!(
+            tests
+                .iter()
+                .all(|test| test.name != "test_not_a_pytest_class")
+        );
     }
 
     #[test]

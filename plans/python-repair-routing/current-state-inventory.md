@@ -69,8 +69,8 @@ commands, agent packets, and before/after receipts.
 | --- | --- | --- |
 | Source snapshots | Stable file/span/language facts for modules, classes, functions, methods, decorators, parameters, returns, raises, predicates, comparisons, boolean expressions, calls, assignments, attribute writes, dict/list/set literals, string literals, and print/log calls. | Snapshot facts are still internal analysis substrate; they are not yet projected as canonical gap IDs or repair cards. |
 | Owners | Top-level `def`, `async def`, methods, `@staticmethod`, `@classmethod` methods, class-body owners, module-level owners, and stable `python:<path>::<qualified_owner>` probe owner IDs. | Class owners intentionally omit `owner_kind` until the shared vocabulary adds a class value; canonical repair-gap IDs remain planned. |
-| Tests | `test_*` functions, async `test_*`, tests inside classes, `unittest.TestCase` `test_*` methods, and test files by `test_*.py`, `*_test.py`, or `tests/` paths. | Fixture parameters, custom helpers, API clients, CLI runners, and framework fixtures are not modeled as first-class test facts. |
-| Pytest oracles | `assert a == b`, non-equality comparisons, bare `assert expr`, `isinstance(...)`, `pytest.raises(...)`, and `pytest.mark.parametrize` presence. | No exact boundary discriminator extraction, no `match=` message observer, no `capsys`, `caplog`, status-code, response JSON, or custom helper classification. |
+| Tests | `test_*` functions, async `test_*`, `class Test*` pytest methods, `unittest.TestCase` `test_*` methods, fixture/parameter names, and test files by `test_*.py`, `*_test.py`, or `tests/` paths. | API client, CLI runner, and framework fixture semantics are recorded syntactically but not yet converted into repair locations or verify commands. |
+| Pytest oracles | `assert a == b`, boundary comparisons, field assertions, output observers through `caplog` / `capsys`, status-code and exit-code assertions, bare `assert expr`, custom `assert_*` helpers, `isinstance(...)`, `pytest.raises(...)` / imported `raises(...)`, and `pytest.mark.parametrize` presence. | No exact boundary discriminator extraction, no `match=` message observer, and no response JSON or framework-shaped repair cards yet. |
 | Unittest oracles | `assertEqual`, `assertNotEqual`, `assertTrue`, `assertFalse`, `assertRaises`, and `assertRaisesRegex`. | `assertIn`, `assertRegex`, `assertDictEqual`, verify-command selection, and command confidence remain planned. |
 | Mock oracles | Common `mock.assert_called*` family is `mock_expectation` / medium. | Runtime mock substitution is not resolved; patched or monkeypatched modules surface as static limits. |
 | Related tests | Direct owner calls, module import-alias calls, method attribute calls, and same-stem file proximity. | Route/client references, fixture names, class references beyond simple calls, and uncertain relation reasons are not yet repair-card inputs. |
@@ -95,6 +95,7 @@ fixture families:
   [`fixtures/python_strong_oracle`](../../fixtures/python_strong_oracle),
   [`fixtures/python_broad_boolean_assertion`](../../fixtures/python_broad_boolean_assertion),
   [`fixtures/python_pytest_raises`](../../fixtures/python_pytest_raises),
+  [`fixtures/python_pytest_oracle_shapes`](../../fixtures/python_pytest_oracle_shapes),
   [`fixtures/python_unittest_basic`](../../fixtures/python_unittest_basic),
   [`fixtures/python_unittest_assertions`](../../fixtures/python_unittest_assertions),
   [`fixtures/python_parametrize_basic`](../../fixtures/python_parametrize_basic),
@@ -131,7 +132,7 @@ packet safety, or before/after receipt movement.
 | `changed_exception` | `python_error_path_shape`, `python_pytest_raises`, `python_unittest_assertions` | Error-path probe plus pytest/unittest broad-error observers. | Distinguish exception type versus message discriminator, including `pytest.raises(..., match=...)` guidance. |
 | `dict_field_change` | Partial: `python_field_assignment_shape` | Attribute assignment probe with exact related assertion. | Add dict/object/dataclass return-field fixtures and field-specific repair cards. |
 | `pytest_exact_assert` | `python_strong_oracle`, `python_owner_file_match`, `python_return_value_shape` | `assert ... == ...` becomes `exact_value` / strong and can classify as `exposed`. | Tie exact assertions to a canonical gap closing receipt, not just a preview finding class. |
-| `pytest_smoke_assert` | `python_boundary_gap`, `python_broad_boolean_assertion` | Unknown or smoke oracle keeps finding `weakly_exposed`. | Prefer strengthening the existing weak test when safe instead of always adding a new test. |
+| `pytest_smoke_assert` | `python_boundary_gap`, `python_broad_boolean_assertion` | Unknown, reach-only, or smoke oracle keeps finding `weakly_exposed`, and JSON evidence records the non-exact oracle shape. | Prefer strengthening the existing weak test when safe instead of always adding a new test. |
 | `unittest_assert_equal` | `python_unittest_assertions` | `self.assertEqual(...)` becomes `exact_value` / strong. | Build unittest verify-command selection and add remaining unittest assertion shapes. |
 | `fastapi_route_optional` | Missing | FastAPI/Flask decorators currently look like decorator or call syntax, not framework facts. | Add HTTP/API fixture pack with route owner, status-code, and JSON-field repair cards; keep dynamic routing limited. |
 | `cli_output_optional` | Missing | Generic call and side-effect shapes exist, but CLI runners and stdout/stderr assertions are not modeled. | Add Click/Typer/argparse output fixtures, output assertion cards, and exit-code verify guidance. |
@@ -165,7 +166,7 @@ packet safety, or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `analysis/python-pytest-oracles`, can start from this
+The next work item, `analysis/python-unittest-oracles`, can start from this
 boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
@@ -179,7 +180,11 @@ boundary:
 - Python diff findings now carry stable, language-qualified `probe.owner` IDs
   for functions, methods, classes, and module-level changes, and output tests
   prove the owner is visible in JSON and human reports.
+- Pytest preview evidence now records fixture parameters, `class Test*`
+  discovery, output/status/field/boundary/smoke/custom-helper oracle shapes,
+  and conservative reach-only evidence without changing support tier or
+  emitting repair cards.
 
-Acceptance for the next behavior PR should deepen pytest oracle extraction
-without promoting Python beyond preview or emitting repair cards before missing
-discriminators and verify commands exist.
+Acceptance for the next behavior PR should finish the remaining unittest
+assertion vocabulary and keep those facts in the same oracle taxonomy without
+adding verify commands before the placement slice.

@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `load_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_loading.py:4 test_load_total_includes_fee uses strong exact value oracle: assert await load_total(client) == 12"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: load_total", "owner_kind: function", "owner_decorators: async_def", "test_framework: pytest (test_load_total_includes_fee)", "related_test_relation: syntactic_call (test_load_total_includes_fee)", "test_oracle: exact_value strong (test_load_total_includes_fee)"],
+      "evidence": ["owner: load_total", "owner_kind: function", "owner_decorators: async_def", "test_framework: pytest (test_load_total_includes_fee)", "test_fixtures: client (test_load_total_includes_fee)", "related_test_relation: syntactic_call (test_load_total_includes_fee)", "test_oracle: exact_value strong (test_load_total_includes_fee)"],
       "missing": ["Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [

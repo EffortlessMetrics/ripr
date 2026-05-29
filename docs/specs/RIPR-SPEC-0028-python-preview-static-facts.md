@@ -89,14 +89,24 @@ RIPR-SPEC-0026 owner-kind vocabulary explicitly adds a class value.
 Test discovery:
 
 - `pytest` test functions named `test_*` at module level
+- pytest test methods under `class Test*`
 - `unittest.TestCase` subclasses and their `test_*` methods
 - parametrized tests via `@pytest.mark.parametrize` (recognised
   syntactically)
+- pytest fixture and parameter names captured from test function signatures
 - fixture files matched by configured patterns (default: `test_*.py`
   and `*_test.py`; the configured pattern is part of the repo config
   cross-spec contract)
 
 Assertions / oracles the adapter must recognise:
+
+The repair-routing lane preserves a conservative internal oracle shape for
+pytest facts without expanding the shared public `OracleKind` vocabulary. That
+shape distinguishes exact assertions, boundary comparisons, exception
+assertions, dict/object field assertions, output assertions through
+`caplog.text` / `capsys.readouterr().out` / stdout-stderr-output attributes,
+status-code and exit-code assertions, broad smoke assertions, reach-only
+tests, mock expectations, and custom `assert_*` helpers.
 
 - bare `assert expr` → smoke oracle
 - `assert a == b` and `assert a != b` → exact-value oracle (for `==`) or
@@ -162,6 +172,8 @@ can show:
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases
+- a fixture covering pytest fixture parameters and a non-exact
+  output/log oracle shape
 - generated CI fixtures cover Python preview output visible only when
   `[languages]` declares `python`
 - LSP protocol smoke covers a Python seam diagnostic, hover, code

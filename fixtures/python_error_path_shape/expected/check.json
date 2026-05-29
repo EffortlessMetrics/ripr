@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `require_positive`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_validation.py:6 test_rejects_zero_value uses weak broad error oracle: pytest.raises(ValueError)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: require_positive", "owner_kind: function", "test_framework: pytest (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)"],
+      "evidence": ["owner: require_positive", "owner_kind: function", "test_framework: pytest (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
       "missing": ["Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [

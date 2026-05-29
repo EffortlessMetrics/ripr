@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `build_model`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_models.py:4 test_build_model_sets_name uses strong exact value oracle: assert build_model(\"Invoice\").__name__ == \"Invoice\""],
       "flow_sinks": [
       ],
-      "evidence": ["owner: build_model", "owner_kind: function", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_build_model_sets_name)", "related_test_relation: syntactic_call (test_build_model_sets_name)", "test_oracle: exact_value strong (test_build_model_sets_name)"],
+      "evidence": ["owner: build_model", "owner_kind: function", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_build_model_sets_name)", "related_test_relation: syntactic_call (test_build_model_sets_name)", "test_oracle: exact_value strong (test_build_model_sets_name)", "test_oracle_shape: field_assertion (test_build_model_sets_name)"],
       "missing": ["Related Python test reaches `build_model` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior."],
       "activation": {
         "observed_values": [

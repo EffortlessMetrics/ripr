@@ -379,7 +379,7 @@ Map changed Python lines to stable, language-qualified owners.
 
 ### Work item: analysis/python-pytest-oracles
 
-Status: planned
+Status: complete
 
 Blocked by:
 
@@ -397,6 +397,23 @@ Recognize common pytest tests and classify assertion strength.
 - Classify exact, boundary, exception, field, output, status-code, broad smoke,
   reach-only, and unknown helper oracles.
 - Unknown helpers remain conservative.
+
+#### Delivered
+
+- Pytest test discovery now records fixture/parameter names and limits
+  class-scoped pytest discovery to `class Test*` while preserving
+  `unittest.TestCase` method discovery for the next slice.
+- Python assertions now keep an internal pytest oracle shape for exact,
+  boundary, exception, field, output, status-code, broad-smoke,
+  reach-only, mock, and custom-helper evidence while preserving the shared
+  `OracleKind` / `OracleStrength` output vocabulary.
+- `pytest.raises` context managers, imported `raises(...)`, `caplog` /
+  `capsys` output observers, `response.status_code` / `exit_code`,
+  dict/attribute field assertions, parametrized tests, and
+  `monkeypatch` fixture parameters are represented as preview evidence.
+- `python_pytest_oracle_shapes` pins output/log assertion evidence; existing
+  Python preview fixtures now record fixture parameters and non-exact oracle
+  shapes in JSON evidence without emitting repair cards yet.
 
 ### Work item: analysis/python-unittest-oracles
 

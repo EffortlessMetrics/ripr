@@ -2026,6 +2026,7 @@ fixtures = [
   "fixtures/python_parametrize_basic",
   "fixtures/python_strong_oracle",
   "fixtures/python_pytest_raises",
+  "fixtures/python_pytest_oracle_shapes",
   "fixtures/python_unittest_assertions",
   "fixtures/python_mock_assert_called",
   "fixtures/python_broad_boolean_assertion",

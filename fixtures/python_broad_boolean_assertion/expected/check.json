@@ -30,7 +30,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: is_priority", "owner_kind: function", "test_framework: pytest (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)"],
+      "evidence": ["owner: is_priority", "owner_kind: function", "test_framework: pytest (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
       "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [

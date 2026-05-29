@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Record Python pytest oracle shape and fixture evidence
+
+Command:
+`cargo xtask goldens bless python_metaprogramming_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
