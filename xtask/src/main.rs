@@ -25801,6 +25801,39 @@ fn ripr_swarm_missing_evidence_field_sample(
     )
 }
 
+fn ripr_swarm_json_string(row: &Value, path: &[&str]) -> Option<String> {
+    audit_get(row, path)
+        .and_then(Value::as_str)
+        .filter(|value| !ripr_swarm_plan_field_missing(value))
+        .map(str::to_owned)
+}
+
+fn ripr_swarm_attempt_ledger_outcome_sample(
+    ledger: Option<&Value>,
+    outcome: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let Some(ledger) = ledger else {
+        return (None, None, None);
+    };
+    let latest_attempts = audit_array(ledger, &["latest_attempts"]);
+    let attempts = if latest_attempts.is_empty() {
+        audit_array(ledger, &["attempts"])
+    } else {
+        latest_attempts
+    };
+    let Some(attempt) = attempts
+        .iter()
+        .find(|attempt| audit_get(attempt, &["outcome"]).and_then(Value::as_str) == Some(outcome))
+    else {
+        return (None, None, None);
+    };
+    (
+        ripr_swarm_json_string(attempt, &["packet_id"]),
+        ripr_swarm_json_string(attempt, &["canonical_gap_id"]),
+        ripr_swarm_json_string(attempt, &["repair_kind"]),
+    )
+}
+
 fn actionable_gap_outcomes_missing_verify_result_count(outcomes: &Value) -> usize {
     audit_array(outcomes, &["outcomes"])
         .iter()
@@ -26088,12 +26121,14 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if summary.receipt_present_packets > 0 {
+        let (packet_id, canonical_gap_id, repair_kind) =
+            ripr_swarm_attempt_ledger_outcome_sample(attempt_ledger_input.value, "receipt_present");
         actions.push(RiprSwarmReadinessNextAction {
             kind: "join_receipt_evidence_movement".to_string(),
-            packet_id: None,
-            canonical_gap_id: None,
+            packet_id,
+            canonical_gap_id,
             evidence_class: None,
-            repair_kind: None,
+            repair_kind,
             command: Some("cargo xtask actionable-gap-outcomes".to_string()),
             reason: format!(
                 "{} receipt-backed packet(s) still need before/after evidence movement joined before route quality can claim improvement or regression",
@@ -79904,6 +79939,23 @@ covered_by = ["cargo xtask check-file-policy"]
                     "sample_canonical_gap_ids": ["gap:missing-receipt"],
                     "sample_repair_kinds": ["add_output_observer"]
                 }
+            ],
+            "latest_attempts": [
+                {
+                    "packet_id": "packet-receipt-present",
+                    "canonical_gap_id": "gap:receipt-present",
+                    "attempt_id": "attempt-receipt-present",
+                    "repair_kind": "add_exact_error_variant_observer",
+                    "actor_kind": "human",
+                    "receipt_path": "target/ripr/receipts/attempt-receipt-present.json",
+                    "verify_command": "cargo test -p ripr exact_error_variant",
+                    "verify_result": "pass",
+                    "receipt_command": "cargo xtask receipts write --packet packet-receipt-present",
+                    "before_gap_state": "actionable",
+                    "after_gap_state": "actionable",
+                    "outcome": "receipt_present",
+                    "timestamp": "2026-05-29T00:00:00Z"
+                }
             ]
         });
         let report = ripr_swarm_readiness_from_values(
@@ -80015,6 +80067,18 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["next_actions"][2]["kind"],
             serde_json::Value::from("join_receipt_evidence_movement")
+        );
+        assert_eq!(
+            value["next_actions"][2]["packet_id"],
+            serde_json::Value::from("packet-receipt-present")
+        );
+        assert_eq!(
+            value["next_actions"][2]["canonical_gap_id"],
+            serde_json::Value::from("gap:receipt-present")
+        );
+        assert_eq!(
+            value["next_actions"][2]["repair_kind"],
+            serde_json::Value::from("add_exact_error_variant_observer")
         );
         assert_eq!(
             value["next_actions"][5]["kind"],
