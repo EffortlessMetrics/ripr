@@ -7864,6 +7864,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "dry_run_receipt_command_missing_named",
         "attempted_no_receipt",
     ),
+    (
+        "local_computed_boundary_limitation_route_improved",
+        "evidence_improved",
+    ),
 ];
 
 const USER_SURFACE_PROJECTION_REQUIRED_SURFACES: &[&str] = &["badge", "lsp", "pr_comment", "ci"];

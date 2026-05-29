@@ -168,6 +168,40 @@
       ],
       "missing_receipt_reason": "receipt command reported required local receipts were absent",
       "reason": "A real dogfood dry-run pass proved missing receipts stay named and do not become implicit success."
+    },
+    {
+      "id": "local_computed_boundary_limitation_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#499",
+      "canonical_gap_id": "gap:activation-boundary-input-unresolved-local-computed",
+      "packet_id": "limitation:activation-boundary-input-unresolved:local-computed-boundary-operand-resolution",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "fixture assertions that local/computed boundary operands remain named static limitations and do not emit add_boundary_assertion packets",
+      "verify_command": "cargo test -p xtask lane1_evidence_quality_failure_corpus_is_valid -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask check-fixture-contracts",
+      "receipt_path": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Pinned local/computed boundary operand cases in evidence-quality and swarm-plan corpora so the analyzer backlog route stays precise and non-actionable.",
+      "evidence_movement": "The local/computed activation boundary route now has fixture-backed proof that RIPR names the limitation instead of inventing candidate values or public repair packets.",
+      "operator_note": "This is a successful negative-capability repair-loop attempt: it improved route trust by making unsafe actionability stay blocked.",
+      "must_not_change": [
+        "public projection eligibility for static limitations",
+        "add_boundary_assertion promotion",
+        "candidate value inference",
+        "production behavior"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json:local_computed_boundary_operands_remain_limitation",
+        "fixtures/swarm-plan-packet-corpus/corpus.json:local_computed_boundary_static_limitation_packet",
+        ".ripr/traceability.toml:RIPR-SPEC-0061",
+        "metrics/capabilities.toml:lane1_canonical_actionability_contract"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged limitation-route PR made local/computed boundary operands more trustworthy by preserving named non-actionability instead of routing unsafe repair work."
     }
   ]
 }
