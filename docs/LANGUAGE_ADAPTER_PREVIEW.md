@@ -125,6 +125,9 @@ Useful references:
 
 - [Output schema](OUTPUT_SCHEMA.md) for field contracts.
 - [Support tiers](status/SUPPORT_TIERS.md) for maturity and trust boundaries.
+- [Python repair routing proposal](proposals/RIPR-PROP-0017-python-repair-routing-lane.md)
+  for the end-state repair-card and receipt loop required before Python can
+  move beyond preview evidence.
 - [Preview promotion criteria](policy/PREVIEW_PROMOTION_CRITERIA.md) for the
   proof required before a preview language/class can be reviewed for stronger
   status.

@@ -68,6 +68,11 @@ spec, ADR, issue, or campaign state before starting behavior work.
 These entries are durable plan artifacts. Their own status fields decide whether
 they are active, closed, complete, blocked, or historical.
 
+### Proposed Plans
+
+- [Python repair routing](python-repair-routing/implementation-plan.md)
+  (proposed, not active until explicitly selected)
+
 ### Closed or Complete Plans
 
 - [Actionable surface translation](actionable-surface-translation/implementation-plan.md)
