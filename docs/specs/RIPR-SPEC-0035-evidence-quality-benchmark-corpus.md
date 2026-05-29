@@ -194,8 +194,9 @@ affinity.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains`
   pins that specific call targets remain eligible for assertion-target
   affinity without satisfying activation by themselves. The benchmark records
-  this as `activation_owner_call_absent_affinity_only` routed to
-  `analysis/related-test-affinity-owner-call-tracing`, not as public test debt.
+  this as `activation_owner_call_absent_assertion_target_affinity` routed to
+  `analysis/assertion-target-affinity-owner-call-tracing`, not as public test
+  debt.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_calls_owner_then_value_insensitive_activation_is_yes`
   pins same-file one-hop helper owner-call activation for value-insensitive
   seams without synthetic observed values.

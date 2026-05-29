@@ -980,6 +980,9 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
         "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
+        "activation_owner_call_absent_assertion_target_affinity" => {
+            "analysis/assertion-target-affinity-owner-call-tracing"
+        }
         "activation_owner_call_absent_affinity_only" => {
             "analysis/related-test-affinity-owner-call-tracing"
         }
@@ -1012,7 +1015,9 @@ fn static_limitation_category_for_entry(
     entry: &ClassifiedSeam,
 ) -> &'static str {
     if category == "activation_owner_call_absent" {
-        if owner_call_absence_is_same_file_only(entry) {
+        if owner_call_absence_has_assertion_target_affinity(entry) {
+            "activation_owner_call_absent_assertion_target_affinity"
+        } else if owner_call_absence_is_same_file_only(entry) {
             "activation_owner_call_absent_same_file_only"
         } else if owner_call_absence_is_affinity_only(entry) {
             "activation_owner_call_absent_affinity_only"
@@ -1030,10 +1035,15 @@ fn static_limitation_repair_route_for_entry(
 ) -> &'static str {
     if matches!(
         category,
-        "activation_owner_call_absent_affinity_only"
+        "activation_owner_call_absent_assertion_target_affinity"
+            | "activation_owner_call_absent_affinity_only"
             | "activation_owner_call_absent_same_file_only"
     ) {
         static_limitation_repair_route(category)
+    } else if category == "activation_owner_call_absent"
+        && owner_call_absence_has_assertion_target_affinity(entry)
+    {
+        "analysis/assertion-target-affinity-owner-call-tracing"
     } else if category == "activation_owner_call_absent"
         && owner_call_absence_is_affinity_only(entry)
     {
@@ -1047,9 +1057,12 @@ fn static_limitation_repair_route_for_entry(
     }
 }
 
-fn boundary_input_limitation_is_iterator_derived(entry: &ClassifiedSeam) -> bool {
-    let reason = entry.evidence.activate.summary.to_ascii_lowercase();
-    reason.contains("boundary activation operand") && reason.contains("iterator-derived")
+fn owner_call_absence_has_assertion_target_affinity(entry: &ClassifiedSeam) -> bool {
+    entry
+        .evidence
+        .related_tests
+        .iter()
+        .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity)
 }
 
 fn owner_call_absence_is_affinity_only(entry: &ClassifiedSeam) -> bool {
@@ -1077,6 +1090,11 @@ fn stage_json(stage: &EvidenceRecordStage) -> Value {
         "confidence": stage.confidence.as_str(),
         "summary": stage.summary.as_str(),
     })
+}
+
+fn boundary_input_limitation_is_iterator_derived(entry: &ClassifiedSeam) -> bool {
+    let reason = entry.evidence.activate.summary.to_ascii_lowercase();
+    reason.contains("boundary activation operand") && reason.contains("iterator-derived")
 }
 
 fn observed_value_json(value: &EvidenceRecordObservedValue) -> Value {
@@ -1695,7 +1713,7 @@ mod tests {
     }
 
     #[test]
-    fn evidence_record_splits_affinity_only_owner_call_absence_limitation() {
+    fn evidence_record_splits_assertion_target_owner_call_absence_limitation() {
         let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
         entry.evidence.activate = stage(
             StageState::Unknown,
@@ -1714,14 +1732,40 @@ mod tests {
         assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
         assert_eq!(
             json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_assertion_target_affinity"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/assertion-target-affinity-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/assertion-target-affinity-owner-call-tracing"
+        );
+    }
+
+    #[test]
+    fn evidence_record_keeps_generic_affinity_owner_call_absence_limitation() {
+        let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "No direct owner call observed for value-insensitive seam `return false`",
+        );
+        entry.evidence.related_tests[0].relation_reason = RelationReason::FixtureOwnerAffinity;
+        entry.evidence.related_tests[0].relation_confidence = RelationConfidence::Low;
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(
+            json["static_limitations"][0]["category"],
             "activation_owner_call_absent_affinity_only"
         );
         assert_eq!(
             json["static_limitations"][0]["repair_route"],
-            "analysis/related-test-affinity-owner-call-tracing"
-        );
-        assert_eq!(
-            json["canonical_item"]["static_limitations"][0]["repair_route"],
             "analysis/related-test-affinity-owner-call-tracing"
         );
     }
@@ -1897,6 +1941,10 @@ mod tests {
             (
                 "activation_owner_call_absent",
                 "analysis/owner-call-absence-triage",
+            ),
+            (
+                "activation_owner_call_absent_assertion_target_affinity",
+                "analysis/assertion-target-affinity-owner-call-tracing",
             ),
             (
                 "activation_owner_call_absent_affinity_only",
