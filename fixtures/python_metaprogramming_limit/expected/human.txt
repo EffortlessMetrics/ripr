@@ -28,7 +28,6 @@ Evidence
   - propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return type(name, (), {"kind": "preview"}) (line 2)
   - related test tests/test_models.py:4 test_build_model_sets_name uses strong exact value oracle: assert build_model("Invoice").__name__ == "Invoice"
 
 Weakness

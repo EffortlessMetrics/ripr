@@ -39,31 +39,21 @@
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90", "missing discriminator amount == threshold: changed Python predicate at line 2 lacks an extracted equality-boundary discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90"],
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":2}
       ],
-      "evidence": ["owner: apply_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "test_framework: pytest (test_apply_discount_boundary)", "test_verify_command: pytest tests/test_discount.py::test_apply_discount_boundary (test_apply_discount_boundary)", "related_test_relation: syntactic_call (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary)", "test_verify_command: pytest tests/test_discount.py::test_apply_discount_boundary (test_apply_discount_boundary)", "related_test_relation: syntactic_call (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
       "missing": ["Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
-          {
-            "value": "amount == threshold",
-            "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
-            "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
-          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
-        {
-          "value": "amount == threshold",
-          "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
-          "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
-        }
       ],
       "related_tests": [
         {

@@ -28,7 +28,6 @@ Evidence
   - propagation unknown: Static limit `unsupported_syntax` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return lambda value: value + 2 (line 2)
   - related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3
 
 Weakness

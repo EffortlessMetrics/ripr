@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+exposed strong Python oracles omit missing discriminator
+
+Command:
+`cargo xtask goldens bless python_unittest_assertions --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

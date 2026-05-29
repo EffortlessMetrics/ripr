@@ -34,7 +34,6 @@ Evidence
 
 Weakness
   - Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
-  - missing discriminator amount == threshold: changed Python predicate at line 2 lacks an extracted equality-boundary discriminator
 
 Next step
   Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

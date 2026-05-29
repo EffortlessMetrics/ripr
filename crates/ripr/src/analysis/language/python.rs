@@ -2953,9 +2953,15 @@ fn classify_change(
     if let Some(limit) = &static_limit {
         evidence.push(limit.evidence.clone());
     }
-    let flow_sink = python_flow_sink_for(&family, owner, line, line_text);
-    let missing_discriminators =
-        python_missing_discriminators(&family, line, line_text, flow_sink.as_ref());
+    let flow_sink = static_limit
+        .is_none()
+        .then(|| python_flow_sink_for(&family, owner, line, line_text))
+        .flatten();
+    let missing_discriminators = if static_limit.is_none() && class != ExposureClass::Exposed {
+        python_missing_discriminators(&family, line, line_text, flow_sink.as_ref())
+    } else {
+        Vec::new()
+    };
     for discriminator in &missing_discriminators {
         evidence.push(format!("missing_discriminator: {}", discriminator.value));
     }
@@ -3569,6 +3575,46 @@ def test_notifies_callback():
             finding.related_tests[0].oracle_strength,
             OracleStrength::Strong
         );
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_discriminator:"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_exposed_boundary_does_not_emit_missing_discriminator() -> Result<(), String>
+    {
+        let owners = extract_owners(
+            Path::new("src/discount.py"),
+            "def apply_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_discount.py"),
+            "from src.discount import apply_discount\n\ndef test_apply_discount_boundary():\n    assert apply_discount(100, 100) == 90\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/discount.py"),
+            2,
+            "    if amount >= threshold:",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_discriminator:"))
+        );
         Ok(())
     }
 
@@ -4001,6 +4047,43 @@ def test_notifies_callback():
                 .missing
                 .iter()
                 .any(|entry| entry.contains("Static limit `dynamic_dispatch`"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_static_limit_omits_activation_discriminators() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/service.py"),
+            "def has_named_value(client, name, threshold):\n    if getattr(client, name) >= threshold:\n        return True\n    return False\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from src.service import has_named_value\n\ndef test_has_named_value():\n    assert has_named_value(client, \"total\", 10) is True\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/service.py"),
+            2,
+            "    if getattr(client, name) >= threshold:",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::DynamicDispatch)
+        );
+        assert!(finding.flow_sinks.is_empty());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_discriminator:"))
         );
         Ok(())
     }

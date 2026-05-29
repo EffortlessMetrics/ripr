@@ -28,7 +28,6 @@ Evidence
   - propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return getattr(client, method_name)() (line 2)
   - related test tests/test_dispatch.py:4 test_call_named_dispatches_total uses strong exact value oracle: assert call_named(client, "total") == 10
 
 Weakness

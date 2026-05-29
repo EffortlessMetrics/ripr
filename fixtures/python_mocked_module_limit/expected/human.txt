@@ -28,7 +28,6 @@ Evidence
   - propagation unknown: Static limit `mocked_module` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return client.total_with_tax() (line 2)
   - related test tests/test_service.py:7 test_fetch_total_uses_client_total uses strong exact value oracle: assert fetch_total(client) == 10
 
 Weakness

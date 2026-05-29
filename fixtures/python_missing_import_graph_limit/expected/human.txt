@@ -28,7 +28,6 @@ Evidence
   - propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return remote_total(client, include_tax=True) (line 4)
   - related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12
 
 Weakness
