@@ -1978,6 +1978,7 @@ fixtures = [
   "fixtures/typescript_parse_error_unsupported_syntax",
   "fixtures/typescript_owner_kinds",
   "fixtures/typescript_jest_vitest_assertion_facts",
+  "fixtures/typescript_related_test_matching",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
@@ -2000,6 +2001,7 @@ outputs = [
   "fixtures/typescript_parse_error_unsupported_syntax/expected/check.json",
   "fixtures/typescript_owner_kinds/expected/check.json",
   "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json",
+  "fixtures/typescript_related_test_matching/expected/check.json",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -2020,6 +2022,7 @@ metrics = [
   "language_adapter_typescript_oracle_side_effect",
   "language_adapter_typescript_oracle_snapshot_weak",
   "language_adapter_typescript_oracle_smoke",
+  "language_adapter_typescript_related_imported_owner_call",
   "language_adapter_typescript_static_limit_mocked_module",
 ]
 

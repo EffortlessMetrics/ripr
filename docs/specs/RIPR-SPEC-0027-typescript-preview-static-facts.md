@@ -289,4 +289,5 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_oracle_side_effect`
 - `language_adapter_typescript_oracle_snapshot_weak`
 - `language_adapter_typescript_oracle_smoke`
+- `language_adapter_typescript_related_imported_owner_call`
 - `language_adapter_typescript_static_limit_mocked_module`

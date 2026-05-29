@@ -230,7 +230,7 @@ git diff --check
 
 ## Work Item: analysis/typescript-related-test-matching
 
-Status: ready
+Status: in progress; import-owner sub-slice landed
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -243,6 +243,19 @@ Add token-aware direct calls, imported owner references, same-file proximity,
 describe naming, and test-name token matching with negative fixtures for
 strings, comments, unrelated method calls, unrelated property names, and mocked
 module indirection.
+
+### Current Delta
+
+Named import alias calls and namespace import member calls are related only when
+the relative import source resolves to the changed owner file. Unrelated import
+sources, type-only imports, arbitrary object method calls, comments, and string
+mentions stay non-related.
+
+### Remaining Delta
+
+Same-file proximity, `describe` block naming, and test-name token matching
+remain deferred until each has positive and negative fixtures and ambiguous
+matches can stay non-actionable.
 
 ## Work Item: analysis/typescript-probe-facts
 

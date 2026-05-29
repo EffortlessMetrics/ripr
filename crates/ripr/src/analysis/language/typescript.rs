@@ -33,7 +33,8 @@ use crate::domain::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
-    ExportDefaultDeclarationKind, Expression, Function, MethodDefinition, PropertyKey, Statement,
+    ExportDefaultDeclarationKind, Expression, Function, ImportDeclarationSpecifier,
+    ImportOrExportKind, MethodDefinition, ModuleExportName, PropertyKey, Statement,
     VariableDeclaration, VariableDeclarator,
 };
 use oxc_parser::Parser;
@@ -98,6 +99,18 @@ struct TypeScriptTest {
     /// can surface the `mocked_module` static-limit without re-parsing.
     /// Empty when no syntactic mock indirection is present.
     mocks_in_file: Vec<String>,
+    /// Runtime imports discovered at the top level of the containing test
+    /// file. Used only to map relative named or namespace imports back to a
+    /// source owner before considering alias calls related.
+    imports_in_file: Vec<TypeScriptImport>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptImport {
+    source: String,
+    imported: Option<String>,
+    local: String,
+    namespace: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -506,6 +519,7 @@ fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     if !ret.errors.is_empty() {
         return Vec::new();
     }
+    let imports = extract_imports_from_statements(&ret.program.body);
     let mocks = extract_mocks_from_statements(&ret.program.body);
     let mut tests = Vec::new();
     collect_tests_from_statements(
@@ -513,10 +527,87 @@ fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
         file,
         source,
         &mocks,
+        &imports,
         &mut Vec::new(),
         &mut tests,
     );
     tests
+}
+
+fn extract_imports_from_statements(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+) -> Vec<TypeScriptImport> {
+    let mut out: Vec<TypeScriptImport> = Vec::new();
+    for stmt in statements {
+        let Statement::ImportDeclaration(import) = stmt else {
+            continue;
+        };
+        if import.import_kind == ImportOrExportKind::Type {
+            continue;
+        }
+        let source = import.source.value.to_string();
+        let Some(specifiers) = &import.specifiers else {
+            continue;
+        };
+        for specifier in specifiers {
+            match specifier {
+                ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                    if specifier.import_kind == ImportOrExportKind::Type {
+                        continue;
+                    }
+                    let Some(imported) = module_export_name_text(&specifier.imported) else {
+                        continue;
+                    };
+                    push_unique_import(
+                        &mut out,
+                        TypeScriptImport {
+                            source: source.clone(),
+                            imported: Some(imported),
+                            local: specifier.local.name.as_str().to_string(),
+                            namespace: false,
+                        },
+                    );
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                    push_unique_import(
+                        &mut out,
+                        TypeScriptImport {
+                            source: source.clone(),
+                            imported: Some("default".to_string()),
+                            local: specifier.local.name.as_str().to_string(),
+                            namespace: false,
+                        },
+                    );
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                    push_unique_import(
+                        &mut out,
+                        TypeScriptImport {
+                            source: source.clone(),
+                            imported: None,
+                            local: specifier.local.name.as_str().to_string(),
+                            namespace: true,
+                        },
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
+fn push_unique_import(out: &mut Vec<TypeScriptImport>, import: TypeScriptImport) {
+    if !out.iter().any(|existing| existing == &import) {
+        out.push(import);
+    }
+}
+
+fn module_export_name_text(name: &ModuleExportName<'_>) -> Option<String> {
+    match name {
+        ModuleExportName::IdentifierName(ident) => Some(ident.name.as_str().to_string()),
+        ModuleExportName::IdentifierReference(ident) => Some(ident.name.as_str().to_string()),
+        ModuleExportName::StringLiteral(literal) => Some(literal.value.to_string()),
+    }
 }
 
 /// Walk a list of top-level statements and collect every syntactic
@@ -570,18 +661,28 @@ fn collect_tests_from_statements(
     file: &Path,
     source: &str,
     mocks: &[String],
+    imports: &[TypeScriptImport],
     describe_stack: &mut Vec<String>,
     tests: &mut Vec<TypeScriptTest>,
 ) {
     for stmt in statements {
         if let Some((describe_name, body)) = describe_body_from_statement(stmt) {
             describe_stack.push(describe_name);
-            collect_tests_from_statements(body, file, source, mocks, describe_stack, tests);
+            collect_tests_from_statements(
+                body,
+                file,
+                source,
+                mocks,
+                imports,
+                describe_stack,
+                tests,
+            );
             describe_stack.pop();
             continue;
         }
         if let Some(mut test) = test_from_statement(stmt, file, source, describe_stack) {
             test.mocks_in_file = mocks.to_vec();
+            test.imports_in_file = imports.to_vec();
             tests.push(test);
         }
     }
@@ -629,6 +730,7 @@ fn test_from_statement(
         // Populated by `extract_tests` (the only public extractor) once
         // per file before the test is returned to the caller.
         mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
     })
 }
 
@@ -886,7 +988,15 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
 }
 
 fn test_references_owner(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
-    contains_call_name(&test.body_text, &owner.name)
+    if contains_call_name(&test.body_text, &owner.name)
+        && !owner_name_shadowed_by_unrelated_import(test, owner)
+    {
+        return true;
+    }
+    test.imports_in_file.iter().any(|import| {
+        import_source_matches_owner(import, &test.file, owner)
+            && import_references_owner_call(import, &test.body_text, owner)
+    })
 }
 
 fn contains_call_name(body_text: &str, call_name: &str) -> bool {
@@ -899,6 +1009,91 @@ fn contains_call_name(body_text: &str, call_name: &str) -> bool {
 }
 
 fn has_call_boundary(body_text: &str, idx: usize) -> bool {
+    body_text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_javascript_identifier_char(ch) && ch != '.')
+}
+
+fn owner_name_shadowed_by_unrelated_import(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    test.imports_in_file
+        .iter()
+        .filter(|import| import.local == owner.name)
+        .any(|import| {
+            import.namespace
+                || !import_source_matches_owner(import, &test.file, owner)
+                || import.imported.as_deref().is_some_and(|imported| {
+                    imported != owner.name.as_str() && imported != "default"
+                })
+        })
+}
+
+fn import_references_owner_call(
+    import: &TypeScriptImport,
+    body_text: &str,
+    owner: &TypeScriptOwner,
+) -> bool {
+    if import.namespace {
+        return contains_member_call_name(body_text, &import.local, &owner.name);
+    }
+    import.imported.as_deref() == Some(owner.name.as_str())
+        && contains_call_name(body_text, &import.local)
+}
+
+fn import_source_matches_owner(
+    import: &TypeScriptImport,
+    test_file: &Path,
+    owner: &TypeScriptOwner,
+) -> bool {
+    normalized_relative_import_module(test_file, &import.source)
+        .is_some_and(|module| module == normalized_module_path(&owner.file))
+}
+
+fn normalized_relative_import_module(test_file: &Path, source: &str) -> Option<String> {
+    if !source.starts_with("./") && !source.starts_with("../") {
+        return None;
+    }
+    let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let normalized_source = source.replace('\\', "/");
+    for part in normalized_source.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part.to_string()),
+        }
+    }
+    Some(strip_typescript_module_extension(&parts.join("/")))
+}
+
+fn normalized_module_path(path: &Path) -> String {
+    strip_typescript_module_extension(&normalized_path(path))
+}
+
+fn strip_typescript_module_extension(path: &str) -> String {
+    for suffix in [".tsx", ".ts", ".jsx", ".js"] {
+        if let Some(stripped) = path.strip_suffix(suffix) {
+            return stripped.to_string();
+        }
+    }
+    path.to_string()
+}
+
+fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &str) -> bool {
+    let needle = format!("{object_name}.{method_name}(");
+    body_text.match_indices(&needle).any(|(idx, _)| {
+        has_member_call_boundary(body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(body_text, idx)
+            && !inside_block_comment(body_text, idx)
+    })
+}
+
+fn has_member_call_boundary(body_text: &str, idx: usize) -> bool {
     body_text[..idx]
         .chars()
         .next_back()
@@ -1774,6 +1969,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                     .to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
             TypeScriptTest {
                 name: "unrelated".to_string(),
@@ -1783,6 +1979,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                     .to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
         ];
         let related = find_related_tests(&owner, &tests);
@@ -1806,7 +2003,92 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
             assertions: Vec::new(),
             mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
         }];
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_matches_named_import_alias_calls() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let tests = extract_tests(
+            Path::new("tests/pricing.test.ts"),
+            r#"import { applyDiscount as subject } from "../src/pricing";
+
+test("alias import observes threshold", () => {
+    expect(subject(100, 100)).toBe(90);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "alias import observes threshold");
+    }
+
+    #[test]
+    fn find_related_tests_matches_namespace_import_member_calls() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let tests = extract_tests(
+            Path::new("tests/pricing.test.ts"),
+            r#"import * as pricing from "../src/pricing";
+
+test("namespace import observes threshold", () => {
+    expect(pricing.applyDiscount(100, 100)).toBe(90);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "namespace import observes threshold");
+    }
+
+    #[test]
+    fn find_related_tests_ignores_unrelated_and_type_only_import_aliases() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/pricing.ts"),
+            start_line: 1,
+            end_line: 5,
+            owner_kind: OwnerKind::Function,
+        };
+        let tests = extract_tests(
+            Path::new("tests/pricing.test.ts"),
+            r#"import { applyDiscount as otherSubject } from "../src/other-pricing";
+import type { applyDiscount as typeOnlySubject } from "../src/pricing";
+import { applyDiscount } from "../src/other-pricing";
+
+test("wrong import source", () => {
+    expect(otherSubject(100, 100)).toBe(90);
+});
+
+test("wrong direct import source", () => {
+    expect(applyDiscount(100, 100)).toBe(90);
+});
+
+test("type only import", () => {
+    expect(typeOnlySubject(100, 100)).toBe(90);
+});
+"#,
+        );
 
         let related = find_related_tests(&owner, &tests);
 
@@ -1829,6 +2111,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             body_text: r#"expect("applyDiscount(").toContain("applyDiscount(");"#.to_string(),
             assertions: Vec::new(),
             mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
         }];
 
         let related = find_related_tests(&owner, &tests);
@@ -1853,6 +2136,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: "// applyDiscount(\nexpect(total).toBe(40);".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
             TypeScriptTest {
                 name: "block comment mention".to_string(),
@@ -1861,6 +2145,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: "/* applyDiscount(\n */\nexpect(total).toBe(40);".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
         ];
 
@@ -1885,6 +2170,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             body_text: "applyDiscount(50, 100)".to_string(),
             assertions: Vec::new(),
             mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -1917,6 +2203,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             body_text: "applyDiscount(50, 100)".to_string(),
             assertions: Vec::new(),
             mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
         };
 
         let finding = classify_change(
@@ -1959,6 +2246,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: "expect(alphaScore(12)).toBe(13);".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
             TypeScriptTest {
                 name: "beta keeps its threshold".to_string(),
@@ -1967,6 +2255,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: "expect(betaScore(12)).toBe(13);".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: Vec::new(),
+                imports_in_file: Vec::new(),
             },
         ];
 
@@ -2308,6 +2597,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 oracle_strength: OracleStrength::Strong,
             }],
             mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -2567,6 +2857,7 @@ test("alpha", () => {
                 body_text: "applyDiscount(1, 2)".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: vec!["./api".to_string()],
+                imports_in_file: Vec::new(),
             },
             TypeScriptTest {
                 name: "beta".to_string(),
@@ -2575,6 +2866,7 @@ test("alpha", () => {
                 body_text: "applyDiscount(3, 4)".to_string(),
                 assertions: Vec::new(),
                 mocks_in_file: vec!["./api".to_string()],
+                imports_in_file: Vec::new(),
             },
         ];
         let paths = collect_related_mock_paths(&owner, &tests);
@@ -2597,6 +2889,7 @@ test("alpha", () => {
             body_text: "otherHelper()".to_string(),
             assertions: Vec::new(),
             mocks_in_file: vec!["./api".to_string()],
+            imports_in_file: Vec::new(),
         }];
         let paths = collect_related_mock_paths(&owner, &tests);
         assert!(paths.is_empty());
@@ -2618,6 +2911,7 @@ test("alpha", () => {
             body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
             assertions: Vec::new(),
             mocks_in_file: vec!["./api".to_string()],
+            imports_in_file: Vec::new(),
         }];
         let paths = collect_related_mock_paths(&owner, &tests);
         assert!(paths.is_empty());
@@ -2640,6 +2934,7 @@ test("alpha", () => {
             body_text: "applyDiscount(50, 100)".to_string(),
             assertions: Vec::new(),
             mocks_in_file: vec!["./api".to_string()],
+            imports_in_file: Vec::new(),
         }];
         let finding = classify_change(
             Path::new("src/lib.ts"),

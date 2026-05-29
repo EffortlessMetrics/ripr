@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: test/assertion facts landed; related-test matching next
+Status: imported related-test matching landed; name/proximity heuristics next
 
 Date: 2026-05-29
 
@@ -92,6 +92,10 @@ Adapter facts:
   matchers, and relational matchers.
 - Related-test matching is token-aware enough to avoid comments, strings,
   block comments, and arbitrary object-method calls for function owners.
+- Related-test matching recognises named import aliases and namespace import
+  member calls only when the relative import source resolves to the changed
+  owner file. Type-only imports and unrelated import sources remain
+  non-related.
 - Probe-family classification distinguishes predicate, return value, error
   path, field construction, and side-effect call line shapes.
 - Structured `static_limit_kind = "mocked_module"` is emitted when related
@@ -141,6 +145,10 @@ Completed after the initial audit:
 - The current `check` parser still has no `--languages rust,typescript`
   override. Config remains the supported opt-in surface for this lane; CLI
   override support is deferred to a later app/config contract change.
+- Named import alias and namespace import related-test matching is now
+  fixture-backed by `fixtures/typescript_related_test_matching`, including
+  false-match guards for unrelated imports, type-only imports, arbitrary object
+  methods, strings, and comments.
 
 1. Fixture harness completion
    - Status: done.
@@ -172,10 +180,11 @@ Completed after the initial audit:
      unsafe file-level assertion association.
 
 4. Related-test matching
-   - Current related-test matching is direct owner-call text matching with
+   - Current related-test matching covers direct owner-call text matching plus
+     relative named import alias and namespace import owner calls with
      important negative guards.
-   - Missing heuristics: imported owner reference, same-file proximity,
-     `describe` block naming, and test-name token matching.
+   - Missing heuristics: same-file proximity, `describe` block naming, and
+     test-name token matching.
    - Next step: add positive and negative fixtures for each heuristic and make
      ambiguous matches limitations, not actionable recommendations.
 
@@ -260,10 +269,21 @@ RIPR Zero, runtime, provider, generated-test, or source-edit behavior. PR 5
 landed nested Jest/Vitest test discovery plus table-test and weak-oracle
 fixture coverage without promoting TypeScript evidence.
 
+The first PR 6 sub-slice landed import-owner related-test matching:
+
+```text
+PR 6a: analysis(ts): relate imported TypeScript owner calls
+```
+
+It recognises named import aliases and namespace imports when the relative
+source maps to the changed owner file, while keeping unrelated imports,
+type-only imports, arbitrary object methods, strings, and comments out of
+related-test evidence.
+
 The next safe PR is:
 
 ```text
-PR 6: analysis(ts): relate TypeScript tests by token-aware owner references
+PR 6b: analysis(ts): relate TypeScript tests by name and proximity signals
 ```
 
 ## Validation
