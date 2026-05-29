@@ -3425,7 +3425,9 @@ through raw packet JSON. It includes coarse states such as
 `blocked_by_missing_context`, field-level blockers such as
 `missing_allowed_edit_surface` and `missing_raw_evidence_refs`, and outcome
 blockers such as `orphan_receipt`, `unchanged_attempt`, and
-`regressed_attempt`.
+`regressed_attempt`. For `blocked_by_static_limitation`, readiness prefers the
+top static-limitation backlog route and sample packet when available, so the
+blocked route names the analyzer repair lane instead of a generic report rerun.
 
 
 ## Evidence Quality Scorecard

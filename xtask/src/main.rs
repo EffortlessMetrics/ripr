@@ -24521,8 +24521,12 @@ fn ripr_swarm_readiness_from_values(
         .unwrap_or(Value::Null);
     let top_limitation_routes =
         ripr_swarm_readiness_top_limitation_routes(&static_limitation_backlog);
-    let blocked_state_routes =
-        ripr_swarm_readiness_blocked_state_routes(&summary, swarm_plan.value, attempt_ledger.value);
+    let blocked_state_routes = ripr_swarm_readiness_blocked_state_routes(
+        &summary,
+        swarm_plan.value,
+        attempt_ledger.value,
+        &top_limitation_routes,
+    );
     let runtime_status =
         ripr_swarm_readiness_runtime_status(&swarm_plan, &actionable_gap_outcomes, &attempt_ledger);
     let next_actions = ripr_swarm_readiness_next_actions(
@@ -24915,8 +24919,28 @@ fn ripr_swarm_readiness_blocked_state_routes(
     summary: &RiprSwarmReadinessSummary,
     swarm_plan: Option<&Value>,
     attempt_ledger: Option<&Value>,
+    top_limitation_routes: &[RiprSwarmLimitationRouteRow],
 ) -> Vec<RiprSwarmReadinessBlockedStateRoute> {
     let mut routes = Vec::new();
+    let top_static_limitation_route = top_limitation_routes.first();
+    let static_limitation_repair_route = top_static_limitation_route
+        .map(|route| route.repair_route.as_str())
+        .unwrap_or("cargo xtask lane1-evidence-audit");
+    let static_limitation_backlog_sample =
+        ripr_swarm_readiness_limitation_route_sample(top_static_limitation_route);
+    let static_limitation_sample =
+        if ripr_swarm_readiness_blocked_sample_has_context(&static_limitation_backlog_sample) {
+            static_limitation_backlog_sample
+        } else {
+            ripr_swarm_readiness_plan_packet_sample(
+                swarm_plan,
+                "blocked_by_static_limitation",
+                |packet| {
+                    audit_non_empty_string(packet, &["swarm_state"]).as_deref()
+                        == Some("blocked_by_static_limitation")
+                },
+            )
+        };
     ripr_swarm_readiness_push_blocked_state_route(
         &mut routes,
         "blocked_by_missing_context",
@@ -24939,15 +24963,8 @@ fn ripr_swarm_readiness_blocked_state_routes(
         summary.blocked_by_static_limitation_packets,
         "a named static limitation prevents a safe bounded repair route",
         "route_static_limitations",
-        "cargo xtask lane1-evidence-audit",
-        ripr_swarm_readiness_plan_packet_sample(
-            swarm_plan,
-            "blocked_by_static_limitation",
-            |packet| {
-                audit_non_empty_string(packet, &["swarm_state"]).as_deref()
-                    == Some("blocked_by_static_limitation")
-            },
-        ),
+        static_limitation_repair_route,
+        static_limitation_sample,
     );
     ripr_swarm_readiness_push_blocked_state_route(
         &mut routes,
@@ -25168,6 +25185,26 @@ fn ripr_swarm_readiness_push_blocked_state_route(
         example_repair_kind: sample.repair_kind,
         example_receipt_path: sample.receipt_path,
     });
+}
+
+fn ripr_swarm_readiness_limitation_route_sample(
+    route: Option<&RiprSwarmLimitationRouteRow>,
+) -> RiprSwarmReadinessBlockedStateSample {
+    let Some(route) = route else {
+        return RiprSwarmReadinessBlockedStateSample::default();
+    };
+    RiprSwarmReadinessBlockedStateSample {
+        packet_id: route.sample_packet_id.clone(),
+        canonical_gap_id: route.sample_canonical_gap_ids.first().cloned(),
+        repair_kind: None,
+        receipt_path: None,
+    }
+}
+
+fn ripr_swarm_readiness_blocked_sample_has_context(
+    sample: &RiprSwarmReadinessBlockedStateSample,
+) -> bool {
+    sample.packet_id.is_some() || sample.canonical_gap_id.is_some()
 }
 
 fn ripr_swarm_readiness_plan_packet_sample<F>(
@@ -79671,7 +79708,26 @@ covered_by = ["cargo xtask check-file-policy"]
                         "static_only_predicate_boundary_requires_operator_judgment"
                     ]
                 }
-            ]
+            ],
+            "static_limitation_backlog": {
+                "top_repair_routes": [
+                    {
+                        "repair_route": "analysis/specific-static-limitation-route",
+                        "count": 42
+                    }
+                ],
+                "limitation_backlog_packets": [
+                    {
+                        "packet_id": "limitation:static-route",
+                        "limitation_category": "activation_owner_call_absent_assertion_target_affinity",
+                        "repair_route": "analysis/specific-static-limitation-route",
+                        "signal_count": 42,
+                        "sample_canonical_gap_ids": [
+                            "gap:static-route"
+                        ]
+                    }
+                ]
+            }
         });
         let outcomes = serde_json::json!({
             "report": "actionable-gap-outcomes",
@@ -79821,9 +79877,9 @@ covered_by = ["cargo xtask check-file-policy"]
             (
                 "blocked_by_static_limitation",
                 "route_static_limitations",
-                "cargo xtask lane1-evidence-audit",
-                "packet:static-limit",
-                "gap:static-limit",
+                "analysis/specific-static-limitation-route",
+                "limitation:static-route",
+                "gap:static-route",
             ),
             (
                 "blocked_by_public_projection_exclusion",
