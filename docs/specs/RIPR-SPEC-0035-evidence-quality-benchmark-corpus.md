@@ -195,9 +195,9 @@ affinity.
   pins that specific call targets remain eligible for assertion-target
   affinity as medium-confidence relation evidence without satisfying activation
   by themselves. The benchmark records this as
-  `activation_owner_call_absent_assertion_target_affinity` routed to
-  `analysis/assertion-target-affinity-owner-call-tracing`, not as public test
-  debt.
+  `activation_owner_call_absent_call_presence_target_affinity` routed to
+  `analysis/call-presence-target-affinity-owner-call-tracing`, not as public
+  test debt.
 - `test_grip_evidence::tests::given_value_insensitive_seam_when_only_affinity_related_then_activation_names_owner_call_limitation`
   pins the same assertion-target affinity limitation route for value-insensitive
   seams: relation evidence alone stays non-actionable and routes to

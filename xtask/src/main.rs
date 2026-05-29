@@ -21251,6 +21251,9 @@ fn static_limitation_why_not_actionable(category: &str) -> &'static str {
         "activation_owner_call_absent_assertion_target_affinity" => {
             "assertion-target affinity is not enough to prove the owner is exercised"
         }
+        "activation_owner_call_absent_call_presence_target_affinity" => {
+            "call-presence target affinity is not enough to prove the owner is exercised"
+        }
         "activation_owner_call_absent_affinity_only" => {
             "related-test affinity is not enough to prove the owner is exercised"
         }
@@ -21272,6 +21275,7 @@ fn static_limitation_unlock_condition(category: &str, repair_route: &str) -> Str
             )
         }
         "activation_owner_call_absent_assertion_target_affinity"
+        | "activation_owner_call_absent_call_presence_target_affinity"
         | "activation_owner_call_absent_affinity_only"
         | "activation_owner_call_absent_same_file_only" => {
             format!(
@@ -21300,6 +21304,10 @@ fn static_limitation_backlog_packet_non_claims(category: &str) -> Vec<String> {
     }
     if category == "activation_owner_call_absent_assertion_target_affinity" {
         claims.push("do not treat assertion-target affinity as activation evidence".to_string());
+    }
+    if category == "activation_owner_call_absent_call_presence_target_affinity" {
+        claims
+            .push("do not treat call-target assertion affinity as activation evidence".to_string());
     }
     claims
 }
@@ -28684,6 +28692,9 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
         "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
+        "activation_owner_call_absent_call_presence_target_affinity" => {
+            "analysis/call-presence-target-affinity-owner-call-tracing"
+        }
         "activation_owner_call_absent_assertion_target_affinity" => {
             "analysis/assertion-target-affinity-owner-call-tracing"
         }
@@ -85634,6 +85645,10 @@ covered_by = ["cargo xtask check-file-policy"]
             (
                 "activation_owner_call_absent",
                 "analysis/owner-call-absence-triage",
+            ),
+            (
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
             ),
             (
                 "activation_owner_call_absent_assertion_target_affinity",

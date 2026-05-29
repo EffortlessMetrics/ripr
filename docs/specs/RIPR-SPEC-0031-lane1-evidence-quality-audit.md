@@ -242,7 +242,10 @@ as `next_repair` so the queue points at a concrete analyzer slice instead of a
 generic static-limitation taxonomy bucket.
 Static limitation categories and repair routes may be relation-contextual when
 the evidence record carries enough context; for example,
-`activation_owner_call_absent` with assertion-target affinity should become
+`activation_owner_call_absent` with call-presence target-token affinity should
+become `activation_owner_call_absent_call_presence_target_affinity` routed to
+`analysis/call-presence-target-affinity-owner-call-tracing`, other
+assertion-target affinity should become
 `activation_owner_call_absent_assertion_target_affinity` routed to
 `analysis/assertion-target-affinity-owner-call-tracing`, other affinity-based
 related tests should become `activation_owner_call_absent_affinity_only` routed

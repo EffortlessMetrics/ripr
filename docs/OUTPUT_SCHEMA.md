@@ -1699,6 +1699,7 @@ Field contract:
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
   `activation_owner_call_absent`,
+  `activation_owner_call_absent_call_presence_target_affinity`,
   `activation_owner_call_absent_assertion_target_affinity`,
   `activation_owner_call_absent_affinity_only`,
   `activation_owner_call_absent_same_file_only`,
@@ -1711,6 +1712,9 @@ Field contract:
   context but no direct owner call, so it remains a named limitation rather than
   user-facing test repair debt. When the related-test evidence has no direct or
   helper owner-call relation, the category is split into
+  `activation_owner_call_absent_call_presence_target_affinity` routed to
+  `analysis/call-presence-target-affinity-owner-call-tracing` for call-presence
+  target-token affinity,
   `activation_owner_call_absent_assertion_target_affinity` routed to
   `analysis/assertion-target-affinity-owner-call-tracing`,
   `activation_owner_call_absent_affinity_only` routed to

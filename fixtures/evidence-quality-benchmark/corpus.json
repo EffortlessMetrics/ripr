@@ -1333,18 +1333,18 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "category": "activation_owner_call_absent_assertion_target_affinity",
-              "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+              "category": "activation_owner_call_absent_call_presence_target_affinity",
+              "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
             }
           ]
         }
       },
       "expected_audit_signal": {
         "section": "static_limitation_categories",
-        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
         "value": 1
       },
-      "static_limitation_category": "activation_owner_call_absent_assertion_target_affinity",
+      "static_limitation_category": "activation_owner_call_absent_call_presence_target_affinity",
       "expected_claim": "Specific call-target affinity is medium-confidence relation evidence only; without an owner call it remains a named activation limitation and not user test debt.",
       "must_not_claim": [
         "Do not turn call-target token affinity into activation.",
@@ -1352,7 +1352,7 @@
         "Do not invent observed values for call-presence target-token affinity.",
         "Do not classify affinity-only call-presence seams as user test debt."
       ],
-      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
     },
     {
       "id": "call_presence_super_qualified_support_helper_owner_call_activation_values_not_required",

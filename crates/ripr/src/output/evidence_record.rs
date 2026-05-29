@@ -997,6 +997,9 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
         "activation_owner_call_absent" => "analysis/owner-call-absence-triage",
+        "activation_owner_call_absent_call_presence_target_affinity" => {
+            "analysis/call-presence-target-affinity-owner-call-tracing"
+        }
         "activation_owner_call_absent_assertion_target_affinity" => {
             "analysis/assertion-target-affinity-owner-call-tracing"
         }
@@ -1032,7 +1035,9 @@ fn static_limitation_category_for_entry(
     entry: &ClassifiedSeam,
 ) -> &'static str {
     if category == "activation_owner_call_absent" {
-        if owner_call_absence_has_assertion_target_affinity(entry) {
+        if owner_call_absence_has_call_presence_target_affinity(entry) {
+            "activation_owner_call_absent_call_presence_target_affinity"
+        } else if owner_call_absence_has_assertion_target_affinity(entry) {
             "activation_owner_call_absent_assertion_target_affinity"
         } else if owner_call_absence_is_same_file_only(entry) {
             "activation_owner_call_absent_same_file_only"
@@ -1052,11 +1057,16 @@ fn static_limitation_repair_route_for_entry(
 ) -> &'static str {
     if matches!(
         category,
-        "activation_owner_call_absent_assertion_target_affinity"
+        "activation_owner_call_absent_call_presence_target_affinity"
+            | "activation_owner_call_absent_assertion_target_affinity"
             | "activation_owner_call_absent_affinity_only"
             | "activation_owner_call_absent_same_file_only"
     ) {
         static_limitation_repair_route(category)
+    } else if category == "activation_owner_call_absent"
+        && owner_call_absence_has_call_presence_target_affinity(entry)
+    {
+        "analysis/call-presence-target-affinity-owner-call-tracing"
     } else if category == "activation_owner_call_absent"
         && owner_call_absence_has_assertion_target_affinity(entry)
     {
@@ -1072,6 +1082,11 @@ fn static_limitation_repair_route_for_entry(
     } else {
         static_limitation_repair_route(category)
     }
+}
+
+fn owner_call_absence_has_call_presence_target_affinity(entry: &ClassifiedSeam) -> bool {
+    entry.seam.kind() == SeamKind::CallPresence
+        && owner_call_absence_has_assertion_target_affinity(entry)
 }
 
 fn owner_call_absence_has_assertion_target_affinity(entry: &ClassifiedSeam) -> bool {
@@ -1409,6 +1424,48 @@ mod tests {
             },
             seam,
             class,
+        }
+    }
+
+    fn sample_call_presence_classified() -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/agent_paths.rs",
+            "agent_paths::zq_call_presence_owner",
+            SeamKind::CallPresence,
+            1,
+            1,
+            "zq_render_target_token(path)",
+            RequiredDiscriminator::CallSite {
+                target: "zq_render_target_token".to_string(),
+            },
+            ExpectedSink::SideEffect,
+        );
+        ClassifiedSeam {
+            evidence: TestGripEvidence {
+                seam_id: seam.id().clone(),
+                related_tests: vec![RelatedTestGrip {
+                    test_name: "target_token_affinity_is_not_owner_call".to_string(),
+                    file: PathBuf::from("tests/target_affinity.rs"),
+                    line: 9,
+                    oracle_kind: OracleKind::BroadError,
+                    oracle_strength: OracleStrength::Weak,
+                    evidence_summary: "assertion mentions call target token".to_string(),
+                    relation_reason: RelationReason::AssertionTargetAffinity,
+                    relation_confidence: RelationConfidence::Medium,
+                }],
+                reach: stage(StageState::Yes, "owner is reached"),
+                activate: stage(
+                    StageState::Unknown,
+                    "No direct owner call observed for value-insensitive seam `zq_render_target_token(path)`",
+                ),
+                propagate: stage(StageState::Yes, "call presence can propagate"),
+                observe: stage(StageState::Yes, "assertion observes output"),
+                discriminate: stage(StageState::Weak, "broad assertion mentions target"),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+            seam,
+            class: SeamGripClass::ActivationUnknown,
         }
     }
 
@@ -1790,6 +1847,31 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_splits_call_presence_target_affinity_owner_call_absence_limitation() {
+        let record = evidence_record_for(&sample_call_presence_classified(), None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_call_presence_target_affinity"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/call-presence-target-affinity-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/call-presence-target-affinity-owner-call-tracing"
+        );
+    }
+
+    #[test]
     fn evidence_record_keeps_generic_affinity_owner_call_absence_limitation() {
         let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
         entry.evidence.activate = stage(
@@ -1986,6 +2068,10 @@ mod tests {
             (
                 "activation_owner_call_absent",
                 "analysis/owner-call-absence-triage",
+            ),
+            (
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
             ),
             (
                 "activation_owner_call_absent_assertion_target_affinity",
