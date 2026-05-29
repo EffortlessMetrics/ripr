@@ -10273,9 +10273,10 @@ finding summaries are explicit, actionable items have repair and verification
 routes, static limitations name analyzer repair routes, and runtime-confidence
 static-only class examples stay calibration work rather than user test debt.
 The checked surface-projection alignment receipts are read from
-`fixtures/surface-projection-alignment/` and pin one receipt-backed canonical
-gap across swarm-attempt-ledger and swarm-readiness so `canonical_gap_id`,
-`packet_id`, `repair_kind`, verify command, receipt command/state, outcome, and
+`fixtures/surface-projection-alignment/` and pin receipt-backed canonical gaps
+plus static-limitation backlog routes across swarm-attempt-ledger and
+swarm-readiness so `canonical_gap_id`, `packet_id`, `repair_kind`, verify
+command, receipt command/state when present, outcome, limitation route, and
 `top_next_action` stay aligned while badge, LSP, PR, and CI remain advisory
 consumers instead of independent ranking or gate authorities.
 The checked real repair attempt receipts are read from
@@ -10285,9 +10286,10 @@ non-success cases, so failed or incomplete attempts remain visible instead of
 being hidden from the repair queue.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
-and CI projection examples share the same canonical gap, packet, repair kind,
-verify command, receipt command, and top next action while remaining advisory
-and never treating raw finding totals as headline product truth.
+and CI projection examples share the same canonical gap, packet or limitation
+backlog identity, repair kind, verify command, receipt command, and top next
+action while remaining advisory and never treating raw finding totals as
+headline product truth.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.

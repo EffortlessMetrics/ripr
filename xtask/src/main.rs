@@ -40355,9 +40355,15 @@ fn dogfood_user_surface_projection_runtime_state_errors(
     let mut errors = Vec::new();
     let headline = scenario.headline.to_ascii_lowercase();
     if scenario.run_status == "full" {
-        if scenario.projection_basis != "canonical_actionable_gap" {
+        let expected_projection_basis =
+            if scenario.top_next_action_kind == "route_static_limitation_backlog" {
+                "canonical_limitation_backlog"
+            } else {
+                "canonical_actionable_gap"
+            };
+        if scenario.projection_basis != expected_projection_basis {
             errors.push(format!(
-                "full run_status projection_basis must be canonical_actionable_gap, got {}",
+                "full run_status projection_basis must be {expected_projection_basis}, got {}",
                 scenario.projection_basis
             ));
         }
@@ -40387,6 +40393,7 @@ fn dogfood_user_surface_projection_runtime_state_errors(
                 | "improve_repair_route_quality"
                 | "inspect_unchanged_attempts"
                 | "collect_missing_attempt_receipts"
+                | "route_static_limitation_backlog"
         ) {
             errors.push(format!(
                 "full run_status must route a canonical repair-loop next action, got {}",
@@ -40663,55 +40670,64 @@ fn dogfood_surface_projection_alignment_run(
             audit_non_empty_string(attempt, &["canonical_gap_id"]).as_deref()
                 == Some(scenario.canonical_gap_id.as_str())
         });
-    match ledger_attempt {
-        Some(attempt) => {
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["packet_id"],
-                &scenario.packet_id,
-                "attempt ledger packet_id",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["repair_kind"],
-                &scenario.repair_kind,
-                "attempt ledger repair_kind",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["verify_command"],
-                &scenario.verify_command,
-                "attempt ledger verify_command",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["receipt_command"],
-                &scenario.receipt_command,
-                "attempt ledger receipt_command",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["receipt_state"],
-                &scenario.receipt_state,
-                "attempt ledger receipt_state",
-            );
-            surface_projection_expect_string(
-                &mut errors,
-                attempt,
-                &["outcome"],
-                &scenario.outcome,
-                "attempt ledger outcome",
+    if scenario.expected_top_next_action_kind == "route_static_limitation_backlog" {
+        if ledger_attempt.is_some() {
+            errors.push(
+                "static-limitation backlog source must not masquerade as an attempted repair"
+                    .to_string(),
             );
         }
-        None => errors.push(format!(
-            "attempt ledger latest_attempts must include {}",
-            scenario.canonical_gap_id
-        )),
+    } else {
+        match ledger_attempt {
+            Some(attempt) => {
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["packet_id"],
+                    &scenario.packet_id,
+                    "attempt ledger packet_id",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["repair_kind"],
+                    &scenario.repair_kind,
+                    "attempt ledger repair_kind",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["verify_command"],
+                    &scenario.verify_command,
+                    "attempt ledger verify_command",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["receipt_command"],
+                    &scenario.receipt_command,
+                    "attempt ledger receipt_command",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["receipt_state"],
+                    &scenario.receipt_state,
+                    "attempt ledger receipt_state",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    attempt,
+                    &["outcome"],
+                    &scenario.outcome,
+                    "attempt ledger outcome",
+                );
+            }
+            None => errors.push(format!(
+                "attempt ledger latest_attempts must include {}",
+                scenario.canonical_gap_id
+            )),
+        }
     }
 
     let readiness_report = ripr_swarm_readiness_from_values(
@@ -40801,6 +40817,28 @@ fn dogfood_surface_projection_alignment_run(
                     &expected_attempt_command,
                     "readiness top_next_action.command",
                 );
+            } else if scenario.expected_top_next_action_kind == "route_static_limitation_backlog" {
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["packet_id"],
+                    &scenario.packet_id,
+                    "readiness top_next_action.packet_id",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["canonical_gap_id"],
+                    &scenario.canonical_gap_id,
+                    "readiness top_next_action.canonical_gap_id",
+                );
+                surface_projection_expect_string(
+                    &mut errors,
+                    top,
+                    &["command"],
+                    "cargo xtask lane1-evidence-audit",
+                    "readiness top_next_action.command",
+                );
             } else {
                 if scenario.expected_top_next_action_kind == "improve_repair_route_quality" {
                     surface_projection_expect_string(
@@ -40831,7 +40869,9 @@ fn dogfood_surface_projection_alignment_run(
         Err(err) => errors.push(format!("failed to render readiness projection: {err}")),
     }
 
-    if readiness_report.summary.attempted_packets == 0 {
+    if scenario.expected_top_next_action_kind != "route_static_limitation_backlog"
+        && readiness_report.summary.attempted_packets == 0
+    {
         errors.push("readiness summary must preserve attempted packet count".to_string());
     }
     if scenario.outcome == "evidence_improved" && readiness_report.summary.improved_packets == 0 {
@@ -65441,6 +65481,42 @@ fn exact_owner_call_has_external_expected_value() {
             } else {
                 Err(format!(
                     "route-quality non-success user-surface projection is missing consumers: {}",
+                    missing.join(", ")
+                ))
+            }
+        })
+    }
+
+    #[test]
+    fn dogfood_user_surface_projection_alignment_covers_static_limitation_backlog_all_surfaces()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = super::dogfood_user_surface_projection_scenarios();
+            let surfaces = scenarios
+                .iter()
+                .filter(|scenario| {
+                    scenario.source_alignment_case == "static_limitation_backlog_alignment"
+                        && scenario.top_next_action_kind == "route_static_limitation_backlog"
+                        && scenario.projection_basis == "canonical_limitation_backlog"
+                        && scenario.canonical_gap_id
+                            == "gap:activation-owner-call-absent-assertion-target-affinity"
+                        && scenario.packet_id
+                            == "limitation:activation-owner-call-absent-assertion-target-affinity:assertion-target-affinity-owner-call-tracing"
+                        && scenario.repair_kind == "sharpen_static_limitation_route"
+                })
+                .map(|scenario| scenario.surface.as_str())
+                .collect::<std::collections::BTreeSet<_>>();
+
+            let missing = ["badge", "lsp", "pr_comment", "ci"]
+                .into_iter()
+                .filter(|surface| !surfaces.contains(surface))
+                .collect::<Vec<_>>();
+
+            if missing.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "static-limitation backlog user-surface projection is missing consumers: {}",
                     missing.join(", ")
                 ))
             }

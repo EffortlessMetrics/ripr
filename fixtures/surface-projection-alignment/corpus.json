@@ -476,6 +476,125 @@
         }
       },
       "reason": "An attempted packet without a receipt should keep canonical packet identity while routing user surfaces to collect the missing receipt before claiming improvement."
+    },
+    {
+      "id": "static_limitation_backlog_alignment",
+      "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",
+      "packet_id": "limitation:activation-owner-call-absent-assertion-target-affinity:assertion-target-affinity-owner-call-tracing",
+      "evidence_class": "call_presence",
+      "repair_kind": "sharpen_static_limitation_route",
+      "verify_command": "cargo test -p ripr evidence_record_splits_assertion_target_owner_call_absence_limitation",
+      "receipt_command": "cargo xtask check-fixture-contracts",
+      "must_not_change": [
+        "public projection eligibility for static limitations",
+        "activation satisfied by token affinity",
+        "direct owner-call or helper-call requirements",
+        "public badge semantics"
+      ],
+      "advisory_consumers": [
+        "badge",
+        "lsp",
+        "pr_comment",
+        "ci"
+      ],
+      "expected": {
+        "outcome": "not_attempted",
+        "receipt_state": "not_attempted",
+        "top_next_action_kind": "route_static_limitation_backlog"
+      },
+      "artifacts": {
+        "swarm_plan": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "swarm-plan",
+          "source_summary": {
+            "actionable_gaps": 0,
+            "public_projection_eligible_packets": 0
+          },
+          "summary": {
+            "swarm_ready_packets": 0,
+            "blocked_packets": 0,
+            "missing_verify_command": 0,
+            "missing_receipt_command": 0,
+            "static_limitation_packets": 0,
+            "high_confidence_packets": 0
+          },
+          "static_limitation_backlog": {
+            "source": "lane1-evidence-audit.static_limitations",
+            "top_categories": [
+              {
+                "category": "activation_owner_call_absent_assertion_target_affinity",
+                "count": 1,
+                "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+              }
+            ],
+            "top_repair_routes": [
+              {
+                "repair_route": "analysis/assertion-target-affinity-owner-call-tracing",
+                "count": 1
+              }
+            ],
+            "limitation_backlog_packets": [
+              {
+                "packet_id": "limitation:activation-owner-call-absent-assertion-target-affinity:assertion-target-affinity-owner-call-tracing",
+                "limitation_category": "activation_owner_call_absent_assertion_target_affinity",
+                "repair_route": "analysis/assertion-target-affinity-owner-call-tracing",
+                "signal_count": 1,
+                "dominant_evidence_class": "call_presence",
+                "why_not_actionable": "assertion-target affinity relates a test to a call target but does not prove direct owner-call activation",
+                "unlock_condition": "implement assertion-target affinity owner-call tracing before repair packets are emitted",
+                "samples": [
+                  {
+                    "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",
+                    "source_file": "crates/ripr/src/output/evidence_record.rs",
+                    "evidence_class": "call_presence"
+                  }
+                ]
+              }
+            ]
+          },
+          "top_ready_packets": []
+        },
+        "actionable_gap_outcomes": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "actionable-gap-outcomes",
+          "summary": {
+            "outcomes_total": 0,
+            "not_attempted": 0,
+            "evidence_improved": 0,
+            "evidence_unchanged": 0,
+            "evidence_regressed": 0,
+            "resolved": 0,
+            "orphaned_receipts": 0
+          }
+        },
+        "swarm_attempt_ledger": {
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "report": "swarm-attempt-ledger",
+          "summary": {
+            "attempts_total": 0,
+            "canonical_gaps_total": 0,
+            "not_attempted": 0,
+            "attempted_no_receipt": 0,
+            "receipt_present": 0,
+            "missing_verify_result": 0,
+            "evidence_improved": 0,
+            "evidence_unchanged": 0,
+            "evidence_regressed": 0,
+            "resolved": 0,
+            "unknown": 0,
+            "orphaned_receipts": 0
+          },
+          "repair_route_quality": [],
+          "top_missing_evidence_fields": [],
+          "latest_attempts": [],
+          "attempts": [],
+          "orphaned_receipts": []
+        }
+      },
+      "reason": "A static-limitation backlog route should preserve canonical limitation identity and analyzer repair route across readiness and downstream surfaces without creating a public repair packet."
     }
   ]
 }
