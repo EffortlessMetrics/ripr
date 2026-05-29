@@ -103,6 +103,9 @@ the source evidence class first and keep projection changes narrow.
 - [Lane 1 Value Resolution Audit Fixes](LANE_1_VALUE_RESOLUTION_AUDIT_FIXES.md)
   records the active issue-backed queue for burning down one fixture-backed
   `predicate_boundary` / `activation_value_unresolved` sub-shape.
+- [Lane 1 TypeScript Preview Completion](LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md)
+  records the current-state audit and missing slices for completing
+  TypeScript/JavaScript as an opt-in preview repair-guidance surface.
 
 ## Lane 4 Source Of Truth
 
