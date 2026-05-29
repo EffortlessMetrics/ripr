@@ -35,6 +35,9 @@
           "file": "tests/pricing.rs",
           "name": "pricing_threshold"
         },
+        "allowed_edit_surface": [
+          "tests/pricing.rs"
+        ],
         "confidence_basis": "fixture_backed",
         "must_not_change": [
           "Do not edit production code by default."
@@ -93,6 +96,9 @@
           "file": "tests/parser.rs",
           "name": "parser_missing_input"
         },
+        "allowed_edit_surface": [
+          "tests/parser.rs"
+        ],
         "confidence_basis": "calibrated",
         "must_not_change": [
           "Do not edit parser production code."
@@ -211,6 +217,9 @@
           "file": "tests/report_golden.rs",
           "name": "renders_config_label"
         },
+        "allowed_edit_surface": [
+          "tests/report_golden.rs"
+        ],
         "confidence_basis": "fixture_backed",
         "must_not_change": [
           "Do not edit production report rendering code by default."

@@ -9351,6 +9351,15 @@ fn validate_swarm_plan_packet_fixture_case(
                 "swarm plan packet case {case_id} ready must be {expected_ready}, got {actual_ready}"
             ));
         }
+        if expected_ready
+            && audit_string_array(packet, &["allowed_edit_surface"])
+                .unwrap_or_default()
+                .is_empty()
+        {
+            violations.push(format!(
+                "swarm plan packet case {case_id} must carry explicit allowed_edit_surface when swarm-ready"
+            ));
+        }
     }
     if let Some(expected_high_confidence) = json_bool_field(expected, "high_confidence") {
         let actual_high_confidence = ripr_swarm_plan_packet_is_high_confidence(planned);
