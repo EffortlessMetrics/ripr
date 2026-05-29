@@ -1071,12 +1071,41 @@ fn test_name_suffix_for(kind: SeamKind) -> &'static str {
 }
 
 fn inferred_test_file(file: &std::path::Path, owner_short: &str) -> String {
+    if let Some(module_tests) = existing_source_module_test_file(file) {
+        return module_tests;
+    }
     let stem = file
         .file_stem()
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or(owner_short);
     format!("tests/{}_tests.rs", snake_case_token(stem))
+}
+
+fn existing_source_module_test_file(file: &std::path::Path) -> Option<String> {
+    if file.extension().and_then(|value| value.to_str()) != Some("rs") {
+        return None;
+    }
+    let stem = file.file_stem()?.to_str()?;
+    if matches!(stem, "lib" | "main" | "mod") {
+        return None;
+    }
+    let parent = file.parent()?;
+    for candidate in [parent.join(stem).join("tests.rs"), parent.join("tests.rs")] {
+        if path_resolves_to_existing_file(&candidate) {
+            return Some(display_path(&candidate));
+        }
+    }
+    None
+}
+
+fn path_resolves_to_existing_file(path: &std::path::Path) -> bool {
+    path.is_file()
+        || std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(|workspace_root| workspace_root.join(path).is_file())
+            .unwrap_or(false)
 }
 
 fn snake_case_token(raw: &str) -> String {
@@ -2204,6 +2233,55 @@ mod tests {
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn inferred_test_file_prefers_existing_source_module_tests() {
+        assert_eq!(
+            inferred_test_file(
+                std::path::Path::new("crates/ripr/src/lsp.rs"),
+                "serve_stdio"
+            ),
+            "crates/ripr/src/lsp/tests.rs"
+        );
+    }
+
+    #[test]
+    fn inferred_test_file_keeps_legacy_path_when_module_tests_are_missing() {
+        assert_eq!(
+            inferred_test_file(
+                std::path::Path::new("crates/ripr/src/output/pilot/render/render_helpers.rs"),
+                "push_markdown_recommendation"
+            ),
+            "tests/render_helpers_tests.rs"
+        );
+    }
+
+    #[test]
+    fn packet_v2_recommends_existing_source_module_test_file_when_visible() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "crates/ripr/src/lsp.rs",
+            "lsp::serve_stdio",
+            SeamKind::CallPresence,
+            42,
+            42,
+            "tokio::io::stdin()",
+            RequiredDiscriminator::CallSite {
+                target: "tokio::io::stdin()".to_string(),
+            },
+            ExpectedSink::SideEffect,
+        );
+        let json = render_agent_seam_packets_json(&[classified_with(
+            seam,
+            SeamGripClass::Ungripped,
+            Vec::new(),
+        )]);
+
+        assert!(
+            json.contains("\"file\": \"crates/ripr/src/lsp/tests.rs\""),
+            "expected existing source module test target in: {json}"
+        );
         Ok(())
     }
 
