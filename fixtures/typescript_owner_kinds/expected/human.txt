@@ -1,0 +1,133 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_owner_kinds/input
+
+Summary: 4 probe(s), 1 exposed, 0 weak, 0 unrevealed, 3 no path, 0 unknown
+
+INFO src/owners.ts:2
+
+Changed
+  after:    return `$${amount.toFixed(3)}`;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/owners.ts::formatPrice
+
+Language
+  language: typescript
+  status: preview
+  owner kind: arrow_function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `formatPrice`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/owners.test.ts:3 formats price uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `formatPrice` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+Next step
+  TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+WARNING src/owners.ts:7
+
+Changed
+  after:      return this.items.length + 1;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/owners.ts::total
+
+Language
+  language: typescript
+  status: preview
+  owner kind: method
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related test(s) found for owner `total`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - owner: total
+
+Weakness
+  - No trusted TypeScript method relation for `total`. Object method calls stay ambiguous in preview until method related-test matching lands.
+
+Next step
+  TypeScript preview: method owner relation is missing context; add an exact method observer only after the adapter can safely relate the receiver shape.
+
+WARNING src/owners.ts:11
+
+Changed
+  after:      return new Cart({ tracked: true });
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/owners.ts::build
+
+Language
+  language: typescript
+  status: preview
+  owner kind: class_method
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related test(s) found for owner `build`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - owner: build
+
+Weakness
+  - No trusted TypeScript method relation for `build`. Object method calls stay ambiguous in preview until method related-test matching lands.
+
+Next step
+  TypeScript preview: method owner relation is missing context; add an exact method observer only after the adapter can safely relate the receiver shape.
+
+WARNING src/owners.ts:15
+
+Changed
+  after:  export const DEFAULT_RATE = 0.09;
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/owners.ts::DEFAULT_RATE
+
+Language
+  language: typescript
+  status: preview
+  owner kind: module_function
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related test(s) found for owner `DEFAULT_RATE`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - owner: DEFAULT_RATE
+
+Weakness
+  - No trusted TypeScript module-initializer relation for `DEFAULT_RATE`. Identifier-reference observers stay missing context until module-value related-test matching lands.
+
+Next step
+  TypeScript preview: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.

@@ -1972,6 +1972,7 @@ fixtures = [
   "fixtures/javascript_jsx_preview",
   "fixtures/typescript_disabled",
   "fixtures/typescript_parse_error_unsupported_syntax",
+  "fixtures/typescript_owner_kinds",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
@@ -1992,6 +1993,7 @@ outputs = [
   "plans/typescript-preview-completion/implementation-plan.md",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
   "fixtures/typescript_parse_error_unsupported_syntax/expected/check.json",
+  "fixtures/typescript_owner_kinds/expected/check.json",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

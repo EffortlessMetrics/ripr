@@ -3,8 +3,8 @@
 //! See `docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md` and
 //! `docs/adr/0008-typescript-parser-substrate.md`.
 //!
-//! This sub-slice extracts top-level function-declaration owners and
-//! `test(...)` / `it(...)` blocks from TypeScript / JavaScript files,
+//! This sub-slice extracts syntax-first owner facts and `test(...)` /
+//! `it(...)` blocks from TypeScript / JavaScript files,
 //! matches related tests by name reference, and emits one preview-tagged
 //! `Finding` per changed line that falls within an owner. The classifier
 //! is intentionally minimal — it produces a two-way gradient:
@@ -17,20 +17,23 @@
 //! exact-value oracles), probe-family shape detection, and explicit
 //! static-limit reporting land in follow-up issues:
 //! #767 (assertion shapes), #768 (probe shapes), #769 (static limits).
-//! Per-test-file recursion into nested `describe(...)` blocks and arrow
-//! function owners is also deferred — the smallest useful fixture uses
-//! `function name(...)` declarations and top-level `test(...)` calls.
+//! Per-test-file recursion into nested `describe(...)` blocks is deferred.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
-    OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason,
+    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    StopReason, SymbolId,
 };
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
+    ExportDefaultDeclarationKind, Expression, Function, MethodDefinition, PropertyKey, Statement,
+    VariableDeclaration, VariableDeclarator,
+};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use std::path::{Path, PathBuf};
@@ -53,15 +56,25 @@ fn source_type_for(path: &Path) -> SourceType {
 
 /// Owner extracted from a TypeScript / JavaScript source file.
 ///
-/// Currently covers top-level `function name(...) { ... }` declarations
-/// and their `export` wrappers. Arrow function consts, class methods,
-/// and nested owners are deferred to follow-up issues.
+/// Covers the syntax-first owner kinds accepted for the preview surface.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptOwner {
     name: String,
     file: PathBuf,
     start_line: usize,
     end_line: usize,
+    owner_kind: OwnerKind,
+}
+
+impl TypeScriptOwner {
+    fn symbol_id(&self) -> SymbolId {
+        SymbolId(format!(
+            "{}:{}::{}",
+            output_language_for(&self.file).as_str(),
+            normalized_path(&self.file),
+            self.name
+        ))
+    }
 }
 
 /// Test block extracted from a TypeScript / JavaScript test file.
@@ -187,9 +200,7 @@ fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> {
     }
     let mut owners = Vec::new();
     for stmt in &ret.program.body {
-        if let Some(owner) = owner_from_statement(stmt, file, source) {
-            owners.push(owner);
-        }
+        owners.extend(owners_from_statement(stmt, file, source));
     }
     owners
 }
@@ -204,34 +215,286 @@ fn parse_error_reason(file: &Path, source: &str) -> Option<String> {
     }
 }
 
-fn owner_from_statement(
-    stmt: &Statement<'_>,
-    file: &Path,
-    source: &str,
-) -> Option<TypeScriptOwner> {
+fn owners_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Vec<TypeScriptOwner> {
     if let Statement::FunctionDeclaration(func) = stmt
         && let Some(id) = &func.id
     {
-        return Some(TypeScriptOwner {
-            name: id.name.to_string(),
-            file: file.to_path_buf(),
-            start_line: line_for_offset(source, func.span.start as usize),
-            end_line: line_for_offset(source, func.span.end as usize),
-        });
+        return vec![owner_from_function(
+            file,
+            source,
+            id.name.as_str(),
+            func,
+            function_owner_kind(
+                file,
+                source,
+                id.name.as_str(),
+                func.span.start,
+                func.span.end,
+            ),
+        )];
     }
     if let Statement::ExportNamedDeclaration(export) = stmt
         && let Some(decl) = export.declaration.as_ref()
-        && let oxc_ast::ast::Declaration::FunctionDeclaration(func) = decl
-        && let Some(id) = &func.id
     {
-        return Some(TypeScriptOwner {
-            name: id.name.to_string(),
-            file: file.to_path_buf(),
-            start_line: line_for_offset(source, func.span.start as usize),
-            end_line: line_for_offset(source, func.span.end as usize),
-        });
+        return owners_from_declaration(decl, file, source);
     }
-    None
+    if let Statement::ExportDefaultDeclaration(export) = stmt {
+        return owners_from_default_export(&export.declaration, file, source);
+    }
+    owners_from_statement_declaration(stmt, file, source)
+}
+
+fn owners_from_statement_declaration(
+    stmt: &Statement<'_>,
+    file: &Path,
+    source: &str,
+) -> Vec<TypeScriptOwner> {
+    match stmt {
+        Statement::VariableDeclaration(decl) => {
+            owners_from_variable_declaration(decl, file, source)
+        }
+        Statement::ClassDeclaration(class) => owners_from_class(class, file, source),
+        _ => Vec::new(),
+    }
+}
+
+fn owners_from_declaration(
+    decl: &Declaration<'_>,
+    file: &Path,
+    source: &str,
+) -> Vec<TypeScriptOwner> {
+    match decl {
+        Declaration::FunctionDeclaration(func) => func
+            .id
+            .as_ref()
+            .map(|id| {
+                vec![owner_from_function(
+                    file,
+                    source,
+                    id.name.as_str(),
+                    func,
+                    function_owner_kind(
+                        file,
+                        source,
+                        id.name.as_str(),
+                        func.span.start,
+                        func.span.end,
+                    ),
+                )]
+            })
+            .unwrap_or_default(),
+        Declaration::VariableDeclaration(decl) => {
+            owners_from_variable_declaration(decl, file, source)
+        }
+        Declaration::ClassDeclaration(class) => owners_from_class(class, file, source),
+        _ => Vec::new(),
+    }
+}
+
+fn owners_from_default_export(
+    decl: &ExportDefaultDeclarationKind<'_>,
+    file: &Path,
+    source: &str,
+) -> Vec<TypeScriptOwner> {
+    match decl {
+        ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+            let name = func
+                .id
+                .as_ref()
+                .map(|id| id.name.as_str())
+                .unwrap_or("default");
+            vec![owner_from_function(
+                file,
+                source,
+                name,
+                func,
+                function_owner_kind(file, source, name, func.span.start, func.span.end),
+            )]
+        }
+        ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+            owners_from_class(class, file, source)
+        }
+        ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow) => vec![owner_from_arrow(
+            file,
+            source,
+            "default",
+            arrow,
+            arrow.span.start,
+        )],
+        _ => Vec::new(),
+    }
+}
+
+fn owners_from_variable_declaration(
+    decl: &VariableDeclaration<'_>,
+    file: &Path,
+    source: &str,
+) -> Vec<TypeScriptOwner> {
+    decl.declarations
+        .iter()
+        .filter_map(|declarator| owner_from_variable_declarator(declarator, file, source))
+        .collect()
+}
+
+fn owner_from_variable_declarator(
+    declarator: &VariableDeclarator<'_>,
+    file: &Path,
+    source: &str,
+) -> Option<TypeScriptOwner> {
+    let name = binding_identifier_name(&declarator.id)?;
+    let init = declarator.init.as_ref()?;
+    match init {
+        Expression::ArrowFunctionExpression(arrow) => Some(owner_from_arrow(
+            file,
+            source,
+            name,
+            arrow,
+            declarator.span.start,
+        )),
+        Expression::FunctionExpression(func) => Some(owner_from_function(
+            file,
+            source,
+            name,
+            func,
+            function_owner_kind(file, source, name, func.span.start, func.span.end),
+        )),
+        _ => Some(TypeScriptOwner {
+            name: name.to_string(),
+            file: file.to_path_buf(),
+            start_line: line_for_offset(source, declarator.span.start as usize),
+            end_line: line_for_offset(source, declarator.span.end as usize),
+            owner_kind: OwnerKind::ModuleFunction,
+        }),
+    }
+}
+
+fn owner_from_function(
+    file: &Path,
+    source: &str,
+    name: &str,
+    func: &Function<'_>,
+    owner_kind: OwnerKind,
+) -> TypeScriptOwner {
+    TypeScriptOwner {
+        name: name.to_string(),
+        file: file.to_path_buf(),
+        start_line: line_for_offset(source, func.span.start as usize),
+        end_line: line_for_offset(source, func.span.end as usize),
+        owner_kind,
+    }
+}
+
+fn owner_from_arrow(
+    file: &Path,
+    source: &str,
+    name: &str,
+    arrow: &ArrowFunctionExpression<'_>,
+    owner_start: u32,
+) -> TypeScriptOwner {
+    TypeScriptOwner {
+        name: name.to_string(),
+        file: file.to_path_buf(),
+        start_line: line_for_offset(source, owner_start as usize),
+        end_line: line_for_offset(source, arrow.span.end as usize),
+        owner_kind: arrow_owner_kind(file, source, name, arrow.span.start, arrow.span.end),
+    }
+}
+
+fn owners_from_class(class: &Class<'_>, file: &Path, source: &str) -> Vec<TypeScriptOwner> {
+    let mut owners = Vec::new();
+    for element in &class.body.body {
+        if let ClassElement::MethodDefinition(method) = element
+            && let Some(owner) = owner_from_method(method, file, source)
+        {
+            owners.push(owner);
+        }
+    }
+    owners
+}
+
+fn owner_from_method(
+    method: &MethodDefinition<'_>,
+    file: &Path,
+    source: &str,
+) -> Option<TypeScriptOwner> {
+    if method.computed {
+        return None;
+    }
+    let name = property_key_name(&method.key)?;
+    Some(TypeScriptOwner {
+        name,
+        file: file.to_path_buf(),
+        start_line: line_for_offset(source, method.span.start as usize),
+        end_line: line_for_offset(source, method.span.end as usize),
+        owner_kind: if method.r#static {
+            OwnerKind::ClassMethod
+        } else {
+            OwnerKind::Method
+        },
+    })
+}
+
+fn binding_identifier_name<'a>(pattern: &'a BindingPattern<'a>) -> Option<&'a str> {
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => Some(identifier.name.as_str()),
+        _ => None,
+    }
+}
+
+fn property_key_name(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
+        _ => None,
+    }
+}
+
+fn function_owner_kind(file: &Path, source: &str, name: &str, start: u32, end: u32) -> OwnerKind {
+    if looks_like_component_owner(file, source, name, start, end) {
+        OwnerKind::Component
+    } else {
+        OwnerKind::Function
+    }
+}
+
+fn arrow_owner_kind(file: &Path, source: &str, name: &str, start: u32, end: u32) -> OwnerKind {
+    if looks_like_component_owner(file, source, name, start, end) {
+        OwnerKind::Component
+    } else {
+        OwnerKind::ArrowFunction
+    }
+}
+
+fn looks_like_component_owner(file: &Path, source: &str, name: &str, start: u32, end: u32) -> bool {
+    if !matches!(
+        file.extension().and_then(|extension| extension.to_str()),
+        Some("tsx" | "jsx")
+    ) || !starts_with_uppercase(name)
+    {
+        return false;
+    }
+    let start = start as usize;
+    let end = end as usize;
+    let Some(slice) = source.get(start..end) else {
+        return false;
+    };
+    contains_jsx_like_return(slice)
+}
+
+fn starts_with_uppercase(name: &str) -> bool {
+    name.chars().next().is_some_and(|ch| ch.is_uppercase())
+}
+
+fn contains_jsx_like_return(slice: &str) -> bool {
+    slice.contains("return <")
+        || slice.contains("=> <")
+        || slice
+            .split("return (")
+            .skip(1)
+            .any(|tail| tail.trim_start().starts_with('<'))
+        || slice
+            .split("=> (")
+            .skip(1)
+            .any(|tail| tail.trim_start().starts_with('<'))
 }
 
 fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
@@ -773,10 +1036,7 @@ fn classify_change(
             StageState::No,
             StageState::No,
             StageState::No,
-            vec![format!(
-                "No test references `{}(` — add a test that calls the changed owner.",
-                owner.name
-            )],
+            vec![no_static_path_missing(owner)],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
         (
@@ -824,7 +1084,7 @@ fn classify_change(
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:typescript_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
-        owner: None,
+        owner: Some(owner.symbol_id()),
         family,
         delta,
         before: None,
@@ -872,7 +1132,7 @@ fn classify_change(
             "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.".to_string()
         }
         ExposureClass::NoStaticPath => {
-            "TypeScript preview: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual`.".to_string()
+            no_static_path_recommendation(owner)
         }
         _ => {
             "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).".to_string()
@@ -912,9 +1172,40 @@ fn classify_change(
         recommended_next_step: Some(recommended),
         language: Some(output_language_for(file)),
         language_status: Some(LanguageStatus::Preview),
-        owner_kind: None,
+        owner_kind: Some(owner.owner_kind),
         static_limit_kind: (!mock_paths.is_empty()).then_some(StaticLimitKind::MockedModule),
     })
+}
+
+fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
+    match owner.owner_kind {
+        OwnerKind::Method | OwnerKind::ClassMethod => format!(
+            "No trusted TypeScript method relation for `{}`. Object method calls stay ambiguous in preview until method related-test matching lands.",
+            owner.name
+        ),
+        OwnerKind::ModuleFunction => format!(
+            "No trusted TypeScript module-initializer relation for `{}`. Identifier-reference observers stay missing context until module-value related-test matching lands.",
+            owner.name
+        ),
+        _ => format!(
+            "No test references `{}(` — add a test that calls the changed owner.",
+            owner.name
+        ),
+    }
+}
+
+fn no_static_path_recommendation(owner: &TypeScriptOwner) -> String {
+    match owner.owner_kind {
+        OwnerKind::Method | OwnerKind::ClassMethod => {
+            "TypeScript preview: method owner relation is missing context; add an exact method observer only after the adapter can safely relate the receiver shape.".to_string()
+        }
+        OwnerKind::ModuleFunction => {
+            "TypeScript preview: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.".to_string()
+        }
+        _ => {
+            "TypeScript preview: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual`.".to_string()
+        }
+    }
 }
 
 fn output_language_for(path: &Path) -> DomainLanguageId {
@@ -1235,6 +1526,7 @@ mod tests {
         assert_eq!(owners.len(), 1);
         assert_eq!(owners[0].name, "applyDiscount");
         assert_eq!(owners[0].start_line, 1);
+        assert_eq!(owners[0].owner_kind, OwnerKind::Function);
     }
 
     #[test]
@@ -1245,6 +1537,107 @@ mod tests {
         );
         assert_eq!(owners.len(), 1);
         assert_eq!(owners[0].name, "publicHelper");
+        assert_eq!(owners[0].owner_kind, OwnerKind::Function);
+    }
+
+    #[test]
+    fn extract_owners_recognizes_arrow_const_and_module_initializer() {
+        let owners = extract_owners(
+            Path::new("src/lib.ts"),
+            r#"const formatPrice = (amount: number) => {
+    return amount.toFixed(2);
+};
+const defaultRate = 0.08;
+"#,
+        );
+        assert_eq!(owners.len(), 2);
+        assert_eq!(owners[0].name, "formatPrice");
+        assert_eq!(owners[0].owner_kind, OwnerKind::ArrowFunction);
+        assert_eq!(owners[0].start_line, 1);
+        assert_eq!(owners[0].end_line, 3);
+        assert_eq!(owners[1].name, "defaultRate");
+        assert_eq!(owners[1].owner_kind, OwnerKind::ModuleFunction);
+        assert_eq!(owners[1].start_line, 4);
+    }
+
+    #[test]
+    fn extract_owners_recognizes_class_methods() {
+        let owners = extract_owners(
+            Path::new("src/cart.ts"),
+            r#"class Cart {
+    total() {
+        return 1;
+    }
+    static build() {
+        return new Cart();
+    }
+}
+"#,
+        );
+        assert_eq!(owners.len(), 2);
+        assert_eq!(owners[0].name, "total");
+        assert_eq!(owners[0].owner_kind, OwnerKind::Method);
+        assert_eq!(owners[0].start_line, 2);
+        assert_eq!(owners[1].name, "build");
+        assert_eq!(owners[1].owner_kind, OwnerKind::ClassMethod);
+        assert_eq!(owners[1].start_line, 5);
+    }
+
+    #[test]
+    fn extract_owners_recognizes_default_function_and_class_methods() {
+        let function_owners = extract_owners(
+            Path::new("src/defaults.ts"),
+            r#"export default function calculate(value: number) {
+    return value + 1;
+}
+"#,
+        );
+        let class_owners = extract_owners(
+            Path::new("src/default-class.ts"),
+            r#"
+export default class Formatter {
+    render() {
+        return "ok";
+    }
+}
+"#,
+        );
+        assert_eq!(function_owners.len(), 1);
+        assert_eq!(function_owners[0].name, "calculate");
+        assert_eq!(function_owners[0].owner_kind, OwnerKind::Function);
+        assert_eq!(class_owners.len(), 1);
+        assert_eq!(class_owners[0].name, "render");
+        assert_eq!(class_owners[0].owner_kind, OwnerKind::Method);
+    }
+
+    #[test]
+    fn extract_owners_recognizes_reactish_function_and_arrow_components() {
+        let owners = extract_owners(
+            Path::new("src/card.tsx"),
+            r#"export function PriceTag() {
+    return <span>price</span>;
+}
+const InlinePrice = () => (
+    <span>price</span>
+);
+"#,
+        );
+        assert_eq!(owners.len(), 2);
+        assert_eq!(owners[0].name, "PriceTag");
+        assert_eq!(owners[0].owner_kind, OwnerKind::Component);
+        assert_eq!(owners[1].name, "InlinePrice");
+        assert_eq!(owners[1].owner_kind, OwnerKind::Component);
+    }
+
+    #[test]
+    fn extract_owners_does_not_create_owner_from_comments_or_strings() {
+        let owners = extract_owners(
+            Path::new("src/docs.ts"),
+            r#"// function fakeOwner() {}
+"function stringOwner() {}";
+"#,
+        );
+        assert!(owners.is_empty());
     }
 
     #[test]
@@ -1268,6 +1661,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![
             TypeScriptTest {
@@ -1301,6 +1695,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![TypeScriptTest {
             name: "method call on another object".to_string(),
@@ -1323,6 +1718,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![TypeScriptTest {
             name: "string mention".to_string(),
@@ -1345,6 +1741,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![
             TypeScriptTest {
@@ -1377,6 +1774,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
@@ -1408,6 +1806,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.js"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
@@ -1440,12 +1839,14 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 file: PathBuf::from("src/a.ts"),
                 start_line: 1,
                 end_line: 5,
+                owner_kind: OwnerKind::Function,
             },
             TypeScriptOwner {
                 name: "betaScore".to_string(),
                 file: PathBuf::from("src/b.ts"),
                 start_line: 1,
                 end_line: 5,
+                owner_kind: OwnerKind::Function,
             },
         ];
         let tests = vec![
@@ -1728,6 +2129,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let test = TypeScriptTest {
             name: "alpha".to_string(),
@@ -1768,6 +2170,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -1789,6 +2192,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("src/lib.ts"),
             start_line: 10,
             end_line: 20,
+            owner_kind: OwnerKind::Function,
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -1989,6 +2393,7 @@ test("alpha", () => {
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![
             TypeScriptTest {
@@ -2019,6 +2424,7 @@ test("alpha", () => {
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![TypeScriptTest {
             name: "unrelated".to_string(),
@@ -2039,6 +2445,7 @@ test("alpha", () => {
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![TypeScriptTest {
             name: "unrelated method".to_string(),
@@ -2060,6 +2467,7 @@ test("alpha", () => {
             file: PathBuf::from("src/lib.ts"),
             start_line: 1,
             end_line: 5,
+            owner_kind: OwnerKind::Function,
         };
         let tests = vec![TypeScriptTest {
             name: "alpha".to_string(),

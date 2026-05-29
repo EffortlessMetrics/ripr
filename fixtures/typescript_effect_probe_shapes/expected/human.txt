@@ -12,10 +12,12 @@ Changed
 Probe
   family: field_construction
   delta:  value
+  owner:  typescript:src/profile.ts::updateProfile
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -42,10 +44,12 @@ Changed
 Probe
   family: side_effect
   delta:  effect
+  owner:  typescript:src/profile.ts::updateProfile
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/discount.ts",
         "line": 2,
-        "expression": "    if (amount >= threshold) {"
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/discount.ts::applyDiscount"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `applyDiscount`"},
@@ -58,6 +59,7 @@
       "suggested_next_action": "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
       "language": "typescript",
       "language_status": "preview",
+      "owner_kind": "function",
       "static_limit_kind": "mocked_module"
     }
   ]

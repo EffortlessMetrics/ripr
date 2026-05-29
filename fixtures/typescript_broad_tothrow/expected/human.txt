@@ -12,10 +12,12 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  typescript:src/parser.ts::parseUser
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

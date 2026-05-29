@@ -12,10 +12,12 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  typescript:src/b.ts::betaScore
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   exposed (info, confidence 0.60)

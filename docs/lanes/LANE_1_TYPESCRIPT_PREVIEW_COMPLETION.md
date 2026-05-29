@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: PR 0 audit reconciled; fixture harness next
+Status: owner facts landed; test/assertion facts next
 
 Date: 2026-05-29
 
@@ -78,8 +78,11 @@ Adapter facts:
 
 - Diff-mode TypeScript findings are produced for changed production lines that
   fall inside recognised owners.
-- Owners currently cover top-level function declarations and named exported
-  function declarations.
+- Owners currently cover function declarations, exported/default functions,
+  arrow functions assigned to `const`/`let`, instance methods, static class
+  methods, obvious TSX/JSX components, and module-level const initializers.
+- TypeScript/JavaScript findings project structural `probe.owner` metadata and
+  `owner_kind` through human and JSON output.
 - Test files are detected by `.test` and `.spec` suffixes for `.ts`, `.tsx`,
   `.js`, and `.jsx`.
 - Test extraction covers top-level `test(...)` and `it(...)` calls.
@@ -125,6 +128,9 @@ Completed after the initial audit:
 - The fixture harness now covers `.tsx`, `.js`, `.jsx`, mixed Rust plus
   TypeScript, Rust-only disabled TypeScript, and parser-error
   `unsupported_syntax` preview limitations.
+- Owner facts now project structural owner ids and `owner_kind` for functions,
+  arrow functions, methods, class methods, TSX/JSX components, and module
+  initializers.
 - The current `check` parser still has no `--languages rust,typescript`
   override. Config remains the supported opt-in surface for this lane; CLI
   override support is deferred to a later app/config contract change.
@@ -138,11 +144,14 @@ Completed after the initial audit:
      incomplete TypeScript repair packets as actionable.
 
 2. Owner facts
-   - Current owner facts do not populate `owner_kind` for TypeScript findings.
-   - Missing owner shapes: arrow functions assigned to `const`/`let`, class
-     methods, default exports, React-ish function components, and module-level
-     const initializers.
-   - Next step: emit owner kind metadata and fixture each supported owner kind.
+   - Status: done.
+   - TypeScript/JavaScript findings now populate structural `probe.owner`
+     metadata and `owner_kind`.
+   - Fixture and unit coverage includes function declarations, exported/default
+     functions, arrow consts, instance methods, static class methods, obvious
+     TSX/JSX components, and module-level const initializers.
+   - Method and module-initializer no-path guidance stays bounded to missing
+     related-test context instead of claiming safe call guidance.
 
 3. Test and assertion facts
    - Current extraction handles common matcher chains, but only inside
@@ -224,21 +233,25 @@ Completed after the initial audit:
 ## PR Sequence
 
 Use the user-provided PR sequence as the campaign outline, with this audit as
-PR 0. The first two follow-up slices have already landed on `main`:
+PR 0. The completed follow-up slices have landed on `main`:
 
 ```text
 PR 1: spec(ts): accept TypeScript preview static-facts contract
 PR 2: analysis(ts): route TypeScript preview files through language adapter
+PR 3: analysis(ts): add TypeScript preview fixture harness
+PR 4: analysis(ts): emit TypeScript owner facts
 ```
 
 PR 2 landed the core route/config behavior and separate JavaScript preview
 labels. It deliberately deferred a `--languages` CLI override because the
-current `check` parser has no such option.
+current `check` parser has no such option. PR 4 landed structural owner ids and
+`owner_kind` projection without changing support-tier, gate, badge, baseline,
+RIPR Zero, runtime, provider, generated-test, or source-edit behavior.
 
 The next safe PR is:
 
 ```text
-PR 3: analysis(ts): add TypeScript preview fixture harness
+PR 5: analysis(ts): emit Jest and Vitest assertion facts
 ```
 
 ## Validation

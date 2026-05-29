@@ -149,7 +149,7 @@ git diff --check
 
 ## Work Item: analysis/typescript-owner-facts
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -161,6 +161,34 @@ Blocked by: fixtures/typescript-preview-harness
 Emit owner facts and `owner_kind` for function declarations, arrow consts,
 methods, exported/default forms, obvious React-ish components, and module
 initializers without matching comments or strings.
+
+### Acceptance
+
+- TypeScript/JavaScript findings project structural `probe.owner` metadata and
+  additive `owner_kind` without forking schemas.
+- Owner extraction recognises function declarations, exported functions, arrow
+  consts, instance methods, static class methods, default exported functions
+  and class methods, obvious TSX/JSX components, and module-level
+  initializers.
+- Comment and string contents do not create synthetic owners.
+- Method and module-initializer findings keep no-path guidance bounded to the
+  current missing related-test context instead of claiming safe call guidance.
+- No support-tier promotion, default gate, badge, baseline, RIPR Zero, runtime,
+  provider, generated-test, source-edit, or Rust behavior change.
+
+### Proof Commands
+
+```bash
+cargo test -p ripr typescript --lib
+cargo xtask fixtures typescript_owner_kinds
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+git diff --check
+```
 
 ## Work Item: analysis/typescript-test-assertion-facts
 

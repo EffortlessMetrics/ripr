@@ -12,10 +12,12 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  typescript:src/card.tsx::PriceTag
 
 Language
   language: typescript
   status: preview
+  owner kind: component
 
 Static exposure
   exposed (info, confidence 0.60)

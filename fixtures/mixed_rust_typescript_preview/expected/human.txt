@@ -48,10 +48,12 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  typescript:web/discount.ts::applyDiscount
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   exposed (info, confidence 0.60)

@@ -12,10 +12,12 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  javascript:src/discount.js::applyDiscount
 
 Language
   language: javascript
   status: preview
+  owner kind: function
 
 Static exposure
   exposed (info, confidence 0.60)

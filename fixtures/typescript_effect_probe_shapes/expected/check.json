@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/profile.ts",
         "line": 4,
-        "expression": "    profile.status = status;"
+        "expression": "    profile.status = status;",
+        "owner": "typescript:src/profile.ts::updateProfile"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
@@ -57,7 +58,8 @@
       "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     },
     {
       "id": "probe:src_profile.ts:5:typescript_preview",
@@ -70,7 +72,8 @@
         "delta": "effect",
         "file": "src/profile.ts",
         "line": 5,
-        "expression": "    audit.record(status);"
+        "expression": "    audit.record(status);",
+        "owner": "typescript:src/profile.ts::updateProfile"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
@@ -110,7 +113,8 @@
       "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

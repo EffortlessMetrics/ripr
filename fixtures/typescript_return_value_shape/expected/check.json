@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/rounding.ts",
         "line": 2,
-        "expression": "    return Math.round(amount * 100) / 100;"
+        "expression": "    return Math.round(amount * 100) / 100;",
+        "owner": "typescript:src/rounding.ts::roundCents"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `roundCents`"},
@@ -57,7 +58,8 @@
       "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

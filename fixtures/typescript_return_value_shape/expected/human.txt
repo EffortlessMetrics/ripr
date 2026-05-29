@@ -12,10 +12,12 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  typescript:src/rounding.ts::roundCents
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

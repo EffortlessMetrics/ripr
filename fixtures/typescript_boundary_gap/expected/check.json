@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/discount.ts",
         "line": 2,
-        "expression": "    if (amount >= threshold) {"
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/discount.ts::applyDiscount"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"2 related test(s) found for owner `applyDiscount`"},
@@ -65,7 +66,8 @@
       "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

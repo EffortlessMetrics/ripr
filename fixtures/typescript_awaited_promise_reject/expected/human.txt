@@ -12,10 +12,12 @@ Changed
 Probe
   family: error_path
   delta:  control
+  owner:  typescript:src/profile.ts::loadProfile
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -42,10 +44,12 @@ Changed
 Probe
   family: error_path
   delta:  control
+  owner:  typescript:src/profile.ts::publishProfile
 
 Language
   language: typescript
   status: preview
+  owner kind: function
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
