@@ -37,11 +37,11 @@ mod tests {
     use super::{context_packet::render_context_packet, render, report::finding_json};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-        OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary,
-        SymbolId, ValueContext, ValueFact,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
+        FlowSinkFact, FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact,
+        OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
+        RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+        Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -659,6 +659,45 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_emits_canonical_gap_identity_when_present() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "apply_discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(
+            value["canonical_gap_id"],
+            "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        );
+        assert_eq!(value["canonical_gap_group_size"], 1);
+        assert_eq!(value["canonical_gap"]["language"], "python");
+        assert_eq!(value["canonical_gap"]["file"], "src/pricing.py");
+        assert_eq!(value["canonical_gap"]["owner"], "apply_discount");
+        assert_eq!(
+            value["canonical_gap"]["behavior_kind"],
+            "predicate_boundary"
+        );
+        assert_eq!(value["canonical_gap"]["probe_kind"], "predicate");
+        assert_eq!(
+            value["canonical_gap"]["normalized_discriminator"],
+            "amount>=threshold"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn finding_json_preserves_language_metadata_order_with_static_limit_kind() {
         let mut finding = unknown_finding();
         finding.language = Some(LanguageId::TypeScript);
@@ -681,6 +720,7 @@ mod tests {
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:1:static_unknown".to_string()),
                 location: SourceLocation::new("src/lib.rs", 1, 1),

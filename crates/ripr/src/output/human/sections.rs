@@ -32,6 +32,9 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     if let Some(owner) = &finding.probe.owner {
         out.push_str(&format!("  owner:  {owner}\n"));
     }
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  canonical gap: {}\n", gap.id));
+    }
 
     if should_render_language_metadata(finding) {
         out.push_str("\nLanguage\n");

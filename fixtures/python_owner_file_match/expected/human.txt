@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/catalog.py::calculate_total
+  canonical gap: gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7
 
 Language
   language: python

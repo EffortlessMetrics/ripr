@@ -74,7 +74,7 @@ commands, agent packets, and before/after receipts.
 | Unittest oracles | `assertEqual`, `assertNotEqual`, `assertTrue`, `assertFalse`, `assertRaises`, `assertRaisesRegex`, `assertIn`, `assertRegex`, `assertDictEqual`, and unittest verify-command evidence. | Command confidence and repair-card placement remain planned. |
 | Mock oracles | Common `mock.assert_called*` family is `mock_expectation` / medium. | Runtime mock substitution is not resolved; patched or monkeypatched modules surface as static limits. |
 | Related tests | Direct owner calls, module import-alias calls, method attribute calls, same-stem file proximity, test-name similarity, and fixture-name proximity. Heuristic-only links are marked uncertain and keep weak reachability. | Route/client references and class references beyond simple calls are not yet repair-card inputs. |
-| Probe shapes | Predicate/control, return value, error path, field assignment, side-effect calls, await calls, and mock initializer shapes. | No behavior-kind-specific canonical gap ID, normalized expression, field/output discriminator, or stable repair identity yet. |
+| Probe shapes | Predicate/control, return value, error path, field assignment, side-effect calls, await calls, and mock initializer shapes. | Canonical Python gap IDs now identify non-static-limit preview findings by language, file, owner, behavior kind, probe kind, and normalized discriminator. Repair-card identity and closure receipts remain planned. |
 | Static limits | `dynamic_dispatch`, `metaprogramming`, `decorator_indirection`, `mocked_module`, `missing_import_graph`, and `unsupported_syntax`. | Limits are emitted as finding context; they are not yet stop reasons for a Python repair queue. |
 
 ## Existing Fixture Corpus
@@ -168,7 +168,7 @@ packet safety, or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `analysis/python-canonical-gap-identity`, can start from this
+The next work item, `analysis/python-ripr-evidence-model`, can start from this
 boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
@@ -192,7 +192,12 @@ boundary:
 - Related-test evidence now orders direct calls and import-alias calls ahead of
   heuristic links, adds conservative test-name and fixture-name proximity, and
   marks same-stem/name/fixture links as uncertain with weak reachability.
+- Non-static-limit Python findings now carry stable `canonical_gap_id` values
+  across JSON, human, SARIF, GitHub annotation, LSP diagnostic/hover, and
+  context-packet surfaces; static-limit findings intentionally remain
+  limitation-only until typed non-actionable gap states exist.
 
-Acceptance for the next behavior PR should introduce stable Python canonical
-gap IDs without changing Python's preview support tier or emitting repair cards
-before the gap spine exists.
+Acceptance for the next behavior PR should express Python findings in RIPR
+reachability, infection, propagation, and revealability terms without emitting
+repair cards before actionability, stop reasons, and verify/receipt commands are
+typed.

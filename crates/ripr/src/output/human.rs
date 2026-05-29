@@ -53,10 +53,11 @@ mod tests {
     use super::{render, render_finding};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
-        SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext, ValueFact,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
+        FlowSinkFact, FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact,
+        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
+        ValueFact,
     };
     use std::path::PathBuf;
 
@@ -208,6 +209,27 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_includes_canonical_gap_when_present() {
+        let mut finding = sample_finding();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains(
+            "  canonical gap: gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold\n"
+        ));
+    }
+
+    #[test]
     fn human_output_includes_effective_stop_reasons_for_unknowns() {
         let output = render_finding(&unknown_finding());
 
@@ -218,6 +240,7 @@ mod tests {
     fn sample_finding() -> Finding {
         Finding {
             id: "probe:sample.rs:7:predicate".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:sample.rs:7:predicate".to_string()),
                 location: SourceLocation::new("src/sample.rs", 7, 3),
@@ -282,6 +305,7 @@ mod tests {
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:1:static_unknown".to_string()),
                 location: SourceLocation::new("src/lib.rs", 1, 1),

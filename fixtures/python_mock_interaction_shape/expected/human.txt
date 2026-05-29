@@ -13,6 +13,7 @@ Probe
   family: side_effect
   delta:  effect
   owner:  python:src/callbacks.py::recording_callback
+  canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
 
 Language
   language: python

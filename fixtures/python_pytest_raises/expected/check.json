@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_quantity.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+        "language": "python",
+        "file": "src/quantity.py",
+        "owner": "normalize_quantity",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "value<=0"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

@@ -125,6 +125,12 @@ fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
         if let Some(probe_id) = data.get("probe_id").and_then(|value| value.as_str()) {
             lines.push(format!("Probe: `{probe_id}`"));
         }
+        if let Some(gap_id) = data
+            .get("canonical_gap_id")
+            .and_then(|value| value.as_str())
+        {
+            lines.push(format!("Canonical gap: `{gap_id}`"));
+        }
     }
     lines.join("\n")
 }
@@ -343,6 +349,11 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         stage_line("observation", &finding.ripr.reveal.observe),
         stage_line("discriminator", &finding.ripr.reveal.discriminate),
     ]);
+    if let Some(gap) = &finding.canonical_gap {
+        lines.push(String::new());
+        lines.push("## Canonical Gap".to_string());
+        lines.push(format!("ID: `{}`", gap.id));
+    }
 
     if !finding.related_tests.is_empty() {
         lines.push(String::new());

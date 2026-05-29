@@ -13,6 +13,7 @@ Probe
   family: error_path
   delta:  control
   owner:  python:src/validation.py::require_positive
+  canonical gap: gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required
 
 Language
   language: python

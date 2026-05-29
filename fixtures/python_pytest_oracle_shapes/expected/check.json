@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_notifications.py:6:python_preview",
+      "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+        "language": "python",
+        "file": "src/notifications.py",
+        "owner": "warn_coupon",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "logger.warning_coupon_expired"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

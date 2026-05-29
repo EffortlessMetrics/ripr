@@ -2061,6 +2061,9 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "plans/python-repair-routing/implementation-plan.md",
+  "plans/python-repair-routing/current-state-inventory.md",
   "docs/specs/README.md",
   "docs/adr/0009-python-parser-substrate.md",
   "docs/adr/README.md",
@@ -2085,6 +2088,7 @@ metrics = [
   "language_adapter_python_oracle_side_effect",
   "language_adapter_python_oracle_smoke",
   "language_adapter_python_oracle_broad_type",
+  "language_adapter_python_canonical_gap_identity",
   "language_adapter_python_static_limit_dynamic_dispatch",
   "language_adapter_python_static_limit_decorator_indirection",
   "language_adapter_python_static_limit_missing_import_graph",

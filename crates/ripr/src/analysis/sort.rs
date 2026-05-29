@@ -26,6 +26,7 @@ mod tests {
     fn finding(id: &str, file: &str, line: usize, family: ProbeFamily) -> Finding {
         Finding {
             id: id.to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId(format!("probe-{id}")),
                 location: SourceLocation::new(file, line, 1),

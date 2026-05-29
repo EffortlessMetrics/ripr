@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_factory.py:4:python_preview",
+      "canonical_gap_id": "gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1",
+        "language": "python",
+        "file": "src/factory.py",
+        "owner": "PriceRule.from_config",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "cls_config[discount]+1"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

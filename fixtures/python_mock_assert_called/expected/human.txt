@@ -13,6 +13,7 @@ Probe
   family: side_effect
   delta:  effect
   owner:  python:src/notify.py::send_receipt
+  canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:callback_receipt.sent_order_id
 
 Language
   language: python

@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_risk.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "file": "src/risk.py",
+        "owner": "risk_score",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=100"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,

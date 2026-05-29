@@ -1,8 +1,10 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{
-    Finding, FlowSinkFact, MissingDiscriminatorFact, RelatedTest, StageEvidence, ValueFact,
+    Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
+    StageEvidence, ValueFact,
 };
+use std::collections::BTreeMap;
 
 use super::finding_alignment;
 use super::{array_field, escape, field, float_field, number_field};
@@ -32,8 +34,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     summary_json(&mut out, output);
     out.push_str(",\n");
     out.push_str("  \"findings\": [\n");
+    let canonical_gap_counts = canonical_gap_counts(&output.findings);
     for (idx, finding) in output.findings.iter().enumerate() {
-        finding_json_with_config(&mut out, finding, 2, config);
+        finding_json_with_config_and_counts(&mut out, finding, 2, config, &canonical_gap_counts);
         if idx + 1 != output.findings.len() {
             out.push(',');
         }
@@ -71,18 +74,39 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
 
 #[cfg(test)]
 pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
-    finding_json_with_config(out, finding, indent, &RiprConfig::default());
+    finding_json_with_config_and_counts(
+        out,
+        finding,
+        indent,
+        &RiprConfig::default(),
+        &BTreeMap::new(),
+    );
 }
 
-pub(super) fn finding_json_with_config(
+fn finding_json_with_config_and_counts(
     out: &mut String,
     finding: &Finding,
     indent: usize,
     config: &RiprConfig,
+    canonical_gap_counts: &BTreeMap<&str, usize>,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "id", &finding.id, true);
+    if let Some(gap) = &finding.canonical_gap {
+        field(out, indent + 1, "canonical_gap_id", &gap.id, true);
+        number_field(
+            out,
+            indent + 1,
+            "canonical_gap_group_size",
+            canonical_gap_counts
+                .get(gap.id.as_str())
+                .copied()
+                .unwrap_or(1),
+            true,
+        );
+        canonical_gap_json(out, gap, indent + 1, true);
+    }
     field(
         out,
         indent + 1,
@@ -251,6 +275,40 @@ pub(super) fn finding_json_with_config(
         field(out, indent + 1, "static_limit_kind", kind.as_str(), false);
     }
     out.push_str(&format!("{sp}}}"));
+}
+
+fn canonical_gap_counts(findings: &[Finding]) -> BTreeMap<&str, usize> {
+    let mut counts = BTreeMap::new();
+    for finding in findings {
+        if let Some(gap) = &finding.canonical_gap {
+            *counts.entry(gap.id.as_str()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn canonical_gap_json(out: &mut String, gap: &FindingCanonicalGap, indent: usize, trailing: bool) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"canonical_gap\": {{\n"));
+    field(out, indent + 1, "id", &gap.id, true);
+    field(out, indent + 1, "language", &gap.language, true);
+    field(out, indent + 1, "file", &gap.file, true);
+    field(out, indent + 1, "owner", &gap.owner, true);
+    field(out, indent + 1, "behavior_kind", &gap.behavior_kind, true);
+    field(out, indent + 1, "probe_kind", &gap.probe_kind, true);
+    field(
+        out,
+        indent + 1,
+        "normalized_discriminator",
+        &gap.normalized_discriminator,
+        false,
+    );
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+    if trailing {
+        out.push(',');
+    }
+    out.push('\n');
 }
 
 fn evidence_path_values(finding: &Finding) -> Vec<String> {

@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/pricing.py::calculate_fee
+  canonical gap: gap:python:src/pricing.py:calculate_fee:return_value:return_value:amount+2
 
 Language
   language: python

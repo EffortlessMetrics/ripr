@@ -13,6 +13,7 @@ Probe
   family: predicate
   delta:  control
   owner:  python:src/risk.py::risk_score
+  canonical gap: gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100
 
 Language
   language: python

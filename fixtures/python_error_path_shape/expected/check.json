@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_validation.py:3:python_preview",
+      "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+        "language": "python",
+        "file": "src/validation.py",
+        "owner": "require_positive",
+        "behavior_kind": "exception_path",
+        "probe_kind": "error_path",
+        "normalized_discriminator": "valueerror_positive_required"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

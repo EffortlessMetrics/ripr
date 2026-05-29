@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_tax.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "file": "src/tax.py",
+        "owner": "tax_band",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=100"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/price.py::final_price
+  canonical gap: gap:python:src/price.py:final_price:return_value:return_value:amount-12
 
 Language
   language: python

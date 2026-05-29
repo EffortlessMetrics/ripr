@@ -532,6 +532,12 @@ pub(super) fn diagnostic_for_finding_with_config(
                 serde_json::Value::String(language.as_str().to_string()),
             );
         }
+        if let Some(gap) = &finding.canonical_gap {
+            obj.insert(
+                "canonical_gap_id".to_string(),
+                serde_json::Value::String(gap.id.clone()),
+            );
+        }
         if let Some(status) = &finding.language_status {
             obj.insert(
                 "language_status".to_string(),

@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_pricing.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+        "language": "python",
+        "file": "src/pricing.py",
+        "owner": "apply_discount",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount-10"
+
+      },
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.40,

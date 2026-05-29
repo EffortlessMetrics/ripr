@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/tax.py::apply_tax
+  canonical gap: gap:python:src/tax.py:apply_tax:return_value:return_value:amount+2
 
 Language
   language: python

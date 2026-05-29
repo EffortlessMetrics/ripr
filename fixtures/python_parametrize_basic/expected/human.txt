@@ -13,6 +13,7 @@ Probe
   family: predicate
   delta:  control
   owner:  python:src/tax.py::tax_band
+  canonical gap: gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100
 
 Language
   language: python

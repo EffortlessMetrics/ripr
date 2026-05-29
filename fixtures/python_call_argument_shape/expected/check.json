@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_notify.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:notifier_receipt.sent_order_id",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:notifier_receipt.sent_order_id",
+        "language": "python",
+        "file": "src/notify.py",
+        "owner": "send_receipt",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "notifier_receipt.sent_order_id"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

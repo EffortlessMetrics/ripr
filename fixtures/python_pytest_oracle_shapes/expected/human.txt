@@ -13,6 +13,7 @@ Probe
   family: side_effect
   delta:  effect
   owner:  python:src/notifications.py::warn_coupon
+  canonical gap: gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired
 
 Language
   language: python

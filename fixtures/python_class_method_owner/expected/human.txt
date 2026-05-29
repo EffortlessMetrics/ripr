@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/factory.py::PriceRule.from_config
+  canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
 
 Language
   language: python

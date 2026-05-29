@@ -24,9 +24,9 @@ use super::{
 };
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, LanguageStatus, OracleKind,
-    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId, LanguageStatus,
+    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -628,6 +628,50 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
                     .value
                     .contains("* discriminator weak: boundary value missing")
             );
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let mut finding = sample_finding();
+    finding.canonical_gap = Some(sample_canonical_gap());
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let canonical_gap_id = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("canonical_gap_id"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "expected canonical_gap_id in diagnostic data".to_string())?;
+    assert_eq!(
+        canonical_gap_id,
+        "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+    );
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, 87, 1)) else {
+        return Err("expected finding hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("## Canonical Gap"));
+            assert!(markup.value.contains(
+                "ID: `gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold`"
+            ));
             Ok(())
         }
         _ => Err("expected markup hover".to_string()),
@@ -3671,6 +3715,7 @@ fn initialize_params(
 fn sample_finding() -> Finding {
     Finding {
         id: "probe:pricing:88:predicate".to_string(),
+        canonical_gap: None,
         probe: Probe {
             id: ProbeId("probe:pricing:88:predicate".to_string()),
             location: SourceLocation {
@@ -3725,6 +3770,19 @@ fn sample_finding() -> Finding {
         language_status: None,
         owner_kind: None,
         static_limit_kind: None,
+    }
+}
+
+fn sample_canonical_gap() -> FindingCanonicalGap {
+    FindingCanonicalGap {
+        id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+            .to_string(),
+        language: "python".to_string(),
+        file: "src/pricing.py".to_string(),
+        owner: "apply_discount".to_string(),
+        behavior_kind: "predicate_boundary".to_string(),
+        probe_kind: "predicate".to_string(),
+        normalized_discriminator: "amount>=threshold".to_string(),
     }
 }
 

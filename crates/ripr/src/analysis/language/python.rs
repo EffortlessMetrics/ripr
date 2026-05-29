@@ -23,10 +23,10 @@ use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
-    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
-    SymbolId,
+    Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
+    LanguageId as DomainLanguageId, LanguageStatus, OracleKind, OracleStrength, OwnerKind, Probe,
+    ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+    StageState, StaticLimitKind, SymbolId,
 };
 use rustpython_parser::{
     Mode,
@@ -2415,6 +2415,105 @@ fn looks_like_call_expression(text: &str) -> bool {
     text.contains('(') && text.ends_with(')')
 }
 
+fn canonical_python_gap_for(
+    file: &Path,
+    owner: &PythonOwner,
+    probe_family: &ProbeFamily,
+    line_text: &str,
+) -> FindingCanonicalGap {
+    let file = normalized_path(file);
+    let behavior_kind = python_behavior_kind(probe_family).to_string();
+    let probe_kind = probe_family.as_str().to_string();
+    let normalized_discriminator = normalize_python_gap_discriminator(probe_family, line_text);
+    let id = format!(
+        "gap:python:{file}:{}:{behavior_kind}:{probe_kind}:{normalized_discriminator}",
+        owner.qualified_name
+    );
+
+    FindingCanonicalGap {
+        id,
+        language: "python".to_string(),
+        file,
+        owner: owner.qualified_name.clone(),
+        behavior_kind,
+        probe_kind,
+        normalized_discriminator,
+    }
+}
+
+fn python_behavior_kind(probe_family: &ProbeFamily) -> &'static str {
+    match probe_family {
+        ProbeFamily::Predicate => "predicate_boundary",
+        ProbeFamily::ReturnValue => "return_value",
+        ProbeFamily::ErrorPath => "exception_path",
+        ProbeFamily::FieldConstruction => "field_value",
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => "call_or_output_effect",
+        ProbeFamily::MatchArm => "match_arm",
+        ProbeFamily::StaticUnknown => "static_unknown",
+    }
+}
+
+fn normalize_python_gap_discriminator(probe_family: &ProbeFamily, line_text: &str) -> String {
+    let mut text = line_text.trim().trim_end_matches(';').trim().to_string();
+    match probe_family {
+        ProbeFamily::Predicate => {
+            for prefix in ["if ", "elif ", "while ", "for ", "match ", "case "] {
+                if let Some(stripped) = text.strip_prefix(prefix) {
+                    text = stripped.to_string();
+                    break;
+                }
+            }
+            text = text.trim_end_matches(':').trim().to_string();
+        }
+        ProbeFamily::ReturnValue => {
+            if let Some(stripped) = text.strip_prefix("return ") {
+                text = stripped.to_string();
+            }
+        }
+        ProbeFamily::ErrorPath => {
+            if let Some(stripped) = text.strip_prefix("raise ") {
+                text = stripped.to_string();
+            }
+            text = text.trim_end_matches(':').trim().to_string();
+        }
+        _ => {}
+    }
+    normalize_gap_key_text(&text)
+}
+
+fn normalize_gap_key_text(text: &str) -> String {
+    let mut normalized = String::new();
+    let mut previous_was_word = false;
+    let mut pending_separator = false;
+
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() || character == '_' || character == '.' {
+            if pending_separator && previous_was_word {
+                normalized.push('_');
+            }
+            normalized.push(character.to_ascii_lowercase());
+            previous_was_word = true;
+            pending_separator = false;
+        } else if matches!(
+            character,
+            '=' | '!' | '<' | '>' | '+' | '-' | '*' | '/' | '%' | '[' | ']'
+        ) {
+            normalized.push(character);
+            previous_was_word = false;
+            pending_separator = false;
+        } else {
+            pending_separator = true;
+        }
+    }
+
+    let trimmed = normalized.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed
+    }
+}
+
 fn classify_change(
     file: &Path,
     line: usize,
@@ -2499,6 +2598,9 @@ fn classify_change(
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
     let (family, delta) = classify_probe_shape(line_text);
+    let canonical_gap = static_limit
+        .is_none()
+        .then(|| canonical_python_gap_for(file, owner, &family, line_text));
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:python_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
@@ -2638,6 +2740,7 @@ fn classify_change(
 
     Some(Finding {
         id: probe.id.0.clone(),
+        canonical_gap,
         probe,
         class,
         ripr: RiprEvidence {

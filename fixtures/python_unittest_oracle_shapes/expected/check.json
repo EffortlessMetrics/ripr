@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_notifications.py:3:python_preview",
+      "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+        "language": "python",
+        "file": "src/notifications.py",
+        "owner": "warn_coupon",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "coupon_expired"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

@@ -3482,6 +3482,7 @@ mod tests {
         let probe_id = format!("probe:src_device_labels_rs:{line}:{id_suffix}");
         Finding {
             id: probe_id.clone(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId(probe_id),
                 location: SourceLocation::new(file, line, 1),

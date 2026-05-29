@@ -35,6 +35,10 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(" Stop reason: ");
             message.push_str(&reasons);
         }
+        if let Some(gap) = &finding.canonical_gap {
+            message.push_str(" Canonical gap: ");
+            message.push_str(&gap.id);
+        }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
             finding.probe.location.file.display(),
@@ -63,8 +67,8 @@ mod tests {
     use super::render;
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
+        Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, Probe, ProbeFamily,
+        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
     };
     use std::path::PathBuf;
 
@@ -108,6 +112,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![Finding {
                 id: "probe:src_lib_rs:21:error_path".to_string(),
+                canonical_gap: None,
                 probe: Probe {
                     id: ProbeId("probe:src_lib_rs:21:error_path".to_string()),
                     location: SourceLocation::new("src/lib.rs", 21, 1),
@@ -163,6 +168,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![Finding {
                 id: "probe:src_lib_rs:34:weak_signal".to_string(),
+                canonical_gap: None,
                 probe: Probe {
                     id: ProbeId("probe:src_lib_rs:34:weak_signal".to_string()),
                     location: SourceLocation::new("src/lib.rs", 34, 1),
@@ -206,6 +212,27 @@ mod tests {
         assert!(rendered.contains("Add discriminator assertion"));
     }
 
+    #[test]
+    fn render_includes_canonical_gap_id_when_present() {
+        let mut output = output_with_unknown_finding();
+        output.findings[0].canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains(
+            "Canonical gap%3A gap%3Apython%3Asrc/pricing.py%3Adiscount%3Apredicate_boundary%3Apredicate%3Aamount>=threshold"
+        ));
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
@@ -216,6 +243,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![Finding {
                 id: "probe:src_lib_rs:13:static_unknown".to_string(),
+                canonical_gap: None,
                 probe: Probe {
                     id: ProbeId("probe:src_lib_rs:13:static_unknown".to_string()),
                     location: SourceLocation::new("src/lib.rs", 13, 1),

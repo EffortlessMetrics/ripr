@@ -13,6 +13,7 @@ Probe
   family: predicate
   delta:  control
   owner:  python:src/policy.py::DiscountPolicy.apply
+  canonical gap: gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold
 
 Language
   language: python

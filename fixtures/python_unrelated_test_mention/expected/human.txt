@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/pricing.py::apply_discount
+  canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
 
 Language
   language: python

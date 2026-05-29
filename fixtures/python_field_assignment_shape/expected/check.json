@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_invoice.py:6:python_preview",
+      "canonical_gap_id": "gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid",
+        "language": "python",
+        "file": "src/invoice.py",
+        "owner": "Invoice.mark_paid",
+        "behavior_kind": "field_value",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "self.status=paid"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,

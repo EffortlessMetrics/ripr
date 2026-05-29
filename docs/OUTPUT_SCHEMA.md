@@ -422,6 +422,18 @@ The evidence-first fields are additive in schema `0.1`:
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
   integrations.
+- `canonical_gap_id` is an additive optional stable identity for a
+  language-qualified behavioral gap when the producer can name one without
+  relying on line numbers alone. Python preview values use
+  `gap:python:<path>:<owner>:<behavior_kind>:<probe_kind>:<normalized_discriminator>`.
+  Static-limit findings may omit this field until a non-actionable gap-state
+  projection exists.
+- `canonical_gap_group_size` is the number of raw findings in the current
+  report that share the same `canonical_gap_id`, or omitted when no canonical
+  gap identity is assigned.
+- `canonical_gap` is an additive optional object that carries the identity
+  parts used to derive `canonical_gap_id`: `id`, `language`, `file`, `owner`,
+  `behavior_kind`, `probe_kind`, and `normalized_discriminator`.
 - `probe.owner` is an additive optional stable owner identifier emitted when a
   preview-language adapter populated a changed owner. Python preview owners use
   `python:<path>::<owner>`, for example

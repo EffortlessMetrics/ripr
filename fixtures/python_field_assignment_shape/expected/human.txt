@@ -13,6 +13,7 @@ Probe
   family: field_construction
   delta:  value
   owner:  python:src/invoice.py::Invoice.mark_paid
+  canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
 
 Language
   language: python

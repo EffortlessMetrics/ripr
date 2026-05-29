@@ -1272,6 +1272,88 @@ fn owner_similarity_keys_cover_qualified_names_modules_and_token_boundaries() ->
 }
 
 #[test]
+fn canonical_python_gap_id_is_stable_across_line_movement_and_expression_spacing()
+-> Result<(), String> {
+    let owner = extract_owners(
+        Path::new("src/pricing.py"),
+        "def apply_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+    )
+    .into_iter()
+    .find(|owner| owner.qualified_name == "apply_discount")
+    .ok_or_else(|| "missing apply_discount owner".to_string())?;
+
+    let before = canonical_python_gap_for(
+        Path::new("src/pricing.py"),
+        &owner,
+        &ProbeFamily::Predicate,
+        "    if amount >= threshold:",
+    );
+    let after = canonical_python_gap_for(
+        Path::new("src/pricing.py"),
+        &owner,
+        &ProbeFamily::Predicate,
+        "        if (amount) >= threshold:",
+    );
+
+    assert_eq!(before.id, after.id);
+    assert_eq!(
+        before.id,
+        "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+    );
+    assert_eq!(before.language, "python");
+    assert_eq!(before.file, "src/pricing.py");
+    assert_eq!(before.owner, "apply_discount");
+    assert_eq!(before.behavior_kind, "predicate_boundary");
+    assert_eq!(before.probe_kind, "predicate");
+    assert_eq!(before.normalized_discriminator, "amount>=threshold");
+    Ok(())
+}
+
+#[test]
+fn canonical_python_gap_id_distinguishes_owner_behavior_and_discriminator() -> Result<(), String> {
+    let pricing_owner = extract_owners(
+        Path::new("src/pricing.py"),
+        "def apply_discount(amount, threshold):\n    return amount - 10\n",
+    )
+    .remove(0);
+    let billing_owner = extract_owners(
+        Path::new("src/billing.py"),
+        "def apply_discount(amount, threshold):\n    return amount - 10\n",
+    )
+    .remove(0);
+
+    let pricing_return = canonical_python_gap_for(
+        Path::new("src/pricing.py"),
+        &pricing_owner,
+        &ProbeFamily::ReturnValue,
+        "    return amount - 10",
+    );
+    let pricing_error = canonical_python_gap_for(
+        Path::new("src/pricing.py"),
+        &pricing_owner,
+        &ProbeFamily::ErrorPath,
+        "    raise ValueError(\"invalid coupon\")",
+    );
+    let billing_return = canonical_python_gap_for(
+        Path::new("src/billing.py"),
+        &billing_owner,
+        &ProbeFamily::ReturnValue,
+        "    return amount - 10",
+    );
+
+    assert_ne!(pricing_return.id, pricing_error.id);
+    assert_ne!(pricing_return.id, billing_return.id);
+    assert_eq!(pricing_return.behavior_kind, "return_value");
+    assert_eq!(pricing_return.normalized_discriminator, "amount-10");
+    assert_eq!(pricing_error.behavior_kind, "exception_path");
+    assert_eq!(
+        pricing_error.normalized_discriminator,
+        "valueerror_invalid_coupon"
+    );
+    Ok(())
+}
+
+#[test]
 fn extract_owners_returns_empty_when_source_is_unparseable() {
     let owners = extract_owners(Path::new("src/oops.py"), "def !!!");
     assert!(owners.is_empty());
@@ -1470,6 +1552,9 @@ fn classify_change_emits_decorator_evidence_when_owner_has_decorator() -> Result
         return Err(format!(
             "expected `retry` decorator to be listed, got: {evidence_joined}"
         ));
+    }
+    if finding.canonical_gap.is_some() {
+        return Err("static-limit Python findings should not carry canonical gaps yet".to_string());
     }
     Ok(())
 }

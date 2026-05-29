@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_reconcile.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2",
+        "language": "python",
+        "file": "src/reconcile.py",
+        "owner": "reconcile_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount-2"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

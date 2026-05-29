@@ -487,7 +487,7 @@ Connect changed owners to likely tests using conservative static signals.
 
 ### Work item: analysis/python-canonical-gap-identity
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -504,6 +504,21 @@ Create durable Python canonical gap IDs.
 - Duplicate raw signals collapse into one canonical finding.
 - Line-number-only identity is avoided where possible.
 - Same ID appears across CLI, JSON, SARIF, PR, LSP, and agent packet surfaces.
+
+#### Delivered
+
+- Python preview findings now carry an optional `canonical_gap_id` and typed
+  `canonical_gap` identity made from language, file, owner path, behavior kind,
+  probe kind, and normalized discriminator text.
+- Canonical Python identities omit source line numbers, so line movement does
+  not churn the ID when the changed owner and discriminator are stable.
+- JSON output records `canonical_gap_id`, `canonical_gap_group_size`, and the
+  structured identity parts; human, SARIF, GitHub annotation, LSP diagnostic,
+  hover, and context-packet surfaces carry the same scalar ID.
+- Static-limit Python findings keep `static_limit_kind` without a canonical
+  repair-gap ID until typed non-actionable gap states land.
+- Existing Python fixture goldens pin the identity on non-static-limit preview
+  findings while static-limit fixtures stay unchanged.
 
 ### Work item: analysis/python-ripr-evidence-model
 

@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/notifications.py::warn_coupon
+  canonical gap: gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired
 
 Language
   language: python

@@ -200,6 +200,21 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
     properties.insert("tool".to_string(), json!("ripr"));
     properties.insert("kind".to_string(), json!("finding"));
     properties.insert("finding_id".to_string(), json!(finding.id.as_str()));
+    if let Some(gap) = &finding.canonical_gap {
+        properties.insert("canonical_gap_id".to_string(), json!(gap.id.as_str()));
+        properties.insert(
+            "canonical_gap".to_string(),
+            json!({
+                "id": gap.id.as_str(),
+                "language": gap.language.as_str(),
+                "file": gap.file.as_str(),
+                "owner": gap.owner.as_str(),
+                "behavior_kind": gap.behavior_kind.as_str(),
+                "probe_kind": gap.probe_kind.as_str(),
+                "normalized_discriminator": gap.normalized_discriminator.as_str()
+            }),
+        );
+    }
     properties.insert("probe_id".to_string(), json!(finding.probe.id.0.as_str()));
     properties.insert("classification".to_string(), json!(finding.class.as_str()));
     properties.insert("severity".to_string(), json!(severity.as_str()));
@@ -529,9 +544,9 @@ mod tests {
     };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, FlowSinkFact, FlowSinkKind, OracleKind,
-        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
-        SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
+        ActivationEvidence, Confidence, DeltaKind, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
+        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
     };
     use serde_json::Value;
     use std::path::PathBuf;
@@ -570,6 +585,36 @@ mod tests {
         assert_eq!(result["properties"]["kind"], "seam");
         assert_eq!(result["properties"]["grip_class"], "weakly_gripped");
         assert_eq!(result["properties"]["seam_kind"], "predicate_boundary");
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_preserves_finding_canonical_gap_properties() -> Result<(), String> {
+        let mut output = sample_output();
+        output.findings[0].canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "apply_discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+
+        assert_eq!(
+            result["properties"]["canonical_gap_id"],
+            "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        );
+        assert_eq!(result["properties"]["canonical_gap"]["language"], "python");
+        assert_eq!(
+            result["properties"]["canonical_gap"]["normalized_discriminator"],
+            "amount>=threshold"
+        );
         Ok(())
     }
 
@@ -726,6 +771,7 @@ weakly_gripped = "note"
     fn sample_finding() -> Finding {
         Finding {
             id: "finding:discount".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src/pricing.rs:88:predicate".to_string()),
                 location: SourceLocation::new("src/pricing.rs", 88, 9),

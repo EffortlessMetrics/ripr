@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/loading.py::load_total
+  canonical gap: gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2
 
 Language
   language: python

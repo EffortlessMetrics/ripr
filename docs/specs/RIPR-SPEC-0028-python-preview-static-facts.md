@@ -162,6 +162,28 @@ values defined in RIPR-SPEC-0026:
   observed at the related-test call site)
 - `unsupported_syntax`
 
+## Canonical Gap Identity
+
+For non-static-limit Python preview findings, the adapter emits an optional
+canonical gap identity that avoids line-number-only matching:
+
+```text
+gap:python:<normalized/path.py>:<owner_path>:<behavior_kind>:<probe_kind>:<normalized_discriminator>
+```
+
+The identity parts are also available as a structured `canonical_gap` object in
+JSON output. `behavior_kind` is derived from the Python probe family, such as
+`predicate_boundary`, `return_value`, `exception_path`, `field_value`, or
+`call_or_output_effect`. `normalized_discriminator` is syntax-derived from the
+changed predicate, return expression, raised exception, field assignment, or
+call/output text after whitespace and punctuation normalization.
+
+Static-limit findings keep their named `static_limit_kind` and may omit
+`canonical_gap_id` until the repair-routing lane adds typed non-actionable
+gap-state projection. This prevents dynamic or unsupported Python cases from
+being mistaken for bounded repair work before repair cards and stop reasons
+exist.
+
 ## Required Evidence
 
 The Python preview contract is supported only when the implementation
@@ -181,6 +203,9 @@ can show:
   framework-shaped verify commands
 - fixtures proving test-name and fixture-name proximity are related-test
   heuristics but remain explicitly uncertain
+- fixtures proving Python preview findings carry stable canonical gap IDs
+  across human and JSON output while static-limit findings remain limitation
+  evidence rather than repair gaps
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases

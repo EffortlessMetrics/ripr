@@ -31,6 +31,7 @@ mod tests {
     fn finding(class: ExposureClass) -> Finding {
         Finding {
             id: format!("finding-{}", class.as_str()),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId(format!("probe-{}", class.as_str())),
                 location: SourceLocation::new("src/lib.rs", 1, 1),

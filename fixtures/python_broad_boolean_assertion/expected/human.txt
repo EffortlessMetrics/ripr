@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/priority.py::is_priority
+  canonical gap: gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100
 
 Language
   language: python

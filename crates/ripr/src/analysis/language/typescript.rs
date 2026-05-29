@@ -874,6 +874,7 @@ fn classify_change(
     }
     Some(Finding {
         id: probe.id.0.clone(),
+        canonical_gap: None,
         probe,
         class,
         ripr: RiprEvidence {

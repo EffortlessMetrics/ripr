@@ -13,6 +13,7 @@ Probe
   family: predicate
   delta:  control
   owner:  python:src/constants.py::<module>
+  canonical gap: gap:python:src/constants.py:<module>:predicate_boundary:predicate:base_discount=12
 
 Language
   language: python

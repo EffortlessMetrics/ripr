@@ -16,6 +16,7 @@ mod rendering_contracts;
 fn sample_finding(file: &str, line: usize) -> Finding {
     Finding {
         id: "probe:src_lib_rs:42:error_path".to_string(),
+        canonical_gap: None,
         probe: Probe {
             id: ProbeId("probe:src_lib_rs:42:error_path".to_string()),
             family: ProbeFamily::ErrorPath,

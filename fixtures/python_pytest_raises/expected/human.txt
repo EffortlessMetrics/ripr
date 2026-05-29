@@ -13,6 +13,7 @@ Probe
   family: predicate
   delta:  control
   owner:  python:src/quantity.py::normalize_quantity
+  canonical gap: gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0
 
 Language
   language: python

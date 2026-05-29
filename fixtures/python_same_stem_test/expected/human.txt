@@ -13,6 +13,7 @@ Probe
   family: return_value
   delta:  value
   owner:  python:src/reconcile.py::reconcile_total
+  canonical gap: gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2
 
 Language
   language: python

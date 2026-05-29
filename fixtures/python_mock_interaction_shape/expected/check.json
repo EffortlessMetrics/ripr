@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_callbacks.py:4:python_preview",
+      "canonical_gap_id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+        "language": "python",
+        "file": "src/callbacks.py",
+        "owner": "recording_callback",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "callback=magicmock_name=receipt.sent"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

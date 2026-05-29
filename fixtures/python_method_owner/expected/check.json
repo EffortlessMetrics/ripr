@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_policy.py:3:python_preview",
+      "canonical_gap_id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/policy.py",
+        "owner": "DiscountPolicy.apply",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,

@@ -47,3 +47,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Add Python canonical gap identity
+
+Command:
+`cargo xtask goldens bless python_same_stem_test --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
