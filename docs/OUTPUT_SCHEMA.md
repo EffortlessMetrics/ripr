@@ -3181,8 +3181,9 @@ receipt-only, missing-verify-result, unknown, and success-rate counts.
 no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
 sample packet IDs and canonical gap IDs for failing attempts when available, so
-readiness can route `improve_repair_route_quality` to a concrete example
-without inventing a repair packet. `repair_route_quality_backlog[]` converts
+readiness can route `improve_repair_route_quality` to the derived
+route-quality backlog packet while preserving the concrete failed-attempt
+sample in the reason text. `repair_route_quality_backlog[]` converts
 top failing repair routes into analyzer/report backlog packets with stable
 packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
 rows are not public repair packets and are not swarm-ready work.
@@ -3468,22 +3469,22 @@ limits.
   ],
   "top_next_action": {
     "kind": "improve_repair_route_quality",
-    "packet_id": null,
+    "packet_id": "route-quality:add-boundary-assertion:unchanged",
     "canonical_gap_id": null,
     "evidence_class": null,
     "repair_kind": "add_boundary_assertion",
-    "command": "cargo xtask ripr-swarm attempt-ledger",
-    "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); inspect route guidance before increasing packet volume"
+    "command": "cargo xtask ripr-swarm readiness",
+    "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002`"
   },
   "next_actions": [
     {
       "kind": "improve_repair_route_quality",
-      "packet_id": null,
+      "packet_id": "route-quality:add-boundary-assertion:unchanged",
       "canonical_gap_id": null,
       "evidence_class": null,
       "repair_kind": "add_boundary_assertion",
-      "command": "cargo xtask ripr-swarm attempt-ledger",
-      "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); inspect route guidance before increasing packet volume"
+      "command": "cargo xtask ripr-swarm readiness",
+      "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002`"
     },
     {
       "kind": "inspect_unchanged_attempts",

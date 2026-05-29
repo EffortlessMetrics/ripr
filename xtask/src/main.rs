@@ -26398,16 +26398,30 @@ fn ripr_swarm_readiness_next_actions(
         let dominant_reason =
             ripr_swarm_repair_route_quality_dominant_failure_reason(route).unwrap_or("unknown");
         let dominant_count = ripr_swarm_repair_route_quality_dominant_failure_count(route);
+        let backlog_packet_id =
+            ripr_swarm_repair_route_quality_backlog_packet_id(route, dominant_reason);
+        let improvement_route =
+            ripr_swarm_repair_route_quality_improvement_route(route, dominant_reason);
+        let sample_packet = route
+            .sample_packet_ids
+            .first()
+            .map_or("unknown", String::as_str);
         actions.push(RiprSwarmReadinessNextAction {
             kind: "improve_repair_route_quality".to_string(),
-            packet_id: route.sample_packet_ids.first().cloned(),
+            packet_id: Some(backlog_packet_id.clone()),
             canonical_gap_id: route.sample_canonical_gap_ids.first().cloned(),
             evidence_class: None,
             repair_kind: Some(route.repair_kind.clone()),
-            command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
+            command: Some("cargo xtask ripr-swarm readiness".to_string()),
             reason: format!(
-                "`{}` has {} failing latest attempt(s); dominant reason `{}` appears {} time(s); inspect route guidance before increasing packet volume",
-                route.repair_kind, failures, dominant_reason, dominant_count
+                "`{}` has {} failing latest attempt(s); dominant reason `{}` appears {} time(s); route backlog packet `{}` through `{}` before increasing packet volume; sample failed packet `{}`",
+                route.repair_kind,
+                failures,
+                dominant_reason,
+                dominant_count,
+                backlog_packet_id,
+                improvement_route,
+                sample_packet
             ),
         });
     }
@@ -41815,14 +41829,39 @@ fn dogfood_surface_projection_alignment_run(
                         &scenario.repair_kind,
                         "readiness top_next_action.repair_kind",
                     );
+                    let route_quality_packet = format!(
+                        "route-quality:{}:{}",
+                        audit_slug(&scenario.repair_kind),
+                        audit_slug(match scenario.outcome.as_str() {
+                            "evidence_regressed" => "regressed",
+                            "evidence_unchanged" => "unchanged",
+                            "attempted_no_receipt" => "attempted_no_receipt",
+                            _ => "unknown",
+                        })
+                    );
+                    surface_projection_expect_string(
+                        &mut errors,
+                        top,
+                        &["packet_id"],
+                        &route_quality_packet,
+                        "readiness top_next_action.packet_id",
+                    );
+                    surface_projection_expect_string(
+                        &mut errors,
+                        top,
+                        &["command"],
+                        "cargo xtask ripr-swarm readiness",
+                        "readiness top_next_action.command",
+                    );
+                } else {
+                    surface_projection_expect_string(
+                        &mut errors,
+                        top,
+                        &["command"],
+                        "cargo xtask ripr-swarm attempt-ledger",
+                        "readiness top_next_action.command",
+                    );
                 }
-                surface_projection_expect_string(
-                    &mut errors,
-                    top,
-                    &["command"],
-                    "cargo xtask ripr-swarm attempt-ledger",
-                    "readiness top_next_action.command",
-                );
             }
             if !json_string_array_field(&value, "must_not_infer")
                 .iter()
@@ -85149,7 +85188,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(report.next_actions.iter().any(|action| action.kind
             == "improve_repair_route_quality"
             && action.repair_kind.as_deref() == Some("add_output_observer")
-            && action.packet_id.as_deref() == Some("packet-output-001")
+            && action.packet_id.as_deref() == Some("route-quality:add-output-observer:regressed")
             && action.canonical_gap_id.as_deref() == Some("gap:output-a")));
         assert!(report.next_actions.iter().any(|action| {
             action.kind == "inspect_unchanged_attempts"
@@ -85207,11 +85246,16 @@ covered_by = ["cargo xtask check-file-policy"]
                 .as_array()
                 .is_some_and(|actions| actions.iter().any(|action| {
                     action["kind"] == "improve_repair_route_quality"
-                        && action["packet_id"] == "packet-output-001"
+                        && action["packet_id"] == "route-quality:add-output-observer:regressed"
                         && action["canonical_gap_id"] == "gap:output-a"
-                        && action["reason"]
-                            .as_str()
-                            .is_some_and(|reason| reason.contains("dominant reason `regressed`"))
+                        && action["command"] == "cargo xtask ripr-swarm readiness"
+                        && action["reason"].as_str().is_some_and(|reason| {
+                            reason.contains("dominant reason `regressed`")
+                                && reason.contains(
+                                    "analysis/repair-route-regression-review/add-output-observer",
+                                )
+                                && reason.contains("sample failed packet `packet-output-001`")
+                        })
                 }))
         );
         let markdown = ripr_swarm_readiness_markdown(&report);

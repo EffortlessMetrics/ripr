@@ -357,9 +357,11 @@ counts when they are present. Stored `summary`, `repair_route_quality[]`, and
 `top_missing_evidence_fields[]` rows are summary output; they must not override
 recomputed latest-attempt state if the two disagree.
 Repair-route quality rows should carry sample packet IDs and canonical gap IDs
-for failing latest attempts when available, and readiness should copy the first
-sample into `improve_repair_route_quality` so route-quality work starts from a
-concrete failed attempt.
+for failing latest attempts when available, and readiness should point
+`improve_repair_route_quality` at the derived route-quality backlog packet while
+preserving the first failed-attempt sample in the reason text. Route-quality
+work should start from a concrete failed attempt without re-queuing that failed
+repair packet as swarm-ready work.
 Attempt-ledger and readiness reports should also project
 `repair_route_quality_backlog[]` from the top failing repair routes. Each row is
 an analyzer/report improvement packet with a stable `packet_id`,

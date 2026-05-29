@@ -258,7 +258,9 @@
               "repair_kind_success_rate": 0.0,
               "repair_kind_missing_verify_result": 0,
               "repair_kind_failure_count": 1,
-              "repair_kind_dominant_failure_reason": "unchanged"
+              "repair_kind_dominant_failure_reason": "unchanged",
+              "sample_packet_ids": ["output-observer-009"],
+              "sample_canonical_gap_ids": ["gap:output-observer-009"]
             }
           ],
           "top_missing_evidence_fields": [],
