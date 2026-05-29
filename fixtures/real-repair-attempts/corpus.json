@@ -202,6 +202,40 @@
       ],
       "missing_receipt_reason": null,
       "reason": "A real merged limitation-route PR made local/computed boundary operands more trustworthy by preserving named non-actionability instead of routing unsafe repair work."
+    },
+    {
+      "id": "assertion_target_affinity_limitation_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#504",
+      "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",
+      "packet_id": "limitation:activation-owner-call-absent-assertion-target-affinity:assertion-target-affinity-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "evidence-record and benchmark fixture assertions that assertion-target affinity remains a named static limitation and does not satisfy activation",
+      "verify_command": "cargo test -p ripr evidence_record_splits_assertion_target_owner_call_absence_limitation",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask check-fixture-contracts",
+      "receipt_path": "fixtures/evidence-quality-benchmark/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split assertion-target affinity owner-call absence into a route-specific static limitation while preserving non-actionable status.",
+      "evidence_movement": "The assertion-target affinity route now has fixture-backed proof that RIPR names the analyzer limitation instead of treating token affinity as activation evidence.",
+      "operator_note": "This is a successful negative-capability repair-loop attempt: it improved analyzer backlog precision without emitting a public repair packet.",
+      "must_not_change": [
+        "public projection eligibility for static limitations",
+        "activation satisfied by token affinity",
+        "direct owner-call or helper-call requirements",
+        "public badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_specific_call_target_affinity_stays_named_limitation",
+        "crates/ripr/src/output/evidence_record.rs:evidence_record_splits_assertion_target_owner_call_absence_limitation",
+        "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md",
+        "metrics/capabilities.toml:lane1_canonical_actionability_contract"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged limitation-route PR made assertion-target affinity more trustworthy by routing it to a precise analyzer backlog item while keeping it non-actionable."
     }
   ]
 }
