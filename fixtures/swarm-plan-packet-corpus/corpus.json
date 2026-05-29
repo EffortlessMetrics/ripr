@@ -695,6 +695,68 @@
       ]
     },
     {
+      "id": "receipt_path_without_receipt_command_packet",
+      "description": "Packet with only a receipt path hint is blocked until it carries an executable receipt_command.",
+      "packet": {
+        "canonical_gap_id": "gap:receipt-path-only",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "actionability": "add_exact_error_variant",
+        "source_file": "src/auth.rs",
+        "repair_kind": "add_exact_error_variant",
+        "target_test_type": "error_variant",
+        "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))",
+        "repair_route": {
+          "repair_kind": "add_exact_error_variant",
+          "target_test_type": "error_variant",
+          "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))"
+        },
+        "verify_command": "cargo test -p ripr revoked_token",
+        "receipt_command_or_path": "target/ripr/receipts/receipt-path-only.json",
+        "related_test_or_observer": {
+          "file": "tests/auth.rs",
+          "name": "revoked_token"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production auth code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/auth.rs",
+            "line": 55,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "receipt_command"
+        ],
+        "blocked_reasons": [
+          "missing_receipt_command"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 1,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not treat a receipt path as an executable receipt_command.",
+        "Do not route path-only receipt context as swarm-ready."
+      ]
+    },
+    {
       "id": "must_not_change_boundary_packet",
       "description": "Boundary packet without must-not-change boundaries is blocked even when repair, verify, and receipt exist.",
       "packet": {

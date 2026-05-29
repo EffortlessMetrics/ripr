@@ -209,6 +209,11 @@ A packet is swarm-ready only when typed fields provide a closed repair loop.
 Missing fields do not make the packet disappear. They move it to a blocked or
 report-only state with a named reason.
 
+Receipt paths or receipt hints are not substitutes for `receipt_command`.
+Path-only receipt context must remain `missing_receipt_command` and cannot be
+ranked swarm-ready because delegated work needs the executable command that
+writes or checks the receipt.
+
 ## State Model
 
 Each packet has one swarm state.

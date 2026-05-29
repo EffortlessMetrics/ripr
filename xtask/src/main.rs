@@ -9250,8 +9250,7 @@ fn validate_swarm_plan_packet_fixture_case(
             "swarm plan packet case {case_id} must keep raw_findings as supporting evidence"
         ));
     }
-    if let Some(receipt_command) = audit_non_empty_string(packet, &["receipt_command_or_path"])
-        .or_else(|| audit_non_empty_string(packet, &["receipt_command"]))
+    if let Some(receipt_command) = audit_non_empty_string(packet, &["receipt_command"])
         && !ripr_swarm_plan_fixture_receipt_command_supported(&receipt_command)
     {
         violations.push(format!(
@@ -22432,8 +22431,10 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     let confidence_basis = audit_non_empty_string(packet, &["confidence_basis"])
         .unwrap_or_else(|| "unknown".to_string());
     let verify_command = audit_non_empty_string(packet, &["verify_command"]);
-    let receipt_command_or_path = audit_non_empty_string(packet, &["receipt_command_or_path"])
-        .or_else(|| audit_non_empty_string(packet, &["receipt_command"]));
+    let receipt_command = audit_non_empty_string(packet, &["receipt_command"]);
+    let receipt_command_or_path = receipt_command
+        .clone()
+        .or_else(|| audit_non_empty_string(packet, &["receipt_command_or_path"]));
     let raw_findings_count =
         audit_structured_raw_evidence_refs_count(audit_array(packet, &["raw_evidence_refs"])).max(
             audit_structured_raw_evidence_refs_count(audit_array(packet, &["raw_findings"])),
@@ -22469,7 +22470,7 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     let has_verify_command = verify_command
         .as_deref()
         .is_some_and(|command| !ripr_swarm_plan_field_missing(command));
-    let has_receipt_command = receipt_command_or_path
+    let has_receipt_command = receipt_command
         .as_deref()
         .is_some_and(|command| !ripr_swarm_plan_field_missing(command));
     let gap_state = audit_non_empty_string(packet, &["gap_state"]).unwrap_or_default();
@@ -22846,11 +22847,10 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
         .packets
         .iter()
         .filter(|packet| {
-            packet.receipt_command_or_path.is_none()
-                || packet
-                    .receipt_command_or_path
-                    .as_deref()
-                    .is_some_and(ripr_swarm_plan_field_missing)
+            packet
+                .missing_context
+                .iter()
+                .any(|field| field == "receipt_command")
         })
         .count();
     serde_json::json!({
@@ -78336,7 +78336,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     },
                     "repair_route_source": "canonical_item.repair_route",
                     "verify_command": "cargo xtask evidence-quality-scorecard",
-                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "receipt_command": "cargo xtask receipts check",
                     "related_test_or_observer": {"file": "tests/pricing.rs", "name": "threshold"},
                     "confidence_basis": "fixture_backed",
                     "must_not_change": ["Do not edit production code by default."],
@@ -78361,7 +78361,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     },
                     "repair_route_source": "canonical_item.repair_route",
                     "verify_command": "cargo xtask evidence-quality-scorecard",
-                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "receipt_command": "cargo xtask receipts check",
                     "related_test_or_observer": {"file": "tests/pricing.rs", "name": "threshold"},
                     "confidence_basis": "static_only",
                     "must_not_change": ["Do not edit production code by default."],
@@ -78406,7 +78406,7 @@ covered_by = ["cargo xtask check-file-policy"]
                         "assertion_shape": "assert event emitted"
                     },
                     "repair_route_source": "canonical_item.repair_route",
-                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "receipt_command": "cargo xtask receipts check",
                     "related_test_or_observer": {"file": "tests/events.rs", "name": "event"},
                     "confidence_basis": "static_only",
                     "must_not_change": ["Do not edit production code by default."],
@@ -78429,7 +78429,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     },
                     "repair_route_source": "canonical_item.repair_route",
                     "verify_command": "cargo xtask evidence-quality-scorecard",
-                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "receipt_command": "cargo xtask receipts check",
                     "related_test_or_observer": {"file": "tests/config.rs", "name": "config"},
                     "confidence_basis": "static_only",
                     "must_not_change": ["Do not edit production code by default."],
@@ -78684,7 +78684,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     },
                     "repair_route_source": "canonical_item.repair_route",
                     "verify_command": "cargo test parser_missing",
-                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "receipt_command": "cargo xtask receipts check",
                     "related_test_or_observer": {
                         "file": "tests/parser.rs",
                         "name": "missing"
@@ -81073,6 +81073,64 @@ covered_by = ["cargo xtask check-file-policy"]
                 .missing_context
                 .iter()
                 .any(|field| field == "raw_evidence_refs")
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_receipt_path_without_receipt_command() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:receipt-path-only",
+                    "evidence_class": "error_path",
+                    "gap_state": "actionable",
+                    "source_file": "src/auth.rs",
+                    "repair_kind": "add_exact_error_variant",
+                    "target_test_type": "error_variant",
+                    "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))",
+                    "repair_route": {
+                        "repair_kind": "add_exact_error_variant",
+                        "target_test_type": "error_variant",
+                        "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))"
+                    },
+                    "verify_command": "cargo test -p ripr revoked_token",
+                    "receipt_command_or_path": "target/ripr/receipts/receipt-path-only.json",
+                    "related_test_or_observer": {
+                        "file": "tests/auth.rs",
+                        "name": "revoked_token"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production auth code by default."],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/auth.rs", "line": 55}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        let ready = ripr_swarm_plan_ready_packets(&report);
+
+        assert!(ready.is_empty());
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "receipt_command")
+        );
+        assert!(
+            blocked[0]
+                .blocked_reasons
+                .iter()
+                .any(|reason| reason == "missing_receipt_command")
         );
     }
 

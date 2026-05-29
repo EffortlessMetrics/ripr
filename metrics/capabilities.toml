@@ -396,6 +396,7 @@ evidence = [
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories maps local/computed activation_boundary_input_unresolved to analysis/local-computed-boundary-operand-resolution",
   "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt validates emitted public packets carry target_test_shape, receipt_command, confidence, raw_evidence_refs, must_not_change boundaries, and allowed_edit_surface before projection eligibility",
   "xtask::tests::ripr_swarm_plan_blocks_missing_raw_evidence_refs keeps swarm-ready ranking blocked when a packet lacks raw evidence references",
+  "xtask::tests::ripr_swarm_plan_blocks_receipt_path_without_receipt_command keeps path-only receipt context blocked as missing_receipt_command instead of swarm-ready",
   "xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context validates static_limitation_backlog forwarding through swarm-plan JSON/Markdown",
   "crates/ripr/src/lsp/gap_artifacts.rs actionable-gaps validation rejects public packets missing target_test_shape, receipt_command, related_test_or_observer, must_not_change, allowed_edit_surface, or raw_evidence_refs",
   "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest records durable attempt history and latest-attempt projection over current outcome joins plus prior ledger entries",

@@ -147,6 +147,10 @@ The packet form uses the same structured `raw_evidence_refs[]` rule as the
 canonical item. A packet with only placeholder refs is not swarm-ready even when
 it carries `repair_kind`, `verify_command`, and `receipt_command`.
 
+`receipt_command` must be an executable command, not only a receipt path or
+receipt hint. A path-only value stays non-ready with
+`missing_receipt_command`.
+
 `must_not_change[]` is required because packets are intended to bound repair
 attempts. `allowed_edit_surface[]` is required because delegated packet attempts
 need an explicit workspace-relative edit cage. A packet without at least one
