@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Python repair classes v1 emits family-specific missing discriminators and suppresses repair guidance for non-actionable cases.
+
+Command:
+`cargo xtask goldens bless python_mock_assert_called --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

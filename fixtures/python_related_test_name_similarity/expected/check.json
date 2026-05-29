@@ -37,9 +37,9 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount - 10`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches returned value: return amount - 10 (line 2)", "related test tests/test_checkout.py:1 test_apply_discount_boundary_case uses unknown unknown oracle"],
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount - 10 (line 2)", "related test tests/test_checkout.py:1 test_apply_discount_boundary_case uses unknown unknown oracle"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount - 10","line":2}
       ],
@@ -68,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

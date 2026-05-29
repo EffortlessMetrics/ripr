@@ -1472,7 +1472,8 @@ evidence = [
   "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, test-name similarity, fixture-name proximity, uncertain heuristic links, and unrelated mention negatives",
   "non-static-limit Python preview findings carry stable canonical_gap_id values across JSON and human goldens while static-limit fixtures remain limitation-only",
   "non-static-limit Python preview findings carry family-specific RIPR infection and propagation evidence while static-limit fixtures fail closed as static_unknown with typed stop reasons",
-  "predicate-boundary Python preview fixtures carry activation-level missing discriminator facts such as amount == threshold",
+  "first repair-class Python preview fixtures carry activation-level missing discriminator facts for predicate boundary, return value, exception path, field/object value, and output/log/call effects",
+  "strong-oracle, no-path, heuristic-only, and static-limit Python fixtures suppress repair guidance rather than becoming repair-ready work",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence",
@@ -1493,6 +1494,7 @@ fixtures = [
   "fixtures/python_return_value_shape",
   "fixtures/python_error_path_shape",
   "fixtures/python_field_assignment_shape",
+  "fixtures/python_dict_field_repair_gap",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
   "fixtures/python_owner_file_match",
@@ -1508,8 +1510,8 @@ fixtures = [
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit"
 ]
-next = "analysis/python-repair-classes-v1"
-metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_missing_discriminator_boundary, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_*"
+next = "output/python-ranking-noise-control"
+metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_*"
 
 [[capability]]
 id = "typescript_preview_static_facts"

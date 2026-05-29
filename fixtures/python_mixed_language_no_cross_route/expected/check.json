@@ -37,9 +37,9 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount + 7`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
-        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach no: 0 related Python test(s) found for owner `calculate_total`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches returned value: return amount + 7 (line 2)"],
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `calculate_total`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount + 7 (line 2)"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount + 7","line":2}
       ],

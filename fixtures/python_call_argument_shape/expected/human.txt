@@ -28,12 +28,13 @@ Evidence
   - infection yes: Changed Python call or output effect can alter observable side effects: `notifier("receipt.sent", order_id)`
   - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
   - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes "receipt.sent"`.
   - local flow reaches call effect: notifier("receipt.sent", order_id) (line 2)
   - related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: notifier.assert_called_once_with("receipt.sent", "ord-123")
 
 Weakness
-  - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
+  - missing discriminator call includes "receipt.sent": changed Python output/log/call effect at line 2 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.

@@ -28,12 +28,13 @@ Evidence
   - infection yes: Changed Python call or output effect can alter observable side effects: `logger.warning("coupon expired")`
   - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
   - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `log contains "coupon expired"`.
   - local flow reaches call effect: logger.warning("coupon expired") (line 6)
   - related test tests/test_notifications.py:4 test_warn_coupon_logs_expired_message uses weak relational check oracle: assert "coupon expired" in caplog.text
 
 Weakness
-  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the changed output/log/call effect.
+  - missing discriminator log contains "coupon expired": changed Python output/log/call effect at line 6 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `log contains "coupon expired"`.

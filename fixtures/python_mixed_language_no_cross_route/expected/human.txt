@@ -28,7 +28,7 @@ Evidence
   - infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`
   - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)
-  - discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
   - local flow reaches returned value: return amount + 7 (line 2)
 
 Weakness

@@ -37,23 +37,33 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python call or output effect can alter observable side effects: `notifier(\"receipt.sent\", order_id)`"},
         "propagate": {"state":"weak","confidence":"low","summary":"Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_receipt`", "infection yes: Changed Python call or output effect can alter observable side effects: `notifier(\"receipt.sent\", order_id)`", "propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches call effect: notifier(\"receipt.sent\", order_id) (line 2)", "related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: notifier.assert_called_once_with(\"receipt.sent\", \"ord-123\")"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_receipt`", "infection yes: Changed Python call or output effect can alter observable side effects: `notifier(\"receipt.sent\", order_id)`", "propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`.", "local flow reaches call effect: notifier(\"receipt.sent\", order_id) (line 2)", "related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: notifier.assert_called_once_with(\"receipt.sent\", \"ord-123\")", "missing discriminator call includes \"receipt.sent\": changed Python output/log/call effect at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"call_effect","text":"notifier(\"receipt.sent\", order_id)","line":2}
       ],
-      "evidence": ["owner: send_receipt", "owner_kind: function", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_verify_command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)", "test_oracle_shape: mock_expectation (test_send_receipt_notifies_callback)"],
-      "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: send_receipt", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_verify_command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)", "test_oracle_shape: mock_expectation (test_send_receipt_notifies_callback)"],
+      "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "call includes \"receipt.sent\"",
+            "reason": "changed Python output/log/call effect at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"call_effect","text":"notifier(\"receipt.sent\", order_id)","line":2}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "call includes \"receipt.sent\"",
+          "reason": "changed Python output/log/call effect at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"call_effect","text":"notifier(\"receipt.sent\", order_id)","line":2}
+        }
       ],
       "related_tests": [
         {
@@ -68,8 +78,8 @@
       "stop_reasons": [],
       "oracle_kind": "mock_expectation",
       "oracle_strength": "medium",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "suggested_next_action": "Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

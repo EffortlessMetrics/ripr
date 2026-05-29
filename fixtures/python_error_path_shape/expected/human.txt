@@ -28,12 +28,13 @@ Evidence
   - infection yes: Changed Python error path can alter raised exception/control behavior: `raise ValueError("positive required")`
   - propagation yes: Changed Python error path propagates through the exception/control boundary.
   - observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `raises ValueError matching "positive required"`.
   - local flow reaches error variant: raise ValueError("positive required") (line 3)
   - related test tests/test_validation.py:6 test_rejects_zero_value uses weak broad error oracle: pytest.raises(ValueError)
 
 Weakness
-  - Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message.
+  - missing discriminator raises ValueError matching "positive required": changed Python exception at line 3 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add or strengthen an exception assertion for missing discriminator `raises ValueError matching "positive required"`.

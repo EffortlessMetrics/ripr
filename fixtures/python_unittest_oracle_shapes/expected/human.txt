@@ -28,12 +28,13 @@ Evidence
   - infection yes: Changed Python return expression can alter the owner return value: `return "coupon expired"`
   - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == "coupon expired"`.
   - local flow reaches returned value: return "coupon expired" (line 3)
   - related test tests/test_notifications.py:7 test_warn_coupon_output_message uses weak relational check oracle: self.assertIn("coupon expired", result.output)
 
 Weakness
-  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
+  - missing discriminator return value == "coupon expired": changed Python returned-value at line 3 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == "coupon expired"`.

@@ -37,23 +37,33 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount >= 100`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == amount >= 100`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches returned value: return amount >= 100 (line 2)", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == amount >= 100`.", "local flow reaches returned value: return amount >= 100 (line 2)", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)", "missing discriminator return value == amount >= 100: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount >= 100","line":2}
       ],
-      "evidence": ["owner: is_priority", "owner_kind: function", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
-      "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: is_priority", "owner_kind: function", "missing_discriminator: return value == amount >= 100", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
+      "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == amount >= 100",
+            "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == amount >= 100",
+          "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
+        }
       ],
       "related_tests": [
         {
@@ -68,8 +78,8 @@
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == amount >= 100`.",
+      "suggested_next_action": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == amount >= 100`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

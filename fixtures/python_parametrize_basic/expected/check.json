@@ -37,21 +37,21 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= 100:`"},
         "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `amount == 100`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `tax_band`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_tax.py:7 test_tax_band uses unknown unknown oracle: pytest.mark.parametrize", "missing discriminator amount == 100: changed Python predicate at line 2 lacks an extracted equality-boundary discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `tax_band`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == 100`.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_tax.py:7 test_tax_band uses unknown unknown oracle: pytest.mark.parametrize", "missing discriminator amount == 100: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
       "evidence": ["owner: tax_band", "owner_kind: function", "missing_discriminator: amount == 100", "test_framework: pytest (test_tax_band)", "test_fixtures: amount (test_tax_band)", "test_parametrized: pytest (test_tax_band)", "test_verify_command: pytest tests/test_tax.py::test_tax_band (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)", "test_oracle_shape: reach_only (test_tax_band)"],
-      "missing": ["Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "missing": ["Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
           {
             "value": "amount == 100",
-            "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"unknown","text":"if amount >= 100:","line":2}
           }
         ]
@@ -61,7 +61,7 @@
       "missing_discriminators": [
         {
           "value": "amount == 100",
-          "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"unknown","text":"if amount >= 100:","line":2}
         }
       ],
@@ -78,8 +78,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.",
+      "suggested_next_action": "Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

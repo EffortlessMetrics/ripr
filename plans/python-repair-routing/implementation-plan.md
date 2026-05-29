@@ -558,7 +558,7 @@ revealability concepts.
 
 ### Work item: analysis/python-repair-classes-v1
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -574,6 +574,21 @@ Ship the first high-confidence Python repair classes.
   field, and output/log behavior each have positive and negative fixtures.
 - Every actionable gap includes a missing discriminator.
 - Dynamic or ambiguous cases remain non-actionable.
+
+#### Delivered
+
+- Direct weak Python preview findings now emit family-specific missing
+  discriminators for predicate boundaries, return values, exception paths,
+  field/object values, and output/log/call effects.
+- Weak direct findings get repair-class next-step wording that names the
+  missing discriminator without claiming a full repair card, verify command, or
+  receipt.
+- Strong-oracle, no-path, heuristic-only, and static-limit cases suppress
+  repair guidance instead of being treated as repair-ready work.
+- Existing Python fixture goldens pin positive and negative examples across the
+  first repair classes while preserving Python's preview/support-tier boundary.
+- `python_dict_field_repair_gap` pins returned-dict field discriminator
+  extraction without requiring runtime dataclass or serializer semantics.
 
 ### Work item: output/python-ranking-noise-control
 

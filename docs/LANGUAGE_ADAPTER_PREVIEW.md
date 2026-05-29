@@ -93,6 +93,10 @@ Read preview findings as syntax-first advisory evidence:
 - `language_status = "preview"` means the finding is opt-in and advisory.
 - `owner_kind` explains the syntactic owner shape when known.
 - `static_limit_kind` names a known static limitation instead of hiding it.
+- Python `missing_discriminators` are syntax-derived preview repair evidence
+  only. Direct weak findings may name boundary, return, exception, field, or
+  output/log/call-effect discriminators; heuristic, no-path, and static-limit
+  findings do not become safe repair work.
 
 The exposure class still uses RIPR's normal conservative vocabulary:
 `exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,

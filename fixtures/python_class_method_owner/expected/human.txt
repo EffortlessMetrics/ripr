@@ -28,12 +28,13 @@ Evidence
   - infection yes: Changed Python return expression can alter the owner return value: `return cls(config["discount"] + 1)`
   - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == cls(config["discount"] + 1)`.
   - local flow reaches returned value: return cls(config["discount"] + 1) (line 4)
   - related test tests/test_factory.py:4 test_price_rule_from_config uses weak relational check oracle: assert PriceRule.from_config({"discount": 4}) is not None
 
 Weakness
-  - Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
+  - missing discriminator return value == cls(config["discount"] + 1): changed Python returned-value at line 4 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == cls(config["discount"] + 1)`.

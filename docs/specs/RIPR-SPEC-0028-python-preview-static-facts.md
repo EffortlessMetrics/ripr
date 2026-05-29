@@ -204,11 +204,18 @@ oracle facts, but their infection and propagation stages remain `unknown`, the
 finding class is `static_unknown`, a typed stop reason is emitted, and no
 canonical repair-gap ID or repair recommendation is emitted.
 
-Simple predicate-boundary findings may also carry activation-level missing
-discriminator facts. For example, a changed `if amount >= threshold:` predicate
-can emit `amount == threshold` as a syntax-derived missing discriminator. These
-facts are evidence only until a later repair-card contract supplies the test
-shape, verify command, and receipt command.
+Direct weak findings may also carry activation-level missing discriminator
+facts for the first preview repair classes. For example, a changed
+`if amount >= threshold:` predicate can emit `amount == threshold`; a changed
+`return amount >= 100` expression can emit `return value == amount >= 100`; a
+changed `raise ValueError("positive required")` path can emit
+`raises ValueError matching "positive required"`; a changed
+`self.status = "paid"` assignment can emit `self.status == "paid"`; and a
+changed `logger.warning("coupon expired")` call can emit
+`log contains "coupon expired"`. These facts are evidence only until a later
+repair-card contract supplies the test shape, verify command, receipt command,
+and edit boundaries. Heuristic-only links, no related-test paths, and static
+limits must not emit repair guidance.
 
 ## Required Evidence
 
@@ -237,8 +244,11 @@ can show:
 - fixtures proving static-limit Python findings fail closed as `static_unknown`
   with typed stop reasons and no repair recommendation or canonical repair-gap
   ID
-- a fixture proving a simple predicate-boundary finding carries an
-  activation-level missing discriminator such as `amount == threshold`
+- fixtures proving the first repair classes carry activation-level missing
+  discriminators for predicate boundaries, return values, exception paths,
+  field/object values, and output/log/call effects
+- fixtures proving strong-oracle, no-path, heuristic-only, and static-limit
+  cases suppress repair guidance rather than becoming repair-ready work
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases
@@ -353,6 +363,16 @@ adapter contributes:
 - `language_adapter_python_oracle_side_effect`
 - `language_adapter_python_oracle_smoke`
 - `language_adapter_python_oracle_broad_type`
+- `language_adapter_python_canonical_gap_identity`
+- `language_adapter_python_ripr_evidence_model`
+- `language_adapter_python_missing_discriminator_boundary`
+- `language_adapter_python_repair_class_predicate_boundary`
+- `language_adapter_python_repair_class_return_value`
+- `language_adapter_python_repair_class_exception_path`
+- `language_adapter_python_repair_class_field_value`
+- `language_adapter_python_repair_class_output_or_call_effect`
+- `language_adapter_python_repair_guidance_suppressed_non_actionable`
+- `language_adapter_python_static_limit_stop_reasons`
 - `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`
 - `language_adapter_python_static_limit_missing_import_graph`

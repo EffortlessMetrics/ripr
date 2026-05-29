@@ -37,21 +37,21 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if value <= 0:`"},
         "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `broad_error` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `value == 0`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize_quantity`", "infection yes: Changed Python predicate can alter branch selection: `if value <= 0:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches unknown sink: if value <= 0: (line 2)", "related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)", "missing discriminator value == 0: changed Python predicate at line 2 lacks an extracted equality-boundary discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize_quantity`", "infection yes: Changed Python predicate can alter branch selection: `if value <= 0:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `value == 0`.", "local flow reaches unknown sink: if value <= 0: (line 2)", "related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)", "missing discriminator value == 0: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"unknown","text":"if value <= 0:","line":2}
       ],
       "evidence": ["owner: normalize_quantity", "owner_kind: function", "missing_discriminator: value == 0", "test_framework: pytest (test_rejects_zero_quantity)", "test_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)", "test_oracle_shape: exception_assertion (test_rejects_zero_quantity)"],
-      "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
           {
             "value": "value == 0",
-            "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"unknown","text":"if value <= 0:","line":2}
           }
         ]
@@ -61,7 +61,7 @@
       "missing_discriminators": [
         {
           "value": "value == 0",
-          "reason": "changed Python predicate at line 2 lacks an extracted equality-boundary discriminator",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"unknown","text":"if value <= 0:","line":2}
         }
       ],
@@ -78,8 +78,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: add a focused boundary assertion for missing discriminator `value == 0`.",
+      "suggested_next_action": "Python preview: add a focused boundary assertion for missing discriminator `value == 0`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

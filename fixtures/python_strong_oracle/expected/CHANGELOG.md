@@ -63,7 +63,7 @@ Updated:
 ## Pending
 
 Reason:
-exposed strong Python oracles omit missing discriminator
+Python repair classes v1 emits family-specific missing discriminators and suppresses repair guidance for non-actionable cases.
 
 Command:
 `cargo xtask goldens bless python_strong_oracle --reason "..."`

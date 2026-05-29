@@ -28,13 +28,13 @@ Evidence
   - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
   - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
   - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == 100`.
   - local flow reaches unknown sink: if amount >= 100: (line 2)
   - related test tests/test_tax.py:7 test_tax_band uses unknown unknown oracle: pytest.mark.parametrize
 
 Weakness
-  - Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger.
-  - missing discriminator amount == 100: changed Python predicate at line 2 lacks an extracted equality-boundary discriminator
+  - Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary.
+  - missing discriminator amount == 100: changed Python equality-boundary at line 2 lacks a concrete repair discriminator
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.

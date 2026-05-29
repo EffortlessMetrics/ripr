@@ -2369,6 +2369,9 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
     {
         return (ProbeFamily::ErrorPath, DeltaKind::Control);
     }
+    if python_return_dict_field_discriminator(trimmed).is_some() {
+        return (ProbeFamily::FieldConstruction, DeltaKind::Value);
+    }
     if trimmed.starts_with("return ") || trimmed == "return" {
         return (ProbeFamily::ReturnValue, DeltaKind::Value);
     }
@@ -2652,21 +2655,44 @@ fn python_missing_discriminators(
     line_text: &str,
     flow_sink: Option<&FlowSinkFact>,
 ) -> Vec<MissingDiscriminatorFact> {
-    if !matches!(probe_family, ProbeFamily::Predicate) {
-        return Vec::new();
-    }
-
-    let Some(value) = python_boundary_discriminator(line_text) else {
+    let Some(value) = python_missing_discriminator_value(probe_family, line_text) else {
         return Vec::new();
     };
 
     vec![MissingDiscriminatorFact {
         value,
-        reason: format!(
-            "changed Python predicate at line {line} lacks an extracted equality-boundary discriminator"
-        ),
+        reason: python_missing_discriminator_reason(probe_family, line),
         flow_sink: flow_sink.cloned(),
     }]
+}
+
+fn python_missing_discriminator_value(
+    probe_family: &ProbeFamily,
+    line_text: &str,
+) -> Option<String> {
+    match probe_family {
+        ProbeFamily::Predicate => python_boundary_discriminator(line_text),
+        ProbeFamily::ReturnValue => python_return_value_discriminator(line_text),
+        ProbeFamily::ErrorPath => python_exception_discriminator(line_text),
+        ProbeFamily::FieldConstruction => python_field_value_discriminator(line_text),
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            python_output_or_call_discriminator(line_text)
+        }
+        ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => None,
+    }
+}
+
+fn python_missing_discriminator_reason(probe_family: &ProbeFamily, line: usize) -> String {
+    let shape = match probe_family {
+        ProbeFamily::Predicate => "equality-boundary",
+        ProbeFamily::ReturnValue => "returned-value",
+        ProbeFamily::ErrorPath => "exception",
+        ProbeFamily::FieldConstruction => "field/object value",
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => "output/log/call effect",
+        ProbeFamily::MatchArm => "match-arm",
+        ProbeFamily::StaticUnknown => "static",
+    };
+    format!("changed Python {shape} at line {line} lacks a concrete repair discriminator")
 }
 
 fn python_boundary_discriminator(line_text: &str) -> Option<String> {
@@ -2680,6 +2706,126 @@ fn python_boundary_discriminator(line_text: &str) -> Option<String> {
             {
                 return Some(format!("{left} == {right}"));
             }
+        }
+    }
+    None
+}
+
+fn python_return_value_discriminator(line_text: &str) -> Option<String> {
+    let expression = line_text.trim().strip_prefix("return ")?.trim();
+    if expression.is_empty() {
+        None
+    } else {
+        Some(format!("return value == {expression}"))
+    }
+}
+
+fn python_exception_discriminator(line_text: &str) -> Option<String> {
+    let raised = line_text.trim().strip_prefix("raise ")?.trim();
+    if raised.is_empty() {
+        return None;
+    }
+    let exception_type = raised
+        .split_once('(')
+        .map(|(ty, _)| ty.trim())
+        .unwrap_or(raised)
+        .trim();
+    if exception_type.is_empty() {
+        return None;
+    }
+    if let Some(message) = first_python_string_literal(raised) {
+        Some(format!("raises {exception_type} matching {message}"))
+    } else {
+        Some(format!("raises {exception_type}"))
+    }
+}
+
+fn python_field_value_discriminator(line_text: &str) -> Option<String> {
+    let text = line_text.trim();
+    if let Some(discriminator) = python_return_dict_field_discriminator(text) {
+        return Some(discriminator);
+    }
+    let (lhs, rhs) = split_python_assignment(text)?;
+    if lhs.is_empty() || rhs.is_empty() {
+        return None;
+    }
+    Some(format!("{lhs} == {rhs}"))
+}
+
+fn python_return_dict_field_discriminator(line_text: &str) -> Option<String> {
+    let expression = line_text.trim().strip_prefix("return ")?.trim();
+    let body = expression
+        .strip_prefix('{')?
+        .trim_start()
+        .trim_end_matches('}')
+        .trim_end();
+    let (raw_key, rest) = body.split_once(':')?;
+    let key = raw_key.trim().trim_matches('"').trim_matches('\'');
+    let value = rest
+        .split(',')
+        .next()
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('}')
+        .trim();
+    if key.is_empty() || value.is_empty() {
+        None
+    } else {
+        Some(format!("{key} == {value}"))
+    }
+}
+
+fn python_output_or_call_discriminator(line_text: &str) -> Option<String> {
+    let text = line_text.trim();
+    let literal = first_python_string_literal(text)?;
+    if text.starts_with("print(") {
+        Some(format!("output contains {literal}"))
+    } else if text.contains("logger.") || text.contains("logging.") {
+        Some(format!("log contains {literal}"))
+    } else {
+        Some(format!("call includes {literal}"))
+    }
+}
+
+fn split_python_assignment(text: &str) -> Option<(&str, &str)> {
+    if text.contains("==") || text.contains("!=") || text.contains(">=") || text.contains("<=") {
+        return None;
+    }
+    let (lhs, rhs) = text.split_once('=')?;
+    Some((lhs.trim(), rhs.trim()))
+}
+
+fn first_python_string_literal(text: &str) -> Option<String> {
+    let mut start = None;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            start = Some((idx, ch));
+            break;
+        }
+    }
+    let (start_idx, quote) = start?;
+    escaped = false;
+    for (relative_idx, ch) in text[start_idx + quote.len_utf8()..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            let end_idx = start_idx + quote.len_utf8() + relative_idx + quote.len_utf8();
+            return text.get(start_idx..end_idx).map(str::to_string);
         }
     }
     None
@@ -2746,6 +2892,60 @@ fn stop_reason_for_python_static_limit(limit: &PythonStaticLimit) -> StopReason 
     match limit.kind {
         StaticLimitKind::DynamicDispatch => StopReason::DynamicDispatchUnresolved,
         _ => StopReason::StaticProbeUnknown,
+    }
+}
+
+fn python_weak_missing_summary(
+    owner: &PythonOwner,
+    probe_family: &ProbeFamily,
+    strongest_kind: &OracleKind,
+) -> String {
+    let shape = match probe_family {
+        ProbeFamily::Predicate => "the changed boundary",
+        ProbeFamily::ReturnValue => "the returned value",
+        ProbeFamily::ErrorPath => "the exact exception type/message",
+        ProbeFamily::FieldConstruction => "the changed field or object value",
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => "the changed output/log/call effect",
+        ProbeFamily::MatchArm => "the changed match arm",
+        ProbeFamily::StaticUnknown => "the changed behavior",
+    };
+    format!(
+        "Related Python test reaches `{}` but the strongest extracted oracle is `{}`; add or strengthen a focused assertion for {shape}.",
+        owner.name,
+        strongest_kind.as_str()
+    )
+}
+
+fn python_recommended_next_step(
+    class: &ExposureClass,
+    probe_family: &ProbeFamily,
+    has_oracle_eligible_relation: bool,
+    missing_discriminators: &[MissingDiscriminatorFact],
+) -> Option<String> {
+    match class {
+        ExposureClass::StaticUnknown | ExposureClass::NoStaticPath => None,
+        ExposureClass::Exposed => {
+            Some("Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.".to_string())
+        }
+        _ if !has_oracle_eligible_relation => None,
+        _ => {
+            let missing = &missing_discriminators.first()?.value;
+            let action = match probe_family {
+                ProbeFamily::Predicate => "add a focused boundary assertion",
+                ProbeFamily::ReturnValue => "add or strengthen an exact return-value assertion",
+                ProbeFamily::ErrorPath => "add or strengthen an exception assertion",
+                ProbeFamily::FieldConstruction => "add or strengthen a field/object assertion",
+                ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+                    "add or strengthen an output/log/call-effect assertion"
+                }
+                ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => {
+                    "add or strengthen a focused assertion"
+                }
+            };
+            Some(format!(
+                "Python preview: {action} for missing discriminator `{missing}`."
+            ))
+        }
     }
 }
 
@@ -2843,11 +3043,7 @@ fn classify_change(
             StageState::Yes,
             StageState::Weak,
             StageState::Weak,
-            vec![format!(
-                "Related Python test reaches `{}` but the strongest extracted oracle is `{}`; add or verify an exact-value assertion to make the preview finding stronger.",
-                owner.name,
-                strongest_kind.as_str()
-            )],
+            vec![python_weak_missing_summary(owner, &family, &strongest_kind)],
         )
     };
     if let Some(limit) = &static_limit {
@@ -2908,6 +3104,18 @@ fn classify_change(
         },
     );
     let propagate = python_propagation_evidence(&family, line_text, static_limit.as_ref());
+    let flow_sink = static_limit
+        .is_none()
+        .then(|| python_flow_sink_for(&family, owner, line, line_text))
+        .flatten();
+    let missing_discriminators = if static_limit.is_none()
+        && matches!(class, ExposureClass::WeaklyExposed)
+        && has_oracle_eligible_relation
+    {
+        python_missing_discriminators(&family, line, line_text, flow_sink.as_ref())
+    } else {
+        Vec::new()
+    };
     let observe = StageEvidence::new(
         observe_state,
         Confidence::Low,
@@ -2923,18 +3131,27 @@ fn classify_change(
             strongest_kind.as_str()
         )
     } else {
-        "Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.".to_string()
+        missing_discriminators
+            .first()
+            .map(|missing| {
+                format!(
+                    "Python preview adapter found no strong discriminator; missing proof: `{}`.",
+                    missing.value
+                )
+            })
+            .unwrap_or_else(|| {
+                "Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.".to_string()
+            })
     };
     let discriminate =
         StageEvidence::new(discriminate_state, Confidence::Low, discriminate_summary);
 
-    let recommended = match class {
-        ExposureClass::StaticUnknown | ExposureClass::NoStaticPath => None,
-        ExposureClass::Exposed => {
-            Some("Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.".to_string())
-        }
-        _ => Some("Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.".to_string()),
-    };
+    let recommended = python_recommended_next_step(
+        &class,
+        &family,
+        has_oracle_eligible_relation,
+        &missing_discriminators,
+    );
     let confidence_value = if matches!(class, ExposureClass::Exposed) {
         0.6
     } else if matches!(class, ExposureClass::StaticUnknown) {
@@ -2953,15 +3170,6 @@ fn classify_change(
     if let Some(limit) = &static_limit {
         evidence.push(limit.evidence.clone());
     }
-    let flow_sink = static_limit
-        .is_none()
-        .then(|| python_flow_sink_for(&family, owner, line, line_text))
-        .flatten();
-    let missing_discriminators = if static_limit.is_none() && class != ExposureClass::Exposed {
-        python_missing_discriminators(&family, line, line_text, flow_sink.as_ref())
-    } else {
-        Vec::new()
-    };
     for discriminator in &missing_discriminators {
         evidence.push(format!("missing_discriminator: {}", discriminator.value));
     }
@@ -3201,6 +3409,15 @@ mod tests {
             added_lines: Vec::new(),
             removed_lines: Vec::new(),
         }
+    }
+
+    fn missing_discriminator_values(finding: &Finding) -> Vec<&str> {
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .map(|missing| missing.value.as_str())
+            .collect()
     }
 
     #[test]
@@ -3664,6 +3881,186 @@ def test_notifies_callback():
         );
         assert!(finding.canonical_gap.is_some());
         assert!(finding.recommended_next_step.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_first_python_repair_class_discriminators() -> Result<(), String> {
+        let return_finding = classify_change(
+            Path::new("src/priority.py"),
+            2,
+            "    return amount >= 100",
+            &extract_owners(
+                Path::new("src/priority.py"),
+                "def is_priority(amount):\n    return amount >= 100\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_priority.py"),
+                "from src.priority import is_priority\n\n\
+                 def test_priority_amount():\n    assert is_priority(150)\n",
+            ),
+        )
+        .ok_or_else(|| "return-value change should classify".to_string())?;
+        assert_eq!(return_finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            missing_discriminator_values(&return_finding),
+            vec!["return value == amount >= 100"]
+        );
+        assert!(
+            return_finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("return-value assertion"))
+        );
+
+        let exception_finding = classify_change(
+            Path::new("src/validation.py"),
+            3,
+            "        raise ValueError(\"positive required\")",
+            &extract_owners(
+                Path::new("src/validation.py"),
+                "def require_positive(value):\n    if value <= 0:\n        raise ValueError(\"positive required\")\n    return value\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_validation.py"),
+                "import pytest\nfrom src.validation import require_positive\n\n\
+                 def test_rejects_zero_value():\n    with pytest.raises(ValueError):\n        require_positive(0)\n",
+            ),
+        )
+        .ok_or_else(|| "exception-path change should classify".to_string())?;
+        assert_eq!(exception_finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            missing_discriminator_values(&exception_finding),
+            vec!["raises ValueError matching \"positive required\""]
+        );
+        assert!(
+            exception_finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("exception assertion"))
+        );
+
+        let field_finding = classify_change(
+            Path::new("src/invoice.py"),
+            3,
+            "        self.status = \"paid\"",
+            &extract_owners(
+                Path::new("src/invoice.py"),
+                "class Invoice:\n    def mark_paid(self):\n        self.status = \"paid\"\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_invoice.py"),
+                "from src.invoice import Invoice\n\n\
+                 def test_mark_paid_smoke():\n    invoice = Invoice()\n    invoice.mark_paid()\n    assert invoice\n",
+            ),
+        )
+        .ok_or_else(|| "field-value change should classify".to_string())?;
+        assert_eq!(field_finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            missing_discriminator_values(&field_finding),
+            vec!["self.status == \"paid\""]
+        );
+        assert!(
+            field_finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("field/object assertion"))
+        );
+
+        let output_finding = classify_change(
+            Path::new("src/notifications.py"),
+            5,
+            "    logger.warning(\"coupon expired\")",
+            &extract_owners(
+                Path::new("src/notifications.py"),
+                "import logging\n\nlogger = logging.getLogger(__name__)\n\ndef warn_coupon():\n    logger.warning(\"coupon expired\")\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_notifications.py"),
+                "from src.notifications import warn_coupon\n\n\
+                 def test_warn_coupon_smoke(caplog):\n    warn_coupon()\n    assert caplog.text\n",
+            ),
+        )
+        .ok_or_else(|| "output/log change should classify".to_string())?;
+        assert_eq!(output_finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            missing_discriminator_values(&output_finding),
+            vec!["log contains \"coupon expired\""]
+        );
+        assert!(
+            output_finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("output/log/call-effect assertion"))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_suppresses_repair_guidance_for_non_actionable_python_cases()
+    -> Result<(), String> {
+        let exposed = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    if amount >= threshold:",
+            &extract_owners(
+                Path::new("src/pricing.py"),
+                "def apply_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_pricing.py"),
+                "from src.pricing import apply_discount\n\n\
+                 def test_apply_discount_boundary():\n    assert apply_discount(100, 100) == 90\n",
+            ),
+        )
+        .ok_or_else(|| "strong predicate change should classify".to_string())?;
+        assert_eq!(exposed.class, ExposureClass::Exposed);
+        assert!(exposed.activation.missing_discriminators.is_empty());
+        assert!(
+            exposed
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("observed under a strong oracle"))
+        );
+
+        let static_unknown = classify_change(
+            Path::new("src/service.py"),
+            2,
+            "    return getattr(client, name)()",
+            &extract_owners(
+                Path::new("src/service.py"),
+                "def call_named(client, name):\n    return getattr(client, name)()\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_service.py"),
+                "from src.service import call_named\n\n\
+                 def test_call_named_dispatches():\n    assert call_named(client, \"total\") == 10\n",
+            ),
+        )
+        .ok_or_else(|| "dynamic dispatch change should classify".to_string())?;
+        assert_eq!(static_unknown.class, ExposureClass::StaticUnknown);
+        assert!(static_unknown.activation.missing_discriminators.is_empty());
+        assert!(static_unknown.recommended_next_step.is_none());
+
+        let no_static_path = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &extract_owners(
+                Path::new("src/pricing.py"),
+                "def apply_discount(amount):\n    return amount - 10\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_other.py"),
+                "def test_other():\n    other_behavior()\n",
+            ),
+        )
+        .ok_or_else(|| "unrelated return change should classify".to_string())?;
+        assert_eq!(no_static_path.class, ExposureClass::NoStaticPath);
+        assert!(no_static_path.activation.missing_discriminators.is_empty());
+        assert!(no_static_path.recommended_next_step.is_none());
+
         Ok(())
     }
 

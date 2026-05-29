@@ -28,12 +28,9 @@ Evidence
   - infection yes: Changed Python return expression can alter the owner return value: `return amount + 2`
   - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
   - local flow reaches returned value: return amount + 2 (line 2)
   - related test tests/test_checkout.py:1 test_checkout_total uses unknown unknown oracle
 
 Weakness
   - Only heuristic Python test links were found for `calculate_fee`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
-
-Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.

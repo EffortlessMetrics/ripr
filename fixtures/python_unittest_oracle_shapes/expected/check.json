@@ -37,23 +37,33 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return \"coupon expired\"`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `relational_check` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == \"coupon expired\"`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `warn_coupon`", "infection yes: Changed Python return expression can alter the owner return value: `return \"coupon expired\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "local flow reaches returned value: return \"coupon expired\" (line 3)", "related test tests/test_notifications.py:7 test_warn_coupon_output_message uses weak relational check oracle: self.assertIn(\"coupon expired\", result.output)"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `warn_coupon`", "infection yes: Changed Python return expression can alter the owner return value: `return \"coupon expired\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == \"coupon expired\"`.", "local flow reaches returned value: return \"coupon expired\" (line 3)", "related test tests/test_notifications.py:7 test_warn_coupon_output_message uses weak relational check oracle: self.assertIn(\"coupon expired\", result.output)", "missing discriminator return value == \"coupon expired\": changed Python returned-value at line 3 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return \"coupon expired\"","line":3}
       ],
-      "evidence": ["owner: warn_coupon", "owner_kind: function", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
-      "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: return value == \"coupon expired\"", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
+      "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == \"coupon expired\"",
+            "reason": "changed Python returned-value at line 3 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return \"coupon expired\"","line":3}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == \"coupon expired\"",
+          "reason": "changed Python returned-value at line 3 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return \"coupon expired\"","line":3}
+        }
       ],
       "related_tests": [
         {
@@ -68,8 +78,8 @@
       "stop_reasons": [],
       "oracle_kind": "relational_check",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
+      "suggested_next_action": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"
