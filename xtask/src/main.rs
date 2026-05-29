@@ -21545,6 +21545,7 @@ struct RiprSwarmAttemptDryRun {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmReadinessReport {
     status: String,
+    readiness_state: String,
     runtime_status: Lane1RuntimeStatus,
     swarm_plan_path: String,
     swarm_plan_state: String,
@@ -24386,9 +24387,11 @@ fn ripr_swarm_readiness_from_values(
         "blocked"
     }
     .to_string();
+    let readiness_state = ripr_swarm_readiness_state(&status, &runtime_status).to_string();
 
     RiprSwarmReadinessReport {
         status,
+        readiness_state,
         runtime_status,
         swarm_plan_path: swarm_plan.path,
         swarm_plan_state: swarm_plan.state,
@@ -24408,6 +24411,28 @@ fn ripr_swarm_readiness_from_values(
         top_missing_evidence_fields,
         next_actions,
     }
+}
+
+fn ripr_swarm_readiness_state(status: &str, runtime_status: &Lane1RuntimeStatus) -> &'static str {
+    match runtime_status.state.as_str() {
+        "full" => "full",
+        "limited_stale_input" => "stale",
+        _ if ripr_swarm_readiness_runtime_input_is_blocked(runtime_status) => "blocked",
+        _ if runtime_status.state.starts_with("limited_") => "limited",
+        _ if status == "blocked" => "blocked",
+        _ => "limited",
+    }
+}
+
+fn ripr_swarm_readiness_runtime_input_is_blocked(runtime_status: &Lane1RuntimeStatus) -> bool {
+    matches!(
+        runtime_status.limitation_category.as_deref(),
+        Some(
+            "swarm_plan_input_unavailable"
+                | "actionable_gap_outcomes_input_unavailable"
+                | "swarm_attempt_ledger_input_unavailable"
+        )
+    )
 }
 
 fn ripr_swarm_readiness_runtime_status(
@@ -24643,6 +24668,7 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         "report": "swarm-readiness",
         "scope": "repo",
         "status": report.status,
+        "readiness_state": report.readiness_state,
         "run_status": report.runtime_status.state.clone(),
         "runtime_status": lane1_runtime_status_json(&report.runtime_status),
         "inputs": {
@@ -25870,6 +25896,10 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     let summary = ripr_swarm_readiness_summary_json(&report.summary);
     let mut out = String::new();
     out.push_str("# RIPR Swarm Readiness\n\n");
+    out.push_str(&format!(
+        "Readiness state: `{}`\n\n",
+        report.readiness_state
+    ));
     out.push_str(&format!(
         "Run status: `{}`\n\n",
         report.runtime_status.state
@@ -80229,6 +80259,47 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             crate::ripr_swarm_readiness_limited_runtime_command(&runtime_status_without_category),
             None
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_state_classifies_full_limited_stale_blocked() {
+        let mut runtime_status = crate::Lane1RuntimeStatus {
+            state: "full".to_string(),
+            phase: None,
+            duration_ms: None,
+            limit_ms: None,
+            input_kind: None,
+            input_path: None,
+            limitation_category: None,
+            repair_route: None,
+            downstream_consumable: true,
+        };
+        assert_eq!(
+            crate::ripr_swarm_readiness_state("advisory", &runtime_status),
+            "full"
+        );
+
+        runtime_status.state = "limited_timeout".to_string();
+        runtime_status.limitation_category = Some("lane1_repo_exposure_timeout".to_string());
+        runtime_status.downstream_consumable = false;
+        assert_eq!(
+            crate::ripr_swarm_readiness_state("blocked", &runtime_status),
+            "limited"
+        );
+
+        runtime_status.state = "limited_stale_input".to_string();
+        runtime_status.limitation_category = Some("limited_stale_input".to_string());
+        assert_eq!(
+            crate::ripr_swarm_readiness_state("blocked", &runtime_status),
+            "stale"
+        );
+
+        runtime_status.state = "limited_incomplete_input".to_string();
+        runtime_status.limitation_category = Some("swarm_plan_input_unavailable".to_string());
+        assert_eq!(
+            crate::ripr_swarm_readiness_state("blocked", &runtime_status),
+            "blocked"
         );
     }
 

@@ -3112,7 +3112,11 @@ non-consumable for downstream attempt/outcome claims until the missing artifact
 is regenerated.
 
 Swarm plan, attempt-ledger, and readiness reports include `run_status` and
-`runtime_status`. Readiness preserves limited swarm-plan, actionable-gap
+`runtime_status`. Readiness also includes `readiness_state`, a coarse
+user-facing class with one of `full`, `limited`, `stale`, or `blocked`.
+`readiness_state` is additive: consumers that need the exact runtime limitation
+should continue reading `run_status` and `runtime_status`. Readiness preserves
+limited swarm-plan, actionable-gap
 outcome, and attempt-ledger inputs, and reports missing or malformed required
 plan input as `limited_incomplete_input` instead of turning absent packets into a
 clean zero-ready state. Missing outcomes or attempt ledger inputs also report
@@ -3161,6 +3165,7 @@ limits.
   "report": "swarm-readiness",
   "scope": "repo",
   "status": "advisory",
+  "readiness_state": "full",
   "run_status": "full",
   "runtime_status": {
     "state": "full",

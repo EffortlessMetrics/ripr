@@ -48,9 +48,15 @@ The workflow reads these artifacts:
 | `target/ripr/reports/swarm-plan.md` | Human-readable top-N repair plan. |
 | `target/ripr/reports/actionable-gap-outcomes.json` | Receipt and evidence-movement join. |
 | `target/ripr/reports/actionable-gap-outcomes.md` | Human-readable attempt outcomes. |
+| `target/ripr/reports/swarm-attempt-ledger.json` | Durable attempt history and route-quality source. |
+| `target/ripr/reports/swarm-readiness.json` | Coarse `readiness_state` plus detailed runtime status and next action. |
 
 Do not use raw `raw_findings[]` as a work queue. They exist to explain and
 audit the canonical packet.
+
+Read `readiness_state` first: `full` can route canonical repair work,
+`limited` and `stale` require the named runtime repair route, and `blocked`
+means required swarm inputs are unavailable or malformed.
 
 ## 1. Pick One Packet
 

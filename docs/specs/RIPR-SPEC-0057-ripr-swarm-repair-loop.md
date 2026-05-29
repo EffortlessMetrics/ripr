@@ -638,6 +638,12 @@ become a `full` readiness report. The downstream report keeps the upstream
 repair route and input path so the operator can repair the limiting artifact
 instead of trusting incomplete attempt/outcome evidence.
 
+Readiness reports also expose a coarse `readiness_state` so thin user surfaces
+can answer whether the run is `full`, `limited`, `stale`, or `blocked` without
+collapsing the detailed `run_status` category. Missing or malformed required
+swarm inputs are `blocked`; `limited_stale_input` is `stale`; other
+`limited_*` runtime states remain `limited`; complete runtime state is `full`.
+
 Attempt history must not collapse repeated same-state attempts for the same
 canonical gap when distinct attempt-instance evidence is available. Generated
 `attempt_id` values include the outcome timestamp, receipt artifact path, or
