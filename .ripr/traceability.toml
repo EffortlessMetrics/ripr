@@ -597,7 +597,11 @@ tests = [
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_contains_config_state_artifacts_and_next_commands",
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_spells_out_first_screen_recommendation",
   "crates/ripr/src/output/pilot/tests.rs::pilot_terminal_prints_top_test_and_follow_up_commands",
+  "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
+  "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
   "crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture",
+  "crates/ripr/tests/cli_smoke.rs::pilot_accepts_python_project_without_ripr_config",
+  "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
   "crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag",
   "crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement",
@@ -657,6 +661,7 @@ code = [
   "crates/ripr/src/output/pilot/commands.rs",
   "crates/ripr/src/output/pilot/ranking.rs",
   "crates/ripr/src/output/pilot/render.rs",
+  "crates/ripr/src/output/pilot/render/complete.rs",
   "crates/ripr/src/output/outcome.rs",
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/src/lsp",
@@ -2032,6 +2037,9 @@ name = "Python preview static facts"
 spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
+  "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
+  "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_python_repair_card_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_packet_carries_shared_repair_route_and_stop_conditions",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
@@ -2084,12 +2092,17 @@ code = [
   "crates/ripr/src/output/human/sections.rs",
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/python_repair_card.rs",
+  "crates/ripr/src/output/pilot/types.rs",
+  "crates/ripr/src/output/pilot/render/complete.rs",
+  "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/gap_decision_ledger.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/QUICKSTART.md",
+  "docs/CAPABILITY_MATRIX.md",
   "plans/python-repair-routing/implementation-plan.md",
   "plans/python-repair-routing/current-state-inventory.md",
   "docs/specs/README.md",
@@ -2104,6 +2117,7 @@ outputs = [
   "docs/ROADMAP.md",
   "policy/dependency_allowlist.txt",
   ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
 ]
 metrics = [
   "language_adapter_python_findings_preview",
@@ -2129,6 +2143,7 @@ metrics = [
   "language_adapter_python_test_placement_verify",
   "language_adapter_python_repair_card_v1",
   "language_adapter_python_agent_packet_v1",
+  "language_adapter_python_pilot_first_use_path",
   "language_adapter_python_static_limit_stop_reasons",
   "language_adapter_python_static_limit_dynamic_dispatch",
   "language_adapter_python_static_limit_decorator_indirection",

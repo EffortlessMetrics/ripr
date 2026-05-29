@@ -338,7 +338,9 @@ Expected static evidence:
 
 Follow-up fixtures and tests cover the owner, test, assertion, related
 test, probe, and static-limit cases listed under Required Evidence, plus
-generated CI behavior and LSP smoke coverage.
+generated CI behavior and LSP smoke coverage. The CLI first-use path also
+checks that `ripr pilot` can surface a top Python repair card from diff-scoped
+preview evidence without requiring a Cargo workspace.
 
 ## Implementation Mapping
 
@@ -376,6 +378,7 @@ adapter contributes:
 - `language_adapter_python_test_placement_verify`
 - `language_adapter_python_repair_card_v1`
 - `language_adapter_python_agent_packet_v1`
+- `language_adapter_python_pilot_first_use_path`
 - `language_adapter_python_static_limit_stop_reasons`
 - `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`

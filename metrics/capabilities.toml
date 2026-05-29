@@ -1247,6 +1247,7 @@ evidence = [
   "crates/ripr/src/output/pilot/ranking.rs ranks top actionable seams and crates/ripr/src/output/pilot/render.rs renders pilot-summary.json/md",
   "ripr pilot writes repo-exposure.json, repo-exposure.md, agent-seam-packets.json, pilot-summary.json, and pilot-summary.md",
   "pilot-summary.md and terminal copy surface the top inspected seam, why it matters, the focused test to write, and the before/after commands without opening JSON",
+  "Python preview diff runs project the top python_repair_card into pilot-summary.{json,md} and terminal first-use output with missing discriminator, suggested test, verify command, supported/deferred features, limitation count, and deferred receipt status",
   "docs/OUTPUT_SCHEMA.md Pilot Summary section",
   "docs/QUICKSTART.md zero-config first-run pilot path",
   "docs/INSTALLATION_VERIFICATION.md public install smoke checklist"
@@ -1482,6 +1483,7 @@ evidence = [
   "python_ranking_noise_control pins direct repairable weak findings ahead of observed, no-path, and static-limit preview findings",
   "python_test_placement_verify pins suggested pytest and unittest test placement, verify commands, and verify-command confidence for direct weak Python findings",
   "direct weak Python findings with canonical gaps, concrete missing discriminators, placement, and verify commands now carry python_repair_card output with changed owner, changed behavior, current test evidence, test shape, suggested assertion, suggested location, verify command, preview/advisory authority boundary, deferred receipt status, stop conditions, and limits",
+  "ripr pilot projects the top Python preview repair card into pilot-summary.{json,md} and terminal first-use output for Python diff runs",
   "reports gap-ledger --check-output derives PR-local Python GapRecords from python_repair_card findings, and agent packet --gap-ledger exports bounded packets with allowed files, forbidden files, conflict groups, verify commands, deferred receipt status, and stop conditions",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
@@ -1522,7 +1524,7 @@ fixtures = [
   "fixtures/python_unsupported_syntax_limit"
 ]
 next = "cli/python-first-use-path"
-metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_agent_packet_v1, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_*"
+metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_agent_packet_v1, language_adapter_python_pilot_first_use_path, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_*"
 
 [[capability]]
 id = "typescript_preview_static_facts"

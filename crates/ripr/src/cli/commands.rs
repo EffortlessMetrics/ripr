@@ -2475,21 +2475,21 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
     std::fs::create_dir_all(&options.out_dir)
         .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
 
-    let context = output::pilot::PilotSummaryContext {
-        root: &input.root,
-        mode: &input.mode,
-        config_path: config.source_path(),
-        max_seams: options.max_seams,
-        timeout_ms: options.timeout_ms,
-        artifacts: &artifacts,
-    };
-
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
     let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
         analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
     })?;
     let PilotAnalysisResult::Complete(classified) = analysis_result else {
+        let context = output::pilot::PilotSummaryContext {
+            root: &input.root,
+            mode: &input.mode,
+            config_path: config.source_path(),
+            max_seams: options.max_seams,
+            timeout_ms: options.timeout_ms,
+            artifacts: &artifacts,
+            python_first_use: None,
+        };
         std::fs::write(
             &artifacts.pilot_summary_json,
             output::pilot::render_pilot_timeout_summary_json(context),
@@ -2512,6 +2512,17 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
         })?;
         print!("{}", output::pilot::render_pilot_timeout_terminal(context));
         return Ok(());
+    };
+
+    let python_first_use = collect_pilot_python_first_use(&input, &config);
+    let context = output::pilot::PilotSummaryContext {
+        root: &input.root,
+        mode: &input.mode,
+        config_path: config.source_path(),
+        max_seams: options.max_seams,
+        timeout_ms: options.timeout_ms,
+        artifacts: &artifacts,
+        python_first_use: python_first_use.as_ref(),
     };
 
     std::fs::write(
@@ -2571,6 +2582,28 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
         output::pilot::render_pilot_terminal(&classified, context)
     );
     Ok(())
+}
+
+fn collect_pilot_python_first_use(
+    input: &CheckInput,
+    config: &RiprConfig,
+) -> Option<output::pilot::PilotPythonFirstUse> {
+    if !config
+        .languages()
+        .enabled()
+        .contains(&crate::domain::LanguageId::Python)
+    {
+        return None;
+    }
+
+    let mut check_input = input.clone();
+    check_input.format = OutputFormat::Json;
+    Some(
+        match app::check_workspace_with_config(check_input, config) {
+            Ok(output) => output::pilot::PilotPythonFirstUse::from_check_output(&output),
+            Err(error) => output::pilot::PilotPythonFirstUse::analysis_unavailable(error),
+        },
+    )
 }
 
 fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {

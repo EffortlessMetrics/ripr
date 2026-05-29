@@ -12,6 +12,7 @@ use crate::domain::{
 };
 use crate::output::path::display_path;
 use crate::output::pilot::ranking::top_actionable_seams;
+use crate::output::python_repair_card::PythonRepairCard;
 use std::path::{Path, PathBuf};
 
 fn seam(file: &str, line: usize, expression: &str) -> RepoSeam {
@@ -72,6 +73,79 @@ fn pilot_context(artifacts: &PilotArtifacts) -> PilotSummaryContext<'_> {
         max_seams: 5,
         timeout_ms: 30_000,
         artifacts,
+        python_first_use: None,
+    }
+}
+
+fn python_repair_card() -> PythonRepairCard {
+    PythonRepairCard {
+        card_version: "python_repair_card.v1".to_string(),
+        source: "check_python_preview".to_string(),
+        canonical_gap_id:
+            "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+        language: "python".to_string(),
+        language_status: "preview".to_string(),
+        authority_boundary: "preview_advisory_only".to_string(),
+        changed_owner: "calculate_discount".to_string(),
+        changed_behavior: "predicate_boundary changed at src/pricing.py:2: `amount >= threshold`"
+            .to_string(),
+        current_test_evidence:
+            "tests/test_pricing.py:6 test_calculate_discount_above_threshold currently has oracle_strength=weak, oracle_kind=broad_assertion: assert result"
+                .to_string(),
+        missing_discriminator: "amount == threshold".to_string(),
+        recommended_test_shape:
+            "Add or strengthen a pytest boundary assertion for `amount == threshold`."
+                .to_string(),
+        suggested_assertion: "Assert the owner result or effect at the boundary `amount == threshold`."
+            .to_string(),
+        suggested_test_file: "tests/test_pricing.py".to_string(),
+        suggested_test_name: "test_calculate_discount_threshold_boundary".to_string(),
+        suggested_test_node_id: Some(
+            "tests/test_pricing.py::test_calculate_discount_threshold_boundary".to_string(),
+        ),
+        verify_command:
+            "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary".to_string(),
+        verify_command_confidence: "high".to_string(),
+        receipt_command: None,
+        receipt_status: "unavailable_until_python_gap_ledger".to_string(),
+        stop_conditions: vec![
+            "Stop if imports, fixtures, or test setup cannot call the changed owner.".to_string(),
+            "Stop if the expected value for the missing discriminator is ambiguous.".to_string(),
+            "Stop if adding the test appears to require a production-code edit.".to_string(),
+        ],
+        limits: vec![
+            "Syntax-first Python preview evidence only.".to_string(),
+            "No source edits, generated tests, mutation execution, provider calls, or gate authority."
+                .to_string(),
+            "Verify success alone is not a gap-closure receipt.".to_string(),
+        ],
+    }
+}
+
+fn python_first_use() -> PilotPythonFirstUse {
+    PilotPythonFirstUse {
+        status: super::types::PilotPythonFirstUseStatus::Ready,
+        findings_total: 1,
+        repair_cards_total: 1,
+        limitation_count: 0,
+        analysis_error: None,
+        top_repair_card: Some(python_repair_card()),
+    }
+}
+
+fn pilot_context_with_python<'a>(
+    artifacts: &'a PilotArtifacts,
+    python_first_use: &'a PilotPythonFirstUse,
+) -> PilotSummaryContext<'a> {
+    PilotSummaryContext {
+        root: Path::new("."),
+        mode: &Mode::Draft,
+        config_path: None,
+        max_seams: 5,
+        timeout_ms: 30_000,
+        artifacts,
+        python_first_use: Some(python_first_use),
     }
 }
 
@@ -222,6 +296,7 @@ fn pilot_summary_json_contains_config_state_artifacts_and_next_commands() {
         max_seams: 5,
         timeout_ms: 30_000,
         artifacts: &artifacts,
+        python_first_use: None,
     };
 
     let json = render_pilot_summary_json(&[entry], context);
@@ -315,6 +390,7 @@ fn timeout_summary_json_is_partial_and_points_to_retry() {
         max_seams: 5,
         timeout_ms: 1,
         artifacts: &artifacts,
+        python_first_use: None,
     };
 
     let json = render_pilot_timeout_summary_json(context);
@@ -344,6 +420,7 @@ fn pilot_context_without_config<'a>(artifacts: &'a PilotArtifacts) -> PilotSumma
         max_seams: 5,
         timeout_ms: 30_000,
         artifacts,
+        python_first_use: None,
     }
 }
 
@@ -511,6 +588,83 @@ fn pilot_summary_renderers_omit_recommendation_when_no_actionable_seams() {
     assert!(
         terminal.contains("none ranked by the default pilot policy"),
         "expected no-recommendation terminal line, got:\n{terminal}"
+    );
+}
+
+#[test]
+fn pilot_summary_json_projects_python_first_use_repair_card() {
+    let artifacts = pilot_artifacts();
+    let python = python_first_use();
+    let json = render_pilot_summary_json(&[], pilot_context_with_python(&artifacts, &python));
+
+    for needle in [
+        r#""python_first_use": {"#,
+        r#""status": "ready""#,
+        r#""language": "python""#,
+        r#""language_status": "preview""#,
+        r#""authority_boundary": "preview_advisory_only""#,
+        r#""findings_total": 1"#,
+        r#""repair_cards_total": 1"#,
+        r#""top_repair_card": {"#,
+        "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+        r#""changed_owner": "calculate_discount""#,
+        r#""missing_discriminator": "amount == threshold""#,
+        r#""suggested_test_file": "tests/test_pricing.py""#,
+        r#""suggested_test_name": "test_calculate_discount_threshold_boundary""#,
+        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary""#,
+        r#""receipt_status": "unavailable_until_python_gap_ledger""#,
+        r#""deferred_features": ["outcome_receipts", "runtime_mutation_execution", "gate_authority", "generated_tests"]"#,
+    ] {
+        assert!(
+            json.contains(needle),
+            "missing Python JSON needle: {needle}"
+        );
+    }
+}
+
+#[test]
+fn pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked() {
+    let artifacts = pilot_artifacts();
+    let python = python_first_use();
+    let context = pilot_context_with_python(&artifacts, &python);
+    let md = render_pilot_summary_md(&[], context);
+    let terminal = render_pilot_terminal(&[], context);
+
+    for needle in [
+        "## Top Recommendation",
+        "Top Python repairable gap",
+        "Changed owner: `calculate_discount`",
+        "Missing discriminator: `amount == threshold`",
+        "Suggested test: `test_calculate_discount_threshold_boundary` in `tests/test_pricing.py`",
+        "Verify: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`",
+        "Receipt status: `unavailable_until_python_gap_ledger`",
+        "## Python Preview First Use",
+    ] {
+        assert!(
+            md.contains(needle),
+            "missing Python markdown needle: {needle}"
+        );
+    }
+
+    for needle in [
+        "Top recommendation:",
+        "language: python (preview)",
+        "changed owner: calculate_discount",
+        "missing discriminator: amount == threshold",
+        "recommended test: add test_calculate_discount_threshold_boundary in tests/test_pricing.py",
+        "verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "receipt status: unavailable_until_python_gap_ledger",
+        "Python preview:",
+        "status: ready",
+    ] {
+        assert!(
+            terminal.contains(needle),
+            "missing Python terminal needle: {needle}"
+        );
+    }
+    assert!(
+        !terminal.contains("none ranked by the default pilot policy"),
+        "Python repair card should replace the no-recommendation top line"
     );
 }
 

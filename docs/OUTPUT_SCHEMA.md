@@ -10028,7 +10028,9 @@ refresh behavior, or emit runtime mutation claims.
 
 `ripr pilot` writes a first-run operator packet under `target/ripr/pilot/` by
 default. It reuses the repo-exposure and agent seam packet renderers, then adds
-a small summary that ranks the next actionable seams.
+a small summary that ranks the next actionable seams. When Python preview is
+enabled, the pilot also projects the top diff-scoped Python repair card from the
+existing `check` path as advisory first-use guidance.
 
 Pilot files:
 
@@ -10089,10 +10091,64 @@ target/ripr/pilot/pilot-summary.md
       "targeted_test_brief": "Target seam:\n- src/lib.rs:2\n..."
     }
   ],
+  "python_first_use": null,
   "next": {
     "inspect_packet": "target/ripr/pilot/agent-seam-packets.json",
     "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
     "outcome_command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json"
+  }
+}
+```
+
+For Python preview roots with a diff-scoped repair card, `python_first_use`
+is populated:
+
+```json
+{
+  "status": "ready",
+  "language": "python",
+  "language_status": "preview",
+  "authority_boundary": "preview_advisory_only",
+  "findings_total": 1,
+  "repair_cards_total": 1,
+  "limitation_count": 0,
+  "analysis_error": null,
+  "supported_features": [
+    "project_detection",
+    "diff_owner_mapping",
+    "pytest_oracle_facts",
+    "unittest_oracle_facts",
+    "repair_cards"
+  ],
+  "deferred_features": [
+    "outcome_receipts",
+    "runtime_mutation_execution",
+    "gate_authority",
+    "generated_tests"
+  ],
+  "top_repair_card": {
+    "card_version": "python_repair_card.v1",
+    "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+    "language": "python",
+    "language_status": "preview",
+    "authority_boundary": "preview_advisory_only",
+    "changed_owner": "calculate_discount",
+    "missing_discriminator": "amount == threshold",
+    "suggested_test_file": "tests/test_pricing.py",
+    "suggested_test_name": "test_calculate_discount_threshold_boundary",
+    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    "receipt_command": null,
+    "receipt_status": "unavailable_until_python_gap_ledger",
+    "stop_conditions": [
+      "Stop if imports, fixtures, or test setup cannot call the changed owner.",
+      "Stop if the expected value for the missing discriminator is ambiguous.",
+      "Stop if adding the test appears to require a production-code edit."
+    ],
+    "limits": [
+      "Syntax-first Python preview evidence only.",
+      "No source edits, generated tests, mutation execution, provider calls, or gate authority.",
+      "Verify success alone is not a gap-closure receipt."
+    ]
   }
 }
 ```
@@ -10164,6 +10220,12 @@ Field contract:
 - `top_actionable_seams[].targeted_test_brief` — human-readable work order
   derived from the same fields as the agent seam packet. Placeholders are
   intentional; RIPR does not invent expected values.
+- `python_first_use` — `null` when Python preview first-use projection was not
+  collected for this pilot run. When present, it reports the Python preview
+  status (`ready`, `no_python_findings`, `no_repair_cards`, or
+  `analysis_unavailable`), counts, supported and deferred features, and the top
+  `python_repair_card` using the same advisory card fields emitted by
+  `ripr check --json`.
 - `next` — advisory follow-up commands. Complete summaries include the public
   `ripr outcome` before/after receipt command. Partial summaries include a
   retry command with a larger explicit timeout.

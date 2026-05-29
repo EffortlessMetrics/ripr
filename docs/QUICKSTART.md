@@ -34,7 +34,7 @@ Most adopters should choose one of these first-hour paths:
 
 | Path | Use when | Start with | First success |
 | --- | --- | --- | --- |
-| CLI first | You want one local before/after proof. | `ripr pilot --root .` | Top Rust gap, one focused proof, `ripr outcome` receipt. |
+| CLI first | You want one local before/after proof. | `ripr pilot --root .` | Top Rust gap or Python preview repair card, one focused proof, advisory receipt status. |
 | PR first | You want reviewers to see advisory evidence in GitHub. | `ripr init --ci github` | Non-blocking summary, repair card, artifact packet. |
 | Editor or agent first | You are repairing while coding, or handing work to an LLM. | VS Code `ripr: Show Status` or `ripr agent status --root .` | Current-work packet, related test, verify command. |
 
@@ -124,8 +124,9 @@ Run the zero-config pilot:
 ripr pilot --root .
 ```
 
-Read `target/ripr/pilot/pilot-summary.md`. Pick the top actionable Rust gap and
-write one focused test or output proof outside RIPR.
+Read `target/ripr/pilot/pilot-summary.md`. Pick the top actionable Rust gap, or
+for Python preview roots the top repair card with its missing discriminator and
+verify command. Write one focused test or output proof outside RIPR.
 
 After the test is added, capture the after snapshot:
 

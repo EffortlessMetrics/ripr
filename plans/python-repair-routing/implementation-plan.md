@@ -738,7 +738,7 @@ Export deterministic, bounded Python repair packets for swarm use.
 
 ### Work item: cli/python-first-use-path
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -754,6 +754,18 @@ Make first Python runs useful in CLI.
   HEAD`, and `ripr check --root . --format json` show detected Python project,
   supported/unsupported features, top repairable gap, limitation count, repair
   card, verify command, and receipt command when evidence supports it.
+
+#### Progress
+
+- `ripr pilot --root .` now projects the existing diff-scoped Python preview
+  repair card into the terminal summary and `pilot-summary.{json,md}` when a
+  Python project/diff yields a repairable gap. The card keeps preview/advisory
+  boundaries, limitation counts, verify command, and deferred receipt status.
+- `ripr check --root . --format json` already emits the underlying
+  `python_repair_card` object.
+- `ripr first-pr --root . --base origin/main --head HEAD` still needs direct
+  Python start-here selection or a generated gap-ledger bridge in a follow-up
+  slice.
 
 ### Work item: output/python-surface-projection
 

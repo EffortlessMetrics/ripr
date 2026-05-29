@@ -151,7 +151,7 @@ before/after receipt movement.
 | Assumption | Current owner | Why it blocks the lane |
 | --- | --- | --- |
 | Missing `ripr.toml` used to be Rust-only for every repo shape. | `config` / `analysis` | Contained by `analysis/python-project-detection`: Python project markers now select Python preview when config is absent, and explicit `ripr.toml` still wins. |
-| `ripr pilot` builds the first-use packet from repo seam inventory. | `cli` / `analysis::seam_inventory` / `output::pilot` | Python findings can appear in `ripr check`, but the first-use path in RIPR-PROP-0017 needs Python project detection and top repair-card selection. |
+| `ripr pilot` builds the first-use packet from repo seam inventory. | `cli` / `analysis::seam_inventory` / `output::pilot` | Partly contained: Python project/diff runs now project the top `python_repair_card` into the pilot summary. Python repo-mode facts and first-pr direct selection remain separate follow-ups. |
 | Python repo-mode analysis returns no findings. | `PythonAdapter::analyze_repo` | `ripr pilot` and repo-baseline loops cannot rely on Python repo facts until repo-mode or a Python-specific first-use bridge exists. |
 | The summary JSON field is named `changed_rust_files`. | `domain::Summary` / `output::json` | Python and mixed-language reports currently carry a Rust-shaped summary field even when the counted changed file is `.py`. |
 | Workspace exclusions must stay aligned with the Python-lane contract. | `PythonAdapter::visit_workspace` | Contained by `analysis/python-project-detection` for `.tox`, `.nox`, `site-packages`, `.pytest_cache`, `dist`, `build`, and detectable generated Python files. |
@@ -163,7 +163,7 @@ before/after receipt movement.
 | --- | --- | --- |
 | `ripr check --format human` | Renders Python preview findings and direct weak repair cards with changed owner, missing discriminator, test shape, location, verify command, preview/advisory authority, deferred receipt status, stop conditions, and limits when config enables Python. | Add receipt commands once Python outcome records exist. |
 | `ripr check --json` | Emits Python metadata fields, canonical gap IDs, additive `repair_placement` objects, and additive `python_repair_card` objects on direct weak actionable findings. | Add full receipt payloads and direct first-use selection. |
-| `ripr pilot` | Produces the existing Rust seam-oriented pilot packet. | Detect Python repos and select the top Python repairable gap without Cargo assumptions. |
+| `ripr pilot` | Produces the existing Rust seam-oriented pilot packet and, when Python preview diff evidence yields a repair card, shows the top Python repairable gap with supported/deferred features, limitation count, verify command, and deferred receipt status. | Add Python repo-mode facts and receipt movement once outcome/ledger support exists. |
 | `ripr first-pr` / start-here | Can display preview language/static-limit warnings when supplied by existing artifacts. | Generate Python start-here content directly from Python canonical gaps. |
 | SARIF | Renders generic diff finding locations and RIPR properties. | Preserve Python language/status/static-limit metadata and repair-card context. |
 | Generated CI summary | Can group preview evidence when configured. | Add safe Python advisory mode with repair-card artifacts and fork-safe posture. |
@@ -174,10 +174,12 @@ before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `cli/python-first-use-path`, can start from this boundary:
+The next `cli/python-first-use-path` slice can start from this boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
   weakening explicit `ripr.toml` authority.
+- `ripr pilot` can now bridge diff-scoped Python repair cards into first-screen
+  CLI output without requiring Cargo.
 - Python analysis now reuses a source-fact snapshot instead of separate
   parser passes for owner and test extraction.
 - Malformed Python records an internal `unsupported_syntax` source-fact

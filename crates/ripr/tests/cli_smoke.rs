@@ -16,10 +16,33 @@ fn run_ripr(args: &[&str]) -> Output {
 
 fn run_ripr_in_workspace(args: &[&str]) -> Result<Output, std::io::Error> {
     let bin = env!("CARGO_BIN_EXE_ripr");
-    Command::new(bin)
-        .current_dir(workspace_root())
-        .args(args)
-        .output()
+    let root = workspace_root();
+    run_command(bin, Some(&root), args)
+}
+
+fn run_command(
+    program: &str,
+    current_dir: Option<&Path>,
+    args: &[&str],
+) -> Result<Output, std::io::Error> {
+    let mut command = Command::new(program);
+    if let Some(current_dir) = current_dir {
+        command.current_dir(current_dir);
+    }
+    command.args(args).output()
+}
+
+fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = run_command("git", Some(root), args)
+        .map_err(|err| format!("failed to run git {args:?}: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "git {args:?} failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    ))
 }
 
 fn workspace_root() -> PathBuf {
@@ -1913,8 +1936,94 @@ fn pilot_accepts_python_project_without_ripr_config() -> Result<(), String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("RIPR pilot complete."));
+    assert!(stdout.contains("Python preview:"));
     assert!(out_dir.join("pilot-summary.json").exists());
 
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+#[test]
+fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
+    let root = unique_temp_workspace("pilot-python-git");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    std::fs::create_dir_all(root.join("tests")).map_err(|err| format!("create tests: {err}"))?;
+    std::fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"pilot-python-git\"\nversion = \"0.0.0\"\n",
+    )
+    .map_err(|err| format!("write pyproject: {err}"))?;
+    std::fs::write(
+        root.join("src/pricing.py"),
+        "def calculate_discount(amount, threshold):\n    if amount > threshold:\n        return amount - 10\n    return amount\n",
+    )
+    .map_err(|err| format!("write baseline pricing: {err}"))?;
+    std::fs::write(
+        root.join("tests/test_pricing.py"),
+        "from src.pricing import calculate_discount\n\n\ndef test_calculate_discount_smoke():\n    result = calculate_discount(125, 100)\n    assert result\n",
+    )
+    .map_err(|err| format!("write tests: {err}"))?;
+
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "ripr@example.invalid"])?;
+    run_git(&root, &["config", "user.name", "RIPR Test"])?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "base"])?;
+    run_git(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"])?;
+    std::fs::write(
+        root.join("src/pricing.py"),
+        "def calculate_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+    )
+    .map_err(|err| format!("write changed pricing: {err}"))?;
+    run_git(&root, &["add", "src/pricing.py"])?;
+    run_git(&root, &["commit", "-m", "change threshold boundary"])?;
+
+    let out_dir = unique_temp_workspace("pilot-python-git-out");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for needle in [
+        "Top recommendation:",
+        "language: python (preview)",
+        "changed owner: calculate_discount",
+        "missing discriminator: amount == threshold",
+        "recommended test: add test_calculate_discount_threshold_boundary in tests/test_pricing.py",
+        "verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "receipt status: unavailable_until_python_gap_ledger",
+    ] {
+        assert!(stdout.contains(needle), "missing stdout needle: {needle}");
+    }
+    assert!(
+        !stdout.contains("none ranked by the default pilot policy"),
+        "Python repair-card pilot should not render the no-recommendation top line"
+    );
+
+    let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+        .map_err(|err| format!("read pilot summary json: {err}"))?;
+    for needle in [
+        r#""python_first_use": {"#,
+        r#""status": "ready""#,
+        r#""language": "python""#,
+        r#""language_status": "preview""#,
+        r#""changed_owner": "calculate_discount""#,
+        r#""missing_discriminator": "amount == threshold""#,
+        r#""suggested_test_file": "tests/test_pricing.py""#,
+        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary""#,
+    ] {
+        assert!(
+            summary_json.contains(needle),
+            "missing summary JSON needle: {needle}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&out_dir);
     Ok(())
 }
