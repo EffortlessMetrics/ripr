@@ -363,9 +363,11 @@ Readiness must route `attempted_no_receipt` and `receipt_present` separately:
 no-receipt attempts require collecting the packet receipt, while receipt-present
 attempts require joining before/after evidence movement before route quality can
 claim improvement, regression, or unchanged evidence.
-When `top_missing_evidence_fields[]` includes `attempt_receipt` samples,
-readiness should copy the first sample packet ID, canonical gap ID, and repair
-kind into the `collect_missing_attempt_receipts` next action.
+When `top_missing_evidence_fields[]` includes `attempt_receipt` or
+`verify_result` samples, readiness should copy the first sample packet ID,
+canonical gap ID, and repair kind into the matching
+`collect_missing_attempt_receipts` or `inspect_missing_verify_results` next
+action.
 
 ## Dry-Run Commands
 

@@ -26070,12 +26070,16 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if summary.missing_verify_result > 0 {
+        let (packet_id, canonical_gap_id, repair_kind) = ripr_swarm_missing_evidence_field_sample(
+            sources.top_missing_evidence_fields,
+            "verify_result",
+        );
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_missing_verify_results".to_string(),
-            packet_id: None,
-            canonical_gap_id: None,
+            packet_id,
+            canonical_gap_id,
             evidence_class: None,
-            repair_kind: None,
+            repair_kind,
             command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
             reason: format!(
                 "{} attempted packet(s) are missing typed verify_result evidence; preserve pass/fail/not-run from receipts or targeted-test outcomes before claiming route quality",
@@ -79878,6 +79882,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 "not_attempted": 22,
                 "attempted_no_receipt": 1,
                 "receipt_present": 1,
+                "missing_verify_result": 1,
                 "evidence_improved": 2,
                 "evidence_unchanged": 1,
                 "evidence_regressed": 0,
@@ -79885,6 +79890,13 @@ covered_by = ["cargo xtask check-file-policy"]
                 "orphaned_receipts": 0
             },
             "top_missing_evidence_fields": [
+                {
+                    "label": "verify_result",
+                    "count": 1,
+                    "sample_packet_ids": ["packet-missing-verify"],
+                    "sample_canonical_gap_ids": ["gap:missing-verify"],
+                    "sample_repair_kinds": ["add_call_observer"]
+                },
                 {
                     "label": "attempt_receipt",
                     "count": 1,
@@ -79949,6 +79961,10 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(1)
         );
         assert_eq!(
+            value["summary"]["missing_verify_result"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
             value["summary"]["improved_packets"],
             serde_json::Value::from(2)
         );
@@ -79982,14 +79998,30 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["next_actions"][1]["kind"],
+            serde_json::Value::from("inspect_missing_verify_results")
+        );
+        assert_eq!(
+            value["next_actions"][1]["packet_id"],
+            serde_json::Value::from("packet-missing-verify")
+        );
+        assert_eq!(
+            value["next_actions"][1]["canonical_gap_id"],
+            serde_json::Value::from("gap:missing-verify")
+        );
+        assert_eq!(
+            value["next_actions"][1]["repair_kind"],
+            serde_json::Value::from("add_call_observer")
+        );
+        assert_eq!(
+            value["next_actions"][2]["kind"],
             serde_json::Value::from("join_receipt_evidence_movement")
         );
         assert_eq!(
-            value["next_actions"][4]["kind"],
+            value["next_actions"][5]["kind"],
             serde_json::Value::from("attempt_ready_packet")
         );
         assert_eq!(
-            value["next_actions"][4]["packet_id"],
+            value["next_actions"][5]["packet_id"],
             serde_json::Value::from("packet-boundary-001")
         );
         let markdown = ripr_swarm_readiness_markdown(&report);
