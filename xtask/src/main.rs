@@ -7905,6 +7905,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
     ("projection_alignment_receipt_improved", "evidence_improved"),
     ("targeted_outcome_left_gap_unchanged", "evidence_unchanged"),
     (
+        "exact_error_variant_guidance_route_improved",
+        "evidence_improved",
+    ),
+    (
         "dry_run_receipt_command_missing_named",
         "attempted_no_receipt",
     ),

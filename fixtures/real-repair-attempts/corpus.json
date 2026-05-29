@@ -138,6 +138,41 @@
       "reason": "A real dogfood outcome pass recorded unchanged evidence as visible non-success."
     },
     {
+      "id": "exact_error_variant_guidance_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#582",
+      "canonical_gap_id": "gap:route-quality-add-exact-error-variant-unchanged",
+      "packet_id": "route-quality:add-exact-error-variant:unchanged",
+      "repair_kind": "sharpen_repair_route_guidance",
+      "target_test_or_observer_shape": "packet guidance for add_exact_error_variant that names the concrete error variant and rejects broad Err/is_err/expect_err evidence",
+      "verify_command": "cargo xtask check-pr",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask ripr-swarm readiness",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "actionable",
+      "after_gap_state": "actionable",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Sharpened add_exact_error_variant handoff guidance so the packet tells agents to extract the error, match the exact variant or payload, and avoid broad error-only checks.",
+      "evidence_movement": "The failed unchanged add_exact_error_variant route now has a receipt-backed guidance improvement attempt without reclassifying the original unchanged repair as successful.",
+      "operator_note": "This records route-learning progress. It does not hide the unchanged repair attempt or claim the original gap was resolved.",
+      "must_not_change": [
+        "unchanged attempt visibility",
+        "public badge semantics",
+        "CI gate defaults",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/output/agent_seam_packets.rs:packet_v2_carries_exact_error_variant_guidance_for_error_seams",
+        "crates/ripr/src/output/agent_seam_packets.rs:error_variant_assertion_shape_fallback_names_exact_variant_without_nested_comments",
+        "target/ripr/reports/swarm-readiness.json:route-quality:add-exact-error-variant:unchanged",
+        "EffortlessMetrics/ripr-swarm#582"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged route-quality PR improved add_exact_error_variant repair guidance after an unchanged dogfood attempt showed broad error guidance was not trustworthy enough."
+    },
+    {
       "id": "dry_run_receipt_command_missing_named",
       "source_ref": "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md",
       "canonical_gap_id": "gap:report-config-label",
