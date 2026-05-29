@@ -144,7 +144,7 @@ Issue:
 
 PR:
 
-- n/a until opened
+- #518
 
 #### Goal
 
@@ -194,7 +194,19 @@ git diff --check
 
 ### Work item: docs/python-current-state-inventory
 
-Status: ready
+Status: done
+
+Inventory:
+
+- [Python repair routing current-state inventory](current-state-inventory.md)
+
+Branch:
+
+- `docs-python-current-state-inventory`
+
+PR:
+
+- #521
 
 Linked proposal:
 
