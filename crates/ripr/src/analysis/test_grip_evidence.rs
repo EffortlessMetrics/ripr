@@ -902,7 +902,7 @@ fn find_related_tests_with_context<'context, 'index>(
     let mut candidates: BTreeMap<usize, RelationReason> = BTreeMap::new();
     match_direct_owner_call(&mut candidates, context, prefix, &owner);
     match_helper_owner_call(&mut candidates, context, prefix, &owner);
-    match_call_presence_target_affinity_owner_call(
+    match_target_affinity_owner_call(
         &mut candidates,
         seam,
         context,
@@ -1076,7 +1076,7 @@ fn match_helper_owner_call(
     }
 }
 
-fn match_call_presence_target_affinity_owner_call(
+fn match_target_affinity_owner_call(
     candidates: &mut BTreeMap<usize, RelationReason>,
     seam: &RepoSeam,
     context: &CompactGripContext<'_>,
@@ -1084,7 +1084,10 @@ fn match_call_presence_target_affinity_owner_call(
     owner: &OwnerContext,
     target_tokens: &BTreeSet<String>,
 ) {
-    if seam.kind() != SeamKind::CallPresence || owner.name.is_empty() || target_tokens.is_empty() {
+    if requires_concrete_activation_values(seam)
+        || owner.name.is_empty()
+        || target_tokens.is_empty()
+    {
         return;
     }
     for (test_index, test) in context.tests.iter().enumerate() {
@@ -1658,7 +1661,7 @@ fn activate_evidence(
             .iter()
             .any(|indexed| has_direct_owner_call(indexed, owner_name));
     let target_affinity_tokens =
-        (seam.kind() == SeamKind::CallPresence).then(|| assertion_target_tokens(seam));
+        (!requires_concrete_activation_values(seam)).then(|| assertion_target_tokens(seam));
     let helper_value_insensitive_owner_call = !owner_name.is_empty()
         && !requires_concrete_activation_values(seam)
         && related.iter().any(|indexed| {
@@ -2212,7 +2215,7 @@ fn compact_activate_evidence(
 
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let target_affinity_tokens =
-        (seam.kind() == SeamKind::CallPresence).then(|| assertion_target_tokens(seam));
+        (!requires_concrete_activation_values(seam)).then(|| assertion_target_tokens(seam));
     let direct_owner_call = !owner_name.is_empty()
         && related.iter().any(|indexed| {
             indexed.call_names.contains(owner_name)
@@ -3814,6 +3817,135 @@ fn return_value_contract_mentions_empty_output() {
         assert!(
             evidence.observed_values.is_empty(),
             "affinity-only activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_value_insensitive_seam_when_multi_owner_wrapper_has_target_affinity_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/labels.rs");
+        let prod_src = r#"
+pub const DEVICE_LABELS_EMPTY: &str = "empty";
+pub const USER_LABELS_READY: &str = "ready";
+
+pub fn device_label_status() -> &'static str {
+    DEVICE_LABELS_EMPTY
+}
+
+pub fn user_label_status() -> &'static str {
+    USER_LABELS_READY
+}
+
+pub fn exercise_statuses() -> (&'static str, &'static str) {
+    (device_label_status(), user_label_status())
+}
+"#;
+        let tests = PathBuf::from("tests/status_contract.rs");
+        let tests_src = r#"
+use labels::{exercise_statuses, DEVICE_LABELS_EMPTY};
+
+#[test]
+fn status_wrapper_observes_device_target() {
+    let (return_value, _) = exercise_statuses();
+    assert_eq!(return_value, DEVICE_LABELS_EMPTY);
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+        let return_seam = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::ReturnValue
+                    && s.owner().ends_with("::device_label_status")
+                    && s.expression().contains("DEVICE_LABELS_EMPTY")
+            })
+            .ok_or_else(|| "expected DEVICE_LABELS_EMPTY return_value seam".to_string())?;
+
+        let evidence = evidence_for_seam(return_seam, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected target-affinity production wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("one-hop helper owner call for value-insensitive seam"),
+            "activation summary should explain the target-affinity owner-call route: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "target-affinity wrapper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_value_insensitive_seam_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/labels.rs");
+        let prod_src = r#"
+pub const DEVICE_LABELS_EMPTY: &str = "empty";
+pub const USER_LABELS_READY: &str = "ready";
+
+pub fn device_label_status() -> &'static str {
+    DEVICE_LABELS_EMPTY
+}
+
+pub fn user_label_status() -> &'static str {
+    USER_LABELS_READY
+}
+
+pub fn exercise_statuses() -> (&'static str, &'static str) {
+    (device_label_status(), user_label_status())
+}
+"#;
+        let tests = PathBuf::from("tests/status_contract.rs");
+        let tests_src = r#"
+use labels::{exercise_statuses, USER_LABELS_READY};
+
+#[test]
+fn status_wrapper_observes_user_target() {
+    let (_, user_status) = exercise_statuses();
+    assert_eq!(user_status, USER_LABELS_READY);
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+        let return_seam = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::ReturnValue
+                    && s.owner().ends_with("::device_label_status")
+                    && s.expression().contains("DEVICE_LABELS_EMPTY")
+            })
+            .ok_or_else(|| "expected DEVICE_LABELS_EMPTY return_value seam".to_string())?;
+
+        let evidence = evidence_for_seam(return_seam, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "other target token must not prove device owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "other-target wrapper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
