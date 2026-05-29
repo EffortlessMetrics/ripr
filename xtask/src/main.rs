@@ -25269,6 +25269,18 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
 }
 
 fn ripr_swarm_limitation_route_sample_gap_ids(packet: &Value) -> Vec<String> {
+    let direct = audit_string_array(packet, &["sample_canonical_gap_ids"]).unwrap_or_default();
+    if !direct.is_empty() {
+        return direct.into_iter().take(3).collect();
+    }
+    let source_ids = audit_array(packet, &["sample_sources"])
+        .iter()
+        .filter_map(|sample| audit_non_empty_string(sample, &["canonical_gap_id"]))
+        .take(3)
+        .collect::<Vec<_>>();
+    if !source_ids.is_empty() {
+        return source_ids;
+    }
     audit_array(packet, &["samples"])
         .iter()
         .filter_map(|sample| audit_non_empty_string(sample, &["canonical_gap_id"]))
@@ -80521,7 +80533,10 @@ covered_by = ["cargo xtask check-file-policy"]
                         "dominant_evidence_class": "call_presence",
                         "why_not_actionable": "related tests are affinity-ranked but not tied to direct owner calls",
                         "unlock_condition": "implement related-test owner-call tracing before repair packets are emitted",
-                        "samples": [
+                        "sample_canonical_gap_ids": [
+                            "gap:affinity-owner-call"
+                        ],
+                        "sample_sources": [
                             {
                                 "canonical_gap_id": "gap:affinity-owner-call",
                                 "source_file": "src/lib.rs",
