@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: current-state audit
+Status: source-of-truth reconciliation
 
 Date: 2026-05-29
 
@@ -115,10 +115,13 @@ These are the missing slices that should drive the next PRs. Keep each slice
 PR-sized and do not promote support tier while they land.
 
 1. Source-of-truth reconciliation
-   - `RIPR-SPEC-0026` and `RIPR-SPEC-0027` are still `Status: proposed` even
-     though Campaign 27 is closed and implementation exists.
-   - Next step: accept or narrow the specs so they describe the implemented
-     preview contract plus explicit follow-up items.
+   - `RIPR-SPEC-0026` and `RIPR-SPEC-0027` are accepted to match the closed
+     Campaign 27 boundary and the implemented first useful preview loop.
+   - `plans/typescript-preview-completion/implementation-plan.md` now sequences
+     the remaining completion work without changing analyzer behavior or
+     support-tier status.
+   - Next step: route/config conformance, including JavaScript preview labels
+     and the CLI override disposition.
 
 2. JavaScript labeling and CLI override decision
    - `.js` and `.jsx` route through the TypeScript-family adapter, but current
@@ -225,12 +228,16 @@ Use the user-provided PR sequence as the campaign outline, with this audit as
 PR 0. The next safe PR is source-of-truth reconciliation:
 
 ```text
-PR 1: spec(ts): accept or narrow the TypeScript preview static-facts contract
+PR 1: spec(ts): accept TypeScript preview static-facts contract
 ```
 
-That PR should not change analyzer behavior. It should make the contract
-executable enough for later implementation agents and reconcile the current
-`proposed` spec status with the already-shipped partial implementation.
+That PR should not change analyzer behavior. It makes the contract executable
+enough for later implementation agents and reconciles the spec status with the
+already-shipped partial implementation. After it lands, the next safe PR is:
+
+```text
+PR 2: analysis(ts): route TypeScript preview files through language adapter
+```
 
 ## Validation
 

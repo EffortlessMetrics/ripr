@@ -1,6 +1,6 @@
 # RIPR-SPEC-0026: Language Adapter Contract
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
@@ -76,7 +76,8 @@ fork is permitted.
 
 Additive optional fields:
 
-- `language`: one of `rust`, `typescript`, `python`. Omitted when unknown.
+- `language`: one of `rust`, `typescript`, `javascript`, `python`. Omitted
+  when unknown.
 - `language_status`: `stable` or `preview`. Omitted when `rust`.
 - `owner_kind`: bounded vocabulary (`function`, `method`, `class_method`,
   `arrow_function`, `component`, `module_function`); omitted when unknown.
@@ -106,7 +107,9 @@ Rust-only when only Rust is enabled.
 Routing rules:
 
 - `*.rs` → Rust adapter (always).
-- `*.ts`, `*.tsx`, `*.js`, `*.jsx` → TypeScript adapter (preview, opt-in).
+- `*.ts`, `*.tsx` → TypeScript adapter (preview, opt-in).
+- `*.js`, `*.jsx` → TypeScript-family adapter with JavaScript preview labels
+  (preview, opt-in).
 - `*.py` → Python adapter (preview, opt-in).
 - Files matched by no adapter pass through unchanged (no probes, not an
   error).

@@ -1,6 +1,6 @@
 # RIPR-SPEC-0027: TypeScript Preview Static Facts
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
@@ -18,6 +18,15 @@ The proposal context is
 
 ## Behavior
 
+This accepted spec records the TypeScript-family preview contract. Campaign 27
+implemented the first useful preview loop, and
+[Lane 1 TypeScript Preview Completion](../lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md)
+plus the
+[TypeScript preview completion implementation plan](../../plans/typescript-preview-completion/implementation-plan.md)
+track the remaining completion slices. Acceptance does not promote
+TypeScript/JavaScript beyond opt-in preview and does not make preview evidence a
+default gate, badge, baseline, or RIPR Zero input.
+
 The TypeScript preview adapter is enabled by repo configuration:
 
 ```toml
@@ -25,9 +34,13 @@ The TypeScript preview adapter is enabled by repo configuration:
 enabled = ["rust", "typescript"]
 ```
 
-When enabled, it routes `*.ts`, `*.tsx`, `*.js`, and `*.jsx` files. It
-emits the same RIPR fact families as the Rust adapter and tags each
-finding with `language = "typescript"` and `language_status = "preview"`.
+When enabled, it routes `*.ts`, `*.tsx`, `*.js`, and `*.jsx` files. It emits
+the same RIPR fact families as the Rust adapter. TypeScript files are labeled
+`language = "typescript"` and JavaScript files are labeled
+`language = "javascript"`; both use `language_status = "preview"`.
+JavaScript uses the TypeScript-family adapter implementation, but it remains a
+separately labeled JavaScript preview surface unless a future promotion packet
+changes that support tier.
 
 The adapter is syntax-first. It must not depend on `tsc`, type checking,
 or a build graph. When syntax-first analysis cannot classify, the adapter
@@ -45,6 +58,27 @@ The adapter does not read `tsconfig.json`, `package.json` dependencies,
 node_modules contents, generated declaration files, sourcemaps, or
 runtime test output.
 
+## TypeScript-Family Fact Vocabulary
+
+TypeScript/JavaScript preview findings and repair packets use these bounded
+fields when the adapter has enough syntax-first evidence to populate them:
+
+| Field | Values |
+| --- | --- |
+| `language` | `typescript`, `javascript` |
+| `language_status` | `preview` |
+| `owner_kind` | `function`, `method`, `class_method`, `arrow_function`, `component`, `module_function` |
+| `test_kind` | `jest_test`, `vitest_test`, `describe_block`, `table_test`, `unknown_test` |
+| `assertion_kind` | `exact_value`, `error_path`, `async_resolve`, `async_reject`, `mock_interaction`, `snapshot_weak`, `smoke_weak` |
+| `probe_kind` | `predicate`, `return_value`, `error_path`, `field_construction`, `call_side_effect`, `mock_interaction` |
+| `static_limit_kind` | `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`, `decorator_indirection`, `mocked_module`, `unsupported_syntax` |
+| `repair_kind` | `add_boundary_assertion`, `add_exact_value_assertion`, `add_error_variant_assertion`, `add_mock_argument_assertion`, `strengthen_snapshot_oracle`, `name_static_limitation` |
+
+Only `language`, `language_status`, `owner_kind`, and `static_limit_kind` are
+currently language-adapter output fields in RIPR-SPEC-0026. The remaining
+fields become public only through later output-schema or repair-packet PRs; they
+must not be inferred by consumers before those PRs land.
+
 ## Owner Facts
 
 Owners the adapter must recognise:
@@ -58,7 +92,7 @@ Owners the adapter must recognise:
 - module-scope `const` initializers that participate in changed behavior
   (when a probe attaches to the initializer expression)
 
-Owner kinds emitted in output (per RIPR-SPEC-0026):
+Owner kinds emitted in TypeScript/JavaScript preview facts:
 
 - `function`, `method`, `class_method`, `arrow_function`, `component`,
   `module_function`.
@@ -230,11 +264,14 @@ generated CI behavior and LSP smoke coverage.
 
 ## Implementation Mapping
 
-Follow-up implementation belongs to Campaign 27 work item
-`analysis/typescript-preview-adapter`. The boundary, router, repo config,
-and additive output metadata land first under RIPR-SPEC-0026 work items.
-This spec PR records the per-language contract; no analyzer behavior
-changes in the spec PR.
+The first implementation landed under Campaign 27 work item
+`analysis/typescript-preview-adapter`. Follow-up completion work belongs to the
+TypeScript preview completion lane and should use
+`plans/typescript-preview-completion/implementation-plan.md` as the PR queue. No
+follow-up may change Rust behavior, preview advisory status, default gates,
+badges, baselines, RIPR Zero eligibility, provider behavior, generated tests,
+source-edit behavior, or runtime mutation execution unless a later accepted
+contract explicitly changes that boundary.
 
 ## Metrics
 

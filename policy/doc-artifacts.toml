@@ -111,3 +111,10 @@ path = "plans/python-repair-routing/implementation-plan.md"
 status = "proposed"
 owner = "language-adapter-swarm"
 linked_proposal = "RIPR-PROP-0017"
+
+[[artifact]]
+id = "RIPR-PLAN-0027"
+kind = "plan"
+path = "plans/typescript-preview-completion/implementation-plan.md"
+status = "proposed"
+owner = "language-adapter-swarm"

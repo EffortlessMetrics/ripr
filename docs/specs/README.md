@@ -36,8 +36,8 @@ observable behavior.
 | [RIPR-SPEC-0023](RIPR-SPEC-0023-pr-review-front-panel-report.md) | proposed | PR review front panel report |
 | [RIPR-SPEC-0024](RIPR-SPEC-0024-report-packet-index.md) | proposed | Report packet index |
 | [RIPR-SPEC-0025](RIPR-SPEC-0025-pr-inline-comment-publisher.md) | proposed | PR inline comment publisher |
-| [RIPR-SPEC-0026](RIPR-SPEC-0026-language-adapter-contract.md) | proposed | Language adapter contract |
-| [RIPR-SPEC-0027](RIPR-SPEC-0027-typescript-preview-static-facts.md) | proposed | TypeScript preview static facts |
+| [RIPR-SPEC-0026](RIPR-SPEC-0026-language-adapter-contract.md) | accepted | Language adapter contract |
+| [RIPR-SPEC-0027](RIPR-SPEC-0027-typescript-preview-static-facts.md) | accepted | TypeScript preview static facts |
 | [RIPR-SPEC-0028](RIPR-SPEC-0028-python-preview-static-facts.md) | proposed | Python preview static facts |
 | [RIPR-SPEC-0029](RIPR-SPEC-0029-policy-readiness-report.md) | proposed | Policy readiness report |
 | [RIPR-SPEC-0030](RIPR-SPEC-0030-preview-evidence-policy-boundary.md) | proposed | Preview evidence policy boundary |

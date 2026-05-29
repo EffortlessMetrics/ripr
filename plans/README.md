@@ -72,6 +72,8 @@ they are active, closed, complete, blocked, or historical.
 
 - [Python repair routing](python-repair-routing/implementation-plan.md)
   (proposed, not active until explicitly selected)
+- [TypeScript preview completion](typescript-preview-completion/implementation-plan.md)
+  (proposed lane plan; preview/advisory boundary preserved)
 
 ### Closed or Complete Plans
 

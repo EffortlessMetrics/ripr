@@ -220,6 +220,7 @@ Current explanation docs:
 - [Proposals](proposals/README.md)
 - [Python repair routing proposal](proposals/RIPR-PROP-0017-python-repair-routing-lane.md)
 - [Python repair routing plan](../plans/python-repair-routing/implementation-plan.md)
+- [TypeScript preview completion plan](../plans/typescript-preview-completion/implementation-plan.md)
 - [User-visible output evidence proposal](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
 - [Lane 1 finding alignment burn-down plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
 - [Lane 1 value resolution audit fixes plan](../plans/lane1-value-resolution-audit-fixes/implementation-plan.md)

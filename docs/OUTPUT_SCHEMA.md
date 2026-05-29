@@ -424,12 +424,13 @@ The evidence-first fields are additive in schema `0.1`:
   integrations.
 - `language` is the per-finding source language reported by the language
   adapter that produced it (see [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md)).
-  Values are `rust`, `typescript`, or `python`. Omitted when no adapter
-  populated it. Rust findings always carry `language: "rust"`; TypeScript
-  and Python preview adapters land in later Campaign 27 work items.
+  Values are `rust`, `typescript`, `javascript`, or `python`. Omitted when no
+  adapter populated it. Rust findings always carry `language: "rust"`;
+  preview adapters set the preview-language value when configured and when the
+  implementation has that label wired.
 - `language_status` is the per-finding adapter status. Values are `stable`
-  or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; preview adapters
-  (TypeScript, Python) will set `preview` when they land.
+  or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; configured preview
+  adapters set `preview`.
 - `owner_kind` is an additive optional per-finding syntactic owner
   discriminator. It is omitted when no preview adapter populated a bounded
   owner. Values are `function`, `method`, `class_method`, `arrow_function`,

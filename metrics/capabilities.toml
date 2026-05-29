@@ -1502,6 +1502,34 @@ next = "maintenance"
 metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
 
 [[capability]]
+id = "typescript_preview_static_facts"
+name = "TypeScript preview static facts"
+status = "alpha"
+spec = "RIPR-SPEC-0027"
+evidence = [
+  "RIPR-SPEC-0027 accepts the TypeScript-family preview static-facts contract",
+  "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md records current implementation and missing completion slices",
+  "plans/typescript-preview-completion/implementation-plan.md sequences the bounded completion PRs",
+  "fixtures/typescript_boundary_gap",
+  "fixtures/typescript_strong_oracle",
+  "fixtures/typescript_return_value_shape",
+  "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes",
+  "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing"
+]
+fixtures = [
+  "fixtures/typescript_boundary_gap",
+  "fixtures/typescript_strong_oracle",
+  "fixtures/typescript_return_value_shape",
+  "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes"
+]
+next = "analysis/typescript-router-config-conformance"
+metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_static_limit_mocked_module"
+
+[[capability]]
 id = "sarif_ci_policy"
 name = "SARIF and CI policy"
 status = "alpha"
