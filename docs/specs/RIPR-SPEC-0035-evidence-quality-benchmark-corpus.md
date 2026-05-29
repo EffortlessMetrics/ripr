@@ -209,6 +209,12 @@ affinity.
 - `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_directly_calls_owner_then_activation_is_yes`
   pins the `call_presence` same-file direct-wrapper activation sub-shape without
   synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes`
+  pins that `Err(owner(...))` is a safe one-hop helper constructor for
+  value-insensitive `call_presence` activation when the helper directly calls
+  the owner. The related assertion may still mention the call target, but
+  assertion-target affinity alone remains non-actionable without the helper
+  owner-call proof.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown`
   pins the helper-name-only must-not-claim guard as
   `activation_owner_call_absent_same_file_only` routed to

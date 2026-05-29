@@ -1087,6 +1087,72 @@
       "repair_route": "analysis/related-test-ranking-audit-fixes"
     },
     {
+      "id": "call_presence_test_local_err_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local one-hop helper that wraps a production owner call in Err(...) can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> Result<(), String> { Err(render_pipeline(\"alpha\")) }\nlet format_output = exercise_pipeline().unwrap_err();\nassert_eq!(format_output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-test-local-err-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-test-local-err-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local one-hop helper can satisfy activation when it wraps the production owner call in an Err(...) constructor.",
+      "must_not_claim": [
+        "Do not treat arbitrary Result wrappers as multi-hop helper tracing.",
+        "Do not treat assertion-target affinity alone as activation without a helper or direct owner call.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not treat Err(...) without a production owner call as activation."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
       "id": "call_presence_specific_call_target_affinity_stays_named_limitation",
       "case_kind": "static_limitation",
       "evidence_class": "call_presence",
