@@ -29,9 +29,9 @@ use crate::domain::{
 };
 use rustpython_parser::{
     Mode,
-    ast::{self, Expr, Mod, Stmt},
+    ast::{self, Expr, Mod, Ranged, Stmt},
     parse,
-    text_size::TextRange,
+    text_size::{TextRange, TextSize},
 };
 use std::path::{Path, PathBuf};
 mod source_utils;
@@ -105,23 +105,1068 @@ struct PythonAssertion {
     oracle_strength: OracleStrength,
 }
 
-fn parse_module(path: &Path, source: &str) -> Option<Mod> {
-    let source_path = path.to_string_lossy();
-    let module = parse(source, Mode::Module, source_path.as_ref()).ok()?;
-    match module {
-        Mod::Module(_) => Some(module),
-        _ => None,
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonSourceFacts {
+    file: PathBuf,
+    language: &'static str,
+    owners: Vec<PythonOwner>,
+    tests: Vec<PythonTest>,
+    facts: Vec<PythonSourceFact>,
+    limitations: Vec<PythonSourceLimitation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonSourceFact {
+    kind: PythonSourceFactKind,
+    file: PathBuf,
+    owner: Option<String>,
+    start_line: usize,
+    end_line: usize,
+    start_byte: usize,
+    end_byte: usize,
+    text: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum PythonSourceFactKind {
+    Module,
+    Class,
+    Function,
+    Method,
+    Decorator,
+    Parameter,
+    Return,
+    Raise,
+    Predicate,
+    Comparison,
+    BooleanExpression,
+    Call,
+    Assignment,
+    AttributeWrite,
+    DictLiteral,
+    ListLiteral,
+    SetLiteral,
+    StringLiteral,
+    PrintCall,
+    LogCall,
+}
+
+impl PythonSourceFactKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Module => "module",
+            Self::Class => "class",
+            Self::Function => "function",
+            Self::Method => "method",
+            Self::Decorator => "decorator",
+            Self::Parameter => "parameter",
+            Self::Return => "return",
+            Self::Raise => "raise",
+            Self::Predicate => "predicate",
+            Self::Comparison => "comparison",
+            Self::BooleanExpression => "boolean_expression",
+            Self::Call => "call",
+            Self::Assignment => "assignment",
+            Self::AttributeWrite => "attribute_write",
+            Self::DictLiteral => "dict_literal",
+            Self::ListLiteral => "list_literal",
+            Self::SetLiteral => "set_literal",
+            Self::StringLiteral => "string_literal",
+            Self::PrintCall => "print_call",
+            Self::LogCall => "log_call",
+        }
     }
 }
 
-fn extract_owners(file: &Path, source: &str) -> Vec<PythonOwner> {
-    let Some(Mod::Module(module)) = parse_module(file, source) else {
-        return Vec::new();
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonSourceLimitation {
+    kind: StaticLimitKind,
+    evidence: String,
+    missing: String,
+}
+
+fn parse_module_result(path: &Path, source: &str) -> Result<Mod, String> {
+    let source_path = path.to_string_lossy();
+    let module = parse(source, Mode::Module, source_path.as_ref())
+        .map_err(|err| format!("parse_error: {err}"))?;
+    match module {
+        Mod::Module(_) => Ok(module),
+        _ => Err("parse_error: expected Python module".to_string()),
+    }
+}
+
+#[cfg(test)]
+fn parse_module(path: &Path, source: &str) -> Option<Mod> {
+    parse_module_result(path, source).ok()
+}
+
+fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFacts {
+    let mut snapshot = PythonSourceFacts {
+        file: file.to_path_buf(),
+        language: DomainLanguageId::Python.as_str(),
+        owners: Vec::new(),
+        tests: Vec::new(),
+        facts: Vec::new(),
+        limitations: Vec::new(),
     };
-    let mut owners = Vec::new();
+    let module = match parse_module_result(file, source) {
+        Ok(Mod::Module(module)) => module,
+        Ok(_) => {
+            snapshot.limitations.push(PythonSourceLimitation {
+                kind: StaticLimitKind::UnsupportedSyntax,
+                evidence: "source_fact_parse_error: parse_error: expected Python module"
+                    .to_string(),
+                missing: "Static limit `unsupported_syntax`: malformed Python prevented source-fact extraction.".to_string(),
+            });
+            return snapshot;
+        }
+        Err(parse_reason) => {
+            snapshot.limitations.push(PythonSourceLimitation {
+                kind: StaticLimitKind::UnsupportedSyntax,
+                evidence: format!("source_fact_parse_error: {parse_reason}"),
+                missing: "Static limit `unsupported_syntax`: malformed Python prevented source-fact extraction.".to_string(),
+            });
+            return snapshot;
+        }
+    };
+
+    let module_range = TextRange::new(
+        TextSize::from(0),
+        TextSize::from(u32::try_from(source.len()).unwrap_or(u32::MAX)),
+    );
+    push_source_fact(
+        &mut snapshot.facts,
+        file,
+        source,
+        PythonSourceFactKind::Module,
+        None,
+        module_range,
+    );
+
     let imports = collect_imports_from_statements(&module.body);
-    collect_owners_from_statements(file, source, &module.body, None, &imports, &mut owners);
-    owners
+    collect_owners_from_statements(
+        file,
+        source,
+        &module.body,
+        None,
+        &imports,
+        &mut snapshot.owners,
+    );
+    collect_tests_from_statements(
+        file,
+        source,
+        &module.body,
+        false,
+        &imports,
+        &mut snapshot.tests,
+    );
+    collect_source_facts_from_statements(
+        file,
+        source,
+        &module.body,
+        None,
+        None,
+        &mut snapshot.facts,
+    );
+    snapshot
+}
+
+fn source_fact_snapshot_observation(facts: &PythonSourceFacts) -> usize {
+    let mut score = facts.file.components().count() + facts.language.len();
+    score = score.saturating_add(facts.owners.len());
+    score = score.saturating_add(facts.tests.len());
+    for fact in &facts.facts {
+        score = score.saturating_add(fact.kind.as_str().len());
+        score = score.saturating_add(fact.file.components().count());
+        score = score.saturating_add(fact.owner.as_deref().unwrap_or_default().len());
+        score = score.saturating_add(fact.start_line);
+        score = score.saturating_add(fact.end_line);
+        score = score.saturating_add(fact.start_byte);
+        score = score.saturating_add(fact.end_byte);
+        score = score.saturating_add(fact.text.len());
+    }
+    for limitation in &facts.limitations {
+        score = score.saturating_add(limitation.kind.as_str().len());
+        score = score.saturating_add(limitation.evidence.len());
+        score = score.saturating_add(limitation.missing.len());
+    }
+    score
+}
+
+fn push_source_fact(
+    out: &mut Vec<PythonSourceFact>,
+    file: &Path,
+    source: &str,
+    kind: PythonSourceFactKind,
+    owner: Option<&str>,
+    range: TextRange,
+) {
+    out.push(PythonSourceFact {
+        kind,
+        file: file.to_path_buf(),
+        owner: owner.map(str::to_string),
+        start_line: line_for_range_start(source, range),
+        end_line: line_for_range_end(source, range),
+        start_byte: usize::from(range.start()),
+        end_byte: usize::from(range.end()),
+        text: text_for_range(source, range).trim().to_string(),
+    });
+}
+
+fn collect_source_facts_from_statements(
+    file: &Path,
+    source: &str,
+    statements: &[Stmt],
+    class_context: Option<&str>,
+    current_owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    for stmt in statements {
+        match stmt {
+            Stmt::FunctionDef(function) => {
+                collect_source_facts_from_function(
+                    PythonFunctionSourceContext {
+                        file,
+                        source,
+                        class_context,
+                        name: function.name.as_str(),
+                        range: function.range,
+                        args: &function.args,
+                        decorators: &function.decorator_list,
+                        body: &function.body,
+                    },
+                    out,
+                );
+            }
+            Stmt::AsyncFunctionDef(function) => {
+                collect_source_facts_from_function(
+                    PythonFunctionSourceContext {
+                        file,
+                        source,
+                        class_context,
+                        name: function.name.as_str(),
+                        range: function.range,
+                        args: &function.args,
+                        decorators: &function.decorator_list,
+                        body: &function.body,
+                    },
+                    out,
+                );
+            }
+            Stmt::ClassDef(class) => {
+                let owner = current_owner.unwrap_or(class.name.as_str());
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Class,
+                    Some(owner),
+                    class.range,
+                );
+                for decorator in &class.decorator_list {
+                    collect_decorator_fact(file, source, decorator, Some(owner), out);
+                }
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &class.body,
+                    Some(class.name.as_str()),
+                    Some(class.name.as_str()),
+                    out,
+                );
+            }
+            Stmt::Return(return_stmt) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Return,
+                    current_owner,
+                    return_stmt.range,
+                );
+                if let Some(value) = &return_stmt.value {
+                    collect_source_facts_from_expr(file, source, value, current_owner, out);
+                }
+            }
+            Stmt::Raise(raise_stmt) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Raise,
+                    current_owner,
+                    raise_stmt.range,
+                );
+                if let Some(exc) = &raise_stmt.exc {
+                    collect_source_facts_from_expr(file, source, exc, current_owner, out);
+                }
+                if let Some(cause) = &raise_stmt.cause {
+                    collect_source_facts_from_expr(file, source, cause, current_owner, out);
+                }
+            }
+            Stmt::If(if_stmt) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Predicate,
+                    current_owner,
+                    if_stmt.test.range(),
+                );
+                collect_source_facts_from_expr(file, source, &if_stmt.test, current_owner, out);
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &if_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &if_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::While(while_stmt) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Predicate,
+                    current_owner,
+                    while_stmt.test.range(),
+                );
+                collect_source_facts_from_expr(file, source, &while_stmt.test, current_owner, out);
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &while_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &while_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::For(for_stmt) => {
+                collect_source_facts_from_expr(file, source, &for_stmt.target, current_owner, out);
+                collect_source_facts_from_expr(file, source, &for_stmt.iter, current_owner, out);
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &for_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &for_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::AsyncFor(for_stmt) => {
+                collect_source_facts_from_expr(file, source, &for_stmt.target, current_owner, out);
+                collect_source_facts_from_expr(file, source, &for_stmt.iter, current_owner, out);
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &for_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &for_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::Match(match_stmt) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Predicate,
+                    current_owner,
+                    match_stmt.subject.range(),
+                );
+                collect_source_facts_from_expr(
+                    file,
+                    source,
+                    &match_stmt.subject,
+                    current_owner,
+                    out,
+                );
+                for case in &match_stmt.cases {
+                    if let Some(guard) = &case.guard {
+                        collect_source_facts_from_expr(file, source, guard, current_owner, out);
+                    }
+                    collect_source_facts_from_statements(
+                        file,
+                        source,
+                        &case.body,
+                        class_context,
+                        current_owner,
+                        out,
+                    );
+                }
+            }
+            Stmt::Assign(assign) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Assignment,
+                    current_owner,
+                    assign.range,
+                );
+                for target in &assign.targets {
+                    collect_assignment_target_facts(file, source, target, current_owner, out);
+                }
+                collect_source_facts_from_expr(file, source, &assign.value, current_owner, out);
+            }
+            Stmt::AnnAssign(assign) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Assignment,
+                    current_owner,
+                    assign.range,
+                );
+                collect_assignment_target_facts(file, source, &assign.target, current_owner, out);
+                collect_source_facts_from_expr(
+                    file,
+                    source,
+                    &assign.annotation,
+                    current_owner,
+                    out,
+                );
+                if let Some(value) = &assign.value {
+                    collect_source_facts_from_expr(file, source, value, current_owner, out);
+                }
+            }
+            Stmt::AugAssign(assign) => {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::Assignment,
+                    current_owner,
+                    assign.range,
+                );
+                collect_assignment_target_facts(file, source, &assign.target, current_owner, out);
+                collect_source_facts_from_expr(file, source, &assign.value, current_owner, out);
+            }
+            Stmt::Expr(expr_stmt) => {
+                collect_source_facts_from_expr(file, source, &expr_stmt.value, current_owner, out);
+            }
+            Stmt::With(with_stmt) => {
+                for item in &with_stmt.items {
+                    collect_source_facts_from_expr(
+                        file,
+                        source,
+                        &item.context_expr,
+                        current_owner,
+                        out,
+                    );
+                    if let Some(optional_vars) = &item.optional_vars {
+                        collect_assignment_target_facts(
+                            file,
+                            source,
+                            optional_vars,
+                            current_owner,
+                            out,
+                        );
+                    }
+                }
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &with_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::AsyncWith(with_stmt) => {
+                for item in &with_stmt.items {
+                    collect_source_facts_from_expr(
+                        file,
+                        source,
+                        &item.context_expr,
+                        current_owner,
+                        out,
+                    );
+                    if let Some(optional_vars) = &item.optional_vars {
+                        collect_assignment_target_facts(
+                            file,
+                            source,
+                            optional_vars,
+                            current_owner,
+                            out,
+                        );
+                    }
+                }
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &with_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::Try(try_stmt) => {
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_except_handlers(
+                    file,
+                    source,
+                    &try_stmt.handlers,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.finalbody,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            Stmt::TryStar(try_stmt) => {
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.body,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_except_handlers(
+                    file,
+                    source,
+                    &try_stmt.handlers,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.orelse,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+                collect_source_facts_from_statements(
+                    file,
+                    source,
+                    &try_stmt.finalbody,
+                    class_context,
+                    current_owner,
+                    out,
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+struct PythonFunctionSourceContext<'a> {
+    file: &'a Path,
+    source: &'a str,
+    class_context: Option<&'a str>,
+    name: &'a str,
+    range: TextRange,
+    args: &'a ast::Arguments,
+    decorators: &'a [Expr],
+    body: &'a [Stmt],
+}
+
+fn collect_source_facts_from_function(
+    context: PythonFunctionSourceContext<'_>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    let qualified_name = context
+        .class_context
+        .map(|class| format!("{class}.{}", context.name))
+        .unwrap_or_else(|| context.name.to_string());
+    let kind = if context.class_context.is_some() {
+        PythonSourceFactKind::Method
+    } else {
+        PythonSourceFactKind::Function
+    };
+    push_source_fact(
+        out,
+        context.file,
+        context.source,
+        kind,
+        Some(&qualified_name),
+        context.range,
+    );
+    for decorator in context.decorators {
+        collect_decorator_fact(
+            context.file,
+            context.source,
+            decorator,
+            Some(&qualified_name),
+            out,
+        );
+    }
+    collect_parameter_facts(
+        context.file,
+        context.source,
+        context.args,
+        Some(&qualified_name),
+        out,
+    );
+    collect_source_facts_from_statements(
+        context.file,
+        context.source,
+        context.body,
+        context.class_context,
+        Some(&qualified_name),
+        out,
+    );
+}
+
+fn collect_decorator_fact(
+    file: &Path,
+    source: &str,
+    decorator: &Expr,
+    owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    push_source_fact(
+        out,
+        file,
+        source,
+        PythonSourceFactKind::Decorator,
+        owner,
+        decorator.range(),
+    );
+    collect_source_facts_from_expr(file, source, decorator, owner, out);
+}
+
+fn collect_parameter_facts(
+    file: &Path,
+    source: &str,
+    args: &ast::Arguments,
+    owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    for arg in args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+    {
+        push_source_fact(
+            out,
+            file,
+            source,
+            PythonSourceFactKind::Parameter,
+            owner,
+            arg.def.range,
+        );
+        if let Some(annotation) = &arg.def.annotation {
+            collect_source_facts_from_expr(file, source, annotation, owner, out);
+        }
+        if let Some(default) = &arg.default {
+            collect_source_facts_from_expr(file, source, default, owner, out);
+        }
+    }
+    if let Some(arg) = &args.vararg {
+        push_source_fact(
+            out,
+            file,
+            source,
+            PythonSourceFactKind::Parameter,
+            owner,
+            arg.range,
+        );
+    }
+    if let Some(arg) = &args.kwarg {
+        push_source_fact(
+            out,
+            file,
+            source,
+            PythonSourceFactKind::Parameter,
+            owner,
+            arg.range,
+        );
+    }
+}
+
+fn collect_assignment_target_facts(
+    file: &Path,
+    source: &str,
+    target: &Expr,
+    owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    if let Expr::Attribute(attribute) = target {
+        push_source_fact(
+            out,
+            file,
+            source,
+            PythonSourceFactKind::AttributeWrite,
+            owner,
+            attribute.range,
+        );
+    }
+    collect_source_facts_from_expr(file, source, target, owner, out);
+}
+
+fn collect_source_facts_from_except_handlers(
+    file: &Path,
+    source: &str,
+    handlers: &[ast::ExceptHandler],
+    class_context: Option<&str>,
+    current_owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    for handler in handlers {
+        let ast::ExceptHandler::ExceptHandler(handler) = handler;
+        if let Some(type_expr) = &handler.type_ {
+            collect_source_facts_from_expr(file, source, type_expr, current_owner, out);
+        }
+        collect_source_facts_from_statements(
+            file,
+            source,
+            &handler.body,
+            class_context,
+            current_owner,
+            out,
+        );
+    }
+}
+
+fn collect_source_facts_from_expr(
+    file: &Path,
+    source: &str,
+    expr: &Expr,
+    owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    match expr {
+        Expr::BoolOp(bool_op) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::BooleanExpression,
+                owner,
+                bool_op.range,
+            );
+            for value in &bool_op.values {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::NamedExpr(named) => {
+            collect_assignment_target_facts(file, source, &named.target, owner, out);
+            collect_source_facts_from_expr(file, source, &named.value, owner, out);
+        }
+        Expr::BinOp(bin_op) => {
+            collect_source_facts_from_expr(file, source, &bin_op.left, owner, out);
+            collect_source_facts_from_expr(file, source, &bin_op.right, owner, out);
+        }
+        Expr::UnaryOp(unary) => {
+            collect_source_facts_from_expr(file, source, &unary.operand, owner, out);
+        }
+        Expr::Lambda(lambda) => {
+            collect_parameter_facts(file, source, &lambda.args, owner, out);
+            collect_source_facts_from_expr(file, source, &lambda.body, owner, out);
+        }
+        Expr::IfExp(if_exp) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::Predicate,
+                owner,
+                if_exp.test.range(),
+            );
+            collect_source_facts_from_expr(file, source, &if_exp.test, owner, out);
+            collect_source_facts_from_expr(file, source, &if_exp.body, owner, out);
+            collect_source_facts_from_expr(file, source, &if_exp.orelse, owner, out);
+        }
+        Expr::Dict(dict) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::DictLiteral,
+                owner,
+                dict.range,
+            );
+            for key in dict.keys.iter().flatten() {
+                collect_source_facts_from_expr(file, source, key, owner, out);
+            }
+            for value in &dict.values {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::Set(set) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::SetLiteral,
+                owner,
+                set.range,
+            );
+            for value in &set.elts {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::ListComp(list_comp) => {
+            collect_source_facts_from_expr(file, source, &list_comp.elt, owner, out);
+            collect_source_facts_from_comprehensions(
+                file,
+                source,
+                &list_comp.generators,
+                owner,
+                out,
+            );
+        }
+        Expr::SetComp(set_comp) => {
+            collect_source_facts_from_expr(file, source, &set_comp.elt, owner, out);
+            collect_source_facts_from_comprehensions(
+                file,
+                source,
+                &set_comp.generators,
+                owner,
+                out,
+            );
+        }
+        Expr::DictComp(dict_comp) => {
+            collect_source_facts_from_expr(file, source, &dict_comp.key, owner, out);
+            collect_source_facts_from_expr(file, source, &dict_comp.value, owner, out);
+            collect_source_facts_from_comprehensions(
+                file,
+                source,
+                &dict_comp.generators,
+                owner,
+                out,
+            );
+        }
+        Expr::GeneratorExp(generator) => {
+            collect_source_facts_from_expr(file, source, &generator.elt, owner, out);
+            collect_source_facts_from_comprehensions(
+                file,
+                source,
+                &generator.generators,
+                owner,
+                out,
+            );
+        }
+        Expr::Await(await_expr) => {
+            collect_source_facts_from_expr(file, source, &await_expr.value, owner, out);
+        }
+        Expr::Yield(yield_expr) => {
+            if let Some(value) = &yield_expr.value {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::YieldFrom(yield_expr) => {
+            collect_source_facts_from_expr(file, source, &yield_expr.value, owner, out);
+        }
+        Expr::Compare(compare) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::Comparison,
+                owner,
+                compare.range,
+            );
+            collect_source_facts_from_expr(file, source, &compare.left, owner, out);
+            for comparator in &compare.comparators {
+                collect_source_facts_from_expr(file, source, comparator, owner, out);
+            }
+        }
+        Expr::Call(call) => {
+            let call_name = expr_full_name(call.func.as_ref());
+            if call_name.as_deref() == Some("print") {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::PrintCall,
+                    owner,
+                    call.range,
+                );
+            }
+            if call_name.as_deref().is_some_and(is_log_call_name) {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::LogCall,
+                    owner,
+                    call.range,
+                );
+            }
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::Call,
+                owner,
+                call.range,
+            );
+            collect_source_facts_from_expr(file, source, &call.func, owner, out);
+            for arg in &call.args {
+                collect_source_facts_from_expr(file, source, arg, owner, out);
+            }
+            for keyword in &call.keywords {
+                collect_source_facts_from_expr(file, source, &keyword.value, owner, out);
+            }
+        }
+        Expr::FormattedValue(formatted) => {
+            collect_source_facts_from_expr(file, source, &formatted.value, owner, out);
+            if let Some(format_spec) = &formatted.format_spec {
+                collect_source_facts_from_expr(file, source, format_spec, owner, out);
+            }
+        }
+        Expr::JoinedStr(joined) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::StringLiteral,
+                owner,
+                joined.range,
+            );
+            for value in &joined.values {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::Constant(constant) => {
+            if matches!(&constant.value, ast::Constant::Str(_)) {
+                push_source_fact(
+                    out,
+                    file,
+                    source,
+                    PythonSourceFactKind::StringLiteral,
+                    owner,
+                    constant.range,
+                );
+            }
+        }
+        Expr::Attribute(attribute) => {
+            collect_source_facts_from_expr(file, source, &attribute.value, owner, out);
+        }
+        Expr::Subscript(subscript) => {
+            collect_source_facts_from_expr(file, source, &subscript.value, owner, out);
+            collect_source_facts_from_expr(file, source, &subscript.slice, owner, out);
+        }
+        Expr::Starred(starred) => {
+            collect_source_facts_from_expr(file, source, &starred.value, owner, out);
+        }
+        Expr::List(list) => {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::ListLiteral,
+                owner,
+                list.range,
+            );
+            for value in &list.elts {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::Tuple(tuple) => {
+            for value in &tuple.elts {
+                collect_source_facts_from_expr(file, source, value, owner, out);
+            }
+        }
+        Expr::Slice(slice) => {
+            if let Some(lower) = &slice.lower {
+                collect_source_facts_from_expr(file, source, lower, owner, out);
+            }
+            if let Some(upper) = &slice.upper {
+                collect_source_facts_from_expr(file, source, upper, owner, out);
+            }
+            if let Some(step) = &slice.step {
+                collect_source_facts_from_expr(file, source, step, owner, out);
+            }
+        }
+        Expr::Name(_) => {}
+    }
+}
+
+fn collect_source_facts_from_comprehensions(
+    file: &Path,
+    source: &str,
+    comprehensions: &[ast::Comprehension],
+    owner: Option<&str>,
+    out: &mut Vec<PythonSourceFact>,
+) {
+    for comprehension in comprehensions {
+        collect_assignment_target_facts(file, source, &comprehension.target, owner, out);
+        collect_source_facts_from_expr(file, source, &comprehension.iter, owner, out);
+        for guard in &comprehension.ifs {
+            push_source_fact(
+                out,
+                file,
+                source,
+                PythonSourceFactKind::Predicate,
+                owner,
+                guard.range(),
+            );
+            collect_source_facts_from_expr(file, source, guard, owner, out);
+        }
+    }
+}
+
+fn is_log_call_name(name: &str) -> bool {
+    matches!(
+        name.rsplit('.').next(),
+        Some("debug" | "info" | "warning" | "warn" | "error" | "exception" | "critical" | "log")
+    ) && (name.starts_with("logging.") || name.starts_with("logger."))
+}
+
+#[cfg(test)]
+fn extract_owners(file: &Path, source: &str) -> Vec<PythonOwner> {
+    extract_source_facts(file, source).owners
 }
 
 fn collect_owners_from_statements(
@@ -223,14 +1268,9 @@ fn owner_from_function(
     }
 }
 
+#[cfg(test)]
 fn extract_tests(file: &Path, source: &str) -> Vec<PythonTest> {
-    let Some(Mod::Module(module)) = parse_module(file, source) else {
-        return Vec::new();
-    };
-    let mut tests = Vec::new();
-    let imports = collect_imports_from_statements(&module.body);
-    collect_tests_from_statements(file, source, &module.body, false, &imports, &mut tests);
-    tests
+    extract_source_facts(file, source).tests
 }
 
 fn collect_tests_from_statements(
@@ -1180,10 +2220,12 @@ impl LanguageAdapter for PythonAdapter {
             let Ok(source) = std::fs::read_to_string(&absolute) else {
                 continue;
             };
+            let facts = extract_source_facts(relative, &source);
+            debug_assert!(source_fact_snapshot_observation(&facts) > 0);
             if is_test_file(relative) {
-                all_tests.extend(extract_tests(relative, &source));
+                all_tests.extend(facts.tests);
             } else {
-                all_owners.extend(extract_owners(relative, &source));
+                all_owners.extend(facts.owners);
             }
         }
 

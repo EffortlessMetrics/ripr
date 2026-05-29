@@ -43,9 +43,9 @@ the repo enables Python in `ripr.toml`.
 
 The current implementation is not yet the repair-routing loop from
 RIPR-PROP-0017. The gaps are concentrated in project detection,
-language-neutral first-use CLI behavior, canonical Python gap identity,
-missing-discriminator extraction, repair cards, verify commands, agent
-packets, and before/after receipts.
+diff-to-owner mapping, language-neutral first-use CLI behavior, canonical
+Python gap identity, missing-discriminator extraction, repair cards, verify
+commands, agent packets, and before/after receipts.
 
 ## Current Code Map
 
@@ -55,7 +55,7 @@ packets, and before/after receipts.
 | Config opt-in | [`crates/ripr/src/config.rs`](../../crates/ripr/src/config.rs) | Default `[languages]` is `["rust"]`; Python runs only when `python` is listed. |
 | Router | [`crates/ripr/src/analysis/language/router.rs`](../../crates/ripr/src/analysis/language/router.rs) | `.py` paths route to `LanguageId::Python`; pipeline dispatch still depends on config. |
 | Pipeline | [`crates/ripr/src/analysis/pipeline.rs`](../../crates/ripr/src/analysis/pipeline.rs) | Diff and repo pipelines can dispatch to `PythonAdapter` when the feature and config allow it. |
-| Adapter | [`crates/ripr/src/analysis/language/python.rs`](../../crates/ripr/src/analysis/language/python.rs) | Extracts preview owners, tests, oracles, related tests, probe shape, static limits, and `Finding` values. |
+| Adapter | [`crates/ripr/src/analysis/language/python.rs`](../../crates/ripr/src/analysis/language/python.rs) | Extracts source-fact snapshots, preview owners, tests, oracles, related tests, probe shape, static limits, and `Finding` values. |
 | Python helpers | [`crates/ripr/src/analysis/language/python/source_utils.rs`](../../crates/ripr/src/analysis/language/python/source_utils.rs) | Provides line/span/path helpers and Python test-file recognition. |
 | Adapter tests | [`crates/ripr/src/analysis/language/python/python_tests.rs`](../../crates/ripr/src/analysis/language/python/python_tests.rs) | Pins assertion walking, probe classification, static limits, workspace exclusions, and diff analysis. |
 | Human output | [`crates/ripr/src/output/human/sections.rs`](../../crates/ripr/src/output/human/sections.rs) | Renders preview language/status/owner metadata for non-Rust findings. |
@@ -67,6 +67,7 @@ packets, and before/after receipts.
 
 | Fact family | Currently covered | Current limits |
 | --- | --- | --- |
+| Source snapshots | Stable file/span/language facts for modules, classes, functions, methods, decorators, parameters, returns, raises, predicates, comparisons, boolean expressions, calls, assignments, attribute writes, dict/list/set literals, string literals, and print/log calls. | Snapshot facts are still internal analysis substrate; they are not yet projected as canonical gap IDs or repair cards. |
 | Owners | Top-level `def`, `async def`, methods, `@staticmethod`, and `@classmethod` methods. | No standalone class owner, durable module-level owner, or line-movement-stable owner ID for repair gaps yet. |
 | Tests | `test_*` functions, async `test_*`, tests inside classes, `unittest.TestCase` `test_*` methods, and test files by `test_*.py`, `*_test.py`, or `tests/` paths. | Fixture parameters, custom helpers, API clients, CLI runners, and framework fixtures are not modeled as first-class test facts. |
 | Pytest oracles | `assert a == b`, non-equality comparisons, bare `assert expr`, `isinstance(...)`, `pytest.raises(...)`, and `pytest.mark.parametrize` presence. | No exact boundary discriminator extraction, no `match=` message observer, no `capsys`, `caplog`, status-code, response JSON, or custom helper classification. |
@@ -164,19 +165,18 @@ packet safety, or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `analysis/python-source-facts`, can start from this
+The next work item, `analysis/python-diff-owner-mapping`, can start from this
 boundary:
 
-- `ripr pilot --root fixtures/python/basic` works without a Cargo workspace or
-  `ripr.toml`.
-- `ripr check --root fixtures/python/basic --diff
-  fixtures/python/basic/diff.patch --json` emits Python preview metadata from
-  project detection.
-- Repos with no Python signal remain Rust-only by default.
-- Explicit `ripr.toml` still controls language selection, including disabling
-  Python preview in Python-shaped repos.
-- The Python walker skips virtualenv, cache, build, distribution, and
-  detectable generated Python files.
+- Python project detection keeps no-config Python repos analyzable without
+  weakening explicit `ripr.toml` authority.
+- Python analysis now reuses a source-fact snapshot instead of separate
+  parser passes for owner and test extraction.
+- Malformed Python records an internal `unsupported_syntax` source-fact
+  limitation.
+- Source-fact tests cover the syntax vocabulary needed before stable owner
+  identity and canonical gaps can be added.
 
-Acceptance for the next behavior PR should grow source fact snapshots while
-preserving this no-config project detection boundary.
+Acceptance for the next behavior PR should map changed Python lines to stable,
+language-qualified owners while preserving the no-config project detection and
+source-fact snapshot boundaries.

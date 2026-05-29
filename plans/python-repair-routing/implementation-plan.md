@@ -312,7 +312,7 @@ Delivered:
 
 ### Work item: analysis/python-source-facts
 
-Status: planned
+Status: complete
 
 Blocked by:
 
@@ -331,6 +331,19 @@ metadata.
   print/log calls.
 - Malformed Python produces a named limitation, not a crash.
 - No repair recommendations yet.
+
+Delivered:
+
+- Python analysis now flows through an internal source-fact snapshot with
+  stable file, span, owner, and `language = "python"` metadata.
+- The snapshot records modules, classes, functions, methods, decorators,
+  parameters, returns, raises, predicates, comparisons, boolean expressions,
+  calls, assignments, attribute writes, dict/list/set literals, string
+  literals, and print/log calls.
+- Malformed Python records an `unsupported_syntax` source-fact limitation
+  instead of silently returning empty facts.
+- Existing owner/test extraction reuses the snapshot; no repair-card or
+  recommendation surface changed in this slice.
 
 ### Work item: analysis/python-diff-owner-mapping
 

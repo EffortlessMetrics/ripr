@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 // --------------------------------------------------------------
@@ -47,6 +48,145 @@ fn assertion_oracles(source: &str) -> Vec<(OracleKind, OracleStrength)> {
         }
     }
     out
+}
+
+fn source_fact_kind_names(facts: &PythonSourceFacts) -> BTreeSet<&'static str> {
+    facts.facts.iter().map(|fact| fact.kind.as_str()).collect()
+}
+
+#[test]
+fn extract_source_facts_covers_python_static_fact_shapes() -> Result<(), String> {
+    let source = r#"
+import logging
+
+logger = logging.getLogger(__name__)
+MODULE_STATE = {"status": "pending", "items": [1], "tags": {"new"}}
+
+@dataclass
+class Invoice:
+    status: str = "pending"
+
+    @classmethod
+    def from_total(cls, total, threshold=10):
+        invoice = cls()
+        invoice.status = "paid" if total >= threshold and total != 0 else "pending"
+        if total >= threshold and total != 0:
+            print("paid")
+            logger.warning("paid")
+            return {"status": invoice.status, "items": [total], "tags": {"paid"}}
+        raise ValueError("too low")
+
+def summarize(invoice):
+    return f"status={invoice.status}"
+"#;
+
+    let facts = extract_source_facts(Path::new("src/invoice.py"), source);
+    let kinds = source_fact_kind_names(&facts);
+    let expected = [
+        "module",
+        "class",
+        "function",
+        "method",
+        "decorator",
+        "parameter",
+        "return",
+        "raise",
+        "predicate",
+        "comparison",
+        "boolean_expression",
+        "call",
+        "assignment",
+        "attribute_write",
+        "dict_literal",
+        "list_literal",
+        "set_literal",
+        "string_literal",
+        "print_call",
+        "log_call",
+    ];
+    for kind in expected {
+        if !kinds.contains(kind) {
+            return Err(format!("expected source fact kind `{kind}`, got {kinds:?}"));
+        }
+    }
+
+    if facts.language != "python" {
+        return Err(format!(
+            "expected python language metadata, got {}",
+            facts.language
+        ));
+    }
+    if facts.file != Path::new("src/invoice.py") {
+        return Err(format!("expected file metadata, got {:?}", facts.file));
+    }
+    if !facts.limitations.is_empty() {
+        return Err(format!(
+            "valid source should not emit limitations: {:?}",
+            facts.limitations
+        ));
+    }
+    if !facts
+        .owners
+        .iter()
+        .any(|owner| owner.qualified_name == "Invoice.from_total")
+    {
+        return Err(format!("expected method owner, got {:?}", facts.owners));
+    }
+    let method_return = facts
+        .facts
+        .iter()
+        .find(|fact| {
+            fact.kind == PythonSourceFactKind::Return
+                && fact.owner.as_deref() == Some("Invoice.from_total")
+        })
+        .ok_or_else(|| "expected return fact owned by Invoice.from_total".to_string())?;
+    if method_return.start_line == 0 || method_return.end_line < method_return.start_line {
+        return Err(format!("invalid return span: {:?}", method_return));
+    }
+    if !method_return.text.starts_with("return {") {
+        return Err(format!(
+            "expected trimmed return text, got {:?}",
+            method_return.text
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn extract_source_facts_reports_malformed_python_as_named_limit() -> Result<(), String> {
+    let facts = extract_source_facts(Path::new("src/oops.py"), "def broken(:\n    pass\n");
+    if !facts.facts.is_empty() {
+        return Err(format!(
+            "malformed source should not emit facts, got {:?}",
+            facts.facts
+        ));
+    }
+    let limit = facts
+        .limitations
+        .first()
+        .ok_or_else(|| "expected unsupported_syntax limitation".to_string())?;
+    if limit.kind != StaticLimitKind::UnsupportedSyntax {
+        return Err(format!("expected unsupported_syntax, got {:?}", limit.kind));
+    }
+    if !limit
+        .evidence
+        .starts_with("source_fact_parse_error: parse_error:")
+    {
+        return Err(format!(
+            "expected named parse evidence, got {}",
+            limit.evidence
+        ));
+    }
+    if !limit
+        .missing
+        .contains("malformed Python prevented source-fact extraction")
+    {
+        return Err(format!(
+            "expected actionable missing text, got {}",
+            limit.missing
+        ));
+    }
+    Ok(())
 }
 
 #[test]
