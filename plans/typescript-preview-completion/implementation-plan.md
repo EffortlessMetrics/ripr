@@ -27,7 +27,7 @@ This plan keeps the preview boundary intact:
 
 ## Work Item: spec/typescript-preview-contract-reconciliation
 
-Status: active
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -76,7 +76,7 @@ state need rollback.
 
 ## Work Item: analysis/typescript-router-config-conformance
 
-Status: active
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0026, RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -112,7 +112,7 @@ git diff --check
 
 ## Work Item: fixtures/typescript-preview-harness
 
-Status: ready
+Status: active
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008

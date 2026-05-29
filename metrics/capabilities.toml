@@ -1511,6 +1511,7 @@ evidence = [
   "RIPR-SPEC-0027 accepts the TypeScript-family preview static-facts contract",
   "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md records current implementation and missing completion slices",
   "plans/typescript-preview-completion/implementation-plan.md sequences the bounded completion PRs",
+  "JavaScript findings emitted by the TypeScript-family adapter are separately labeled language = javascript while remaining preview evidence",
   "fixtures/typescript_boundary_gap",
   "fixtures/typescript_strong_oracle",
   "fixtures/typescript_return_value_shape",
@@ -1527,7 +1528,7 @@ fixtures = [
   "fixtures/typescript_awaited_promise_reject",
   "fixtures/typescript_effect_probe_shapes"
 ]
-next = "analysis/typescript-router-config-conformance"
+next = "fixtures/typescript-preview-harness"
 metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_static_limit_mocked_module"
 
 [[capability]]

@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: source-of-truth reconciliation
+Status: PR 0 audit reconciled; fixture harness next
 
 Date: 2026-05-29
 
@@ -57,11 +57,9 @@ useful TypeScript preview loop, while explicitly deferring structured polish
 such as additional owner kinds, richer static limits, and full projection into
 strict repair packets.
 
-Live GitHub check on 2026-05-29 found no open TypeScript/JavaScript adapter PR
-or issue carrying this work in `EffortlessMetrics/ripr-swarm`. The same
-TypeScript/JavaScript query against source `EffortlessMetrics/ripr` found no
-adapter work; one open source issue mentioning JavaScript is a VS Code
-dependency security issue, not this language-adapter lane.
+Live GitHub checks on 2026-05-29 found no open TypeScript/JavaScript,
+language-adapter, or RIPR-SPEC-0027 PR or issue carrying this work in either
+`EffortlessMetrics/ripr-swarm` or source `EffortlessMetrics/ripr`.
 
 ## Implemented Today
 
@@ -97,8 +95,9 @@ Adapter facts:
 
 Projection and proof:
 
-- Human and JSON check output carry `language = "typescript"` and
-  `language_status = "preview"` for TypeScript findings.
+- Human and JSON check output carry `language = "typescript"` or
+  `language = "javascript"` and `language_status = "preview"` for
+  TypeScript-family findings.
 - LSP diagnostics preserve preview metadata and `static_limit_kind` when
   present.
 - Generated CI has language grouping support for configured preview languages.
@@ -114,39 +113,34 @@ Projection and proof:
 These are the missing slices that should drive the next PRs. Keep each slice
 PR-sized and do not promote support tier while they land.
 
-1. Source-of-truth reconciliation
-   - `RIPR-SPEC-0026` and `RIPR-SPEC-0027` are accepted to match the closed
-     Campaign 27 boundary and the implemented first useful preview loop.
-   - `plans/typescript-preview-completion/implementation-plan.md` now sequences
-     the remaining completion work without changing analyzer behavior or
-     support-tier status.
-   - Next step: route/config conformance, including JavaScript preview labels
-     and the CLI override disposition.
+Completed after the initial audit:
 
-2. JavaScript labeling and CLI override decision
-   - `.js` and `.jsx` route through the TypeScript-family adapter, but current
-     findings need to be labeled `language = "javascript"` when emitted from
-     JavaScript sources.
-   - The docs mention config opt-in; no `--languages rust,typescript` CLI
-     override was found in current CLI parsing.
-   - Next step: land separate JavaScript labels and explicitly defer CLI
-     override support to a future app/config contract change.
+- `RIPR-SPEC-0026` and `RIPR-SPEC-0027` are accepted and aligned with the
+  Campaign 27 boundary.
+- `plans/typescript-preview-completion/implementation-plan.md` sequences the
+  remaining completion work without changing analyzer behavior or support-tier
+  status.
+- `.js` and `.jsx` findings emitted by the TypeScript-family adapter are now
+  separately labeled `language = "javascript"`.
+- The current `check` parser still has no `--languages rust,typescript`
+  override. Config remains the supported opt-in surface for this lane; CLI
+  override support is deferred to a later app/config contract change.
 
-3. Fixture harness completion
+1. Fixture harness completion
    - Current TypeScript fixture directories use `.ts` inputs only.
    - Missing fixture families: `.tsx`, `.js`, `.jsx`, parse error /
      `unsupported_syntax`, mixed Rust + TypeScript repo, TypeScript disabled,
      and TypeScript enabled.
    - Next step: add harness fixtures before broadening adapter behavior.
 
-4. Owner facts
+2. Owner facts
    - Current owner facts do not populate `owner_kind` for TypeScript findings.
    - Missing owner shapes: arrow functions assigned to `const`/`let`, class
      methods, default exports, React-ish function components, and module-level
      const initializers.
    - Next step: emit owner kind metadata and fixture each supported owner kind.
 
-5. Test and assertion facts
+3. Test and assertion facts
    - Current extraction handles common matcher chains, but only inside
      top-level `test`/`it` bodies.
    - Missing or under-fixtured shapes: nested `describe`, `test.each`,
@@ -155,7 +149,7 @@ PR-sized and do not promote support tier while they land.
    - Next step: extend fixture-backed test and assertion facts without
      turning weak or snapshot evidence into strong proof.
 
-6. Related-test matching
+4. Related-test matching
    - Current related-test matching is direct owner-call text matching with
      important negative guards.
    - Missing heuristics: imported owner reference, same-file proximity,
@@ -163,7 +157,7 @@ PR-sized and do not promote support tier while they land.
    - Next step: add positive and negative fixtures for each heuristic and make
      ambiguous matches limitations, not actionable recommendations.
 
-7. Probe facts and discriminator candidates
+5. Probe facts and discriminator candidates
    - Current probe classification is line-shape based and does not attach
      candidate values.
    - Missing probe quality: safe predicate boundary candidates, object/field
@@ -171,7 +165,7 @@ PR-sized and do not promote support tier while they land.
    - Next step: keep ambiguous line shapes out of actionable repair packets
      until the adapter can name the target shape safely.
 
-8. Static-limit taxonomy
+6. Static-limit taxonomy
    - Current structured TypeScript static limit is `mocked_module`.
    - Missing limit kinds: `dynamic_dispatch`, `metaprogramming`,
      `missing_import_graph`, `unsupported_syntax`, and decorator indirection
@@ -179,7 +173,7 @@ PR-sized and do not promote support tier while they land.
    - Next step: emit named limitations with human reason and repair route
      instead of silently dropping parse or unsupported syntax cases.
 
-9. Repo-mode and output projection
+7. Repo-mode and output projection
    - TypeScript `analyze_repo` currently returns no findings.
    - Check output carries preview metadata, but current TypeScript findings do
      not yet become complete canonical repair packets with strict
@@ -188,9 +182,9 @@ PR-sized and do not promote support tier while they land.
      first-pr/pilot, PR summary, and any SARIF-supported path without a schema
      fork.
 
-10. Strict TypeScript actionability
-    - Current TypeScript findings carry `recommended_next_step`, but not a
-      complete repair packet.
+8. Strict TypeScript actionability
+   - Current TypeScript findings carry `recommended_next_step`, but not a
+     complete repair packet.
     - Missing required actionability fields: `canonical_gap_id`, `gap_state`,
       `repair_kind`, `target_test_or_observer_shape`, `verify_command`,
       `receipt_command`, `confidence`, `evidence_refs`, and
@@ -199,24 +193,24 @@ PR-sized and do not promote support tier while they land.
       required field is present; otherwise emit a named limitation or
       `missing_context` route.
 
-11. LSP / VS Code repair packet UX
-    - Current LSP projection carries preview metadata and static limits.
+9. LSP / VS Code repair packet UX
+   - Current LSP projection carries preview metadata and static limits.
     - Missing TypeScript proof: enabled/disabled TS e2e with a complete repair
       packet, hover boundary, code action packet, verify command, receipt
       command, and constraints.
     - Next step: keep editor actions projection-only and suppress repair code
       actions unless the packet is complete.
 
-12. Generated CI grouping proof
-    - Generated CI grouping exists for configured preview languages.
+10. Generated CI grouping proof
+   - Generated CI grouping exists for configured preview languages.
     - Missing TypeScript completion proof: grouping over real TS/JS repair
       packets and limitations while preserving advisory-only gate impact.
     - Next step: keep TS/JS preview evidence out of default blocking, badges,
       baselines, and RIPR Zero.
 
-13. Dogfood, route-quality metrics, and support-tier decision
-    - Current dogfood covers TypeScript mocked-module preview and a small
-      projection boundary.
+11. Dogfood, route-quality metrics, and support-tier decision
+   - Current dogfood covers TypeScript mocked-module preview and a small
+     projection boundary.
     - Missing proof: real TS/JS repair-loop receipts, weak-oracle downgrades,
       limitation examples, false-actionable review, and route-quality metrics
       by repair kind and language.
@@ -226,18 +220,21 @@ PR-sized and do not promote support tier while they land.
 ## PR Sequence
 
 Use the user-provided PR sequence as the campaign outline, with this audit as
-PR 0. The next safe PR is source-of-truth reconciliation:
+PR 0. The first two follow-up slices have already landed on `main`:
 
 ```text
 PR 1: spec(ts): accept TypeScript preview static-facts contract
+PR 2: analysis(ts): route TypeScript preview files through language adapter
 ```
 
-That PR should not change analyzer behavior. It makes the contract executable
-enough for later implementation agents and reconciles the spec status with the
-already-shipped partial implementation. After it lands, the next safe PR is:
+PR 2 landed the core route/config behavior and separate JavaScript preview
+labels. It deliberately deferred a `--languages` CLI override because the
+current `check` parser has no such option.
+
+The next safe PR is:
 
 ```text
-PR 2: analysis(ts): route TypeScript preview files through language adapter
+PR 3: analysis(ts): add TypeScript preview fixture harness
 ```
 
 ## Validation
