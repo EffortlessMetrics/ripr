@@ -3927,6 +3927,7 @@ tests = [
   "xtask::tests::dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source",
   "xtask::tests::dogfood_user_surface_projection_alignment_matches_missing_receipt_source",
   "xtask::tests::dogfood_user_surface_projection_alignment_covers_route_quality_non_success_all_surfaces",
+  "xtask::tests::dogfood_user_surface_projection_alignment_rejects_limited_static_limitation_backlog_projection",
 ]
 fixtures = [
   "fixtures/editor_actionable_gap_queue",

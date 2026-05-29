@@ -65290,6 +65290,53 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn dogfood_user_surface_projection_alignment_rejects_limited_static_limitation_backlog_projection()
+     {
+        let mut scenario = valid_user_surface_projection_scenario();
+        scenario.name = "badge_limited_static_limitation_backlog_from_runtime".to_string();
+        scenario.headline = "ripr: limited".to_string();
+        scenario.run_status = "limited_incomplete_input".to_string();
+        scenario.projection_basis = "canonical_limitation_backlog".to_string();
+        scenario.canonical_gap_id =
+            "gap:activation-owner-call-absent-assertion-target-affinity".to_string();
+        scenario.packet_id =
+            "limitation:activation-owner-call-absent-assertion-target-affinity".to_string();
+        scenario.repair_kind = "sharpen_static_limitation_route".to_string();
+        scenario.top_next_action_kind = "route_static_limitation_backlog".to_string();
+        scenario.verify_command = "cargo test -p ripr evidence_record_splits_assertion_target_owner_call_absence_limitation".to_string();
+        scenario.receipt_command = "cargo xtask check-fixture-contracts".to_string();
+        scenario.source_alignment_case = "static_limitation_backlog_alignment".to_string();
+        scenario.limitation_category = "lane1_repo_exposure_sampled".to_string();
+        scenario.runtime_repair_command = "cargo xtask lane1-evidence-audit".to_string();
+
+        let report = dogfood_user_surface_projection_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains(
+            "limited_incomplete_input projection_basis must be canonical_runtime_status"
+        ));
+        assert!(
+            report.contains("limited_incomplete_input must route resolve_limited_runtime_status")
+        );
+        assert!(report.contains("limited or stale run_status must not carry packet identity"));
+        assert!(
+            report.contains("limited or stale run_status must not carry packet repair commands")
+        );
+        assert!(
+            report.contains("limited or stale run_status must not carry source_alignment_case")
+        );
+        assert!(
+            !report.contains("limited_incomplete_input must name a limitation_category"),
+            "correct runtime limitation category should not be rejected: {report}"
+        );
+        assert!(
+            !report.contains("limited_incomplete_input must provide a runtime_repair_command"),
+            "correct runtime repair route should not be rejected: {report}"
+        );
+    }
+
+    #[test]
     fn dogfood_surface_projection_alignment_covers_route_quality_non_success() -> Result<(), String>
     {
         with_repo_cwd(|| {

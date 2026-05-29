@@ -201,6 +201,14 @@ For full runtime states with a ready packet, the top next action may be
 `attempt_ready_packet`. Full runtime states with degraded route-quality or
 non-success outcomes may instead route `improve_repair_route_quality`,
 `inspect_unchanged_attempts`, or another canonical repair-loop next action.
+Full runtime states with no ready public packet may project
+`canonical_limitation_backlog` and route `route_static_limitation_backlog` as
+an analyzer-backlog next action. That projection is advisory, preserves
+non-actionable status, and must not be counted as a public repair packet or
+actionable gap. Limited or stale runtime states must fail closed before this
+projection: they use `canonical_runtime_status`, route
+`resolve_limited_runtime_status`, and do not carry static-limitation backlog
+packet identity or analyzer-backlog commands as complete current evidence.
 Full actionable projection examples name a `source_alignment_case` from the
 repair-loop surface projection corpus and must match that source case's
 canonical gap, packet, repair kind, verify command, receipt command, and top
@@ -243,6 +251,10 @@ Validation should use existing guardrails plus focused evidence checks:
 - `xtask::tests::dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route`
   pins limited runtime-state categories and repair commands to their named
   status.
+- `xtask::tests::dogfood_user_surface_projection_alignment_rejects_limited_static_limitation_backlog_projection`
+  pins that limited or stale runtime rows route to `canonical_runtime_status`
+  and cannot reuse static-limitation backlog packet identity or analyzer
+  backlog next actions as complete current evidence.
 - `xtask::tests::dogfood_surface_projection_alignment_covers_route_quality_non_success`
   requires a non-success route-quality source case for downstream surfaces.
 - `xtask::tests::dogfood_surface_projection_alignment_covers_missing_receipt_route_quality`
