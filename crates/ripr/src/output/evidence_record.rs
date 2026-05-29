@@ -537,10 +537,27 @@ fn canonical_item_for(
         related_test: recommendation
             .nearest_test_to_imitate
             .as_ref()
-            .map(alignment_related_test_for),
+            .map(alignment_related_test_for)
+            .or_else(|| {
+                recommendation
+                    .recommended_test
+                    .as_ref()
+                    .map(alignment_related_test_for_recommended_target)
+            }),
         verify_command: recommendation.verify_command.clone(),
         receipt_command: canonical_receipt_command_for(entry, gap_state),
         confidence: alignment_confidence_for(gap_state, static_limitations),
+    }
+}
+
+fn alignment_related_test_for_recommended_target(
+    test: &EvidenceRecordRecommendedTest,
+) -> EvidenceRecordAlignmentRelatedTest {
+    EvidenceRecordAlignmentRelatedTest {
+        name: test.name.clone(),
+        file: test.file.clone(),
+        line: 1,
+        reason: "recommended_test_target".to_string(),
     }
 }
 
@@ -1597,6 +1614,34 @@ mod tests {
         assert_eq!(
             json["static_limitations"][0]["repair_route"],
             "analysis/static-limitation-taxonomy"
+        );
+    }
+
+    #[test]
+    fn evidence_record_carries_recommended_test_as_canonical_related_target() {
+        let mut entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        entry.evidence.related_tests.clear();
+
+        let record = evidence_record_for(&entry, None);
+
+        assert_eq!(record.actionability.class, "actionable_focused_test");
+        assert!(record.recommendation.nearest_test_to_imitate.is_none());
+
+        let recommended_test = record.recommendation.recommended_test.as_ref();
+        let related_test = record.canonical_item.related_test.as_ref();
+
+        assert_eq!(
+            related_test.map(|test| test.name.as_str()),
+            recommended_test.map(|test| test.name.as_str())
+        );
+        assert_eq!(
+            related_test.map(|test| test.file.as_str()),
+            recommended_test.map(|test| test.file.as_str())
+        );
+        assert_eq!(related_test.map(|test| test.line), Some(1));
+        assert_eq!(
+            related_test.map(|test| test.reason.as_str()),
+            Some("recommended_test_target")
         );
     }
 
