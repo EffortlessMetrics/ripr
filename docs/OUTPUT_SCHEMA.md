@@ -3021,7 +3021,9 @@ completeness fields as JSON before listing ledger inputs.
       "repair_kind_unknown": 0,
       "repair_kind_failure_count": 1,
       "repair_kind_dominant_failure_reason": "unchanged",
-      "repair_kind_success_rate": 0.5
+      "repair_kind_success_rate": 0.5,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
   "top_failing_repair_routes": [
@@ -3038,7 +3040,9 @@ completeness fields as JSON before listing ledger inputs.
       "repair_kind_unknown": 0,
       "repair_kind_failure_count": 1,
       "repair_kind_dominant_failure_reason": "unchanged",
-      "repair_kind_success_rate": 0.5
+      "repair_kind_success_rate": 0.5,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
   "top_missing_evidence_fields": [
@@ -3148,7 +3152,10 @@ reports attempted, improved, unchanged, regressed, resolved, no-receipt,
 receipt-only, missing-verify-result, unknown, and success-rate counts.
 `top_failing_repair_routes[]` is the subset with unchanged, regressed,
 no-receipt, missing-verify-result, or unknown outcomes,
-ordered for analyzer-improvement routing. `top_missing_evidence_fields[]`
+ordered for analyzer-improvement routing. Repair-route quality rows include
+sample packet IDs and canonical gap IDs for failing attempts when available, so
+readiness can route `improve_repair_route_quality` to a concrete example
+without inventing a repair packet. `top_missing_evidence_fields[]`
 counts missing route/verify/receipt fields that prevent route-quality analysis
 and includes sample packet IDs, canonical gap IDs, and repair kinds when the
 row is derived from attempts. Legacy label/count-only rows remain readable and
@@ -3375,7 +3382,9 @@ limits.
       "repair_kind_unknown": 0,
       "repair_kind_failure_count": 1,
       "repair_kind_dominant_failure_reason": "unchanged",
-      "repair_kind_success_rate": 0.5
+      "repair_kind_success_rate": 0.5,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
   "top_failing_repair_routes": [
@@ -3392,7 +3401,9 @@ limits.
       "repair_kind_unknown": 0,
       "repair_kind_failure_count": 1,
       "repair_kind_dominant_failure_reason": "unchanged",
-      "repair_kind_success_rate": 0.5
+      "repair_kind_success_rate": 0.5,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
   "top_missing_evidence_fields": [

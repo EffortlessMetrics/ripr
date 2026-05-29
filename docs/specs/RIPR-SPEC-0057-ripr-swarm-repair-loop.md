@@ -356,6 +356,10 @@ attempt/outcome summary counts, repair-route quality, and missing-evidence-field
 counts when they are present. Stored `summary`, `repair_route_quality[]`, and
 `top_missing_evidence_fields[]` rows are summary output; they must not override
 recomputed latest-attempt state if the two disagree.
+Repair-route quality rows should carry sample packet IDs and canonical gap IDs
+for failing latest attempts when available, and readiness should copy the first
+sample into `improve_repair_route_quality` so route-quality work starts from a
+concrete failed attempt.
 The explicit `missing_verify_result` summary count is the closeout counter for
 attempted rows whose verification command is known but whose typed pass/fail or
 not-run result was not preserved.
