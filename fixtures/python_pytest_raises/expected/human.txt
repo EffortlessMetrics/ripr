@@ -12,6 +12,7 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/quantity.py::normalize_quantity
 
 Language
   language: python

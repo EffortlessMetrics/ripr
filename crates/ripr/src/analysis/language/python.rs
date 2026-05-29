@@ -26,6 +26,7 @@ use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
     OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
     RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    SymbolId,
 };
 use rustpython_parser::{
     Mode,
@@ -73,9 +74,53 @@ struct PythonOwner {
     file: PathBuf,
     start_line: usize,
     end_line: usize,
-    owner_kind: OwnerKind,
+    owner_kind: Option<OwnerKind>,
     decorators: Vec<String>,
     imports: Vec<PythonImport>,
+}
+
+impl PythonOwner {
+    fn symbol_id(&self) -> SymbolId {
+        SymbolId(format!(
+            "python:{}::{}",
+            normalized_path(&self.file),
+            self.qualified_name
+        ))
+    }
+
+    fn is_module_owner(&self) -> bool {
+        self.qualified_name == "<module>"
+    }
+
+    fn specificity_rank(&self) -> usize {
+        if self.owner_kind.is_some() {
+            0
+        } else if self.is_module_owner() {
+            2
+        } else {
+            1
+        }
+    }
+
+    fn span_width(&self) -> usize {
+        self.end_line.saturating_sub(self.start_line)
+    }
+
+    fn kind_label(&self) -> &'static str {
+        match self.owner_kind {
+            Some(kind) => kind.as_str(),
+            None if self.is_module_owner() => "module_function",
+            None => "class",
+        }
+    }
+
+    fn missing_test_reference(&self) -> String {
+        if self.is_module_owner() {
+            format!("module-level behavior in `{}`", normalized_path(&self.file))
+        } else {
+            format!("`{}(`", self.name)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -252,6 +297,9 @@ fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFacts {
         &imports,
         &mut snapshot.owners,
     );
+    snapshot
+        .owners
+        .push(module_owner(file, source, module_range, &imports));
     collect_tests_from_statements(
         file,
         source,
@@ -1216,6 +1264,17 @@ fn collect_owners_from_statements(
                     imports,
                     out,
                 );
+                out.push(owner_from_class(
+                    PythonOwnerContext {
+                        file,
+                        source,
+                        class_context,
+                        imports,
+                    },
+                    class.name.as_str(),
+                    class.range,
+                    &class.decorator_list,
+                ));
             }
             _ => {}
         }
@@ -1262,9 +1321,49 @@ fn owner_from_function(
         file: context.file.to_path_buf(),
         start_line: line_for_range_start(context.source, range),
         end_line: line_for_range_end(context.source, range),
-        owner_kind,
+        owner_kind: Some(owner_kind),
         decorators,
         imports: context.imports.to_vec(),
+    }
+}
+
+fn owner_from_class(
+    context: PythonOwnerContext<'_>,
+    name: &str,
+    range: TextRange,
+    decorators: &[Expr],
+) -> PythonOwner {
+    let qualified_name = context
+        .class_context
+        .map(|class| format!("{class}.{name}"))
+        .unwrap_or_else(|| name.to_string());
+    PythonOwner {
+        name: name.to_string(),
+        qualified_name,
+        file: context.file.to_path_buf(),
+        start_line: line_for_range_start(context.source, range),
+        end_line: line_for_range_end(context.source, range),
+        owner_kind: None,
+        decorators: decorator_names(decorators),
+        imports: context.imports.to_vec(),
+    }
+}
+
+fn module_owner(
+    file: &Path,
+    source: &str,
+    range: TextRange,
+    imports: &[PythonImport],
+) -> PythonOwner {
+    PythonOwner {
+        name: "<module>".to_string(),
+        qualified_name: "<module>".to_string(),
+        file: file.to_path_buf(),
+        start_line: line_for_range_start(source, range),
+        end_line: line_for_range_end(source, range),
+        owner_kind: Some(OwnerKind::ModuleFunction),
+        decorators: Vec::new(),
+        imports: imports.to_vec(),
     }
 }
 
@@ -1672,8 +1771,10 @@ fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
     contains_call_name(body_text, &owner.name)
         || (owner.qualified_name != owner.name
             && contains_call_name(body_text, &owner.qualified_name))
-        || (matches!(owner.owner_kind, OwnerKind::Method | OwnerKind::ClassMethod)
-            && contains_any_attribute_call(body_text, &owner.name))
+        || (matches!(
+            owner.owner_kind,
+            Some(OwnerKind::Method | OwnerKind::ClassMethod)
+        ) && contains_any_attribute_call(body_text, &owner.name))
 }
 
 fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -1956,11 +2057,7 @@ fn classify_change(
     owners: &[PythonOwner],
     all_tests: &[PythonTest],
 ) -> Option<Finding> {
-    let changed_file = normalized_path(file);
-    let owner = owners
-        .iter()
-        .filter(|owner| normalized_path(&owner.file) == changed_file)
-        .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
+    let owner = owner_for_changed_line(file, line, owners)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
@@ -1983,8 +2080,8 @@ fn classify_change(
             StageState::No,
             StageState::No,
             vec![format!(
-                "No Python test references `{}(`; add a pytest or unittest test that calls the changed owner.",
-                owner.name
+                "No Python test references {}; add a pytest or unittest test that calls the changed owner.",
+                owner.missing_test_reference()
             )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
@@ -2026,7 +2123,7 @@ fn classify_change(
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:python_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
-        owner: None,
+        owner: Some(owner.symbol_id()),
         family,
         delta,
         before: None,
@@ -2091,7 +2188,7 @@ fn classify_change(
 
     let mut evidence = vec![
         format!("owner: {}", owner.qualified_name),
-        format!("owner_kind: {}", owner.owner_kind.as_str()),
+        format!("owner_kind: {}", owner.kind_label()),
     ];
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
@@ -2145,9 +2242,22 @@ fn classify_change(
         recommended_next_step: Some(recommended),
         language: Some(DomainLanguageId::Python),
         language_status: Some(LanguageStatus::Preview),
-        owner_kind: Some(owner.owner_kind),
+        owner_kind: owner.owner_kind,
         static_limit_kind: static_limit.map(|limit| limit.kind),
     })
+}
+
+fn owner_for_changed_line<'a>(
+    file: &Path,
+    line: usize,
+    owners: &'a [PythonOwner],
+) -> Option<&'a PythonOwner> {
+    let changed_file = normalized_path(file);
+    owners
+        .iter()
+        .filter(|owner| normalized_path(&owner.file) == changed_file)
+        .filter(|owner| line >= owner.start_line && line <= owner.end_line)
+        .min_by_key(|owner| (owner.span_width(), owner.specificity_rank()))
 }
 
 fn collect_workspace_python_files(root: &Path) -> Vec<PathBuf> {
@@ -2374,14 +2484,16 @@ class Policy:
                 "load_total",
                 "Policy.apply",
                 "Policy.normalize",
-                "Policy.from_config"
+                "Policy.from_config",
+                "Policy",
+                "<module>"
             ]
         );
-        assert_eq!(owners[0].owner_kind, OwnerKind::Function);
+        assert_eq!(owners[0].owner_kind, Some(OwnerKind::Function));
         assert_eq!(owners[1].decorators, vec!["async_def"]);
-        assert_eq!(owners[2].owner_kind, OwnerKind::Method);
-        assert_eq!(owners[3].owner_kind, OwnerKind::ClassMethod);
-        assert_eq!(owners[4].owner_kind, OwnerKind::ClassMethod);
+        assert_eq!(owners[2].owner_kind, Some(OwnerKind::Method));
+        assert_eq!(owners[3].owner_kind, Some(OwnerKind::ClassMethod));
+        assert_eq!(owners[4].owner_kind, Some(OwnerKind::ClassMethod));
     }
 
     #[test]
@@ -2663,6 +2775,118 @@ def test_notifies_callback():
         assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
         assert_eq!(finding.owner_kind, Some(OwnerKind::Function));
         assert_eq!(finding.related_tests.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_populates_language_qualified_owner_ids() -> Result<(), String> {
+        let function_owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let function = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &function_owners,
+            &[],
+        )
+        .ok_or_else(|| "function changed line should classify".to_string())?;
+        assert_eq!(
+            function.probe.owner.as_ref().map(ToString::to_string),
+            Some("python:src/pricing.py::apply_discount".to_string())
+        );
+
+        let method_owners = extract_owners(
+            Path::new("src/cart.py"),
+            "class Cart:\n    def apply_discount(self, amount):\n        return amount - 10\n",
+        );
+        let method = classify_change(
+            Path::new("src/cart.py"),
+            3,
+            "        return amount - 10",
+            &method_owners,
+            &[],
+        )
+        .ok_or_else(|| "method changed line should classify".to_string())?;
+        assert_eq!(
+            method.probe.owner.as_ref().map(ToString::to_string),
+            Some("python:src/cart.py::Cart.apply_discount".to_string())
+        );
+
+        let class_owners = extract_owners(
+            Path::new("src/models.py"),
+            "class Invoice:\n    status = \"pending\"\n\n    def mark_paid(self):\n        return \"paid\"\n",
+        );
+        let class_body = classify_change(
+            Path::new("src/models.py"),
+            2,
+            "    status = \"pending\"",
+            &class_owners,
+            &[],
+        )
+        .ok_or_else(|| "class body changed line should classify".to_string())?;
+        assert_eq!(
+            class_body.probe.owner.as_ref().map(ToString::to_string),
+            Some("python:src/models.py::Invoice".to_string())
+        );
+        assert_eq!(class_body.owner_kind, None);
+        assert!(
+            class_body
+                .evidence
+                .iter()
+                .any(|entry| entry == "owner_kind: class")
+        );
+
+        let module_owners = extract_owners(
+            Path::new("src/settings.py"),
+            "DISCOUNT_THRESHOLD = 100\n\ndef threshold():\n    return DISCOUNT_THRESHOLD\n",
+        );
+        let module = classify_change(
+            Path::new("src/settings.py"),
+            1,
+            "DISCOUNT_THRESHOLD = 100",
+            &module_owners,
+            &[],
+        )
+        .ok_or_else(|| "module changed line should classify".to_string())?;
+        assert_eq!(
+            module.probe.owner.as_ref().map(ToString::to_string),
+            Some("python:src/settings.py::<module>".to_string())
+        );
+        assert_eq!(module.owner_kind, Some(OwnerKind::ModuleFunction));
+        Ok(())
+    }
+
+    #[test]
+    fn python_owner_id_is_stable_when_owner_line_moves() -> Result<(), String> {
+        let before = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let after = extract_owners(
+            Path::new("src/pricing.py"),
+            "\n\n\ndef apply_discount(amount):\n    return amount - 10\n",
+        );
+        let before_finding = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &before,
+            &[],
+        )
+        .ok_or_else(|| "before owner should classify".to_string())?;
+        let after_finding = classify_change(
+            Path::new("src/pricing.py"),
+            5,
+            "    return amount - 10",
+            &after,
+            &[],
+        )
+        .ok_or_else(|| "after owner should classify".to_string())?;
+
+        assert_eq!(before_finding.probe.owner, after_finding.probe.owner);
+        assert_ne!(before_finding.probe.id, after_finding.probe.id);
         Ok(())
     }
 

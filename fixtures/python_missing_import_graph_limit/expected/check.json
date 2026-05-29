@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/totals.py",
         "line": 4,
-        "expression": "    return remote_total(client, include_tax=True)"
+        "expression": "    return remote_total(client, include_tax=True)",
+        "owner": "python:src/totals.py::total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `total`"},

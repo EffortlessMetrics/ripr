@@ -12,6 +12,7 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/discount.py::apply_discount
 
 Language
   language: python

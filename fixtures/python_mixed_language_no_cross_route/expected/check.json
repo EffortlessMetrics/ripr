@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/pricing.py",
         "line": 2,
-        "expression": "    return amount + 7"
+        "expression": "    return amount + 7",
+        "owner": "python:src/pricing.py::calculate_total"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `calculate_total`"},

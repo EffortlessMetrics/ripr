@@ -80,6 +80,8 @@ Additive optional fields:
 - `language`: one of `rust`, `typescript`, `javascript`, `python`. Omitted
   when unknown.
 - `language_status`: `stable` or `preview`. Omitted when `rust`.
+- `probe.owner`: stable owner identifier when a preview adapter can map the
+  changed line to an owner. Per-language specs define the identifier shape.
 - `owner_kind`: bounded vocabulary (`function`, `method`, `class_method`,
   `arrow_function`, `component`, `module_function`); omitted when unknown.
 - `static_limit_kind`: bounded vocabulary describing why a probe could not

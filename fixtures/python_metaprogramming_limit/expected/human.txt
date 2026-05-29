@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/models.py::build_model
 
 Language
   language: python

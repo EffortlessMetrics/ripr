@@ -41,7 +41,7 @@ mod tests {
         FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
         OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
         RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary,
-        ValueContext, ValueFact,
+        SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -631,6 +631,31 @@ mod tests {
         finding_json(&mut out, &finding, 0);
 
         assert!(out.contains("\"owner_kind\": \"function\""));
+    }
+
+    #[test]
+    fn finding_json_emits_probe_owner_only_when_present() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+        assert!(
+            value["probe"].get("owner").is_none(),
+            "probe.owner should be omitted when no owner is populated"
+        );
+
+        finding.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        out.clear();
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(value["probe"]["owner"], "python:src/pricing.py::discount");
+        Ok(())
     }
 
     #[test]

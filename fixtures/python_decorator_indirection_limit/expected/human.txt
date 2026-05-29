@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/retry_total.py::fetch_total
 
 Language
   language: python

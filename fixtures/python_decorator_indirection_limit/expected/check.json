@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/retry_total.py",
         "line": 3,
-        "expression": "    return client.total_with_retry()"
+        "expression": "    return client.total_with_retry()",
+        "owner": "python:src/retry_total.py::fetch_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `fetch_total`"},

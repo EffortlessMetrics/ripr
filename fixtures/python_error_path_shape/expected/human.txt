@@ -12,6 +12,7 @@ Changed
 Probe
   family: error_path
   delta:  control
+  owner:  python:src/validation.py::require_positive
 
 Language
   language: python

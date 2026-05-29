@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/priority.py",
         "line": 2,
-        "expression": "    return amount >= 100"
+        "expression": "    return amount >= 100",
+        "owner": "python:src/priority.py::is_priority"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `is_priority`"},

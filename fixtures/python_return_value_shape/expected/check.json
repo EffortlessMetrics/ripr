@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/price.py",
         "line": 2,
-        "expression": "    return amount - 12"
+        "expression": "    return amount - 12",
+        "owner": "python:src/price.py::final_price"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `final_price`"},

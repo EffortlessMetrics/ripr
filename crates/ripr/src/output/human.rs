@@ -56,7 +56,7 @@ mod tests {
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
         FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
         OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
-        SourceLocation, StageEvidence, StageState, Summary, ValueContext, ValueFact,
+        SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -195,6 +195,16 @@ mod tests {
         assert!(!rendered.contains("Language\n"));
         assert!(!rendered.contains("language: rust"));
         assert!(!rendered.contains("status: stable"));
+    }
+
+    #[test]
+    fn render_finding_includes_probe_owner_when_present() {
+        let mut finding = sample_finding();
+        finding.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("  owner:  python:src/pricing.py::discount\n"));
     }
 
     #[test]

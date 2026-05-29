@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/policy.py",
         "line": 3,
-        "expression": "        if amount >= threshold:"
+        "expression": "        if amount >= threshold:",
+        "owner": "python:src/policy.py::DiscountPolicy.apply"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply`"},

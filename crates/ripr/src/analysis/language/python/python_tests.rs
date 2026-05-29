@@ -453,7 +453,7 @@ fn body_calls_owner_filters_comments_and_string_mentions() {
         file: PathBuf::from("src/pricing.py"),
         start_line: 1,
         end_line: 5,
-        owner_kind: OwnerKind::Function,
+        owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
     };
@@ -706,7 +706,7 @@ fn imported_module_matches_owner_compares_last_segment_to_owner_stem() {
         file: PathBuf::from("src/pricing.py"),
         start_line: 1,
         end_line: 1,
-        owner_kind: OwnerKind::Function,
+        owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
     };
@@ -735,7 +735,7 @@ fn same_stem_related_handles_missing_stems() {
         file: PathBuf::from(""),
         start_line: 1,
         end_line: 1,
-        owner_kind: OwnerKind::Function,
+        owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
     };

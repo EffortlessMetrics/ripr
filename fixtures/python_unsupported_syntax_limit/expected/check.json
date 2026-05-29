@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/mapper.py",
         "line": 2,
-        "expression": "    return lambda value: value + 2"
+        "expression": "    return lambda value: value + 2",
+        "owner": "python:src/mapper.py::make_mapper"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `make_mapper`"},

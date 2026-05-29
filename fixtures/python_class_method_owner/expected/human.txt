@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/factory.py::PriceRule.from_config
 
 Language
   language: python

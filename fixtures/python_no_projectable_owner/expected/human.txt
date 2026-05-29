@@ -2,6 +2,36 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_no_projectable_owner/input
 
-Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-No diff-derived mutation exposure probes found.
+WARNING src/constants.py:1
+
+Changed
+  after:  BASE_DISCOUNT = 12
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/constants.py::<module>
+
+Language
+  language: python
+  status: preview
+  owner kind: module_function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `<module>`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - related test tests/test_constants.py:4 test_base_discount uses unknown unknown oracle
+
+Weakness
+  - Related Python test reaches `<module>` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger.
+
+Next step
+  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.

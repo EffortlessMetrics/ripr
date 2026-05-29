@@ -12,6 +12,7 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/risk.py::risk_score
 
 Language
   language: python

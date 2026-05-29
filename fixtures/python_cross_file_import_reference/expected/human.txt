@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/tax.py::apply_tax
 
 Language
   language: python

@@ -12,6 +12,7 @@ Changed
 Probe
   family: field_construction
   delta:  value
+  owner:  python:src/invoice.py::Invoice.mark_paid
 
 Language
   language: python

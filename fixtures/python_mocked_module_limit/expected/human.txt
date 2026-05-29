@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/service.py::fetch_total
 
 Language
   language: python

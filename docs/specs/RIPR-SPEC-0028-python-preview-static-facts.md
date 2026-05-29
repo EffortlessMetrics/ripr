@@ -70,6 +70,20 @@ Owner kinds emitted in output (per RIPR-SPEC-0026):
 
 - `function`, `method`, `class_method`, `module_function`.
 
+The stable Python `probe.owner` identifier is language-qualified and
+path-qualified:
+
+```text
+python:<normalized/path.py>::<qualified_owner>
+```
+
+Examples include `python:app/pricing.py::calculate_discount`,
+`python:app/cart.py::Cart.apply_discount`,
+`python:app/models.py::Invoice`, and
+`python:app/settings.py::<module>`. Class owner findings may carry a
+class-shaped `probe.owner` while omitting `owner_kind` until the shared
+RIPR-SPEC-0026 owner-kind vocabulary explicitly adds a class value.
+
 ## Test and Assertion Facts
 
 Test discovery:

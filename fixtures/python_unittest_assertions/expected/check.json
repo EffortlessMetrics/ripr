@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/risk.py",
         "line": 2,
-        "expression": "    if amount >= 100:"
+        "expression": "    if amount >= 100:",
+        "owner": "python:src/risk.py::risk_score"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `risk_score`"},

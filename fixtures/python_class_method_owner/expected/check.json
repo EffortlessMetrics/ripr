@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/factory.py",
         "line": 4,
-        "expression": "        return cls(config[\"discount\"] + 1)"
+        "expression": "        return cls(config[\"discount\"] + 1)",
+        "owner": "python:src/factory.py::PriceRule.from_config"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `from_config`"},

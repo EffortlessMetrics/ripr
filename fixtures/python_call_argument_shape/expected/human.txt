@@ -12,6 +12,7 @@ Changed
 Probe
   family: side_effect
   delta:  effect
+  owner:  python:src/notify.py::send_receipt
 
 Language
   language: python

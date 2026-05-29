@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/invoice.py",
         "line": 6,
-        "expression": "        self.status = \"paid\""
+        "expression": "        self.status = \"paid\"",
+        "owner": "python:src/invoice.py::Invoice.mark_paid"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `mark_paid`"},

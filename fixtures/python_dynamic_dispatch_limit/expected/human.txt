@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/dispatch.py::call_named
 
 Language
   language: python

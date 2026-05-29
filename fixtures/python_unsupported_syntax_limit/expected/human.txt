@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/mapper.py::make_mapper
 
 Language
   language: python

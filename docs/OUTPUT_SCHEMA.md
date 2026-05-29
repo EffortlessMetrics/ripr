@@ -422,6 +422,11 @@ The evidence-first fields are additive in schema `0.1`:
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
   integrations.
+- `probe.owner` is an additive optional stable owner identifier emitted when a
+  preview-language adapter populated a changed owner. Python preview owners use
+  `python:<path>::<owner>`, for example
+  `python:src/pricing.py::calculate_discount`. Module-level Python changes use
+  `<module>` as the owner segment.
 - `language` is the per-finding source language reported by the language
   adapter that produced it (see [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md)).
   Values are `rust`, `typescript`, `javascript`, or `python`. Omitted when no

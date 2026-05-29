@@ -12,6 +12,7 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/tax.py::tax_band
 
 Language
   language: python

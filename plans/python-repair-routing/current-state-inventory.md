@@ -68,7 +68,7 @@ commands, agent packets, and before/after receipts.
 | Fact family | Currently covered | Current limits |
 | --- | --- | --- |
 | Source snapshots | Stable file/span/language facts for modules, classes, functions, methods, decorators, parameters, returns, raises, predicates, comparisons, boolean expressions, calls, assignments, attribute writes, dict/list/set literals, string literals, and print/log calls. | Snapshot facts are still internal analysis substrate; they are not yet projected as canonical gap IDs or repair cards. |
-| Owners | Top-level `def`, `async def`, methods, `@staticmethod`, and `@classmethod` methods. | No standalone class owner, durable module-level owner, or line-movement-stable owner ID for repair gaps yet. |
+| Owners | Top-level `def`, `async def`, methods, `@staticmethod`, `@classmethod` methods, class-body owners, module-level owners, and stable `python:<path>::<qualified_owner>` probe owner IDs. | Class owners intentionally omit `owner_kind` until the shared vocabulary adds a class value; canonical repair-gap IDs remain planned. |
 | Tests | `test_*` functions, async `test_*`, tests inside classes, `unittest.TestCase` `test_*` methods, and test files by `test_*.py`, `*_test.py`, or `tests/` paths. | Fixture parameters, custom helpers, API clients, CLI runners, and framework fixtures are not modeled as first-class test facts. |
 | Pytest oracles | `assert a == b`, non-equality comparisons, bare `assert expr`, `isinstance(...)`, `pytest.raises(...)`, and `pytest.mark.parametrize` presence. | No exact boundary discriminator extraction, no `match=` message observer, no `capsys`, `caplog`, status-code, response JSON, or custom helper classification. |
 | Unittest oracles | `assertEqual`, `assertNotEqual`, `assertTrue`, `assertFalse`, `assertRaises`, and `assertRaisesRegex`. | `assertIn`, `assertRegex`, `assertDictEqual`, verify-command selection, and command confidence remain planned. |
@@ -165,7 +165,7 @@ packet safety, or before/after receipt movement.
 
 ## Next Work Item Readiness
 
-The next work item, `analysis/python-diff-owner-mapping`, can start from this
+The next work item, `analysis/python-pytest-oracles`, can start from this
 boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
@@ -174,9 +174,12 @@ boundary:
   parser passes for owner and test extraction.
 - Malformed Python records an internal `unsupported_syntax` source-fact
   limitation.
-- Source-fact tests cover the syntax vocabulary needed before stable owner
-  identity and canonical gaps can be added.
+- Source-fact tests cover the syntax vocabulary needed before canonical gaps can
+  be added.
+- Python diff findings now carry stable, language-qualified `probe.owner` IDs
+  for functions, methods, classes, and module-level changes, and output tests
+  prove the owner is visible in JSON and human reports.
 
-Acceptance for the next behavior PR should map changed Python lines to stable,
-language-qualified owners while preserving the no-config project detection and
-source-fact snapshot boundaries.
+Acceptance for the next behavior PR should deepen pytest oracle extraction
+without promoting Python beyond preview or emitting repair cards before missing
+discriminators and verify commands exist.

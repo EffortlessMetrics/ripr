@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/loading.py",
         "line": 2,
-        "expression": "    return await client.total() + 2"
+        "expression": "    return await client.total() + 2",
+        "owner": "python:src/loading.py::load_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `load_total`"},

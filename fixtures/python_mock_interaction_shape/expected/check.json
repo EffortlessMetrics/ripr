@@ -17,7 +17,8 @@
         "delta": "effect",
         "file": "src/callbacks.py",
         "line": 4,
-        "expression": "    callback = MagicMock(name=\"receipt.sent\")"
+        "expression": "    callback = MagicMock(name=\"receipt.sent\")",
+        "owner": "python:src/callbacks.py::recording_callback"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `recording_callback`"},

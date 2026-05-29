@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/reconcile.py",
         "line": 2,
-        "expression": "    return amount - 2"
+        "expression": "    return amount - 2",
+        "owner": "python:src/reconcile.py::reconcile_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `reconcile_total`"},

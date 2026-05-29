@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/reconcile.py::reconcile_total
 
 Language
   language: python

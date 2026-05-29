@@ -116,13 +116,17 @@ pub(super) fn finding_json_with_config(
         true,
     );
     number_field(out, indent + 2, "line", finding.probe.location.line, true);
+    let render_probe_owner = finding.probe.owner.is_some() && finding.language_status.is_some();
     field(
         out,
         indent + 2,
         "expression",
         &finding.probe.expression,
-        false,
+        render_probe_owner,
     );
+    if render_probe_owner && let Some(owner) = &finding.probe.owner {
+        field(out, indent + 2, "owner", &owner.0, false);
+    }
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
     out.push_str(&format!("{}\"ripr\": {{\n", "  ".repeat(indent + 1)));
     stage_json(out, indent + 2, "reach", &finding.ripr.reach, true);

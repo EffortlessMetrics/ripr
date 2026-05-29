@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/service.py",
         "line": 2,
-        "expression": "    return client.total_with_tax()"
+        "expression": "    return client.total_with_tax()",
+        "owner": "python:src/service.py::fetch_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `fetch_total`"},

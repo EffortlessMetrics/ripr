@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/dispatch.py",
         "line": 2,
-        "expression": "    return getattr(client, method_name)()"
+        "expression": "    return getattr(client, method_name)()",
+        "owner": "python:src/dispatch.py::call_named"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `call_named`"},

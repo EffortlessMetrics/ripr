@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/tax.py",
         "line": 2,
-        "expression": "    return amount + 2"
+        "expression": "    return amount + 2",
+        "owner": "python:src/tax.py::apply_tax"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_tax`"},

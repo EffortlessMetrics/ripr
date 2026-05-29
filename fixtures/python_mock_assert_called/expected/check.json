@@ -17,7 +17,8 @@
         "delta": "effect",
         "file": "src/notify.py",
         "line": 2,
-        "expression": "    callback(\"receipt.sent\", order_id)"
+        "expression": "    callback(\"receipt.sent\", order_id)",
+        "owner": "python:src/notify.py::send_receipt"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `send_receipt`"},

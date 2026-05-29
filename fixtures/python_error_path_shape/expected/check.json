@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/validation.py",
         "line": 3,
-        "expression": "        raise ValueError(\"positive required\")"
+        "expression": "        raise ValueError(\"positive required\")",
+        "owner": "python:src/validation.py::require_positive"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `require_positive`"},

@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/models.py",
         "line": 2,
-        "expression": "    return type(name, (), {\"kind\": \"preview\"})"
+        "expression": "    return type(name, (), {\"kind\": \"preview\"})",
+        "owner": "python:src/models.py::build_model"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `build_model`"},

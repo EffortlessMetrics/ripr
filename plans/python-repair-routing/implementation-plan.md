@@ -347,7 +347,7 @@ Delivered:
 
 ### Work item: analysis/python-diff-owner-mapping
 
-Status: planned
+Status: complete
 
 Blocked by:
 
@@ -363,6 +363,19 @@ Map changed Python lines to stable, language-qualified owners.
 - Mixed Rust/Python repos do not collide.
 - Changed Python owner is visible in JSON output.
 - Unrelated line movement avoids unnecessary ID churn where possible.
+
+#### Delivered
+
+- Python preview findings now populate stable, language-qualified
+  `probe.owner` IDs using `python:<path>::<qualified_owner>`.
+- Changed-line owner selection prefers the narrowest matching owner, so
+  function/method changes do not collapse to class or module owners while
+  class-body and module-level changes still receive durable owners.
+- JSON and human output surface Python preview `probe.owner` values; the
+  existing `owner_kind` vocabulary remains unchanged, with class owners
+  represented by `probe.owner` only.
+- Focused unit tests pin function, method, class, module, line-movement, JSON,
+  and human rendering behavior; `python_owner_file_match` pins fixture output.
 
 ### Work item: analysis/python-pytest-oracles
 

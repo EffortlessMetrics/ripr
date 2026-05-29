@@ -17,7 +17,8 @@
         "delta": "value",
         "file": "src/pricing.py",
         "line": 2,
-        "expression": "    return amount - 10"
+        "expression": "    return amount - 10",
+        "owner": "python:src/pricing.py::apply_discount"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `apply_discount`"},
