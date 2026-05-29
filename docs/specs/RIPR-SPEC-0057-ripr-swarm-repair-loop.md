@@ -580,6 +580,9 @@ Current implementation coverage:
   pins durable attempt history and latest-attempt selection;
 - `xtask::tests::ripr_swarm_attempt_ledger_drops_stale_synthetic_not_attempted_rows`
   pins cleanup of retired queue placeholders;
+- `xtask::tests::ripr_swarm_attempt_ledger_synthesizes_current_plan_not_attempted_rows`
+  pins creation of current-plan queue placeholders from swarm-ready packets
+  before receipt or outcome evidence exists;
 - `xtask::tests::ripr_swarm_attempt_ledger_preserves_current_plan_not_attempted_rows`
   pins carry-forward of current queue placeholders;
 - `xtask::tests::ripr_swarm_attempt_ledger_summarizes_repair_route_quality`

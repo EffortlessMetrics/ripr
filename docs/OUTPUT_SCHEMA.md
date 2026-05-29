@@ -3060,9 +3060,11 @@ completeness fields as JSON before listing ledger inputs.
 `latest_attempts[]` is the current routing view, one entry per canonical gap,
 and is the source readiness uses for
 attempt/improved/unchanged/regressed/resolved counts. The ledger preserves
+current `top_ready_packets[]` as synthetic `not_attempted` queue placeholders
+until a receipt or outcome row replaces them. It preserves
 `attempted_no_receipt`, `receipt_present`, `evidence_improved`,
 `evidence_unchanged`, `evidence_regressed`, `resolved`, and `unknown` outcomes.
-It preserves `not_attempted` rows only when they remain tied to the current
+It preserves prior `not_attempted` rows only when they remain tied to the current
 swarm plan or carry durable receipt/verification evidence; stale synthetic
 `not_attempted` placeholders are dropped so retired packets do not create
 route-quality or missing-field noise. Missing outcome inputs make the ledger
