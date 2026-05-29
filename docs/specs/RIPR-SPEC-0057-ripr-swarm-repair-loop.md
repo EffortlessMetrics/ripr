@@ -198,7 +198,7 @@ A packet is swarm-ready only when typed fields provide a closed repair loop.
 | `repair_route` | Required structured route. Prose-only repair guidance is not enough. |
 | `target_test_type` or `target_assertion_shape` | Required when applicable to bound the edit target. |
 | `related_test_or_observer` | Preferred. Missing context lowers readiness unless the packet has a safe typed fallback. |
-| `verify_command` | Required before a packet can be attempted. |
+| `verify_command` | Required before a packet can be attempted. Broad repo-exposure snapshot comparisons are not bounded verify commands unless a narrower typed route is also available. |
 | `receipt_command` | Required before a packet can be swarm-ready. |
 | `raw_findings[]` | Supporting evidence only; never the selection unit. |
 | `static_limitations[]` | Must be empty for repair-ready packets or explicitly handled as a blocked state. |
@@ -409,8 +409,11 @@ blockers such as `attempted_no_receipt`, `missing_verify_result`,
 blocked classes so readiness examples are not dependent on `--top` truncation.
 Repo-exposure snapshot comparison commands are not by themselves bounded verify
 commands for default swarm delegation; they must be excluded with
-`unbounded_verify_command` unless the packet also supplies a narrower proof
-route.
+`unbounded_verify_command` unless the packet also supplies or can derive a
+narrower proof route. The only default derived proof route is a typed Rust test
+target: `related_test_or_observer.file` must map to a known workspace package,
+`related_test_or_observer.name` must be a safe cargo test filter, and the
+resulting command is `cargo test -p <package> <test-filter>`.
 
 Readiness must also expose `top_next_action` as a stable projection of
 `next_actions[0]`. Downstream surfaces may show that object directly, but they

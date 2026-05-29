@@ -2304,7 +2304,10 @@ Field contract:
   `allowed_edit_surface[]` file bounds. Derived edit surfaces must resolve to
   existing workspace files before public projection or swarm-ready ranking; a
   guessed or missing file is reported as `missing_allowed_edit_surface`. Packets
-  do not create user work from raw static class alone.
+  do not create user work from raw static class alone. A broad repo-exposure
+  snapshot comparison verify command is not enough for swarm-ready routing
+  unless RIPR can derive a narrower `cargo test -p <package> <test-filter>`
+  command from a typed `related_test_or_observer` file/name pair.
   `raw_evidence_refs[]` entries are structured evidence anchors. For public
   projection and swarm planning, at least one entry must carry an anchor field
   (`file`, `path`, or `source_file`) and an identity field (`kind`,
@@ -2317,9 +2320,9 @@ Field contract:
   `projection_exclusion_reasons` rows such as `not_actionable_gap_state`,
   `missing_receipt_command`, `missing_related_test_or_observer`, `missing_confidence`,
   `missing_must_not_change`, `missing_allowed_edit_surface`,
-  `missing_raw_evidence_refs`, and `static_limitation_present`. This is
-  advisory report evidence only and does not change public badge endpoint
-  semantics.
+  `missing_raw_evidence_refs`, `unbounded_verify_command`, and
+  `static_limitation_present`. This is advisory report evidence only and does
+  not change public badge endpoint semantics.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
   count, calibrated-supported, fixture-backed, static-only, unknown-confidence,

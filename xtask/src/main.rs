@@ -27747,24 +27747,100 @@ fn audit_actionable_gap_verify_command_with_source(
     record: &Value,
     canonical_item: &Value,
 ) -> (String, String) {
+    let mut unbounded_command = None;
     if let Some(command) = audit_non_empty_string(canonical_item, &["verify_command"])
         .filter(|value| !audit_guidance_field_is_missing(value))
         .filter(|value| value.trim() != "verify_command_unknown")
     {
-        return (command, "canonical_item.verify_command".to_string());
+        if audit_verify_command_is_unbounded_repo_exposure_snapshot_compare(&command) {
+            unbounded_command = Some((command, "canonical_item.verify_command".to_string()));
+        } else {
+            return (command, "canonical_item.verify_command".to_string());
+        }
     }
 
     if let Some(command) = audit_non_empty_string(record, &["recommendation", "verify_command"])
         .filter(|value| !audit_guidance_field_is_missing(value))
         .filter(|value| value.trim() != "verify_command_unknown")
     {
-        return (
-            command,
-            "evidence_record.recommendation.verify_command".to_string(),
-        );
+        if audit_verify_command_is_unbounded_repo_exposure_snapshot_compare(&command) {
+            unbounded_command = unbounded_command.or_else(|| {
+                Some((
+                    command,
+                    "evidence_record.recommendation.verify_command".to_string(),
+                ))
+            });
+        } else {
+            return (
+                command,
+                "evidence_record.recommendation.verify_command".to_string(),
+            );
+        }
     }
 
+    if let Some(command) = audit_actionable_gap_bounded_verify_command_from_related_target(
+        audit_actionable_gap_related_test_or_observer(record, canonical_item).as_ref(),
+    ) {
+        return (command, "related_test_or_observer.name".to_string());
+    }
+
+    if let Some(command) = unbounded_command {
+        return command;
+    }
     ("verify_command_unknown".to_string(), "missing".to_string())
+}
+
+fn audit_actionable_gap_bounded_verify_command_from_related_target(
+    related_test_or_observer: Option<&Value>,
+) -> Option<String> {
+    let related = related_test_or_observer?;
+    let file = ripr_swarm_plan_related_target_file(related)?;
+    let package = audit_actionable_gap_cargo_package_from_target_file(&file)?;
+    let test_name = audit_actionable_gap_related_target_name(related)?;
+    Some(format!("cargo test -p {package} {test_name}"))
+}
+
+fn audit_actionable_gap_cargo_package_from_target_file(file: &str) -> Option<String> {
+    let normalized = file.trim().replace('\\', "/");
+    let package = if let Some(rest) = normalized.strip_prefix("crates/") {
+        rest.split('/').next()
+    } else if normalized.starts_with("xtask/") {
+        Some("xtask")
+    } else {
+        None
+    }?;
+    audit_actionable_gap_safe_cargo_token(package)
+}
+
+fn audit_actionable_gap_related_target_name(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(object) => object
+            .get("name")
+            .and_then(Value::as_str)
+            .and_then(audit_actionable_gap_safe_cargo_test_filter),
+        Value::Array(values) => values
+            .iter()
+            .find_map(audit_actionable_gap_related_target_name),
+        Value::String(_) | Value::Null | Value::Bool(_) | Value::Number(_) => None,
+    }
+}
+
+fn audit_actionable_gap_safe_cargo_token(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.')))
+    .then(|| trimmed.to_string())
+}
+
+fn audit_actionable_gap_safe_cargo_test_filter(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | ':' | '-')))
+    .then(|| trimmed.to_string())
 }
 
 fn audit_actionable_gap_receipt_command_or_path(
@@ -27895,8 +27971,10 @@ fn audit_actionable_gap_projection_exclusion_reasons(
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_repair_route");
     }
-    if input.verify_command_source != "canonical_item.verify_command"
-        || audit_guidance_field_is_missing(input.verify_command)
+    if !matches!(
+        input.verify_command_source,
+        "canonical_item.verify_command" | "related_test_or_observer.name"
+    ) || audit_guidance_field_is_missing(input.verify_command)
         || input.verify_command.trim() == "verify_command_unknown"
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_verify_command");
@@ -78672,6 +78750,59 @@ covered_by = ["cargo xtask check-file-policy"]
         );
 
         assert_eq!(reasons, vec!["missing_allowed_edit_surface"]);
+    }
+
+    #[test]
+    fn lane1_actionable_gap_verify_command_uses_bounded_related_target_over_unbounded_snapshot() {
+        let record = serde_json::json!({
+            "recommendation": {
+                "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+            }
+        });
+        let canonical_item = serde_json::json!({
+            "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+            "related_test_or_observer": {
+                "file": "crates/ripr/src/lsp/tests.rs",
+                "line": 1,
+                "name": "serve_stdio_call_presence_observer",
+                "reason": "recommended_test_target"
+            }
+        });
+
+        let (command, source) =
+            crate::audit_actionable_gap_verify_command_with_source(&record, &canonical_item);
+
+        assert_eq!(
+            command,
+            "cargo test -p ripr serve_stdio_call_presence_observer"
+        );
+        assert_eq!(source, "related_test_or_observer.name");
+        let reasons = crate::audit_actionable_gap_projection_exclusion_reasons(
+            crate::AuditActionableGapProjectionInput {
+                canonical_gap_id: "gap:bounded-verify",
+                gap_state: "actionable",
+                actionability: "extend_related_test",
+                repair_kind: "add_call_observer",
+                target_test_type: "call_presence_observer",
+                assertion_shape: "// assert that serve_stdio called the expected target",
+                target_test_shape: "call_presence_observer: // assert that serve_stdio called the expected target",
+                repair_route_present: true,
+                repair_route_source: "canonical_item.repair_route",
+                verify_command: &command,
+                verify_command_source: &source,
+                receipt_command_or_path: Some(
+                    "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-1 --json",
+                ),
+                receipt_source: "canonical_item.receipt_command",
+                typed_related_target_available: true,
+                confidence_basis: "fixture_backed",
+                must_not_change_count: 1,
+                allowed_edit_surface_count: 1,
+                raw_evidence_refs_count: 1,
+                static_limitations_count: 0,
+            },
+        );
+        assert!(reasons.is_empty());
     }
 
     #[test]
