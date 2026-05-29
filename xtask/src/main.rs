@@ -22524,13 +22524,22 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     let allowed_edit_surface_count = allowed_edit_surface.len();
     let public_projection_eligible =
         audit_bool(packet, &["public_projection_eligible"]).unwrap_or(false);
-    let projection_exclusion_reasons = audit_array(packet, &["projection_exclusion_reasons"])
+    let mut projection_exclusion_reasons = audit_array(packet, &["projection_exclusion_reasons"])
         .iter()
         .filter_map(Value::as_str)
         .map(str::trim)
         .filter(|reason| !reason.is_empty())
         .map(str::to_string)
         .collect::<Vec<_>>();
+    if verify_command
+        .as_deref()
+        .is_some_and(audit_verify_command_is_unbounded_repo_exposure_snapshot_compare)
+    {
+        audit_push_projection_exclusion_reason(
+            &mut projection_exclusion_reasons,
+            "unbounded_verify_command",
+        );
+    }
     let requires_operator_judgment = ripr_swarm_plan_requires_operator_judgment(
         &evidence_class,
         &repair_kind,
@@ -27891,6 +27900,9 @@ fn audit_actionable_gap_projection_exclusion_reasons(
         || input.verify_command.trim() == "verify_command_unknown"
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_verify_command");
+    } else if audit_verify_command_is_unbounded_repo_exposure_snapshot_compare(input.verify_command)
+    {
+        audit_push_projection_exclusion_reason(&mut reasons, "unbounded_verify_command");
     }
     if input
         .receipt_command_or_path
@@ -27943,6 +27955,14 @@ fn audit_raw_evidence_ref_is_structured(value: &Value) -> bool {
         .or_else(|| audit_non_empty_string(value, &["canonical_gap_id"]))
         .is_some();
     has_anchor && has_identity
+}
+
+fn audit_verify_command_is_unbounded_repo_exposure_snapshot_compare(command: &str) -> bool {
+    let normalized = command.trim().replace('\\', "/");
+    normalized.contains("ripr agent verify")
+        && normalized.contains("--before")
+        && normalized.contains("--after")
+        && normalized.contains("repo-exposure.json")
 }
 
 fn audit_push_projection_exclusion_reason(reasons: &mut Vec<String>, reason: &str) {
@@ -78652,6 +78672,118 @@ covered_by = ["cargo xtask check-file-policy"]
         );
 
         assert_eq!(reasons, vec!["missing_allowed_edit_surface"]);
+    }
+
+    #[test]
+    fn lane1_actionable_gap_public_projection_rejects_unbounded_repo_exposure_verify_command() {
+        let reasons = crate::audit_actionable_gap_projection_exclusion_reasons(
+            crate::AuditActionableGapProjectionInput {
+                canonical_gap_id: "gap:unbounded-verify",
+                gap_state: "actionable",
+                actionability: "extend_related_test",
+                repair_kind: "add_call_observer",
+                target_test_type: "call_presence_observer",
+                assertion_shape: "// assert that serve_stdio called the expected target",
+                target_test_shape: "call_presence_observer: // assert that serve_stdio called the expected target",
+                repair_route_present: true,
+                repair_route_source: "canonical_item.repair_route",
+                verify_command: "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+                verify_command_source: "canonical_item.verify_command",
+                receipt_command_or_path: Some(
+                    "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-1 --json",
+                ),
+                receipt_source: "canonical_item.receipt_command",
+                typed_related_target_available: true,
+                confidence_basis: "fixture_backed",
+                must_not_change_count: 1,
+                allowed_edit_surface_count: 1,
+                raw_evidence_refs_count: 1,
+                static_limitations_count: 0,
+            },
+        );
+
+        assert_eq!(reasons, vec!["unbounded_verify_command"]);
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_legacy_unbounded_repo_exposure_verify_commands() -> Result<(), String>
+    {
+        let actionable_gaps = serde_json::json!({
+            "report": "actionable-gaps",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 1
+            },
+            "packets": [
+                {
+                    "packet_id": "gap:unbounded-verify",
+                    "canonical_gap_id": "gap:unbounded-verify",
+                    "evidence_class": "call_presence",
+                    "gap_state": "actionable",
+                    "actionability": "add_focused_test",
+                    "source_file": "crates/ripr/src/lsp.rs",
+                    "repair_kind": "add_call_observer",
+                    "target_test_type": "call_presence_observer",
+                    "assertion_shape": "// assert that serve_stdio called the expected target",
+                    "repair_route": {
+                        "repair_kind": "add_call_observer",
+                        "target_test_type": "call_presence_observer",
+                        "assertion_shape": "// assert that serve_stdio called the expected target"
+                    },
+                    "related_test_or_observer": {
+                        "file": "crates/ripr/src/lsp/tests.rs",
+                        "name": "serve_stdio_call_presence_observer"
+                    },
+                    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+                    "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id c4abcb8dc04cf9c4 --json",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["production behavior"],
+                    "allowed_edit_surface": ["crates/ripr/src/lsp/tests.rs"],
+                    "raw_evidence_refs": [
+                        {
+                            "file": "crates/ripr/src/lsp.rs",
+                            "kind": "call_presence",
+                            "source_id": "raw:lsp:serve_stdio"
+                        }
+                    ],
+                    "static_limitations": [],
+                    "public_projection_eligible": true,
+                    "projection_exclusion_reasons": []
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&ripr_swarm_plan_json(&report)?).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["summary"]["swarm_ready_packets"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            value["summary"]["blocked_by_public_projection_exclusion_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(value["top_ready_packets"].as_array().map(Vec::len), Some(0));
+        assert_eq!(
+            value["top_blocked_packets"][0]["swarm_state"],
+            "blocked_by_public_projection_exclusion"
+        );
+        assert_eq!(
+            value["top_blocked_packets"][0]["projection_exclusion_reasons"],
+            serde_json::json!(["unbounded_verify_command"])
+        );
+        Ok(())
     }
 
     #[test]

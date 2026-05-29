@@ -2715,6 +2715,14 @@ swarm-ready until upstream evidence is fixture-backed, calibrated, or explicitly
 operator-selected. Ranking is advisory and never redefines actionability; it
 starts from the canonical packet state already emitted by Lane 1.
 
+`projection_exclusion_reasons[]` includes `unbounded_verify_command` when the
+packet's only verify route is a broad `ripr agent verify` repo-exposure snapshot
+comparison. Those commands require separately generating before/after
+repo-exposure artifacts and are not a bounded proof command for agent-safe
+repair delegation. `swarm-plan` also applies this exclusion when reading older
+artifacts that predate the reason, so legacy packets do not remain
+swarm-ready solely because they carry the old broad verify command.
+
 ## RIPR Swarm Attempt Dry Run
 
 `cargo xtask ripr-swarm attempt --packet <id> --dry-run` reads

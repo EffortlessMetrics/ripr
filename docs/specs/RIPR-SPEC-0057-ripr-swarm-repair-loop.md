@@ -399,13 +399,18 @@ artifact has one, so `blocked_by_missing_context`,
 `blocked_by_static_limitation`, `blocked_by_public_projection_exclusion`, and
 `blocked_by_operator_judgment` do not appear only in raw packet JSON. The table
 must also route field-level blockers such as `not_actionable_gap_state`,
-`missing_verify_command`, `missing_receipt_command`, `missing_repair_route`,
+`missing_verify_command`, `unbounded_verify_command`,
+`missing_receipt_command`, `missing_repair_route`,
 `missing_related_test_or_observer`, `missing_must_not_change`,
 `missing_allowed_edit_surface`, and `missing_raw_evidence_refs`, plus outcome
 blockers such as `attempted_no_receipt`, `missing_verify_result`,
 `orphan_receipt`, `unchanged_attempt`, and `regressed_attempt`.
 `swarm-plan` must provide non-top-limited packet examples for plan-derived
 blocked classes so readiness examples are not dependent on `--top` truncation.
+Repo-exposure snapshot comparison commands are not by themselves bounded verify
+commands for default swarm delegation; they must be excluded with
+`unbounded_verify_command` unless the packet also supplies a narrower proof
+route.
 
 Readiness must also expose `top_next_action` as a stable projection of
 `next_actions[0]`. Downstream surfaces may show that object directly, but they
