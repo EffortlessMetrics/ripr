@@ -360,6 +360,13 @@ Repair-route quality rows should carry sample packet IDs and canonical gap IDs
 for failing latest attempts when available, and readiness should copy the first
 sample into `improve_repair_route_quality` so route-quality work starts from a
 concrete failed attempt.
+Attempt-ledger and readiness reports should also project
+`repair_route_quality_backlog[]` from the top failing repair routes. Each row is
+an analyzer/report improvement packet with a stable `packet_id`,
+`improvement_route`, failure counts, dominant failure reason, sample packet and
+canonical gap IDs, an unlock condition, and non-claims. These rows are not
+public repair packets, are not swarm-ready work, and must not change badge, PR,
+LSP, or CI authority.
 The explicit `missing_verify_result` summary count is the closeout counter for
 attempted rows whose verification command is known but whose typed pass/fail or
 not-run result was not preserved.

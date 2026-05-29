@@ -24416,6 +24416,130 @@ fn ripr_swarm_top_failing_repair_routes_json(
     ripr_swarm_repair_route_quality_json(&rows)
 }
 
+fn ripr_swarm_repair_route_quality_backlog_json(
+    rows: &[RiprSwarmRepairRouteQualityRow],
+) -> Vec<Value> {
+    rows.iter()
+        .filter(|row| ripr_swarm_repair_route_quality_failure_count(row) > 0)
+        .map(|row| {
+            let dominant_failure =
+                ripr_swarm_repair_route_quality_dominant_failure_reason(row).unwrap_or("unknown");
+            serde_json::json!({
+                "packet_id": ripr_swarm_repair_route_quality_backlog_packet_id(row, dominant_failure),
+                "repair_kind": row.repair_kind,
+                "improvement_route": ripr_swarm_repair_route_quality_improvement_route(
+                    row,
+                    dominant_failure
+                ),
+                "failure_count": ripr_swarm_repair_route_quality_failure_count(row),
+                "dominant_failure_reason": dominant_failure,
+                "dominant_failure_count": ripr_swarm_repair_route_quality_dominant_failure_count(row),
+                "sample_packet_ids": row.sample_packet_ids,
+                "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
+                "why_action_required": ripr_swarm_repair_route_quality_why_action_required(
+                    row,
+                    dominant_failure
+                ),
+                "unlock_condition": ripr_swarm_repair_route_quality_unlock_condition(
+                    row,
+                    dominant_failure
+                ),
+                "non_claims": [
+                    "not a public repair packet",
+                    "not swarm-ready work",
+                    "do not retry this repair kind from this backlog item alone",
+                    "do not change badge or gate semantics from route-quality evidence alone"
+                ],
+            })
+        })
+        .collect()
+}
+
+fn ripr_swarm_repair_route_quality_backlog_packet_id(
+    row: &RiprSwarmRepairRouteQualityRow,
+    dominant_failure: &str,
+) -> String {
+    format!(
+        "route-quality:{}:{}",
+        audit_slug(&row.repair_kind),
+        audit_slug(dominant_failure)
+    )
+}
+
+fn ripr_swarm_repair_route_quality_improvement_route(
+    row: &RiprSwarmRepairRouteQualityRow,
+    dominant_failure: &str,
+) -> String {
+    let repair_kind = audit_slug(&row.repair_kind);
+    match dominant_failure {
+        "regressed" => format!("analysis/repair-route-regression-review/{repair_kind}"),
+        "missing_verify_result" => {
+            format!("report/repair-route-verify-result-capture/{repair_kind}")
+        }
+        "unchanged" => format!("analysis/repair-route-guidance/{repair_kind}"),
+        "attempted_no_receipt" => {
+            format!("report/repair-route-receipt-reliability/{repair_kind}")
+        }
+        _ => format!("analysis/repair-route-outcome-classification/{repair_kind}"),
+    }
+}
+
+fn ripr_swarm_repair_route_quality_why_action_required(
+    row: &RiprSwarmRepairRouteQualityRow,
+    dominant_failure: &str,
+) -> String {
+    match dominant_failure {
+        "regressed" => format!(
+            "`{}` has regressed evidence in latest attempts; stop routing more packets until the guidance is narrowed",
+            row.repair_kind
+        ),
+        "missing_verify_result" => format!(
+            "`{}` attempts lack typed verify results; route quality cannot be trusted until receipts preserve pass/fail/not-run evidence",
+            row.repair_kind
+        ),
+        "unchanged" => format!(
+            "`{}` produced unchanged evidence; refine target shape, assertion guidance, or evidence expectations before increasing packet volume",
+            row.repair_kind
+        ),
+        "attempted_no_receipt" => format!(
+            "`{}` attempts are missing receipts; repair guidance is not receiptable enough to claim outcomes",
+            row.repair_kind
+        ),
+        _ => format!(
+            "`{}` has unknown or unsupported latest attempt outcomes; classify the outcome before trusting route quality",
+            row.repair_kind
+        ),
+    }
+}
+
+fn ripr_swarm_repair_route_quality_unlock_condition(
+    row: &RiprSwarmRepairRouteQualityRow,
+    dominant_failure: &str,
+) -> String {
+    match dominant_failure {
+        "regressed" => format!(
+            "identify why `{}` can regress evidence, add a fixture or projection guard, then require new attempts to avoid that regression",
+            row.repair_kind
+        ),
+        "missing_verify_result" => format!(
+            "preserve typed verify_result evidence for `{}` attempts in receipts or targeted-test outcomes",
+            row.repair_kind
+        ),
+        "unchanged" => format!(
+            "update `{}` guidance so a future attempt can produce evidence_improved or resolved instead of evidence_unchanged",
+            row.repair_kind
+        ),
+        "attempted_no_receipt" => format!(
+            "make `{}` packets produce a runnable receipt command/path before treating the route as reliable",
+            row.repair_kind
+        ),
+        _ => format!(
+            "classify `{}` attempt outcomes into a known route-quality state before promoting more packets",
+            row.repair_kind
+        ),
+    }
+}
+
 fn ripr_swarm_missing_evidence_fields_json(
     rows: &[RiprSwarmMissingEvidenceFieldRow],
 ) -> Vec<Value> {
@@ -24469,6 +24593,9 @@ fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Resu
         "repair_route_quality": ripr_swarm_repair_route_quality_json(&report.repair_route_quality),
         "top_failing_repair_routes": ripr_swarm_top_failing_repair_routes_json(
             &report.repair_route_quality
+        ),
+        "repair_route_quality_backlog": ripr_swarm_repair_route_quality_backlog_json(
+            &ripr_swarm_readiness_top_failing_repair_routes(&report.repair_route_quality)
         ),
         "top_missing_evidence_fields": ripr_swarm_missing_evidence_fields_json(
             &report.top_missing_evidence_fields
@@ -24603,6 +24730,11 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
     out.push('\n');
     out.push_str("## Repair Route Quality\n\n");
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
+    out.push_str("## Repair Route Quality Backlog\n\n");
+    ripr_swarm_push_repair_route_quality_backlog_table(
+        &mut out,
+        &ripr_swarm_readiness_top_failing_repair_routes(&report.repair_route_quality),
+    );
     if !report.top_missing_evidence_fields.is_empty() {
         out.push_str("## Top Missing Evidence Fields\n\n");
         ripr_swarm_push_missing_evidence_fields_table(
@@ -24664,6 +24796,40 @@ fn ripr_swarm_push_repair_route_quality_table(
             success_rate,
             audit_markdown_cell(&row.sample_packet_ids.join(", ")),
             audit_markdown_cell(&row.sample_canonical_gap_ids.join(", "))
+        ));
+    }
+    out.push('\n');
+}
+
+fn ripr_swarm_push_repair_route_quality_backlog_table(
+    out: &mut String,
+    rows: &[RiprSwarmRepairRouteQualityRow],
+) {
+    let rows = ripr_swarm_repair_route_quality_backlog_json(rows);
+    if rows.is_empty() {
+        out.push_str("No repair-route quality backlog packets are available.\n\n");
+        return;
+    }
+    out.push_str("| Packet | Repair kind | Failures | Dominant failure | Improvement route | Sample packets | Sample gaps |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| `{}` | `{}` | {} | `{}` | `{}` | {} | {} |\n",
+            audit_markdown_cell(row["packet_id"].as_str().unwrap_or("")),
+            audit_markdown_cell(row["repair_kind"].as_str().unwrap_or("")),
+            row["failure_count"].as_u64().unwrap_or(0),
+            audit_markdown_cell(row["dominant_failure_reason"].as_str().unwrap_or("")),
+            audit_markdown_cell(row["improvement_route"].as_str().unwrap_or("")),
+            audit_markdown_cell(
+                &audit_string_array(&row, &["sample_packet_ids"])
+                    .unwrap_or_default()
+                    .join(", ")
+            ),
+            audit_markdown_cell(
+                &audit_string_array(&row, &["sample_canonical_gap_ids"])
+                    .unwrap_or_default()
+                    .join(", ")
+            )
         ));
     }
     out.push('\n');
@@ -25140,6 +25306,9 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         ),
         "repair_route_quality": ripr_swarm_repair_route_quality_json(&report.repair_route_quality),
         "top_failing_repair_routes": ripr_swarm_repair_route_quality_json(
+            &report.top_failing_repair_routes
+        ),
+        "repair_route_quality_backlog": ripr_swarm_repair_route_quality_backlog_json(
             &report.top_failing_repair_routes
         ),
         "top_missing_evidence_fields": ripr_swarm_missing_evidence_fields_json(
@@ -26566,6 +26735,8 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     ripr_swarm_readiness_push_top_limitation_routes_table(&mut out, &report.top_limitation_routes);
     out.push_str("\n## Repair Route Quality\n\n");
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
+    out.push_str("## Repair Route Quality Backlog\n\n");
+    ripr_swarm_push_repair_route_quality_backlog_table(&mut out, &report.top_failing_repair_routes);
     if !report.top_missing_evidence_fields.is_empty() {
         out.push_str("## Top Missing Evidence Fields\n\n");
         ripr_swarm_push_missing_evidence_fields_table(
@@ -84747,6 +84918,18 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_failing_repair_routes"][0]["sample_canonical_gap_ids"][0],
             serde_json::Value::from("gap:output-a")
         );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["packet_id"],
+            "route-quality:add-output-observer:missing-verify-result"
+        );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["improvement_route"],
+            "report/repair-route-verify-result-capture/add-output-observer"
+        );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["non_claims"][0],
+            "not a public repair packet"
+        );
         assert_eq!(value["summary"]["missing_verify_result"], 4);
         assert!(
             value["top_missing_evidence_fields"]
@@ -84782,6 +84965,8 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         let markdown = ripr_swarm_attempt_ledger_markdown(&report);
         assert!(markdown.contains("## Repair Route Quality"));
+        assert!(markdown.contains("## Repair Route Quality Backlog"));
+        assert!(markdown.contains("route-quality:add-output-observer:missing-verify-result"));
         assert!(markdown.contains("add_output_observer"));
         assert!(markdown.contains("Failure count | Dominant failure"));
         assert!(markdown.contains("missing_verify_result"));
@@ -85005,6 +85190,18 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_failing_repair_routes"][0]["sample_canonical_gap_ids"][0],
             serde_json::Value::from("gap:output-a")
         );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["packet_id"],
+            "route-quality:add-output-observer:regressed"
+        );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["improvement_route"],
+            "analysis/repair-route-regression-review/add-output-observer"
+        );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["sample_packet_ids"][0],
+            "packet-output-001"
+        );
         assert!(
             value["next_actions"]
                 .as_array()
@@ -85020,6 +85217,8 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("## Static Limitation Backlog"));
         assert!(markdown.contains("analysis/value-resolution-audit-fixes"));
+        assert!(markdown.contains("## Repair Route Quality Backlog"));
+        assert!(markdown.contains("route-quality:add-output-observer:regressed"));
         assert!(markdown.contains("Failure count | Dominant failure"));
         assert!(markdown.contains("regressed"));
         assert_eq!(

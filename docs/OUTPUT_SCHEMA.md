@@ -3052,6 +3052,26 @@ completeness fields as JSON before listing ledger inputs.
       "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
+  "repair_route_quality_backlog": [
+    {
+      "packet_id": "route-quality:add-boundary-assertion:unchanged",
+      "repair_kind": "add_boundary_assertion",
+      "improvement_route": "analysis/repair-route-guidance/add-boundary-assertion",
+      "failure_count": 1,
+      "dominant_failure_reason": "unchanged",
+      "dominant_failure_count": 1,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"],
+      "why_action_required": "`add_boundary_assertion` produced unchanged evidence; refine target shape, assertion guidance, or evidence expectations before increasing packet volume",
+      "unlock_condition": "update `add_boundary_assertion` guidance so a future attempt can produce evidence_improved or resolved instead of evidence_unchanged",
+      "non_claims": [
+        "not a public repair packet",
+        "not swarm-ready work",
+        "do not retry this repair kind from this backlog item alone",
+        "do not change badge or gate semantics from route-quality evidence alone"
+      ]
+    }
+  ],
   "top_missing_evidence_fields": [
     {
       "label": "receipt_command",
@@ -3162,7 +3182,11 @@ no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
 sample packet IDs and canonical gap IDs for failing attempts when available, so
 readiness can route `improve_repair_route_quality` to a concrete example
-without inventing a repair packet. `top_missing_evidence_fields[]`
+without inventing a repair packet. `repair_route_quality_backlog[]` converts
+top failing repair routes into analyzer/report backlog packets with stable
+packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
+rows are not public repair packets and are not swarm-ready work.
+`top_missing_evidence_fields[]`
 counts missing route/verify/receipt fields that prevent route-quality analysis
 and includes sample packet IDs, canonical gap IDs, and repair kinds when the
 row is derived from attempts. Legacy label/count-only rows remain readable and
@@ -3411,6 +3435,26 @@ limits.
       "repair_kind_success_rate": 0.5,
       "sample_packet_ids": ["packet-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"]
+    }
+  ],
+  "repair_route_quality_backlog": [
+    {
+      "packet_id": "route-quality:add-boundary-assertion:unchanged",
+      "repair_kind": "add_boundary_assertion",
+      "improvement_route": "analysis/repair-route-guidance/add-boundary-assertion",
+      "failure_count": 1,
+      "dominant_failure_reason": "unchanged",
+      "dominant_failure_count": 1,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"],
+      "why_action_required": "`add_boundary_assertion` produced unchanged evidence; refine target shape, assertion guidance, or evidence expectations before increasing packet volume",
+      "unlock_condition": "update `add_boundary_assertion` guidance so a future attempt can produce evidence_improved or resolved instead of evidence_unchanged",
+      "non_claims": [
+        "not a public repair packet",
+        "not swarm-ready work",
+        "do not retry this repair kind from this backlog item alone",
+        "do not change badge or gate semantics from route-quality evidence alone"
+      ]
     }
   ],
   "top_missing_evidence_fields": [
