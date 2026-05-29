@@ -21660,7 +21660,7 @@ struct RiprSwarmReadinessReport {
     blocked_state_routes: Vec<RiprSwarmReadinessBlockedStateRoute>,
     repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
     top_failing_repair_routes: Vec<RiprSwarmRepairRouteQualityRow>,
-    top_missing_evidence_fields: Vec<Lane1EvidenceAuditTopCount>,
+    top_missing_evidence_fields: Vec<RiprSwarmMissingEvidenceFieldRow>,
     next_actions: Vec<RiprSwarmReadinessNextAction>,
 }
 
@@ -21684,7 +21684,7 @@ struct RiprSwarmAttemptLedgerReport {
     attempts: Vec<RiprSwarmAttemptLedgerEntry>,
     latest_attempts: Vec<RiprSwarmAttemptLedgerEntry>,
     repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
-    top_missing_evidence_fields: Vec<Lane1EvidenceAuditTopCount>,
+    top_missing_evidence_fields: Vec<RiprSwarmMissingEvidenceFieldRow>,
     orphaned_receipts: Vec<Value>,
 }
 
@@ -21716,6 +21716,15 @@ struct RiprSwarmRepairRouteQualityRow {
     receipt_present: usize,
     missing_verify_result: usize,
     unknown: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct RiprSwarmMissingEvidenceFieldRow {
+    label: String,
+    count: usize,
+    sample_packet_ids: Vec<String>,
+    sample_canonical_gap_ids: Vec<String>,
+    sample_repair_kinds: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24237,34 +24246,72 @@ fn ripr_swarm_attempt_ledger_repair_route_quality(
 
 fn ripr_swarm_attempt_ledger_top_missing_evidence_fields(
     attempts: &[RiprSwarmAttemptLedgerEntry],
-) -> Vec<Lane1EvidenceAuditTopCount> {
-    let mut counts = BTreeMap::new();
+) -> Vec<RiprSwarmMissingEvidenceFieldRow> {
+    let mut rows = BTreeMap::<String, RiprSwarmMissingEvidenceFieldRow>::new();
     for attempt in attempts {
         if attempt
             .repair_kind
             .as_deref()
             .is_none_or(ripr_swarm_plan_field_missing)
         {
-            audit_increment(&mut counts, "repair_kind");
+            ripr_swarm_missing_evidence_field_increment(&mut rows, "repair_kind", attempt);
         }
         if ripr_swarm_plan_field_missing(&attempt.verify_command) {
-            audit_increment(&mut counts, "verify_command");
+            ripr_swarm_missing_evidence_field_increment(&mut rows, "verify_command", attempt);
         }
         if ripr_swarm_attempt_missing_verify_result(attempt) {
-            audit_increment(&mut counts, "verify_result");
+            ripr_swarm_missing_evidence_field_increment(&mut rows, "verify_result", attempt);
         }
         if attempt
             .receipt_command
             .as_deref()
             .is_none_or(ripr_swarm_plan_field_missing)
         {
-            audit_increment(&mut counts, "receipt_command");
+            ripr_swarm_missing_evidence_field_increment(&mut rows, "receipt_command", attempt);
         }
         if attempt.outcome == "attempted_no_receipt" {
-            audit_increment(&mut counts, "attempt_receipt");
+            ripr_swarm_missing_evidence_field_increment(&mut rows, "attempt_receipt", attempt);
         }
     }
-    audit_top_counts(counts)
+    let mut rows = rows.into_values().collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rows.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+    rows
+}
+
+fn ripr_swarm_missing_evidence_field_increment(
+    rows: &mut BTreeMap<String, RiprSwarmMissingEvidenceFieldRow>,
+    label: &str,
+    attempt: &RiprSwarmAttemptLedgerEntry,
+) {
+    let row = rows
+        .entry(label.to_string())
+        .or_insert_with(|| RiprSwarmMissingEvidenceFieldRow {
+            label: label.to_string(),
+            ..RiprSwarmMissingEvidenceFieldRow::default()
+        });
+    row.count += 1;
+    ripr_swarm_push_limited_unique(&mut row.sample_packet_ids, &attempt.packet_id);
+    ripr_swarm_push_limited_unique(&mut row.sample_canonical_gap_ids, &attempt.canonical_gap_id);
+    if let Some(repair_kind) = attempt
+        .repair_kind
+        .as_deref()
+        .filter(|kind| !ripr_swarm_plan_field_missing(kind))
+    {
+        ripr_swarm_push_limited_unique(&mut row.sample_repair_kinds, repair_kind);
+    }
+}
+
+fn ripr_swarm_push_limited_unique(values: &mut Vec<String>, value: &str) {
+    if values.len() >= 3 || value.trim().is_empty() || values.iter().any(|known| known == value) {
+        return;
+    }
+    values.push(value.to_string());
 }
 
 fn ripr_swarm_attempt_ledger_missing_verify_result_count(
@@ -24337,6 +24384,22 @@ fn ripr_swarm_top_failing_repair_routes_json(
     ripr_swarm_repair_route_quality_json(&rows)
 }
 
+fn ripr_swarm_missing_evidence_fields_json(
+    rows: &[RiprSwarmMissingEvidenceFieldRow],
+) -> Vec<Value> {
+    rows.iter()
+        .map(|row| {
+            serde_json::json!({
+                "label": row.label,
+                "count": row.count,
+                "sample_packet_ids": row.sample_packet_ids,
+                "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
+                "sample_repair_kinds": row.sample_repair_kinds,
+            })
+        })
+        .collect()
+}
+
 fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Result<String, String> {
     let summary = ripr_swarm_attempt_ledger_summary(report);
     let value = serde_json::json!({
@@ -24375,7 +24438,9 @@ fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Resu
         "top_failing_repair_routes": ripr_swarm_top_failing_repair_routes_json(
             &report.repair_route_quality
         ),
-        "top_missing_evidence_fields": audit_top_counts_json(&report.top_missing_evidence_fields),
+        "top_missing_evidence_fields": ripr_swarm_missing_evidence_fields_json(
+            &report.top_missing_evidence_fields
+        ),
         "attempts": report.attempts.iter().map(ripr_swarm_attempt_ledger_entry_json).collect::<Vec<_>>(),
         "latest_attempts": report.latest_attempts.iter().map(ripr_swarm_attempt_ledger_entry_json).collect::<Vec<_>>(),
         "orphaned_receipts": report.orphaned_receipts,
@@ -24508,16 +24573,10 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
     if !report.top_missing_evidence_fields.is_empty() {
         out.push_str("## Top Missing Evidence Fields\n\n");
-        out.push_str("| Field | Count |\n");
-        out.push_str("| --- | ---: |\n");
-        for row in &report.top_missing_evidence_fields {
-            out.push_str(&format!(
-                "| `{}` | {} |\n",
-                audit_markdown_cell(&row.label),
-                row.count
-            ));
-        }
-        out.push('\n');
+        ripr_swarm_push_missing_evidence_fields_table(
+            &mut out,
+            &report.top_missing_evidence_fields,
+        );
     }
     out.push_str("## Latest Attempts By Canonical Gap\n\n");
     ripr_swarm_attempt_ledger_push_attempt_table(&mut out, &report.latest_attempts);
@@ -24571,6 +24630,29 @@ fn ripr_swarm_push_repair_route_quality_table(
             failure_count,
             audit_markdown_cell(dominant_failure),
             success_rate
+        ));
+    }
+    out.push('\n');
+}
+
+fn ripr_swarm_push_missing_evidence_fields_table(
+    out: &mut String,
+    rows: &[RiprSwarmMissingEvidenceFieldRow],
+) {
+    if rows.is_empty() {
+        out.push_str("No missing evidence field rows are available.\n\n");
+        return;
+    }
+    out.push_str("| Field | Count | Sample packets | Sample gaps | Repair kinds |\n");
+    out.push_str("| --- | ---: | --- | --- | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.label),
+            row.count,
+            audit_markdown_cell(&row.sample_packet_ids.join(", ")),
+            audit_markdown_cell(&row.sample_canonical_gap_ids.join(", ")),
+            audit_markdown_cell(&row.sample_repair_kinds.join(", "))
         ));
     }
     out.push('\n');
@@ -25022,7 +25104,9 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         "top_failing_repair_routes": ripr_swarm_repair_route_quality_json(
             &report.top_failing_repair_routes
         ),
-        "top_missing_evidence_fields": audit_top_counts_json(&report.top_missing_evidence_fields),
+        "top_missing_evidence_fields": ripr_swarm_missing_evidence_fields_json(
+            &report.top_missing_evidence_fields
+        ),
         "top_next_action": report
             .next_actions
             .first()
@@ -25669,7 +25753,7 @@ fn ripr_swarm_repair_route_quality_dominant_failure_count(
 
 fn ripr_swarm_readiness_top_missing_evidence_fields(
     attempt_ledger: &Value,
-) -> Vec<Lane1EvidenceAuditTopCount> {
+) -> Vec<RiprSwarmMissingEvidenceFieldRow> {
     let attempts = ripr_swarm_attempt_ledger_entries_from_value(attempt_ledger);
     if !attempts.is_empty() {
         let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
@@ -25678,9 +25762,15 @@ fn ripr_swarm_readiness_top_missing_evidence_fields(
     audit_array(attempt_ledger, &["top_missing_evidence_fields"])
         .iter()
         .filter_map(|row| {
-            Some(Lane1EvidenceAuditTopCount {
+            Some(RiprSwarmMissingEvidenceFieldRow {
                 label: audit_non_empty_string(row, &["label"])?,
                 count: audit_usize(row, &["count"]).unwrap_or_default(),
+                sample_packet_ids: audit_string_array(row, &["sample_packet_ids"])
+                    .unwrap_or_default(),
+                sample_canonical_gap_ids: audit_string_array(row, &["sample_canonical_gap_ids"])
+                    .unwrap_or_default(),
+                sample_repair_kinds: audit_string_array(row, &["sample_repair_kinds"])
+                    .unwrap_or_default(),
             })
         })
         .collect::<Vec<_>>()
@@ -26348,16 +26438,10 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
     if !report.top_missing_evidence_fields.is_empty() {
         out.push_str("## Top Missing Evidence Fields\n\n");
-        out.push_str("| Field | Count |\n");
-        out.push_str("| --- | ---: |\n");
-        for row in &report.top_missing_evidence_fields {
-            out.push_str(&format!(
-                "| `{}` | {} |\n",
-                audit_markdown_cell(&row.label),
-                row.count
-            ));
-        }
-        out.push('\n');
+        ripr_swarm_push_missing_evidence_fields_table(
+            &mut out,
+            &report.top_missing_evidence_fields,
+        );
     }
     out.push_str("\n## Top Next Action\n\n");
     if let Some(action) = report.next_actions.first() {
@@ -84407,6 +84491,22 @@ covered_by = ["cargo xtask check-file-policy"]
                     .iter()
                     .any(|row| row["label"] == "verify_result" && row["count"] == 4))
         );
+        assert!(
+            value["top_missing_evidence_fields"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| {
+                    row["label"] == "verify_result"
+                        && row["sample_packet_ids"]
+                            .as_array()
+                            .is_some_and(|samples| !samples.is_empty())
+                        && row["sample_canonical_gap_ids"]
+                            .as_array()
+                            .is_some_and(|samples| !samples.is_empty())
+                        && row["sample_repair_kinds"]
+                            .as_array()
+                            .is_some_and(|samples| !samples.is_empty())
+                }))
+        );
         assert_eq!(
             value["attempts"][0]["target_test_type"],
             "boundary_discriminator"
@@ -84590,6 +84690,14 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["top_missing_evidence_fields"][0]["label"],
             "receipt_command"
+        );
+        assert_eq!(
+            value["top_missing_evidence_fields"][0]["sample_packet_ids"],
+            serde_json::Value::Array(Vec::new())
+        );
+        assert_eq!(
+            value["top_missing_evidence_fields"][0]["sample_canonical_gap_ids"],
+            serde_json::Value::Array(Vec::new())
         );
         assert_eq!(
             value["top_next_action"]["kind"],

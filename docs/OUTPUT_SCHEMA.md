@@ -3032,7 +3032,10 @@ completeness fields as JSON before listing ledger inputs.
   "top_missing_evidence_fields": [
     {
       "label": "receipt_command",
-      "count": 1
+      "count": 1,
+      "sample_packet_ids": ["packet-boundary-001"],
+      "sample_canonical_gap_ids": ["gap:abc"],
+      "sample_repair_kinds": ["add_boundary_assertion"]
     }
   ],
   "attempts": [
@@ -3134,7 +3137,10 @@ receipt-only, missing-verify-result, unknown, and success-rate counts.
 `top_failing_repair_routes[]` is the subset with unchanged, regressed,
 no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. `top_missing_evidence_fields[]`
-counts missing route/verify/receipt fields that prevent route-quality analysis.
+counts missing route/verify/receipt fields that prevent route-quality analysis
+and includes sample packet IDs, canonical gap IDs, and repair kinds when the
+row is derived from attempts. Legacy label/count-only rows remain readable and
+default sample arrays to empty.
 `repair_kind_failure_count` is the sum of unchanged, regressed, no-receipt,
 missing-verify-result, and unknown latest attempts.
 `repair_kind_dominant_failure_reason` is the highest-count failing bucket, with
@@ -3380,7 +3386,10 @@ limits.
   "top_missing_evidence_fields": [
     {
       "label": "receipt_command",
-      "count": 1
+      "count": 1,
+      "sample_packet_ids": ["packet-boundary-001"],
+      "sample_canonical_gap_ids": ["gap:abc"],
+      "sample_repair_kinds": ["add_boundary_assertion"]
     }
   ],
   "top_next_action": {
