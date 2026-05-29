@@ -384,7 +384,7 @@ fn helper_directly_delegates_to_specific_owner(
         return false;
     }
 
-    let mut direct_local_owner_call_count = 0usize;
+    let mut direct_local_owner_call_names = BTreeSet::new();
     let mut delegates_to_call = false;
     let mut has_disallowed_extra_call = false;
     for candidate in &function.calls {
@@ -398,7 +398,7 @@ fn helper_directly_delegates_to_specific_owner(
         ) && candidate.text.contains(&format!("{}(", candidate.name))
             && owner_token_is_specific_enough(&candidate.name.to_ascii_lowercase())
         {
-            direct_local_owner_call_count += 1;
+            direct_local_owner_call_names.insert(candidate.name.clone());
             delegates_to_call |= candidate.name == call.name
                 && candidate.line == call.line
                 && candidate.text == call.text;
@@ -407,7 +407,10 @@ fn helper_directly_delegates_to_specific_owner(
         }
     }
 
-    direct_local_owner_call_count == 1 && delegates_to_call && !has_disallowed_extra_call
+    direct_local_owner_call_names.len() == 1
+        && direct_local_owner_call_names.contains(&call.name)
+        && delegates_to_call
+        && !has_disallowed_extra_call
 }
 
 fn supported_helper_owner_call_name(
@@ -425,6 +428,7 @@ fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
         "clone"
             | "default"
             | "expect"
+            | "format"
             | "from"
             | "into"
             | "new"
@@ -4439,6 +4443,128 @@ fn production_wrapper_exercises_pipeline() {
         assert!(
             evidence.observed_values.is_empty(),
             "production wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_production_wrapper_calls_same_owner_multiple_times_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/loop_commands.rs");
+        let prod_src = r#"
+pub fn shell_arg(value: &str) -> String {
+    value.replace(' ', "\\ ")
+}
+
+pub fn agent_start_command(root: &str, packet: &str) -> String {
+    let root_arg = shell_arg(root);
+    let packet_arg = shell_arg(packet);
+    format!("ripr agent start --root {root_arg} --packet {packet_arg}")
+}
+"#;
+        let tests = PathBuf::from("tests/loop_commands_tests.rs");
+        let tests_src = r#"
+use loop_commands::agent_start_command;
+
+#[test]
+fn command_quotes_each_dynamic_arg() {
+    let command = agent_start_command("tmp root", "gap 1");
+    assert_eq!(
+        command,
+        "ripr agent start --root tmp\\ root --packet gap\\ 1"
+    );
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/loop_commands.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::shell_arg")
+                    && s.expression().contains("replace")
+            })
+            .ok_or_else(|| "expected shell_arg call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected same-owner production wrapper relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "same-owner production wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_production_wrapper_calls_multiple_owners_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/loop_commands.rs");
+        let prod_src = r#"
+pub fn quote_arg(value: &str) -> String {
+    value.replace(' ', "\\ ")
+}
+
+pub fn normalize_arg(value: &str) -> String {
+    value.trim().to_string()
+}
+
+pub fn agent_start_command(root: &str, packet: &str) -> String {
+    let root_arg = quote_arg(root);
+    let packet_arg = normalize_arg(packet);
+    format!("ripr agent start --root {root_arg} --packet {packet_arg}")
+}
+"#;
+        let tests = PathBuf::from("tests/loop_commands_tests.rs");
+        let tests_src = r#"
+use loop_commands::agent_start_command;
+
+#[test]
+fn command_formats_dynamic_args() {
+    let command = agent_start_command("tmp root", "gap 1");
+    assert_eq!(
+        command,
+        "ripr agent start --root tmp\\ root --packet gap 1"
+    );
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/loop_commands.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::quote_arg")
+                    && s.expression().contains("replace")
+            })
+            .ok_or_else(|| "expected quote_arg call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "mixed-owner production wrapper must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "mixed-owner production wrapper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())

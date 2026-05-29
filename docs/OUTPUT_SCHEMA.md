@@ -1306,10 +1306,10 @@ Field contract:
   calls the owner. Supported shapes are same-file helpers, test-local helpers,
   explicitly qualified test-support helpers, and unambiguous same-package
   production wrappers. The helper either carries the specific owner token in
-  its name or is a direct delegating wrapper that calls exactly one specific
-  owner. Generic owner names, skipped-owner wrappers, ambiguous production
-  wrapper names, local test-helper shadows, and two-hop wrapper chains remain
-  non-activating static limitations.
+  its name or is a direct delegating wrapper whose supported owner calls all
+  target one specific owner name. Generic owner names, skipped-owner wrappers,
+  mixed-owner wrappers, ambiguous production wrapper names, local test-helper
+  shadows, and two-hop wrapper chains remain non-activating static limitations.
 - `seams[].related_tests[].relation_confidence` — `high`, `medium`,
   `low`, or `opaque`. Mapping from reason: `direct_owner_call`,
   `helper_owner_call` → `high`; `assertion_target_affinity`,

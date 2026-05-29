@@ -213,6 +213,13 @@ affinity.
   pins the `call_presence` production-wrapper activation sub-shape: an
   integration test can call an unambiguous production one-hop wrapper that
   directly calls the owner without inventing synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_production_wrapper_calls_same_owner_multiple_times_then_activation_is_yes`
+  pins command-builder style production-wrapper activation: a wrapper may call
+  the same specific owner helper more than once and still activate a
+  value-insensitive seam without inventing synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_production_wrapper_calls_multiple_owners_then_activation_stays_unknown`
+  pins the mixed-owner guard: production wrappers that call more than one
+  supported owner helper do not become helper-owner-call activation.
 - `test_grip_evidence::tests::given_call_presence_when_production_wrapper_name_is_ambiguous_then_activation_stays_unknown`
   pins the production-wrapper ambiguity guard: duplicate production helper
   names with different owner-call targets do not become helper-owner-call

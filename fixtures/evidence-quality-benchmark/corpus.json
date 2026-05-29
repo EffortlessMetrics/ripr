@@ -1154,6 +1154,74 @@
       "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
     },
     {
+      "id": "call_presence_production_wrapper_same_owner_multi_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "An integration test that calls an unambiguous production command wrapper can activate a value-insensitive call-presence seam when the wrapper calls the same specific owner helper multiple times.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_production_wrapper_calls_same_owner_multiple_times_then_activation_is_yes",
+      "sample": {
+        "file": "tests/loop_commands_tests.rs",
+        "source": "let command = agent_start_command(\"tmp root\", \"gap 1\");\nassert_eq!(command, \"ripr agent start --root tmp\\\\ root --packet gap\\\\ 1\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-production-wrapper-same-owner-multi-call",
+          "canonical_gap_id": "gap:bench-call-presence-production-wrapper-same-owner-multi-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "loop_commands::shell_arg",
+          "location": {
+            "file": "src/loop_commands.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an integration test that calls an unambiguous production one-hop wrapper can satisfy activation when every supported owner call in the wrapper targets the same owner.",
+      "must_not_claim": [
+        "Do not treat mixed-owner production wrappers as direct owner-call activation.",
+        "Do not treat ambiguous production wrapper names as direct owner-call activation.",
+        "Do not let a test-local helper with the same name inherit production wrapper activation.",
+        "Do not treat two-hop production wrapper chains as direct owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
       "id": "call_presence_test_local_err_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",
