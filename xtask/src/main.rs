@@ -24776,12 +24776,16 @@ fn ripr_swarm_readiness_from_values(
     );
     let runtime_status =
         ripr_swarm_readiness_runtime_status(&swarm_plan, &actionable_gap_outcomes, &attempt_ledger);
+    let next_action_sources = RiprSwarmReadinessNextActionSources {
+        swarm_plan: swarm_plan.value,
+        top_failing_repair_routes: &top_failing_repair_routes,
+        top_missing_evidence_fields: &top_missing_evidence_fields,
+        top_limitation_routes: &top_limitation_routes,
+        static_limitation_backlog: &static_limitation_backlog,
+    };
     let next_actions = ripr_swarm_readiness_next_actions(
         &summary,
-        swarm_plan.value,
-        &top_failing_repair_routes,
-        &top_limitation_routes,
-        &static_limitation_backlog,
+        next_action_sources,
         [&swarm_plan, &actionable_gap_outcomes, &attempt_ledger],
         &runtime_status,
     );
@@ -25783,6 +25787,20 @@ fn ripr_swarm_top_missing_evidence_field_count(report: &Value, label: &str) -> O
         .and_then(|row| audit_usize(row, &["count"]))
 }
 
+fn ripr_swarm_missing_evidence_field_sample(
+    rows: &[RiprSwarmMissingEvidenceFieldRow],
+    label: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let Some(row) = rows.iter().find(|row| row.label == label) else {
+        return (None, None, None);
+    };
+    (
+        row.sample_packet_ids.first().cloned(),
+        row.sample_canonical_gap_ids.first().cloned(),
+        row.sample_repair_kinds.first().cloned(),
+    )
+}
+
 fn actionable_gap_outcomes_missing_verify_result_count(outcomes: &Value) -> usize {
     audit_array(outcomes, &["outcomes"])
         .iter()
@@ -25819,12 +25837,17 @@ fn ripr_swarm_repair_route_quality_row_from_value(
 
 const RIPR_SWARM_READINESS_NEXT_ACTION_PACKET_LIMIT: usize = 5;
 
+struct RiprSwarmReadinessNextActionSources<'a> {
+    swarm_plan: Option<&'a Value>,
+    top_failing_repair_routes: &'a [RiprSwarmRepairRouteQualityRow],
+    top_missing_evidence_fields: &'a [RiprSwarmMissingEvidenceFieldRow],
+    top_limitation_routes: &'a [RiprSwarmLimitationRouteRow],
+    static_limitation_backlog: &'a Value,
+}
+
 fn ripr_swarm_readiness_next_actions(
     summary: &RiprSwarmReadinessSummary,
-    swarm_plan: Option<&Value>,
-    top_failing_repair_routes: &[RiprSwarmRepairRouteQualityRow],
-    top_limitation_routes: &[RiprSwarmLimitationRouteRow],
-    static_limitation_backlog: &Value,
+    sources: RiprSwarmReadinessNextActionSources<'_>,
     inputs: [&RiprSwarmReadinessInput<'_>; 3],
     runtime_status: &Lane1RuntimeStatus,
 ) -> Vec<RiprSwarmReadinessNextAction> {
@@ -26029,12 +26052,16 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if summary.attempted_no_receipt_packets > 0 {
+        let (packet_id, canonical_gap_id, repair_kind) = ripr_swarm_missing_evidence_field_sample(
+            sources.top_missing_evidence_fields,
+            "attempt_receipt",
+        );
         actions.push(RiprSwarmReadinessNextAction {
             kind: "collect_missing_attempt_receipts".to_string(),
-            packet_id: None,
-            canonical_gap_id: None,
+            packet_id,
+            canonical_gap_id,
             evidence_class: None,
-            repair_kind: None,
+            repair_kind,
             command: Some("cargo xtask ripr-swarm attempt-ledger".to_string()),
             reason: format!(
                 "{} attempted packet(s) have no matching receipt; run the packet receipt command and refresh the attempt ledger before claiming outcomes",
@@ -26098,7 +26125,7 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
-    if let Some(route) = top_failing_repair_routes.first() {
+    if let Some(route) = sources.top_failing_repair_routes.first() {
         let failures = ripr_swarm_repair_route_quality_failure_count(route);
         let dominant_reason =
             ripr_swarm_repair_route_quality_dominant_failure_reason(route).unwrap_or("unknown");
@@ -26145,7 +26172,7 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     if summary.swarm_ready_packets == 0
-        && let Some(route) = top_limitation_routes.first()
+        && let Some(route) = sources.top_limitation_routes.first()
     {
         let sample_packet = route.sample_packet_id.as_deref().unwrap_or("unknown");
         actions.push(RiprSwarmReadinessNextAction {
@@ -26162,7 +26189,7 @@ fn ripr_swarm_readiness_next_actions(
         });
     } else if summary.swarm_ready_packets == 0
         && let Some((category, count, repair_route)) =
-            ripr_swarm_static_limitation_backlog_top_category(static_limitation_backlog)
+            ripr_swarm_static_limitation_backlog_top_category(sources.static_limitation_backlog)
     {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "route_static_limitation_backlog".to_string(),
@@ -26176,7 +26203,7 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
-    if let Some(plan) = swarm_plan {
+    if let Some(plan) = sources.swarm_plan {
         if let Some(action) = ripr_swarm_readiness_operator_judgment_action(plan) {
             actions.push(action);
         }
@@ -57037,25 +57064,25 @@ mod tests {
         REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV, ReceiptRecord,
         RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, SUPPORT_TIERS_PATH, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
-        WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
-        actionable_gap_outcomes_markdown, actionable_gap_outcomes_report_from_values,
-        actionable_gap_outcomes_report_impl, badge_artifact_command_args,
-        badge_artifact_command_label, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_impl_with_runners, badge_artifacts_summary_markdown,
-        badge_basis_canonical_projection, badge_basis_derived_ripr_plus_snapshot,
-        badge_basis_needs_repo_badge_plus_job, badge_basis_report_json,
-        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
-        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_doc_artifacts, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_support_tiers,
-        check_workflows, ci_full_evidence_gates, cockpit_json, cockpit_markdown,
-        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES,
+        USER_SURFACE_PROJECTION_REQUIRED_SURFACES, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        actionable_gap_outcomes_json, actionable_gap_outcomes_markdown,
+        actionable_gap_outcomes_report_from_values, actionable_gap_outcomes_report_impl,
+        badge_artifact_command_args, badge_artifact_command_label, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_impl_with_runners,
+        badge_artifacts_summary_markdown, badge_basis_canonical_projection,
+        badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
+        badge_basis_report_json, badge_basis_report_markdown, badge_basis_seam_native_counts,
+        badge_diff_policy_violations, badge_native_audit_snapshot, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_doc_artifacts,
+        check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
+        check_network_policy, check_no_panic_family, check_process_policy, check_static_language,
+        check_support_tiers, check_workflows, ci_full_evidence_gates, cockpit_json,
+        cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings, command_catalog,
         command_catalog_violations, commands_report_json, commands_report_markdown,
         critic_findings, days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
         dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
@@ -79856,7 +79883,16 @@ covered_by = ["cargo xtask check-file-policy"]
                 "evidence_regressed": 0,
                 "resolved": 1,
                 "orphaned_receipts": 0
-            }
+            },
+            "top_missing_evidence_fields": [
+                {
+                    "label": "attempt_receipt",
+                    "count": 1,
+                    "sample_packet_ids": ["packet-missing-receipt"],
+                    "sample_canonical_gap_ids": ["gap:missing-receipt"],
+                    "sample_repair_kinds": ["add_output_observer"]
+                }
+            ]
         });
         let report = ripr_swarm_readiness_from_values(
             RiprSwarmReadinessInput {
@@ -79927,6 +79963,18 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["next_actions"][0]["kind"],
             serde_json::Value::from("collect_missing_attempt_receipts")
+        );
+        assert_eq!(
+            value["next_actions"][0]["packet_id"],
+            serde_json::Value::from("packet-missing-receipt")
+        );
+        assert_eq!(
+            value["next_actions"][0]["canonical_gap_id"],
+            serde_json::Value::from("gap:missing-receipt")
+        );
+        assert_eq!(
+            value["next_actions"][0]["repair_kind"],
+            serde_json::Value::from("add_output_observer")
         );
         assert_eq!(
             value["top_next_action"]["kind"],
@@ -81528,10 +81576,13 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let actions = ripr_swarm_readiness_next_actions(
             &summary,
-            Some(&swarm_plan),
-            &[],
-            &[],
-            &Value::Null,
+            RiprSwarmReadinessNextActionSources {
+                swarm_plan: Some(&swarm_plan),
+                top_failing_repair_routes: &[],
+                top_missing_evidence_fields: &[],
+                top_limitation_routes: &[],
+                static_limitation_backlog: &Value::Null,
+            },
             [
                 &RiprSwarmReadinessInput {
                     path: "target/ripr/reports/swarm-plan.json".to_string(),

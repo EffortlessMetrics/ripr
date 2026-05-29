@@ -47,7 +47,8 @@ The behavior is intentionally narrow:
   attempts as first-class next actions instead of converting every full
   actionable packet into another blind attempt;
 - attempted packets without receipts route to `collect_missing_attempt_receipts`
-  so downstream surfaces cannot claim improvement from verify evidence alone;
+  with a sample packet/gap/repair-kind when one is available, so downstream
+  surfaces cannot claim improvement from verify evidence alone;
 - default operation is dry-run and human-reviewable.
 
 ## Scope
@@ -362,6 +363,9 @@ Readiness must route `attempted_no_receipt` and `receipt_present` separately:
 no-receipt attempts require collecting the packet receipt, while receipt-present
 attempts require joining before/after evidence movement before route quality can
 claim improvement, regression, or unchanged evidence.
+When `top_missing_evidence_fields[]` includes `attempt_receipt` samples,
+readiness should copy the first sample packet ID, canonical gap ID, and repair
+kind into the `collect_missing_attempt_receipts` next action.
 
 ## Dry-Run Commands
 
