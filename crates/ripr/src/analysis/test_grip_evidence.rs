@@ -486,9 +486,11 @@ fn helper_owner_call_names_from_qualified_calls(
 }
 
 fn code_contains_qualified_helper_call(code: &str, module_path: &str, helper_name: &str) -> bool {
-    ["", "crate::", "self::"].into_iter().any(|prefix| {
-        code_contains_qualified_helper_call_with_prefix(code, prefix, module_path, helper_name)
-    })
+    ["", "crate::", "self::", "super::"]
+        .into_iter()
+        .any(|prefix| {
+            code_contains_qualified_helper_call_with_prefix(code, prefix, module_path, helper_name)
+        })
 }
 
 fn code_contains_qualified_helper_call_with_prefix(
@@ -4760,6 +4762,92 @@ fn crate_qualified_support_helper_reaches_pipeline() {
     }
 
     #[test]
+    fn given_call_presence_when_super_qualified_support_helper_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let support_a = PathBuf::from("tests/support_a.rs");
+        let support_a_src = r#"
+use pipeline::render_pipeline;
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+"#;
+        let support_b = PathBuf::from("tests/support_b.rs");
+        let support_b_src = r#"
+use report::render_report;
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+mod nested {
+    #[test]
+    fn super_qualified_support_helper_reaches_pipeline() {
+        let rendered = super::support_a::exercise_pipeline();
+        assert_eq!(rendered, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (support_a, support_a_src),
+            (support_b, support_b_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected super-qualified support helper to prove helper-owner relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "super-qualified call_presence helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_qualified_support_helper_only_in_comment_or_string_then_call_match_is_ignored() {
         let cleaned = strip_comments_and_strings(
             "let doc = \"support_a::exercise_pipeline()\"; // support_a::exercise_pipeline()",
@@ -4784,8 +4872,18 @@ fn crate_qualified_support_helper_reaches_pipeline() {
             "support_a",
             "exercise_pipeline"
         ));
+        assert!(code_contains_qualified_helper_call(
+            "let rendered = super::support_a::exercise_pipeline();",
+            "support_a",
+            "exercise_pipeline"
+        ));
         assert!(!code_contains_qualified_helper_call(
             "let rendered = other_support_a::exercise_pipeline();",
+            "support_a",
+            "exercise_pipeline"
+        ));
+        assert!(!code_contains_qualified_helper_call(
+            "let rendered = my_super::support_a::exercise_pipeline();",
             "support_a",
             "exercise_pipeline"
         ));
