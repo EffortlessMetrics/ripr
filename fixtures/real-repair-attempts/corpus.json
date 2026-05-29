@@ -270,6 +270,40 @@
       ],
       "missing_receipt_reason": null,
       "reason": "A real merged analyzer PR made iterator-derived boundary operands more trustworthy by routing them to a precise limitation route while keeping them non-actionable."
+    },
+    {
+      "id": "lsp_call_observer_attempted_no_receipt_timeout",
+      "source_ref": "local:dogfood-lsp-call-observer-packet",
+      "canonical_gap_id": "gap:54970c87c8f8ca9d",
+      "packet_id": "gap:54970c87c8f8ca9d",
+      "repair_kind": "add_call_observer",
+      "target_test_or_observer_shape": "serve_stdio call-presence observer asserting the LSP stdio entrypoint still constructs and serves the tower LSP server",
+      "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+      "verify_result": "not_run",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id c4abcb8dc04cf9c4 --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_path": null,
+      "receipt_state": "receipt_missing",
+      "actor_kind": "codex",
+      "before_gap_state": "actionable",
+      "after_gap_state": "actionable",
+      "outcome": "attempted_no_receipt",
+      "attempted_repair": "Added serve_stdio_call_presence_observer in the packet's allowed edit surface, crates/ripr/src/lsp/tests.rs.",
+      "evidence_movement": "The narrow observer test passed, but the formal after repo-exposure snapshot generation timed out before agent verify or receipt could complete.",
+      "operator_note": "This is an honest failed handoff proof: the packet was bounded enough to attempt, but its generated verify route was too broad to receipt in this run.",
+      "must_not_change": [
+        "crates/ripr/src/lsp.rs",
+        "public badge semantics",
+        "CI gate defaults",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "target/ripr/reports/swarm-plan.json:gap:54970c87c8f8ca9d",
+        "target/ripr/reports/swarm-attempt-ledger.json:gap:54970c87c8f8ca9d",
+        "crates/ripr/src/lsp/tests.rs:serve_stdio_call_presence_observer"
+      ],
+      "missing_receipt_reason": "formal agent verify receipt was not emitted because generating target/ripr/pilot/after.repo-exposure.json timed out after 20 minutes",
+      "reason": "A real queued packet attempt exposed that the default repo-exposure verify route can be too broad for a bounded test-only repair handoff."
     }
   ]
 }

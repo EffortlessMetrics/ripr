@@ -72,6 +72,26 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
 }
 
 #[test]
+fn serve_stdio_call_presence_observer() -> Result<(), String> {
+    let source = include_str!("../lsp.rs");
+    let serve_stdio = source
+        .split("async fn serve_stdio()")
+        .nth(1)
+        .ok_or_else(|| "expected serve_stdio implementation in lsp module".to_string())?;
+
+    assert!(
+        serve_stdio.contains("LspService::new(|client| Backend::new(client, root.clone()))"),
+        "serve_stdio should construct the LSP service with the resolved workspace root"
+    );
+    assert!(
+        serve_stdio.contains("Server::new(stdin, stdout, socket).serve(service).await"),
+        "serve_stdio should hand stdin/stdout, the socket, and the service to the tower LSP server"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
