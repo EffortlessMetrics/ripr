@@ -24841,11 +24841,11 @@ fn ripr_swarm_push_repair_route_quality_backlog_table(
         out.push_str("No repair-route quality backlog packets are available.\n\n");
         return;
     }
-    out.push_str("| Packet | Repair kind | Failures | Dominant failure | Improvement route | Sample packets | Sample gaps |\n");
-    out.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
+    out.push_str("| Packet | Repair kind | Failures | Dominant failure | Improvement route | Sample packets | Sample gaps | Why action required | Unlock condition |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | `{}` | `{}` | {} | {} |\n",
+            "| `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} |\n",
             audit_markdown_cell(row["packet_id"].as_str().unwrap_or("")),
             audit_markdown_cell(row["repair_kind"].as_str().unwrap_or("")),
             row["failure_count"].as_u64().unwrap_or(0),
@@ -24860,7 +24860,9 @@ fn ripr_swarm_push_repair_route_quality_backlog_table(
                 &audit_string_array(&row, &["sample_canonical_gap_ids"])
                     .unwrap_or_default()
                     .join(", ")
-            )
+            ),
+            audit_markdown_cell(row["why_action_required"].as_str().unwrap_or("")),
+            audit_markdown_cell(row["unlock_condition"].as_str().unwrap_or(""))
         ));
     }
     out.push('\n');
@@ -85111,7 +85113,14 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("route-quality:add-output-observer:missing-verify-result"));
         assert!(markdown.contains("add_output_observer"));
         assert!(markdown.contains("Failure count | Dominant failure"));
+        assert!(markdown.contains("Why action required | Unlock condition"));
         assert!(markdown.contains("missing_verify_result"));
+        assert!(markdown.contains(
+            "`add_output_observer` attempts lack typed verify results; route quality cannot be trusted until receipts preserve pass/fail/not-run evidence"
+        ));
+        assert!(markdown.contains(
+            "preserve typed verify_result evidence for `add_output_observer` attempts in receipts or targeted-test outcomes"
+        ));
         Ok(())
     }
 
