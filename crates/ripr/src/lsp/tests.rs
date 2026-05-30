@@ -3773,6 +3773,23 @@ fn sample_finding() -> Finding {
     }
 }
 
+fn sample_typescript_preview_actionability_finding() -> Finding {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::TypeScript);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.evidence = vec![
+        "gap_state: advisory".to_string(),
+        "actionability_category: missing_context".to_string(),
+        "why_not_actionable: verify command and receipt command are not inferred for TypeScript preview".to_string(),
+        "repair_route: add strict TypeScript repair-packet actionability proof".to_string(),
+        "missing_actionability_fields: verify_command, receipt_command, must_not_change".to_string(),
+        "evidence_needed_to_promote: complete repair packet with verify and receipt commands".to_string(),
+        "raw_evidence_ref: file=src/pricing.ts;line=88;kind=probe;source_id=ts-probe-1;owner=discountedTotal".to_string(),
+    ];
+    finding
+}
+
 fn sample_canonical_gap() -> FindingCanonicalGap {
     FindingCanonicalGap {
         id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
@@ -4034,6 +4051,52 @@ fn preview_finding_diagnostic_preserves_language_metadata() -> Result<(), String
 }
 
 #[test]
+fn typescript_preview_finding_diagnostic_carries_actionability_context() -> Result<(), String> {
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let data = diagnostic
+        .data
+        .and_then(|value| value.as_object().cloned())
+        .ok_or_else(|| "expected diagnostic data".to_string())?;
+    let actionability = data
+        .get("preview_actionability")
+        .and_then(|value| value.as_object())
+        .ok_or_else(|| "expected preview_actionability data".to_string())?;
+    assert_eq!(
+        actionability
+            .get("gap_state")
+            .and_then(|value| value.as_str()),
+        Some("advisory")
+    );
+    assert_eq!(
+        actionability
+            .get("actionability_category")
+            .and_then(|value| value.as_str()),
+        Some("missing_context")
+    );
+    assert_eq!(
+        actionability
+            .get("repair_packet_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        actionability["missing_actionability_fields"][0].as_str(),
+        Some("verify_command")
+    );
+    assert_eq!(
+        actionability["raw_evidence_refs"][0]["file"].as_str(),
+        Some("src/pricing.ts")
+    );
+    assert_eq!(
+        actionability["raw_evidence_refs"][0]["owner"].as_str(),
+        Some("discountedTotal")
+    );
+    Ok(())
+}
+
+#[test]
 fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> {
     use super::hover::finding_hover_response;
 
@@ -4083,6 +4146,57 @@ fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> 
 }
 
 #[test]
+fn typescript_preview_finding_hover_shows_actionability_before_evidence() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            let boundary_index = markup
+                .value
+                .find("## Preview Boundary")
+                .ok_or_else(|| "expected preview boundary".to_string())?;
+            let actionability_index = markup
+                .value
+                .find("## Preview Actionability")
+                .ok_or_else(|| "expected preview actionability".to_string())?;
+            let evidence_index = markup
+                .value
+                .find("## RIPR Evidence")
+                .ok_or_else(|| "expected RIPR evidence".to_string())?;
+            assert!(
+                boundary_index < actionability_index && actionability_index < evidence_index,
+                "preview actionability must appear before evidence details:\n{}",
+                markup.value
+            );
+            for needle in [
+                "Language: typescript",
+                "Status: preview",
+                "Repair packet: not ready",
+                "State: advisory",
+                "Category: missing_context",
+                "Why not actionable: verify command and receipt command are not inferred for TypeScript preview",
+                "Repair route: add strict TypeScript repair-packet actionability proof",
+                "Missing fields: verify_command, receipt_command, must_not_change",
+                "Evidence needed: complete repair packet with verify and receipt commands",
+                "Authority: preview advisory only",
+            ] {
+                assert!(
+                    markup.value.contains(needle),
+                    "missing {needle:?} in:\n{}",
+                    markup.value
+                );
+            }
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
 fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<(), String> {
     let mut finding = sample_finding();
     finding.language = Some(LanguageId::Python);
@@ -4116,6 +4230,49 @@ fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<
     );
     assert_eq!(commands[0].2[0]["finding_id"], "probe:pricing:88:predicate");
     assert_eq!(commands[0].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
+}
+
+#[test]
+fn typescript_preview_code_action_copies_actionability_without_repair_packet() -> Result<(), String>
+{
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.ts")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect finding: copy context packet", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "incomplete TypeScript preview actionability must not expose repair-packet, verify, receipt, or edit actions"
+    );
+    assert_eq!(commands[0].2[0]["language"], "typescript");
+    assert_eq!(commands[0].2[0]["language_status"], "preview");
+    assert_eq!(commands[0].2[0]["owner_kind"], "function");
+    assert_eq!(
+        commands[0].2[0]["preview_actionability"]["repair_packet_ready"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        commands[0].2[0]["preview_actionability"]["repair_route"].as_str(),
+        Some("add strict TypeScript repair-packet actionability proof")
+    );
     Ok(())
 }
 

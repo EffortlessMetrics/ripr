@@ -946,7 +946,16 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
                 serde_json::Value::String(seam_kind.to_string()),
             );
         }
-        for key in ["gap_id", "canonical_gap_id", "gap_kind", "gap_ledger"] {
+        for key in [
+            "gap_id",
+            "canonical_gap_id",
+            "gap_kind",
+            "gap_ledger",
+            "language",
+            "language_status",
+            "owner_kind",
+            "static_limit_kind",
+        ] {
             if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
                 target.insert(
                     key.to_string(),
@@ -954,6 +963,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
                 );
             }
         }
+        copy_optional_value(&mut target, data, "preview_actionability");
     }
     serde_json::Value::Object(target)
 }

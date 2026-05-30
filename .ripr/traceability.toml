@@ -1972,6 +1972,9 @@ tests = [
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_preview_actionability_without_raw_string_spam",
   "crates/ripr/src/output/sarif.rs::tests::sarif_preserves_preview_actionability_properties",
   "crates/ripr/src/output/github.rs::tests::render_includes_preview_actionability_boundary",
+  "crates/ripr/src/lsp/tests.rs::typescript_preview_finding_diagnostic_carries_actionability_context",
+  "crates/ripr/src/lsp/tests.rs::typescript_preview_finding_hover_shows_actionability_before_evidence",
+  "crates/ripr/src/lsp/tests.rs::typescript_preview_code_action_copies_actionability_without_repair_packet",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
 ]
 fixtures = [
@@ -2009,6 +2012,9 @@ code = [
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/github.rs",
   "crates/ripr/src/output/sarif.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/hover.rs",
+  "crates/ripr/src/lsp/actions.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
@@ -2037,6 +2043,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
 ]
@@ -2069,6 +2076,7 @@ metrics = [
   "language_adapter_typescript_actionability_advisory",
   "language_adapter_typescript_actionability_static_limitation",
   "language_adapter_typescript_actionability_already_observed",
+  "language_adapter_typescript_lsp_preview_actionability_context",
 ]
 
 [[behavior]]

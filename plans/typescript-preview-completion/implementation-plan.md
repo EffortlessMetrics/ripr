@@ -434,7 +434,7 @@ git diff --check
 
 ## Work Item: lsp/typescript-preview-repair-context
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0011
@@ -446,6 +446,24 @@ Blocked by: none
 Project TypeScript/JavaScript preview repair context in VS Code only when the
 preview language is enabled and the repair packet is complete.
 
+### Current Delta
+
+TypeScript/JavaScript preview findings now carry structured
+`preview_actionability` into LSP diagnostic data. Finding hover renders the
+preview actionability state before RIPR evidence details, and the inspect
+context code action copies the same preview context for agent handoff.
+
+Incomplete preview findings remain bounded to inspect and refresh actions: no
+repair packet, verify, receipt, edit, or generated-test action is exposed
+without complete actionability.
+
+### Proof Commands
+
+```bash
+cargo fmt
+cargo test -p ripr lsp --lib
+```
+
 ## Work Item: ci/typescript-preview-language-grouping-proof
 
 Status: ready
@@ -453,7 +471,7 @@ Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
 Blocks: dogfood/typescript-preview-repair-loop
-Blocked by: lsp/typescript-preview-repair-context
+Blocked by: none
 
 ### Goal
 

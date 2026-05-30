@@ -14,6 +14,9 @@ use crate::domain::{Finding, LanguageId, RelatedTest};
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
 };
+use crate::output::preview_actionability::{
+    preview_actionability_for, preview_actionability_json_value,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -554,6 +557,12 @@ pub(super) fn diagnostic_for_finding_with_config(
             obj.insert(
                 "static_limit_kind".to_string(),
                 serde_json::Value::String(static_limit_kind.as_str().to_string()),
+            );
+        }
+        if let Some(actionability) = preview_actionability_for(finding) {
+            obj.insert(
+                "preview_actionability".to_string(),
+                preview_actionability_json_value(&actionability),
             );
         }
     }

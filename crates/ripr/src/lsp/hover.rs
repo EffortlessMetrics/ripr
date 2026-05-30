@@ -7,6 +7,7 @@ use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
+use crate::output::preview_actionability::{PreviewActionability, preview_actionability_for};
 use serde_json::Value;
 use std::path::Path;
 use tower_lsp_server::ls_types::{
@@ -339,6 +340,7 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         .unwrap_or_else(|| "static exposure".to_string());
     let mut lines = vec![format!("**ripr** `{classification}`"), String::new()];
     push_preview_boundary(&mut lines, finding);
+    push_preview_actionability(&mut lines, finding);
     lines.extend([
         diagnostic.message.clone(),
         String::new(),
@@ -410,6 +412,51 @@ fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
         lines.push("Action: advisory only".to_string());
     }
     lines.push(String::new());
+}
+
+fn push_preview_actionability(lines: &mut Vec<String>, finding: &Finding) {
+    let Some(actionability) = preview_actionability_for(finding) else {
+        return;
+    };
+    lines.push("## Preview Actionability".to_string());
+    lines.push(format!("State: {}", actionability.gap_state));
+    lines.push(format!(
+        "Category: {}",
+        actionability.actionability_category
+    ));
+    lines.push(format!(
+        "Repair packet: {}",
+        if actionability.repair_packet_ready {
+            "ready"
+        } else {
+            "not ready"
+        }
+    ));
+    lines.push(format!(
+        "Why not actionable: {}",
+        actionability.why_not_actionable
+    ));
+    lines.push(format!("Repair route: {}", actionability.repair_route));
+    push_missing_actionability_fields(lines, &actionability);
+    lines.push(format!(
+        "Evidence needed: {}",
+        actionability.evidence_needed_to_promote
+    ));
+    lines.push("Authority: preview advisory only".to_string());
+    lines.push(String::new());
+}
+
+fn push_missing_actionability_fields(
+    lines: &mut Vec<String>,
+    actionability: &PreviewActionability,
+) {
+    if actionability.missing_actionability_fields.is_empty() {
+        return;
+    }
+    lines.push(format!(
+        "Missing fields: {}",
+        actionability.missing_actionability_fields.join(", ")
+    ));
 }
 
 fn stage_line(name: &str, stage: &StageEvidence) -> String {

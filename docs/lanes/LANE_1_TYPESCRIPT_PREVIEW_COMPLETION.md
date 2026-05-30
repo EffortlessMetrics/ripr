@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: TypeScript preview output metadata projection landed; LSP repair context next
+Status: TypeScript preview LSP repair context landed; generated CI grouping proof next
 
 Date: 2026-05-29
 
@@ -120,8 +120,12 @@ Projection and proof:
   `preview_actionability` for TypeScript/JavaScript preview findings. Human
   output shows the same state in a dedicated Preview actionability section, and
   GitHub annotations preserve the advisory preview/no-packet boundary.
-- LSP diagnostics preserve preview metadata and `static_limit_kind` when
-  present.
+- LSP diagnostics preserve preview metadata, `static_limit_kind`, and structured
+  `preview_actionability` when present.
+- LSP hover renders the preview actionability state before evidence details,
+  and inspect-context actions copy the same preview context without exposing a
+  repair packet, verify, receipt, edit, or generated-test action for incomplete
+  preview findings.
 - Generated CI has language grouping support for configured preview languages.
 - `cargo xtask dogfood` has a TypeScript preview receipt for
   `mocked_module`, disabled-language behavior, preview labels, and no
@@ -270,12 +274,17 @@ Completed after the initial audit:
      TypeScript still has no complete repair packets or GapRecords.
 
 9. LSP / VS Code repair packet UX
-   - Current LSP projection carries preview metadata and static limits.
-    - Missing TypeScript proof: enabled/disabled TS e2e with a complete repair
-      packet, hover boundary, code action packet, verify command, receipt
-      command, and constraints.
-    - Next step: project `preview_actionability` into hover/status context and
-      keep editor actions suppressed unless a complete repair packet exists.
+   - Status: done for the current incomplete-packet preview context.
+   - Current LSP projection carries preview metadata, static limits, and
+     structured `preview_actionability` in diagnostic data.
+   - Hover shows the preview actionability state before RIPR evidence, and the
+     inspect-context action copies the same preview context for agent handoff.
+   - Incomplete TypeScript/JavaScript preview findings stay bounded to inspect
+     and refresh actions. Repair-packet, verify, receipt, edit, and
+     generated-test actions remain suppressed until a later complete packet
+     exists.
+   - Remaining TypeScript proof: enabled/disabled TS e2e with a complete repair
+     packet once strict packet eligibility exists.
 
 10. Generated CI grouping proof
    - Generated CI grouping exists for configured preview languages.
@@ -337,13 +346,15 @@ and parser-error unsupported syntax without support-tier promotion, runtime
 execution, generated tests, source edits, default gates, badge contribution,
 baseline authority, or RIPR Zero contribution.
 
-PR 9 landed fail-closed TypeScript strict actionability, and PR 10 landed the
-current output metadata projection.
+PR 9 landed fail-closed TypeScript strict actionability, PR 10 landed the
+current output metadata projection, and PR 11 landed LSP preview actionability
+context without noisy diagnostics or repair-packet actions for incomplete
+preview findings.
 
 The next safe PR is:
 
 ```text
-PR 11: lsp(ts): show TypeScript preview evidence without noisy diagnostics
+PR 12: ci(ts): group TypeScript preview evidence in generated CI
 ```
 
 ## Validation
