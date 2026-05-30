@@ -1428,18 +1428,19 @@ spec = "RIPR-SPEC-0038"
 evidence = [
   "generated GitHub workflow summary reads enabled languages through public ripr doctor",
   "language grouping section is hidden for Rust-only configuration",
-  "TypeScript and Python groups are emitted only when preview adapters are configured",
-  "language groups summarize advisory artifact entries, preview-status counts, classifications, and static-limit kinds",
+  "TypeScript, JavaScript, and Python groups are emitted only when preview adapters are configured",
+  "TypeScript-family generated CI grouping includes separately labeled JavaScript preview evidence when TypeScript preview is configured",
+  "language groups summarize advisory artifact entries, preview-status counts, classifications, static-limit kinds, actionability states/categories, repair-packet-ready counts, and gate impact none",
   "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
   "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
   "CLI smoke tests pin the generated workflow section",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary",
-  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults",
+  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping, actionability summaries, JavaScript grouping, and gate impact none marked checked while preserving advisory defaults",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md records the Rust-default and gate-authority boundary"
 ]
 fixtures = []
 next = "maintenance"
-metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
+metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_preview_language_javascript_group, generated_pr_ci_preview_actionability_groups, generated_pr_ci_preview_gate_impact_none, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
 id = "repository_config"
@@ -1565,6 +1566,7 @@ evidence = [
   "TypeScript strict actionability evidence fails closed with gap_state, actionability_category, why_not_actionable, repair_route, missing actionability fields, and raw preview evidence refs instead of emitting repair packets",
   "TypeScript/JavaScript preview actionability projects as structured preview_actionability in check JSON, human output, GitHub annotations, and diff-scoped SARIF properties while repair-packet, gate, badge, baseline, and RIPR Zero surfaces remain unchanged",
   "TypeScript/JavaScript preview actionability reaches LSP diagnostic data, hover preview actionability context, and inspect-context code actions while incomplete preview items stay bounded to inspect and refresh actions without repair-packet, verify, receipt, edit, or generated-test actions",
+  "generated CI groups TypeScript-family preview evidence as separately labeled TypeScript and JavaScript advisory groups with actionability states/categories, repair-packet-ready counts, static-limit context, and gate impact none",
   "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing"
 ]
 fixtures = [
@@ -1588,8 +1590,8 @@ fixtures = [
   "fixtures/typescript_strict_actionability",
   "fixtures/mixed_rust_typescript_preview"
 ]
-next = "ci/typescript-preview-language-grouping-proof"
-metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_probe_predicate, language_adapter_typescript_probe_return_value, language_adapter_typescript_probe_error_path, language_adapter_typescript_probe_field_construction, language_adapter_typescript_probe_call_side_effect, language_adapter_typescript_probe_mock_interaction, language_adapter_typescript_probe_ambiguous_suppressed, language_adapter_typescript_static_limit_dynamic_dispatch, language_adapter_typescript_static_limit_metaprogramming, language_adapter_typescript_static_limit_missing_import_graph, language_adapter_typescript_static_limit_decorator_indirection, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax, language_adapter_typescript_actionability_advisory, language_adapter_typescript_actionability_static_limitation, language_adapter_typescript_actionability_already_observed, language_adapter_typescript_lsp_preview_actionability_context"
+next = "dogfood/typescript-preview-repair-loop"
+metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_probe_predicate, language_adapter_typescript_probe_return_value, language_adapter_typescript_probe_error_path, language_adapter_typescript_probe_field_construction, language_adapter_typescript_probe_call_side_effect, language_adapter_typescript_probe_mock_interaction, language_adapter_typescript_probe_ambiguous_suppressed, language_adapter_typescript_static_limit_dynamic_dispatch, language_adapter_typescript_static_limit_metaprogramming, language_adapter_typescript_static_limit_missing_import_graph, language_adapter_typescript_static_limit_decorator_indirection, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax, language_adapter_typescript_actionability_advisory, language_adapter_typescript_actionability_static_limitation, language_adapter_typescript_actionability_already_observed, language_adapter_typescript_lsp_preview_actionability_context, language_adapter_typescript_ci_preview_grouping"
 
 [[capability]]
 id = "sarif_ci_policy"

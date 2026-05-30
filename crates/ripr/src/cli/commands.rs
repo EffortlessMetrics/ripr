@@ -1704,11 +1704,24 @@ jobs:
                 || true
             )"
             if [ -n "$preview_languages" ]; then
+              grouped_preview_languages="$preview_languages"
+              if printf '%s\n' "$preview_languages" | tr ' ' '\n' | grep -qx 'typescript'; then
+                grouped_preview_languages="$grouped_preview_languages javascript"
+              fi
+              grouped_preview_languages="$(
+                printf '%s\n' $grouped_preview_languages \
+                  | sort -u \
+                  | tr '\n' ' ' \
+                  | sed 's/ $//' \
+                  || true
+              )"
               configured_inline="$(markdown_inline "$configured_languages")"
+              grouped_inline="$(markdown_inline "$grouped_preview_languages")"
               echo '### Language preview grouping'
               echo "- Configured languages: \`$configured_inline\`"
+              echo "- Grouped preview evidence languages: \`$grouped_inline\`"
               echo "- Boundary: preview-language groups are advisory presentation only; \`ripr gate evaluate\` remains pass/fail authority when explicitly configured."
-              for language in $preview_languages; do
+              for language in $grouped_preview_languages; do
                 language_inputs=()
                 if [ -f target/ripr/reports/repo-exposure.json ]; then
                   language_inputs+=(target/ripr/reports/repo-exposure.json)
@@ -1730,6 +1743,9 @@ jobs:
                 static_limit_entries=0
                 class_counts="none"
                 static_limit_kinds="none"
+                actionability_states="none"
+                actionability_categories="none"
+                repair_packet_ready_entries=0
                 if [ "${#language_inputs[@]}" -gt 0 ]; then
                   artifact_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                   preview_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? == "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
@@ -1737,6 +1753,9 @@ jobs:
                   static_limit_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .static_limit_kind? != null)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                   class_counts="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .classification? != null) | .classification] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
                   static_limit_kinds="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | .static_limit_kind? | select(. != null)] | unique | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  actionability_states="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | (.preview_actionability?.gap_state // .gap_state?) | select(. != null)] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  actionability_categories="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | (.preview_actionability?.actionability_category // .actionability_category?) | select(. != null)] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  repair_packet_ready_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .preview_actionability?.repair_packet_ready == true)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                 fi
                 language_inline="$(markdown_inline "$language")"
                 artifact_entries="$(markdown_inline "$artifact_entries")"
@@ -1745,10 +1764,13 @@ jobs:
                 static_limit_entries="$(markdown_inline "$static_limit_entries")"
                 class_counts="$(markdown_inline "$class_counts")"
                 static_limit_kinds="$(markdown_inline "$static_limit_kinds")"
+                actionability_states="$(markdown_inline "$actionability_states")"
+                actionability_categories="$(markdown_inline "$actionability_categories")"
+                repair_packet_ready_entries="$(markdown_inline "$repair_packet_ready_entries")"
                 if [ "$artifact_entries" = "0" ]; then
-                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run."
+                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run; gate_impact=\`none\`."
                 else
-                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`"
+                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`, actionability_states=\`$actionability_states\`, actionability_categories=\`$actionability_categories\`, repair_packet_ready=\`$repair_packet_ready_entries\`, gate_impact=\`none\`"
                 fi
               done
               echo
@@ -11320,6 +11342,16 @@ language = "rust"
         assert!(summary.contains(".language_status? != \"preview\""));
         assert!(summary.contains("configured preview/advisory"));
         assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
+        assert!(summary.contains("grouped_preview_languages=\"$preview_languages\""));
+        assert!(
+            summary.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
+        );
+        assert!(summary.contains("Grouped preview evidence languages"));
+        assert!(summary.contains("for language in $grouped_preview_languages; do"));
+        assert!(summary.contains("actionability_states"));
+        assert!(summary.contains("actionability_categories"));
+        assert!(summary.contains("repair_packet_ready_entries"));
+        assert!(summary.contains("gate_impact=\\`none\\`"));
         assert!(summary.contains(
             "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
         ));

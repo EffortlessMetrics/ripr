@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: TypeScript preview LSP repair context landed; generated CI grouping proof next
+Status: TypeScript preview generated CI grouping proof landed; dogfood repair-loop receipts next
 
 Date: 2026-05-29
 
@@ -126,7 +126,12 @@ Projection and proof:
   and inspect-context actions copy the same preview context without exposing a
   repair packet, verify, receipt, edit, or generated-test action for incomplete
   preview findings.
-- Generated CI has language grouping support for configured preview languages.
+- Generated CI has language grouping support for configured preview languages,
+  including separate TypeScript-family `typescript` and `javascript` groups
+  when TypeScript preview is configured.
+- Generated CI preview groups summarize actionability states/categories,
+  repair-packet-ready counts, static-limit context, and explicit
+  `gate_impact = none` advisory boundaries.
 - `cargo xtask dogfood` has a TypeScript preview receipt for
   `mocked_module`, disabled-language behavior, preview labels, and no
   cross-language related-test routing.
@@ -287,15 +292,20 @@ Completed after the initial audit:
      packet once strict packet eligibility exists.
 
 10. Generated CI grouping proof
-   - Generated CI grouping exists for configured preview languages.
-    - Missing TypeScript completion proof: grouping over real TS/JS repair
-      packets and limitations while preserving advisory-only gate impact.
-    - Next step: keep TS/JS preview evidence out of default blocking, badges,
-      baselines, and RIPR Zero.
+   - Status: done for the PR 12 scope.
+   - Generated CI grouping remains opt-in by configured preview languages and
+     hidden for Rust-only configuration.
+   - TypeScript preview configuration expands the TypeScript-family grouping to
+     separately labeled `typescript` and `javascript` evidence, because
+     JavaScript findings remain JavaScript preview findings.
+   - Each group reports actionability state/category counts, repair-packet-ready
+     counts, static-limit context, and explicit `gate_impact = none`.
+   - TS/JS preview evidence remains out of default blocking, badges, baselines,
+     and RIPR Zero.
 
 11. Dogfood, route-quality metrics, and support-tier decision
    - Current dogfood covers TypeScript mocked-module preview and a small
-     projection boundary.
+     projection boundary, plus generated-CI TypeScript-family language grouping.
     - Missing proof: real TS/JS repair-loop receipts, weak-oracle downgrades,
       limitation examples, false-actionable review, and route-quality metrics
       by repair kind and language.
@@ -349,12 +359,14 @@ baseline authority, or RIPR Zero contribution.
 PR 9 landed fail-closed TypeScript strict actionability, PR 10 landed the
 current output metadata projection, and PR 11 landed LSP preview actionability
 context without noisy diagnostics or repair-packet actions for incomplete
-preview findings.
+preview findings. PR 12 landed generated-CI TypeScript-family language grouping
+with separate TypeScript and JavaScript preview labels, actionability summaries,
+and `gate_impact = none` while preserving advisory-only default behavior.
 
 The next safe PR is:
 
 ```text
-PR 12: ci(ts): group TypeScript preview evidence in generated CI
+PR 13: dogfood(ts): record TypeScript preview repair-loop receipts
 ```
 
 ## Validation

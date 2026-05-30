@@ -189,8 +189,14 @@ ripr init --ci github
 
 Generated CI remains advisory by default. When `ripr doctor` reports configured
 preview languages, the job summary adds a `Language preview grouping` section
-for TypeScript and Python evidence. Rust-only configuration keeps that section
-hidden at runtime.
+for TypeScript, JavaScript, and Python evidence. Rust-only configuration keeps
+that section hidden at runtime.
+
+When TypeScript preview is configured, the summary treats TypeScript-family
+adapter output as separately labeled `typescript` and `javascript` preview
+groups. Each group reports advisory artifact counts, preview-status counts,
+static-limit context, actionability state/category counts,
+repair-packet-ready counts, and `gate_impact = none`.
 
 The generated summary may group and summarize preview artifacts, but pass/fail
 authority remains with explicit gate-decision artifacts when a repository has

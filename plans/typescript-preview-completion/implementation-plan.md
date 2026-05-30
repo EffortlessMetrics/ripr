@@ -466,9 +466,9 @@ cargo test -p ripr lsp --lib
 
 ## Work Item: ci/typescript-preview-language-grouping-proof
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
-Linked spec: RIPR-SPEC-0027
+Linked spec: RIPR-SPEC-0027, RIPR-SPEC-0038
 Linked ADR: n/a
 Blocks: dogfood/typescript-preview-repair-loop
 Blocked by: none
@@ -478,6 +478,27 @@ Blocked by: none
 Prove generated-CI TypeScript/JavaScript grouping over preview repair packets
 and limitations while preserving advisory-only default behavior.
 
+### Current Delta
+
+Generated GitHub CI now expands configured TypeScript preview grouping to the
+TypeScript-family evidence labels that can appear in artifacts: `typescript`
+and separately labeled `javascript`. Each preview-language group reports
+artifact entries, preview entries, missing preview-status count, classifications,
+static-limit counts/kinds, actionability state/category counts,
+repair-packet-ready count, and an explicit `gate_impact = none` boundary. The
+grouping remains hidden for Rust-only configuration and remains advisory
+presentation only.
+
+### Proof Commands
+
+```bash
+cargo fmt
+cargo test -p ripr init_generated_github_workflow_groups_preview_languages_only_when_configured --lib
+cargo test -p xtask dogfood_generated_ci_cockpit_receipts_are_checked --bin xtask
+cargo test -p xtask dogfood_language_preview_scenarios_cover_projection_boundaries --bin xtask
+cargo test -p xtask dogfood_language_preview_run_checks_static_limit_receipt --bin xtask
+```
+
 ## Work Item: dogfood/typescript-preview-repair-loop
 
 Status: ready
@@ -485,7 +506,7 @@ Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
 Blocks: metrics/typescript-preview-route-quality
-Blocked by: ci/typescript-preview-language-grouping-proof
+Blocked by: none
 
 ### Goal
 

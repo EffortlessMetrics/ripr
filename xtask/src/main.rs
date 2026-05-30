@@ -39666,10 +39666,16 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
         workflow.contains("actions/upload-artifact@v7") && workflow.contains("target/ripr/reports");
     let language_grouping_checked = workflow.contains("if [ -n \"$preview_languages\" ]; then")
         && workflow.contains("### Language preview grouping")
+        && workflow.contains("Grouped preview evidence languages")
+        && workflow.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
         && workflow.contains("preview-language groups are advisory presentation only")
         && workflow.contains("ripr gate evaluate")
         && workflow.contains("missing_preview_status")
-        && workflow.contains("static_limit_kinds");
+        && workflow.contains("static_limit_kinds")
+        && workflow.contains("actionability_states")
+        && workflow.contains("actionability_categories")
+        && workflow.contains("repair_packet_ready_entries")
+        && workflow.contains("gate_impact=\\`none\\`");
     let language_grouping_status = if language_grouping_checked {
         "checked"
     } else {
@@ -39730,6 +39736,18 @@ fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreviewScenario> {
             vec!["mocked_module"],
             true,
             "TypeScript preview finding keeps preview metadata and mocked-module static limit.",
+        ),
+        (
+            "javascript_js_preview",
+            "javascript",
+            1usize,
+            1usize,
+            0usize,
+            1usize,
+            vec!["exposed"],
+            Vec::new(),
+            true,
+            "JavaScript preview finding keeps separate JavaScript preview metadata through the TypeScript-family adapter.",
         ),
         (
             "python_missing_import_graph_limit",
@@ -66911,9 +66929,15 @@ jobs:
           echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
           echo '### Language preview grouping'
           echo 'if [ -n \"$preview_languages\" ]; then'
+          echo 'Grouped preview evidence languages'
+          echo 'grouped_preview_languages=\"$grouped_preview_languages javascript\"'
           echo 'preview-language groups are advisory presentation only; `ripr gate evaluate` remains pass/fail authority when explicitly configured.'
           echo 'missing_preview_status'
           echo 'static_limit_kinds'
+          echo 'actionability_states'
+          echo 'actionability_categories'
+          echo 'repair_packet_ready_entries'
+          echo 'gate_impact=\\`none\\`'
           echo 'target/ripr/reports'
 "
         );
@@ -66961,9 +66985,23 @@ jobs:
             .collect::<BTreeSet<_>>();
 
         assert!(names.contains("typescript_mocked_module_limit"));
+        assert!(names.contains("javascript_js_preview"));
         assert!(names.contains("python_missing_import_graph_limit"));
         assert!(names.contains("python_mixed_language_no_cross_route"));
         assert!(names.contains("python_disabled"));
+
+        let javascript = scenarios
+            .iter()
+            .find(|scenario| scenario.name == "javascript_js_preview");
+        assert!(
+            javascript.is_some_and(|scenario| {
+                scenario.preview_enabled
+                    && scenario.language == "javascript"
+                    && scenario.expected_preview_findings == 1
+                    && scenario.expected_related_tests == 1
+            }),
+            "javascript_js_preview must pin JavaScript preview metadata when TypeScript-family preview is enabled"
+        );
 
         let disabled = scenarios
             .iter()
