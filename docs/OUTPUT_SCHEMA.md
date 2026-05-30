@@ -9383,8 +9383,9 @@ and seams whose configured severity is `off` return an actionable error.
 the same packet envelope from one explicit `GapRecord`, matched by `gap_id` or
 `canonical_gap_id`. This mode does not rerun analysis and does not infer
 projectability from raw classifications. The selected record must have
-`projection_eligibility.agent_packet.eligible = true`, a `repair_route`, and
-`verification_commands`. Records that are already observed, waived,
+`projection_eligibility.agent_packet.eligible = true`, a `repair_route`,
+`verification_commands`, and a bounded edit surface from `repair_route.target_file`
+or a path-like `repair_route.related_test` fallback. Records that are already observed, waived,
 suppressed, preview-gating ineligible, or otherwise not agent-packet eligible
 return an actionable error instead of a repair packet.
 
@@ -9647,15 +9648,18 @@ Field contract:
   evidence summary in the form `<evidence_class> / <gap_state>`. Present only
   when `source = "gap_decision_ledger"` and mirrored in the copyable packet so
   agent work orders carry the same current-evidence vocabulary as `first-pr`.
-- `packets[].allowed_files` and `packets[].forbidden_files` - optional
-  GapRecord safety scope in gap-ledger packet mode. `allowed_files` is the
-  route target file when supplied. `forbidden_files` is the source anchor file
-  when it differs from the allowed file. Python preview packets use this to
-  bound agents to the suggested test file and keep production Python files
-  read-only.
+- `packets[].allowed_edit_surface` - GapRecord safety scope in gap-ledger
+  packet mode. It is the route target file when supplied, or a path-like
+  `related_test` fallback for older artifacts. If no bounded edit surface is
+  available, packet rendering fails closed instead of emitting delegable work.
+- `packets[].allowed_files` and `packets[].forbidden_files` - compatibility
+  GapRecord safety scope in gap-ledger packet mode. `allowed_files` mirrors
+  `allowed_edit_surface`. `forbidden_files` is the source anchor file when it
+  differs from the allowed file. Python preview packets use this to bound
+  agents to the suggested test file and keep production Python files read-only.
 - `packets[].conflict_group` - optional gap-ledger packet grouping key used by
   swarm schedulers to avoid parallel edits to the same target file. It is
-  `file:<target_file>` when a target file exists and otherwise falls back to the
+  `file:<allowed_edit_surface>` when an edit surface exists and otherwise falls back to the
   selected gap ID.
 - `packets[].receipt_command` and `packets[].receipt_status` - optional
   receipt projection in gap-ledger packet mode. `receipt_status` is

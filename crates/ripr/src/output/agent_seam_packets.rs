@@ -115,9 +115,10 @@ pub(crate) fn render_agent_gap_record_packet_json(
         .as_deref()
         .or(route.related_test.as_deref())
         .map(display_path_text);
-    let allowed_files = allowed_files_for_gap_route(route);
-    let forbidden_files = forbidden_files_for_gap_record(record, route);
-    let conflict_group = conflict_group_for_gap_record(record, route);
+    let allowed_edit_surface = allowed_edit_surface_for_gap_route(route);
+    let allowed_files = allowed_edit_surface.clone();
+    let forbidden_files = forbidden_files_for_gap_record(record, &allowed_edit_surface);
+    let conflict_group = conflict_group_for_gap_record(record, &allowed_edit_surface);
     let receipt_status = receipt_status_for_gap_record(record);
     let missing_discriminator = missing_discriminator_for_gap_route(route);
     let authority_boundary = if record.authority_boundary.trim().is_empty() {
@@ -131,6 +132,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
         record,
         route,
         &verify_command,
+        &allowed_edit_surface,
         &stop_conditions,
         authority_boundary.as_str(),
     );
@@ -182,6 +184,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "file": file,
         "line": line,
         "owner": owner,
+        "allowed_edit_surface": allowed_edit_surface,
         "allowed_files": allowed_files,
         "forbidden_files": forbidden_files,
         "conflict_group": conflict_group,
@@ -360,6 +363,9 @@ fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
     if record.repairability != "repairable" && route.route_kind != "InspectStaticLimit" {
         return Err("requires a repairable gap or bounded inspection route".to_string());
     }
+    if allowed_edit_surface_for_gap_route(route).is_empty() {
+        return Err("requires allowed_edit_surface".to_string());
+    }
     Ok(())
 }
 
@@ -393,30 +399,51 @@ fn recommended_test_reason(route: &GapRepairRoute) -> &'static str {
     }
 }
 
-fn allowed_files_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
+fn allowed_edit_surface_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
     route
         .target_file
         .as_deref()
-        .map(display_path_text)
+        .and_then(gap_route_file_token)
+        .or_else(|| route.related_test.as_deref().and_then(gap_route_file_token))
         .into_iter()
         .collect()
 }
 
-fn forbidden_files_for_gap_record(record: &GapRecord, route: &GapRepairRoute) -> Vec<String> {
-    let allowed = route.target_file.as_deref().map(display_path_text);
+fn gap_route_file_token(value: &str) -> Option<String> {
+    let normalized = display_path_text(value.trim());
+    let normalized = normalized
+        .split_once("::")
+        .map(|(file, _)| file.to_string())
+        .unwrap_or(normalized);
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.starts_with("./")
+        || normalized.contains("..")
+        || !(normalized.contains('/') || normalized.contains('.'))
+    {
+        return None;
+    }
+    Some(normalized)
+}
+
+fn forbidden_files_for_gap_record(
+    record: &GapRecord,
+    allowed_edit_surface: &[String],
+) -> Vec<String> {
+    let allowed = allowed_edit_surface.first().map(String::as_str);
     record
         .anchor
         .as_ref()
         .and_then(|anchor| anchor.file.as_deref())
         .map(display_path_text)
-        .filter(|file| allowed.as_deref() != Some(file.as_str()))
+        .filter(|file| allowed != Some(file.as_str()))
         .into_iter()
         .collect()
 }
 
-fn conflict_group_for_gap_record(record: &GapRecord, route: &GapRepairRoute) -> String {
-    if let Some(target_file) = route.target_file.as_deref() {
-        return format!("file:{}", display_path_text(target_file));
+fn conflict_group_for_gap_record(record: &GapRecord, allowed_edit_surface: &[String]) -> String {
+    if let Some(target_file) = allowed_edit_surface.first() {
+        return format!("file:{target_file}");
     }
     format!("gap:{}", gap_record_id(record))
 }
@@ -472,6 +499,7 @@ fn pasteable_gap_repair_packet(
     record: &GapRecord,
     route: &GapRepairRoute,
     verify_command: &str,
+    allowed_edit_surface: &[String],
     stop_conditions: &[String],
     authority_boundary: &str,
 ) -> serde_json::Value {
@@ -480,7 +508,7 @@ fn pasteable_gap_repair_packet(
         "Repair the `{}` gap `{}` using the bounded `{}` route.",
         record.kind, gap_id, route.route_kind
     );
-    let context = gap_record_packet_context(gap_ledger_path, record, route);
+    let context = gap_record_packet_context(gap_ledger_path, record, route, allowed_edit_surface);
     let repair = gap_record_packet_repair(route);
     let verification = gap_record_packet_verification(record, verify_command);
     let receipt = gap_record_packet_receipt(record);
@@ -512,6 +540,7 @@ fn gap_record_packet_context(
     gap_ledger_path: &str,
     record: &GapRecord,
     route: &GapRepairRoute,
+    allowed_edit_surface: &[String],
 ) -> Vec<String> {
     let mut context = Vec::new();
     context.push(format!(
@@ -564,6 +593,12 @@ fn gap_record_packet_context(
         context.push(format!(
             "Repair target: {}.",
             display_path_text(target_file)
+        ));
+    }
+    if !allowed_edit_surface.is_empty() {
+        context.push(format!(
+            "Allowed edit surface: {}.",
+            allowed_edit_surface.join(", ")
         ));
     }
     if let Some(related_test) = route.related_test.as_deref() {
@@ -2062,6 +2097,14 @@ mod tests {
         );
         assert_eq!(
             packet
+                .get("allowed_edit_surface")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("tests/pricing.rs")
+        );
+        assert_eq!(
+            packet
                 .get("forbidden_files")
                 .and_then(serde_json::Value::as_array)
                 .and_then(|files| files.first())
@@ -2247,10 +2290,116 @@ mod tests {
             "copyable packet should include stop conditions: {copyable_markdown}"
         );
         assert!(
+            copyable_markdown.contains("- Allowed edit surface: tests/pricing.rs."),
+            "copyable packet should include the edit cage: {copyable_markdown}"
+        );
+        assert!(
             copyable_markdown.contains(
                 "- Do not edit production code unless the focused proof exposes a real product defect."
             ),
             "copyable packet should include do-not-do guidance: {copyable_markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_uses_path_like_related_test_as_allowed_edit_surface() -> Result<(), String>
+    {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:pr:pricing",
+              "canonical_gap_id":"gap:rust:pricing",
+              "kind":"MissingBoundaryAssertion",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount","dedupe_fingerprint":"gap:pricing"},
+              "evidence_ids":["evidence:pricing-boundary"],
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "related_test":"tests/pricing.rs::discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert_eq!(discount(100, 100), 90)",
+                "changed_behavior":"amount == threshold",
+                "stop_conditions":["Stop if this is baseline debt."]
+              },
+              "verification_commands":["cargo xtask fixtures boundary_gap"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json",
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
+              "authority_boundary":"Gate decision remains pass/fail authority."
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed gap record".to_string())?;
+        let json = render_agent_gap_record_packet_json(
+            "target/ripr/reports/gap-decision-ledger.json",
+            record,
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("gap packet JSON should parse: {err}"))?;
+        let packet = value
+            .get("packets")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing gap packet in: {json}"))?;
+
+        assert_eq!(
+            packet
+                .get("allowed_edit_surface")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("tests/pricing.rs")
+        );
+        assert_eq!(
+            packet
+                .get("conflict_group")
+                .and_then(serde_json::Value::as_str),
+            Some("file:tests/pricing.rs")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_rejects_missing_allowed_edit_surface() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:no-edit-surface",
+              "canonical_gap_id":"gap:rust:no-edit-surface",
+              "kind":"MissingBoundaryAssertion",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount","dedupe_fingerprint":"gap:pricing"},
+              "evidence_ids":["evidence:pricing-boundary"],
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "related_test":"discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert_eq!(discount(100, 100), 90)",
+                "changed_behavior":"amount == threshold"
+              },
+              "verification_commands":["cargo xtask fixtures boundary_gap"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json",
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
+              "authority_boundary":"Gate decision remains pass/fail authority."
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed gap record".to_string())?;
+        assert_eq!(
+            render_agent_gap_record_packet_json("gap-ledger.json", record),
+            Err("requires allowed_edit_surface".to_string())
         );
         Ok(())
     }
