@@ -2417,26 +2417,15 @@ fn test_has_mocked_module(test: &PythonTest) -> bool {
 fn related_candidates_have_property_based_test_limit(
     related_candidates: &[PythonRelatedCandidate<'_>],
 ) -> bool {
-    let mut has_property_based_test = false;
-    let mut has_known_strong_concrete_oracle = false;
-
-    for candidate in related_candidates
+    related_candidates
         .iter()
         .filter(|candidate| candidate.relation.uses_oracle())
-    {
-        if test_uses_property_based_inputs(candidate.test) {
-            has_property_based_test = true;
-        } else if candidate
-            .test
-            .assertions
-            .iter()
-            .any(|assertion| assertion.oracle_strength.rank() >= OracleStrength::Strong.rank())
-        {
-            has_known_strong_concrete_oracle = true;
-        }
-    }
-
-    has_property_based_test && !has_known_strong_concrete_oracle
+        .any(|candidate| {
+            test_uses_property_based_inputs(candidate.test)
+                && !candidate.test.assertions.iter().any(|assertion| {
+                    assertion.oracle_strength.rank() >= OracleStrength::Strong.rank()
+                })
+        })
 }
 
 fn test_uses_property_based_inputs(test: &PythonTest) -> bool {
@@ -4631,6 +4620,12 @@ def test_notifies_callback():
         };
         let property_based_with_exact_candidates =
             related_test_candidates(&plain_owner, &property_based_with_exact_tests);
+        let property_based_with_same_test_exact_tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from hypothesis import given, strategies as st\nfrom src.service import total\n\n@given(st.integers())\ndef test_total_property_based(value):\n    assert total(1) == 1\n",
+        );
+        let property_based_with_same_test_exact_candidates =
+            related_test_candidates(&plain_owner, &property_based_with_same_test_exact_tests);
         let opaque_helper_tests = extract_tests(
             Path::new("tests/test_service.py"),
             "from src.service import total\n\ndef test_total_custom_helper():\n    result = total()\n    assert_total_result(result)\n",
@@ -4677,6 +4672,15 @@ def test_notifies_callback():
                 "    return 1",
                 &plain_owner,
                 &property_based_with_exact_candidates
+            )
+            .map(|limit| limit.kind),
+            Some(StaticLimitKind::PropertyBasedTest)
+        );
+        assert_eq!(
+            static_limit_for_change(
+                "    return 1",
+                &plain_owner,
+                &property_based_with_same_test_exact_candidates
             )
             .map(|limit| limit.kind),
             None
