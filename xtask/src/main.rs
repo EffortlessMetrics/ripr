@@ -22150,6 +22150,7 @@ struct RiprSwarmReadinessReport {
     attempt_ledger_state: String,
     attempt_ledger_limitation: Option<String>,
     summary: RiprSwarmReadinessSummary,
+    attempt_history_summary: RiprSwarmAttemptLedgerHistorySummary,
     static_limitation_backlog: Value,
     top_limitation_routes: Vec<RiprSwarmLimitationRouteRow>,
     blocked_state_routes: Vec<RiprSwarmReadinessBlockedStateRoute>,
@@ -25051,17 +25052,21 @@ fn ripr_swarm_attempt_ledger_summary(
 fn ripr_swarm_attempt_ledger_history_summary(
     report: &RiprSwarmAttemptLedgerReport,
 ) -> RiprSwarmAttemptLedgerHistorySummary {
-    let state_counts = actionable_gap_outcome_state_counts_from_entries(&report.attempts);
-    let canonical_gaps_total = report
-        .attempts
+    ripr_swarm_attempt_ledger_history_summary_from_entries(&report.attempts)
+}
+
+fn ripr_swarm_attempt_ledger_history_summary_from_entries(
+    attempts: &[RiprSwarmAttemptLedgerEntry],
+) -> RiprSwarmAttemptLedgerHistorySummary {
+    let state_counts = actionable_gap_outcome_state_counts_from_entries(attempts);
+    let canonical_gaps_total = attempts
         .iter()
         .map(|attempt| attempt.canonical_gap_id.as_str())
         .collect::<BTreeSet<_>>()
         .len();
     RiprSwarmAttemptLedgerHistorySummary {
-        attempts_total: report.attempts.len(),
-        durable_attempts_total: report
-            .attempts
+        attempts_total: attempts.len(),
+        durable_attempts_total: attempts
             .iter()
             .filter(|attempt| attempt.outcome != "not_attempted")
             .count(),
@@ -25072,13 +25077,10 @@ fn ripr_swarm_attempt_ledger_history_summary(
             .copied()
             .unwrap_or(0),
         receipt_present: state_counts.get("receipt_present").copied().unwrap_or(0),
-        missing_verify_result: ripr_swarm_attempt_ledger_missing_verify_result_count(
-            &report.attempts,
-        ),
+        missing_verify_result: ripr_swarm_attempt_ledger_missing_verify_result_count(attempts),
         evidence_improved: state_counts.get("evidence_improved").copied().unwrap_or(0),
         evidence_unchanged: state_counts.get("evidence_unchanged").copied().unwrap_or(0),
-        expected_unchanged: report
-            .attempts
+        expected_unchanged: attempts
             .iter()
             .filter(|attempt| ripr_swarm_attempt_expected_unchanged_negative_capability(attempt))
             .count(),
@@ -26029,6 +26031,8 @@ fn ripr_swarm_readiness_from_values(
         actionable_gap_outcomes.value,
         attempt_ledger.value,
     );
+    let attempt_history_summary =
+        ripr_swarm_readiness_attempt_history_summary(attempt_ledger.value);
     let repair_route_quality = attempt_ledger
         .value
         .map(ripr_swarm_readiness_repair_route_quality)
@@ -26093,6 +26097,7 @@ fn ripr_swarm_readiness_from_values(
         attempt_ledger_state: attempt_ledger.state,
         attempt_ledger_limitation: attempt_ledger.limitation,
         summary,
+        attempt_history_summary,
         static_limitation_backlog,
         top_limitation_routes,
         blocked_state_routes,
@@ -26368,6 +26373,42 @@ fn ripr_swarm_readiness_summary(
     summary
 }
 
+fn ripr_swarm_readiness_attempt_history_summary(
+    attempt_ledger: Option<&Value>,
+) -> RiprSwarmAttemptLedgerHistorySummary {
+    let Some(ledger) = attempt_ledger else {
+        return RiprSwarmAttemptLedgerHistorySummary::default();
+    };
+    if let Some(summary) = audit_get(ledger, &["attempt_history_summary"]) {
+        return ripr_swarm_attempt_ledger_history_summary_from_json(summary);
+    }
+    let attempts = ripr_swarm_attempt_ledger_entries_from_value(ledger);
+    if attempts.is_empty() {
+        return RiprSwarmAttemptLedgerHistorySummary::default();
+    }
+    ripr_swarm_attempt_ledger_history_summary_from_entries(&attempts)
+}
+
+fn ripr_swarm_attempt_ledger_history_summary_from_json(
+    value: &Value,
+) -> RiprSwarmAttemptLedgerHistorySummary {
+    RiprSwarmAttemptLedgerHistorySummary {
+        attempts_total: audit_usize(value, &["attempts_total"]).unwrap_or_default(),
+        durable_attempts_total: audit_usize(value, &["durable_attempts_total"]).unwrap_or_default(),
+        canonical_gaps_total: audit_usize(value, &["canonical_gaps_total"]).unwrap_or_default(),
+        not_attempted: audit_usize(value, &["not_attempted"]).unwrap_or_default(),
+        attempted_no_receipt: audit_usize(value, &["attempted_no_receipt"]).unwrap_or_default(),
+        receipt_present: audit_usize(value, &["receipt_present"]).unwrap_or_default(),
+        missing_verify_result: audit_usize(value, &["missing_verify_result"]).unwrap_or_default(),
+        evidence_improved: audit_usize(value, &["evidence_improved"]).unwrap_or_default(),
+        evidence_unchanged: audit_usize(value, &["evidence_unchanged"]).unwrap_or_default(),
+        expected_unchanged: audit_usize(value, &["expected_unchanged"]).unwrap_or_default(),
+        evidence_regressed: audit_usize(value, &["evidence_regressed"]).unwrap_or_default(),
+        resolved: audit_usize(value, &["resolved"]).unwrap_or_default(),
+        unknown: audit_usize(value, &["unknown"]).unwrap_or_default(),
+    }
+}
+
 fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String, String> {
     let value = serde_json::json!({
         "schema_version": "0.1",
@@ -26396,6 +26437,9 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
             },
         },
         "summary": ripr_swarm_readiness_summary_json(&report.summary),
+        "attempt_history_summary": ripr_swarm_attempt_ledger_history_summary_json(
+            &report.attempt_history_summary
+        ),
         "static_limitation_backlog": report.static_limitation_backlog,
         "top_limitation_routes": ripr_swarm_limitation_routes_json(
             &report.top_limitation_routes
@@ -28120,6 +28164,61 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
             key.replace('_', " "),
             summary[key].as_u64().unwrap_or(0)
         ));
+    }
+    out.push('\n');
+    out.push_str("## Attempt History Summary\n\n");
+    out.push_str("This table preserves durable attempt history from the swarm attempt ledger before readiness uses latest attempts for current routing counts and repair-route quality.\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    for (label, count) in [
+        (
+            "attempts_total",
+            report.attempt_history_summary.attempts_total,
+        ),
+        (
+            "durable_attempts_total",
+            report.attempt_history_summary.durable_attempts_total,
+        ),
+        (
+            "canonical_gaps_total",
+            report.attempt_history_summary.canonical_gaps_total,
+        ),
+        (
+            "not_attempted",
+            report.attempt_history_summary.not_attempted,
+        ),
+        (
+            "attempted_no_receipt",
+            report.attempt_history_summary.attempted_no_receipt,
+        ),
+        (
+            "receipt_present",
+            report.attempt_history_summary.receipt_present,
+        ),
+        (
+            "missing_verify_result",
+            report.attempt_history_summary.missing_verify_result,
+        ),
+        (
+            "evidence_improved",
+            report.attempt_history_summary.evidence_improved,
+        ),
+        (
+            "evidence_unchanged",
+            report.attempt_history_summary.evidence_unchanged,
+        ),
+        (
+            "expected_unchanged",
+            report.attempt_history_summary.expected_unchanged,
+        ),
+        (
+            "evidence_regressed",
+            report.attempt_history_summary.evidence_regressed,
+        ),
+        ("resolved", report.attempt_history_summary.resolved),
+        ("unknown", report.attempt_history_summary.unknown),
+    ] {
+        out.push_str(&format!("| {} | {} |\n", label.replace('_', " "), count));
     }
     out.push('\n');
     let public_projection_exclusion_reasons = summary["public_projection_exclusion_reasons"]
@@ -90444,6 +90543,21 @@ covered_by = ["cargo xtask check-file-policy"]
                 "unknown": 0,
                 "orphaned_receipts": 1
             },
+            "attempt_history_summary": {
+                "attempts_total": 6,
+                "durable_attempts_total": 5,
+                "canonical_gaps_total": 4,
+                "not_attempted": 1,
+                "attempted_no_receipt": 1,
+                "receipt_present": 0,
+                "missing_verify_result": 0,
+                "evidence_improved": 2,
+                "evidence_unchanged": 2,
+                "expected_unchanged": 1,
+                "evidence_regressed": 0,
+                "resolved": 0,
+                "unknown": 0
+            },
             "repair_route_quality": [
                 {
                     "repair_kind": "add_output_observer",
@@ -90490,6 +90604,9 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(report.summary.improved_packets, 2);
         assert_eq!(report.summary.unchanged_packets, 1);
         assert_eq!(report.summary.orphaned_receipts, 1);
+        assert_eq!(report.attempt_history_summary.evidence_unchanged, 2);
+        assert_eq!(report.attempt_history_summary.attempted_no_receipt, 1);
+        assert_eq!(report.attempt_history_summary.expected_unchanged, 1);
         assert_eq!(
             report.repair_route_quality[0].repair_kind,
             "add_output_observer"
@@ -90513,6 +90630,18 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["top_failing_repair_routes"][0]["repair_kind"],
             "add_output_observer"
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["evidence_unchanged"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["attempted_no_receipt"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["expected_unchanged"],
+            serde_json::Value::from(1)
         );
         assert_eq!(
             value["static_limitation_backlog"]["top_categories"][0]["category"],
@@ -90568,6 +90697,8 @@ covered_by = ["cargo xtask check-file-policy"]
                 }))
         );
         let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("## Attempt History Summary"));
+        assert!(markdown.contains("| evidence unchanged | 2 |"));
         assert!(markdown.contains("## Static Limitation Backlog"));
         assert!(markdown.contains("analysis/value-resolution-audit-fixes"));
         assert!(markdown.contains("## Repair Route Quality Backlog"));
@@ -91037,6 +91168,18 @@ covered_by = ["cargo xtask check-file-policy"]
                 {
                     "packet_id": "packet-output-001",
                     "canonical_gap_id": "gap:output-observer",
+                    "attempt_id": "attempt:older-unchanged",
+                    "actor_kind": "agent",
+                    "repair_kind": "add_output_observer",
+                    "verify_command": "cargo test -p ripr output_observer",
+                    "verify_result": "pass",
+                    "receipt_command": "cargo xtask receipts write --packet packet-output-001",
+                    "outcome": "evidence_unchanged",
+                    "timestamp": "unix_ms:1"
+                },
+                {
+                    "packet_id": "packet-output-001",
+                    "canonical_gap_id": "gap:output-observer",
                     "attempt_id": "attempt:newer-improved",
                     "actor_kind": "agent",
                     "repair_kind": "add_output_observer",
@@ -91078,6 +91221,18 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
         assert_eq!(value["summary"]["improved_packets"], 1);
         assert_eq!(value["summary"]["unchanged_packets"], 0);
+        assert_eq!(
+            value["attempt_history_summary"]["attempts_total"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["evidence_improved"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["evidence_unchanged"],
+            serde_json::Value::from(1)
+        );
         Ok(())
     }
 

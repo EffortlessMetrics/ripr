@@ -361,11 +361,14 @@ repair-route-quality summaries, but they do not create public repair packets,
 do not make static limitations swarm-ready, and do not change badge, LSP, PR,
 or CI authority.
 
-Readiness must treat durable `attempts[]` as the source of truth for
-attempt/outcome summary counts, repair-route quality, and missing-evidence-field
-counts when they are present. Stored `summary`, `repair_route_quality[]`, and
-`top_missing_evidence_fields[]` rows are summary output; they must not override
-recomputed latest-attempt state if the two disagree.
+Readiness must preserve durable attempt history separately from current routing
+state. It should forward `attempt_history_summary` when the attempt ledger
+provides it, and derive the same history summary from durable `attempts[]` for
+older ledgers. Current attempt/outcome summary counts, repair-route quality, and
+missing-evidence-field counts remain latest-attempt projections. Stored
+`summary`, `repair_route_quality[]`, and `top_missing_evidence_fields[]` rows are
+summary output; they must not override recomputed latest-attempt state if the
+two disagree.
 Repair-route quality rows should carry sample packet IDs and canonical gap IDs
 for failing latest attempts when available, and readiness should point
 `improve_repair_route_quality` at the derived route-quality backlog packet while
@@ -659,9 +662,13 @@ Current implementation coverage:
   pins advisory import of repo-local dogfood repair attempts into durable
   attempt history and route-quality summaries without creating repair packets;
 - `xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts`
-  pins readiness consumption of the attempt ledger and repair-route quality,
-  plus forwarding of the swarm-plan static-limitation backlog into readiness
-  output.
+  pins readiness consumption of the attempt ledger, durable attempt-history
+  summary, and repair-route quality, plus forwarding of the swarm-plan
+  static-limitation backlog into readiness output.
+- `xtask::tests::ripr_swarm_readiness_recomputes_summary_from_attempts_when_summary_is_stale`
+  pins readiness fallback derivation of durable attempt-history summary from
+  legacy `attempts[]` while keeping current routing counts on the latest attempt
+  per canonical gap.
 - `xtask::tests::ripr_swarm_readiness_audits_blocked_state_routes`
   pins blocked-state counts, reasons, next action kinds, repair routes, example
   packet/canonical gap identities, and Markdown/JSON parity for readiness route
@@ -749,6 +756,11 @@ Future reports should expose:
 - `swarm_static_limitation_packets`;
 - `swarm_high_confidence_packets`;
 - `swarm_attempted_packets`;
+- `swarm_attempt_history_attempts_total`;
+- `swarm_attempt_history_durable_attempts_total`;
+- `swarm_attempt_history_evidence_unchanged`;
+- `swarm_attempt_history_attempted_no_receipt`;
+- `swarm_attempt_history_expected_unchanged`;
 - `swarm_attempted_no_receipt_packets`;
 - `swarm_receipt_present_packets`;
 - `swarm_verified_improved`;

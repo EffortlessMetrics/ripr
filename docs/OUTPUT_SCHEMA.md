@@ -3428,6 +3428,10 @@ routes with sample packet context, sample canonical gap IDs, and sample source
 locations so operators can inspect the backlog without treating it as repair
 work. It is intentionally separate from
 `repair_route_quality[]`, which is based only on latest repair attempts.
+`attempt_history_summary` preserves durable attempt-ledger history before
+readiness collapses to latest attempts for current routing counts. Use it to
+inspect prior unchanged, no-receipt, regressed, or expected-unchanged outcomes
+without treating those superseded rows as current route-quality failures.
 `top_next_action` is a single-object projection of `next_actions[0]` for
 thin downstream surfaces that need one canonical next route without
 reinterpreting the full advisory queue.
@@ -3504,6 +3508,21 @@ limits.
     "regressed_packets": 0,
     "resolved_packets": 1,
     "orphaned_receipts": 0
+  },
+  "attempt_history_summary": {
+    "attempts_total": 6,
+    "durable_attempts_total": 5,
+    "canonical_gaps_total": 4,
+    "not_attempted": 1,
+    "attempted_no_receipt": 1,
+    "receipt_present": 0,
+    "missing_verify_result": 0,
+    "evidence_improved": 2,
+    "evidence_unchanged": 2,
+    "expected_unchanged": 1,
+    "evidence_regressed": 0,
+    "resolved": 1,
+    "unknown": 0
   },
   "static_limitation_backlog": {
     "source": "lane1-evidence-audit.static_limitations",
