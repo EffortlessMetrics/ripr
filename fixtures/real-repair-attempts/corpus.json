@@ -635,6 +635,7 @@
       "before_gap_state": "advisory",
       "after_gap_state": "advisory",
       "outcome": "evidence_unchanged",
+      "route_quality_expectation": "expected_unchanged_negative_capability",
       "attempted_repair": "Checked the weak-oracle preview boundary and intentionally left it non-actionable because it lacks a safe delegated repair contract.",
       "evidence_movement": "unchanged: weak-oracle preview evidence remains advisory, which is the correct outcome until TypeScript oracle semantics are stronger.",
       "operator_note": "This is a useful unchanged receipt: the route should not be promoted just to increase actionable count.",

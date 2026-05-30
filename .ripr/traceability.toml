@@ -3971,6 +3971,7 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
   "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest",
   "xtask::tests::ripr_swarm_attempt_ledger_imports_real_repair_attempts",
+  "xtask::tests::ripr_swarm_repair_route_quality_samples_failed_attempts_only",
   "xtask::tests::lane1_static_limitation_backlog_emits_analyzer_packets",
   "xtask::tests::lane1_static_limitation_backlog_splits_same_category_by_repair_route",
   "xtask::tests::ripr_swarm_plan_blocks_explicit_projection_exclusion_reasons",
