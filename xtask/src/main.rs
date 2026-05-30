@@ -22978,7 +22978,12 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     }
 
     let mut blocked_reasons = Vec::new();
-    let swarm_state = if static_limitations_count > 0 || gap_state == "static_limitation" {
+    let static_limitation_present = static_limitations_count > 0
+        || gap_state == "static_limitation"
+        || projection_exclusion_reasons
+            .iter()
+            .any(|reason| reason == "static_limitation_present");
+    let swarm_state = if static_limitation_present {
         blocked_reasons.push("static_limitation_present".to_string());
         "blocked_by_static_limitation".to_string()
     } else if !missing_context.is_empty() {
@@ -23497,7 +23502,17 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
         "static_limitation_packets": report
             .packets
             .iter()
-            .filter(|packet| packet.static_limitations_count > 0)
+            .filter(|packet| {
+                packet.static_limitations_count > 0
+                    || packet
+                        .blocked_reasons
+                        .iter()
+                        .any(|reason| reason == "static_limitation_present")
+                    || packet
+                        .projection_exclusion_reasons
+                        .iter()
+                        .any(|reason| reason == "static_limitation_present")
+            })
             .count(),
         "high_confidence_packets": report
             .packets
@@ -85580,6 +85595,81 @@ covered_by = ["cargo xtask check-file-policy"]
                                 == "packet:explicit-missing-repair-route"
                     })
                 })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_routes_explicit_static_limitation_projection_exclusion() -> Result<(), String>
+    {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "packet_id": "packet:explicit-static-limitation",
+                    "canonical_gap_id": "gap:explicit-static-limitation",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(value, expected)"
+                    },
+                    "verify_command": "cargo test boundary_discriminator",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/boundary.rs",
+                        "name": "boundary_discriminator"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "allowed_edit_surface": ["tests/boundary.rs"],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true,
+                    "projection_exclusion_reasons": ["static_limitation_present"]
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        assert!(ready.is_empty());
+
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_static_limitation");
+        assert_eq!(
+            blocked[0].blocked_reasons,
+            vec!["static_limitation_present"]
+        );
+        assert_eq!(
+            blocked[0].projection_exclusion_reasons,
+            vec!["static_limitation_present"]
+        );
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["static_limitation_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["blocked_by_static_limitation_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["blocked_by_public_projection_exclusion_packets"],
+            serde_json::Value::from(0)
         );
         Ok(())
     }

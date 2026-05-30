@@ -2403,6 +2403,9 @@ Field contract:
   text, stale route text, stale command, boundary text, placeholder evidence,
   stale related target text, or stale confidence text is still present in the
   packet artifact.
+- `static_limitation_present` projection exclusions are routed through
+  `blocked_by_static_limitation` even when an older packet artifact also carries
+  stale actionable-looking repair fields.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
   count, calibrated-supported, fixture-backed, static-only, unknown-confidence,
