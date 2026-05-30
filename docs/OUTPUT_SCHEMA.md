@@ -9722,6 +9722,10 @@ as `edited_forbidden_file` before any reported verify or receipt success.
 ledgers can distinguish `attempted_no_receipt`, `receipt_present`,
 `evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
 and `unknown` without reinterpreting raw agent output.
+The Python preview first-PR fixture pins this path with
+`fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json`
+and
+`fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json`.
 
 The ingest envelope is:
 

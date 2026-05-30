@@ -972,7 +972,7 @@ Make multiple Python repair cards shardable.
 
 ### Work item: swarm/python-agent-result-ingestion
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -988,6 +988,24 @@ Classify agent repair attempts without trusting them blindly.
   forbidden file, uncertain, and stale outcomes.
 - Production-code edits are flagged.
 - Verify result and before/after movement are attached.
+
+#### Delivered
+
+- `ripr swarm ingest --result <agent-result.json>` reads one external agent
+  result artifact, validates that the result path stays under the selected
+  root, and emits an advisory `swarm-ingest` JSON envelope without rerunning
+  tests, writing receipts, calling providers, generating tests, or editing
+  files.
+- Ingest classification now distinguishes `closed`, `partially_improved`,
+  `verify_failed`, `edited_forbidden_file`, `stopped_by_agent`,
+  `stale_packet`, and `uncertain`; missing verify evidence stays uncertain,
+  and forbidden production-code edits are flagged before any reported success
+  claim.
+- The Python preview first-PR fixture now includes an agent-result input and
+  expected ingest output proving that a test-only edit with passing verify
+  evidence and resolved receipt movement becomes `closed` /
+  `attempt_outcome = "resolved"` while keeping `trusted_success = false` for
+  operator review.
 
 ### Work item: outcome/python-gap-ledger
 

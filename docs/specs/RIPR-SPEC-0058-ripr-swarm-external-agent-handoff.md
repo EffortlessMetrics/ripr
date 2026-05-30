@@ -360,8 +360,11 @@ not silently retry forever.
 
 ## Test Mapping
 
-This is a documentation-only contract. Current adjacent coverage lives in
-`RIPR-SPEC-0057`:
+This contract started as a documentation boundary over the external-agent
+handoff. Current adjacent coverage lives in `RIPR-SPEC-0057`, and the read-only
+`ripr swarm ingest` implementation now pins the result-ingestion side of the
+handoff without adding providers, autonomous edits, receipt creation, or merge
+authority:
 
 - `xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context`
   pins that missing verify, missing receipt, and static-limitation packets do
@@ -372,10 +375,14 @@ This is a documentation-only contract. Current adjacent coverage lives in
   pins blocked packet visibility;
 - `xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states`
   pins receipt-backed outcome states.
+- `crates/ripr/src/output/swarm_ingest.rs::python_preview_closed_agent_result_fixture_matches_expected_json`
+  pins the Python preview agent-result ingest envelope for a test-only repair
+  with passing verify evidence and resolved receipt movement.
 
-Future implementation PRs that emit external-agent handoff artifacts should add
-fixtures for request packet shape, agent response shape, production-code
-boundary violations, missing receipts, and unchanged or regressed attempts.
+Future implementation PRs that expand external-agent handoff artifacts should
+add fixtures for request packet shape, additional agent response shapes,
+production-code boundary violations, missing receipts, and unchanged or
+regressed attempts.
 
 ## Implementation Mapping
 
@@ -383,16 +390,18 @@ Implemented prerequisites:
 
 - `cargo xtask ripr-swarm plan --top <n>`;
 - `cargo xtask ripr-swarm attempt --packet <id> --dry-run`;
+- `ripr swarm ingest --result <agent-result.json>`;
 - `target/ripr/reports/swarm-plan.json`;
 - `target/ripr/reports/swarm-plan.md`;
 - `target/ripr/reports/actionable-gap-outcomes.json`;
 - `target/ripr/reports/actionable-gap-outcomes.md`;
 - `docs/RIPR_SWARM_HUMAN_WORKFLOW.md`.
 
-This spec is documentation-only. It does not add a command, schema file,
-provider adapter, runner, or generated patch surface. Future implementation may
-add a report artifact for external-agent handoff packets, but that requires a
-separate scoped PR with fixtures and output schema documentation.
+The implemented ingest command remains read-only and advisory. It does not add
+a provider adapter, autonomous runner, generated patch surface, or receipt
+writer. Future implementation may add richer report artifacts for
+external-agent handoff packets, but that requires a separate scoped PR with
+fixtures and output schema documentation.
 
 ## Metrics
 

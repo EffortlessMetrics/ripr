@@ -616,4 +616,25 @@ mod tests {
         assert_eq!(stale["classification"]["outcome"], "unknown");
         Ok(())
     }
+
+    #[test]
+    fn python_preview_closed_agent_result_fixture_matches_expected_json() -> Result<(), String> {
+        let input = include_str!(
+            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json"
+        );
+        let expected = include_str!(
+            "../../../../fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json"
+        );
+        let rendered = render_swarm_ingest_json(input, "inputs/agent-results/closed.json")?;
+        let rendered: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("rendered ingest JSON should parse: {err}"))?;
+        let expected: Value = serde_json::from_str(expected)
+            .map_err(|err| format!("expected ingest JSON should parse: {err}"))?;
+
+        assert_eq!(rendered, expected);
+        assert_eq!(rendered["classification"]["state"], "closed");
+        assert_eq!(rendered["attempt_outcome"], "resolved");
+        assert_eq!(rendered["safety"]["forbidden_edit_flagged"], false);
+        Ok(())
+    }
 }

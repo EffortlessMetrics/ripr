@@ -4052,15 +4052,22 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
   "xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states",
+  "crates/ripr/src/output/swarm_ingest.rs::python_preview_closed_agent_result_fixture_matches_expected_json",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",
   "fixtures/actionable-gap-outcomes-corpus",
+  "fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json",
+  "fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json",
 ]
-code = []
+code = [
+  "crates/ripr/src/output/swarm_ingest.rs",
+  "crates/ripr/src/cli/commands.rs::run_swarm_ingest",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md",
   "docs/RIPR_SWARM_HUMAN_WORKFLOW.md",
   "docs/CAPABILITY_MATRIX.md",

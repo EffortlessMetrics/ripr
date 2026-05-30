@@ -169,7 +169,7 @@ before/after receipt movement.
 | Generated CI summary | Can group preview evidence when configured. | Add safe Python advisory mode with repair-card artifacts and fork-safe posture. |
 | PR summary/front panel | Can consume existing report/gap artifacts. | Highlight top Python repair cards and no-action states from canonical Python gaps. |
 | LSP/editor | Preview routing and metadata projection exist for Python. | Project Python repair cards, skeleton copy actions, related test paths, and stale-state warnings. |
-| Agent packet | Actionable Python repair cards can be projected to GapRecords through `ripr reports gap-ledger --check-output`, then exported through `ripr agent packet --gap-ledger ... --gap-id ... --json` with allowed test files, forbidden source files, conflict groups, stop conditions, verify commands, and receipt status. | Add queue-level sharding and outcome receipts once first-use selection and Python gap ledger movement exist. |
+| Agent packet | Actionable Python repair cards can be projected to GapRecords through `ripr reports gap-ledger --check-output`, exported through `ripr agent packet --gap-ledger ... --gap-id ... --json` with allowed test files, forbidden source files, conflict groups, stop conditions, verify commands, and receipt status, queued through `ripr swarm queue --language python`, and classified after an external attempt through `ripr swarm ingest --result ...`. | Add richer stale-queue detection and outcome-ledger joins once dogfood attempts produce more Python receipts. |
 | Outcome/ledger | Existing static outcome and ledger flows are Rust/gap-record oriented. | Track Python canonical gaps opened, closed, unchanged, strengthened, weakened, and newly introduced. |
 
 ## Next Work Item Readiness
