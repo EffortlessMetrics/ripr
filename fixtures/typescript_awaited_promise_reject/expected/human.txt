@@ -43,11 +43,11 @@ Evidence
   - related test tests/profile.test.ts:1 rejects missing profile id uses weak broad error oracle: expect(...).toThrow(...)
 
 Weakness
-  - Related test reaches `loadProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.
   - missing discriminator rejects Error matching "missing id": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.
 
 WARNING src/profile.ts:10
 
@@ -88,8 +88,8 @@ Evidence
   - related test tests/profile.test.ts:5 rejects missing publish id uses weak broad error oracle: expect(...).toThrow(...)
 
 Weakness
-  - Related test reaches `publishProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `publishProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.
   - missing discriminator rejects Error matching "missing id": changed TypeScript thrown or rejected error at line 10 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.

@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+align probe facts fixture with smoke-only advisory wording
+
+Command:
+`cargo xtask goldens bless typescript_probe_facts --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

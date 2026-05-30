@@ -128,8 +128,8 @@ Evidence
   - related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `discountedTotal` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

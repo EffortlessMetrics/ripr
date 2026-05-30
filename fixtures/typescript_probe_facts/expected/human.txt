@@ -42,7 +42,7 @@ Evidence
   - related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `summarize` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
 
 Next step
   TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.
@@ -84,7 +84,7 @@ Evidence
   - related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `summarize` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
 
 Next step
@@ -129,11 +129,11 @@ Evidence
   - related test tests/errors.test.ts:1 parseToken smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `parseToken` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `parseToken` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator throws RangeError matching "missing token": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `throws RangeError matching "missing token"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `throws RangeError matching "missing token"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/notify.js:2
 
@@ -174,11 +174,11 @@ Evidence
   - related test tests/notify.test.js:1 notify smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `notify` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `notify` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator mock interaction mockSend called with payload: changed TypeScript call side effect at line 2 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `mock interaction mockSend called with payload`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `mock interaction mockSend called with payload`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/pricing.ts:2
 
@@ -218,11 +218,11 @@ Evidence
   - related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `discountedTotal` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/pricing.ts:3
 
@@ -263,11 +263,11 @@ Evidence
   - related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `discountedTotal` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator return value == amount - discount: changed TypeScript returned-value at line 3 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == amount - discount`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == amount - discount`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/profile.ts:4
 
@@ -308,11 +308,11 @@ Evidence
   - related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `updateProfile` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `updateProfile` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `profile.status == status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `profile.status == status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/profile.ts:5
 
@@ -353,11 +353,11 @@ Evidence
   - related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `updateProfile` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `updateProfile` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `call audit.record includes status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `call audit.record includes status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/view.jsx:2
 
@@ -398,11 +398,11 @@ Evidence
   - related test tests/view.test.jsx:1 StatusView smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `StatusView` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `StatusView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator log contains "status-ready": changed TypeScript call side effect at line 2 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `log contains "status-ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `log contains "status-ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/widget.tsx:4
 
@@ -443,8 +443,8 @@ Evidence
   - related test tests/widget.test.tsx:1 PriceBadge smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `PriceBadge` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `PriceBadge` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator status == "ready": changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `status == "ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `status == "ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

@@ -84,7 +84,7 @@ Evidence
   - related test tests/dispatch.test.ts:1 dispatch smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `dispatch` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `dispatch` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
 
 Next step
@@ -128,7 +128,7 @@ Evidence
   - related test tests/label.test.jsx:1 LabelView smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `LabelView` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `LabelView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `missing_import_graph`: the changed line calls imported symbol `normalizeLabel` from `./labels`; the TypeScript preview adapter does not build a package or import graph for production implementation semantics. Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.
 
 Next step
@@ -172,7 +172,7 @@ Evidence
   - related test tests/proxy.test.js:1 wrap smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
-  - Related test reaches `wrap` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `wrap` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `metaprogramming`: the TypeScript preview adapter saw Proxy, Reflect, or property-definition metaprogramming syntax and does not infer runtime-created behavior. Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.
 
 Next step

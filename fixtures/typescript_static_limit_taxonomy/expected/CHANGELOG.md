@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+align TypeScript smoke-only advisory wording
+
+Command:
+`cargo xtask goldens bless typescript_static_limit_taxonomy --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

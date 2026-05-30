@@ -32,7 +32,7 @@
         {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
       ],
       "evidence": ["owner: loadProfile", "missing_discriminator: rejects Error matching \"missing id\"", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:3:typescript_preview;owner=loadProfile"],
-      "missing": ["Related test reaches `loadProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "missing": ["Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "activation": {
         "observed_values": [
         ],
@@ -96,8 +96,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
-      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "recommended_next_step": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
+      "suggested_next_action": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"
@@ -128,7 +128,7 @@
         {"kind":"error_variant","text":"await Promise.reject(new Error(\"missing id\"));","line":10}
       ],
       "evidence": ["owner: publishProfile", "missing_discriminator: rejects Error matching \"missing id\"", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:10:typescript_preview;owner=publishProfile"],
-      "missing": ["Related test reaches `publishProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "missing": ["Related test reaches `publishProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "activation": {
         "observed_values": [
         ],
@@ -192,8 +192,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
-      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "recommended_next_step": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
+      "suggested_next_action": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"

@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+align TypeScript broad-error advisory wording
+
+Command:
+`cargo xtask goldens bless typescript_awaited_promise_reject --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

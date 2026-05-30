@@ -42,7 +42,7 @@ Evidence
   - related test tests/parser.test.ts:3 empty user throws uses weak broad error oracle: expect(...).toThrow()
 
 Weakness
-  - Related test reaches `parseUser` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `parseUser` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.
 
 Next step
   TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.
