@@ -912,6 +912,13 @@ Every result carries:
   `properties.static_limit_kind`, and `properties.preview_actionability`. The
   `preview_actionability` shape matches `ripr check --format json` and remains
   advisory preview context, not a SARIF policy decision or repair packet.
+- Direct weak Python preview Findings with an eligible `python_repair_card` in
+  `ripr check --format json` also carry additive
+  `properties.python_repair_card` in diff-scoped SARIF. The nested card keeps
+  the same preview/advisory boundary, canonical gap ID, missing discriminator,
+  suggested location, verify command, receipt status/guidance, stop
+  conditions, and limits. This is code-scanning context only; it does not make
+  SARIF a repair executor, receipt authority, or gate.
 
 Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
 when their configured severity is visible. Results whose configured severity is

@@ -806,6 +806,14 @@ Project Python repair cards consistently across output surfaces.
 - Python findings are not Rust-shaped findings with Python labels.
 - PR summary highlights top Python repair cards.
 
+#### Progress
+
+- Eligible `python_repair_card` findings now project into diff-scoped SARIF
+  properties with the same advisory card fields as check JSON.
+- GitHub annotation output now includes a concise Python repair-card sentence
+  with the missing discriminator, suggested test target, verify command, and
+  preview/advisory boundary.
+
 ### Work item: ci/python-advisory-mode
 
 Status: planned

@@ -1,4 +1,5 @@
 use crate::domain::{ExposureClass, Finding, LanguageId, ProbeFamily, RelatedTest};
+use serde_json::{Map, Value, json};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PythonRepairCard {
@@ -79,6 +80,48 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
         receipt_guidance: receipt_guidance(),
         stop_conditions: stop_conditions(),
         limits: limits(),
+    })
+}
+
+pub(crate) fn python_repair_card_json_value(card: &PythonRepairCard) -> Value {
+    let mut suggested_location = Map::new();
+    suggested_location.insert(
+        "test_file".to_string(),
+        json!(card.suggested_test_file.as_str()),
+    );
+    suggested_location.insert(
+        "test_name".to_string(),
+        json!(card.suggested_test_name.as_str()),
+    );
+    if let Some(node_id) = &card.suggested_test_node_id {
+        suggested_location.insert("pytest_node_id".to_string(), json!(node_id));
+    }
+
+    json!({
+        "card_version": card.card_version.as_str(),
+        "source": card.source.as_str(),
+        "canonical_gap_id": card.canonical_gap_id.as_str(),
+        "language": card.language.as_str(),
+        "language_status": card.language_status.as_str(),
+        "authority_boundary": card.authority_boundary.as_str(),
+        "changed_owner": card.changed_owner.as_str(),
+        "changed_behavior": card.changed_behavior.as_str(),
+        "current_test_evidence": card.current_test_evidence.as_str(),
+        "missing_discriminator": card.missing_discriminator.as_str(),
+        "recommended_test_shape": card.recommended_test_shape.as_str(),
+        "suggested_assertion": card.suggested_assertion.as_str(),
+        "suggested_location": Value::Object(suggested_location),
+        "verify": {
+            "command": card.verify_command.as_str(),
+            "confidence": card.verify_command_confidence.as_str()
+        },
+        "receipt": {
+            "command": card.receipt_command.as_deref(),
+            "status": card.receipt_status.as_str(),
+            "guidance": card.receipt_guidance.as_str()
+        },
+        "stop_conditions": &card.stop_conditions,
+        "limits": &card.limits
     })
 }
 

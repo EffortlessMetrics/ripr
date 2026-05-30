@@ -2085,6 +2085,8 @@ tests = [
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "crates/ripr/src/output/first_pr.rs::tests::python_check_output_materializes_gap_ledger_for_start_here",
+  "crates/ripr/src/output/github.rs::tests::render_includes_python_repair_card_guidance",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_repair_card_properties",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
 ]
 fixtures = [
@@ -2134,8 +2136,10 @@ code = [
   "crates/ripr/src/analysis/pipeline.rs",
   "crates/ripr/src/config.rs",
   "crates/ripr/src/output/human/sections.rs",
+  "crates/ripr/src/output/github.rs",
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/python_repair_card.rs",
+  "crates/ripr/src/output/sarif.rs",
   "crates/ripr/src/output/pilot/types.rs",
   "crates/ripr/src/output/pilot/render/complete.rs",
   "crates/ripr/src/cli/commands.rs",

@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::output::preview_actionability::preview_actionability_for;
+use crate::output::python_repair_card::python_repair_card;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
@@ -47,6 +48,17 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(&actionability.actionability_category);
             message.push_str(" (advisory preview; no repair packet).");
         }
+        if let Some(card) = python_repair_card(finding) {
+            message.push_str(" Python repair card: missing discriminator `");
+            message.push_str(&card.missing_discriminator);
+            message.push_str("`; add or strengthen `");
+            message.push_str(&card.suggested_test_name);
+            message.push_str("` in `");
+            message.push_str(&card.suggested_test_file);
+            message.push_str("`; verify `");
+            message.push_str(&card.verify_command);
+            message.push_str("` (preview advisory).");
+        }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
             finding.probe.location.file.display(),
@@ -76,8 +88,9 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId,
-        LanguageStatus, Probe, ProbeFamily, ProbeId, RevealEvidence, RiprEvidence, SourceLocation,
-        StageEvidence, StageState, Summary,
+        LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
+        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+        StageState, Summary,
     };
     use std::path::PathBuf;
 
@@ -265,6 +278,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn render_includes_python_repair_card_guidance() {
+        let rendered = render(&output_with_python_repair_card());
+
+        assert!(
+            rendered.contains("Python repair card%3A missing discriminator `amount == threshold`")
+        );
+        assert!(rendered.contains("add or strengthen `test_calculate_discount_threshold_boundary` in `tests/test_pricing.py`"));
+        assert!(rendered.contains(
+            "verify `pytest tests/test_pricing.py%3A%3Atest_calculate_discount_threshold_boundary` (preview advisory)."
+        ));
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
@@ -314,6 +340,61 @@ mod tests {
                 static_limit_kind: None,
             }],
         }
+    }
+
+    fn output_with_python_repair_card() -> CheckOutput {
+        let mut output = output_with_unknown_finding();
+        let finding = &mut output.findings[0];
+        finding.id = "probe:src_pricing.py:2:python_preview".to_string();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "calculate_discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+        finding.probe = Probe {
+            id: ProbeId("probe:src_pricing.py:2:python_preview".to_string()),
+            location: SourceLocation::new("src/pricing.py", 2, 5),
+            owner: None,
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: Some("amount > threshold".to_string()),
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec!["return_value".to_string()],
+            required_oracles: vec!["exact boundary assertion".to_string()],
+        };
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount == threshold".to_string(),
+            reason: "no related test calls the equality boundary".to_string(),
+            flow_sink: None,
+        }];
+        finding.evidence = vec![
+            "suggested_test_file: tests/test_pricing.py".to_string(),
+            "suggested_test_name: test_calculate_discount_threshold_boundary".to_string(),
+            "suggested_test_node_id: tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+                .to_string(),
+            "suggested_verify_command: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+                .to_string(),
+            "suggested_verify_command_confidence: high".to_string(),
+        ];
+        finding.related_tests = vec![RelatedTest {
+            name: "test_calculate_discount_above_threshold".to_string(),
+            file: PathBuf::from("tests/test_pricing.py"),
+            line: 6,
+            oracle: Some("assert result".to_string()),
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Weak,
+        }];
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.recommended_next_step = Some("Add a Python boundary assertion".to_string());
+        output
     }
 
     fn stage(state: StageState, reason: &str) -> StageEvidence {

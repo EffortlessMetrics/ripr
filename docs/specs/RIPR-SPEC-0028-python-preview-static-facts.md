@@ -237,8 +237,8 @@ can show:
 - fixtures proving test-name and fixture-name proximity are related-test
   heuristics but remain explicitly uncertain
 - fixtures proving Python preview findings carry stable canonical gap IDs
-  across human and JSON output while static-limit findings remain limitation
-  evidence rather than repair gaps
+  across human, JSON, GitHub annotation, and SARIF output while static-limit
+  findings remain limitation evidence rather than repair gaps
 - fixtures proving non-static-limit Python findings carry RIPR infection and
   propagation evidence instead of placeholder unknowns
 - fixtures proving static-limit Python findings fail closed as `static_unknown`
@@ -252,6 +252,9 @@ can show:
 - a check-output gap-ledger fixture proving Python repair cards can become
   bounded agent packets with verify and receipt commands while remaining
   preview/advisory
+- output tests proving eligible Python repair cards are projected into GitHub
+  annotations and diff-scoped SARIF as advisory repair context, not gate or
+  receipt authority
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases

@@ -14,6 +14,7 @@ use crate::domain::{
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
+use crate::output::python_repair_card::{python_repair_card, python_repair_card_json_value};
 use crate::output::suppressions::{
     SuppressionEntry, SuppressionKind, current_iso_date, is_expired,
 };
@@ -249,6 +250,12 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
         properties.insert(
             "preview_actionability".to_string(),
             preview_actionability_json_value(&actionability),
+        );
+    }
+    if let Some(card) = python_repair_card(finding) {
+        properties.insert(
+            "python_repair_card".to_string(),
+            python_repair_card_json_value(&card),
         );
     }
     properties.insert(
@@ -636,6 +643,63 @@ mod tests {
         assert_eq!(
             result["properties"]["canonical_gap"]["normalized_discriminator"],
             "amount>=threshold"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_projects_python_repair_card_properties() -> Result<(), String> {
+        let mut output = sample_output();
+        let finding = &mut output.findings[0];
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "apply_discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+        finding.evidence.extend([
+            "suggested_test_file: tests/test_pricing.py".to_string(),
+            "suggested_test_name: test_apply_discount_threshold_boundary".to_string(),
+            "suggested_test_node_id: tests/test_pricing.py::test_apply_discount_threshold_boundary"
+                .to_string(),
+            "suggested_verify_command: pytest tests/test_pricing.py::test_apply_discount_threshold_boundary"
+                .to_string(),
+            "suggested_verify_command_confidence: high".to_string(),
+        ]);
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+        let card = &result["properties"]["python_repair_card"];
+
+        assert_eq!(card["language"], "python");
+        assert_eq!(card["language_status"], "preview");
+        assert_eq!(card["authority_boundary"], "preview_advisory_only");
+        assert_eq!(
+            card["canonical_gap_id"],
+            "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        );
+        assert_eq!(
+            card["missing_discriminator"],
+            "amount == discount_threshold"
+        );
+        assert_eq!(
+            card["suggested_location"]["test_file"],
+            "tests/test_pricing.py"
+        );
+        assert_eq!(
+            card["verify"]["command"],
+            "pytest tests/test_pricing.py::test_apply_discount_threshold_boundary"
+        );
+        assert_eq!(
+            card["receipt"]["status"],
+            "unavailable_until_python_gap_ledger"
         );
         Ok(())
     }
