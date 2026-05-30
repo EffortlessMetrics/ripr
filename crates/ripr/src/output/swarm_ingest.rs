@@ -20,12 +20,15 @@ struct SwarmIngestFacts {
     verify_exit_code: Option<i64>,
     verify_passed: bool,
     verify_failed: bool,
+    receipt_present: bool,
+    receipt_path: Option<String>,
     receipt_movement: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SwarmIngestClassification {
     state: &'static str,
+    outcome: &'static str,
     reason: &'static str,
     next_action: &'static str,
 }
@@ -45,11 +48,13 @@ pub(crate) fn render_swarm_ingest_json(
         "scope": "agent_result",
         "source": "external_agent_result",
         "status": "advisory",
+        "attempt_outcome": classification.outcome,
         "inputs": {
             "result": result_path,
         },
         "classification": {
             "state": classification.state,
+            "outcome": classification.outcome,
             "reason": classification.reason,
             "gap_id": facts.gap_id.as_ref(),
             "canonical_gap_id": facts.canonical_gap_id.as_ref(),
@@ -70,6 +75,8 @@ pub(crate) fn render_swarm_ingest_json(
                 "failed": facts.verify_failed,
             },
             "receipt": {
+                "present": facts.receipt_present,
+                "path": facts.receipt_path.as_ref(),
                 "movement": facts.receipt_movement.as_ref(),
             },
         },
@@ -157,6 +164,32 @@ fn swarm_ingest_facts(value: &Value) -> SwarmIngestFacts {
         verify_status.as_deref().is_some_and(is_success_status) || verify_exit_code == Some(0);
     let verify_failed = verify_status.as_deref().is_some_and(is_failure_status)
         || verify_exit_code.is_some_and(|code| code != 0);
+    let receipt_path = first_string(
+        value,
+        &[
+            &["receipt_path"],
+            &["attempt", "receipt_path"],
+            &["result", "receipt_path"],
+            &["receipt", "path"],
+            &["receipt", "artifact"],
+            &["agent_receipt", "path"],
+        ],
+    );
+    let receipt_movement = first_string(
+        value,
+        &[
+            &["receipt_movement"],
+            &["receipt", "movement"],
+            &["receipt", "provenance", "movement"],
+            &["receipt", "static_movement", "state"],
+            &["receipt", "summary", "receipt_state"],
+            &["agent_receipt", "provenance", "movement"],
+            &["agent_receipt", "seam", "change"],
+            &["provenance", "movement"],
+            &["seam", "change"],
+        ],
+    );
+    let receipt_present = receipt_path.is_some() || receipt_movement.is_some();
     SwarmIngestFacts {
         gap_id: first_string(
             value,
@@ -227,20 +260,9 @@ fn swarm_ingest_facts(value: &Value) -> SwarmIngestFacts {
         verify_exit_code,
         verify_passed,
         verify_failed,
-        receipt_movement: first_string(
-            value,
-            &[
-                &["receipt_movement"],
-                &["receipt", "movement"],
-                &["receipt", "provenance", "movement"],
-                &["receipt", "static_movement", "state"],
-                &["receipt", "summary", "receipt_state"],
-                &["agent_receipt", "provenance", "movement"],
-                &["agent_receipt", "seam", "change"],
-                &["provenance", "movement"],
-                &["seam", "change"],
-            ],
-        ),
+        receipt_present,
+        receipt_path,
+        receipt_movement,
     }
 }
 
@@ -248,6 +270,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     if !facts.edited_forbidden_files.is_empty() {
         return SwarmIngestClassification {
             state: "edited_forbidden_file",
+            outcome: "unknown",
             reason: "Agent result reports edits to files forbidden by the packet.",
             next_action: "Reject or manually review the attempt before using any test repair.",
         };
@@ -259,6 +282,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     {
         return SwarmIngestClassification {
             state: "stale_packet",
+            outcome: "unknown",
             reason: "Agent result refers to a packet marked stale.",
             next_action: "Refresh the queue and reroute the gap before trusting the attempt.",
         };
@@ -266,6 +290,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     if facts.agent_status.as_deref().is_some_and(is_stopped_status) || facts.stop_reason.is_some() {
         return SwarmIngestClassification {
             state: "stopped_by_agent",
+            outcome: receipt_presence_outcome(facts),
             reason: "Agent stopped before claiming a completed repair.",
             next_action: "Record the stop reason and reroute only if the packet remains actionable.",
         };
@@ -273,6 +298,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     if facts.verify_failed {
         return SwarmIngestClassification {
             state: "verify_failed",
+            outcome: receipt_presence_outcome(facts),
             reason: "Verify evidence reports a failing command or non-zero exit code.",
             next_action: "Inspect verify output before retrying or accepting the repair.",
         };
@@ -280,6 +306,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     if !facts.verify_present {
         return SwarmIngestClassification {
             state: "uncertain",
+            outcome: receipt_presence_outcome(facts),
             reason: "Agent result did not include verify evidence.",
             next_action: "Run the packet verify command and attach the result before judging closure.",
         };
@@ -287,6 +314,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     if !facts.verify_passed {
         return SwarmIngestClassification {
             state: "uncertain",
+            outcome: receipt_presence_outcome(facts),
             reason: "Verify evidence is present but does not prove a passing command.",
             next_action: "Normalize the verify result or rerun the packet verify command.",
         };
@@ -299,31 +327,44 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
     {
         Some("closed" | "resolved" | "receipt_movement_resolved") => SwarmIngestClassification {
             state: "closed",
+            outcome: "resolved",
             reason: "Verify passed and receipt movement indicates the gap closed.",
             next_action: "Attach the receipt and keep the focused test repair.",
         },
         Some("improved" | "receipt_movement_improved") => SwarmIngestClassification {
             state: "partially_improved",
+            outcome: "evidence_improved",
             reason: "Verify passed and receipt movement improved, but did not report closure.",
             next_action: "Keep the evidence and decide whether another focused repair is needed.",
         },
         Some("unchanged" | "receipt_movement_unchanged" | "unchanged_after_attempt") => {
             SwarmIngestClassification {
                 state: "uncertain",
+                outcome: "evidence_unchanged",
                 reason: "Verify passed but receipt movement stayed unchanged.",
                 next_action: "Strengthen the discriminator or reroute the remaining gap.",
             }
         }
         Some("regressed" | "receipt_movement_regressed") => SwarmIngestClassification {
             state: "uncertain",
+            outcome: "evidence_regressed",
             reason: "Verify passed but receipt movement regressed.",
             next_action: "Reject or manually inspect the attempt before retrying.",
         },
         _ => SwarmIngestClassification {
             state: "uncertain",
+            outcome: receipt_presence_outcome(facts),
             reason: "Verify passed but no recognized receipt movement was supplied.",
             next_action: "Produce a before/after receipt before judging closure.",
         },
+    }
+}
+
+fn receipt_presence_outcome(facts: &SwarmIngestFacts) -> &'static str {
+    if facts.receipt_present {
+        "receipt_present"
+    } else {
+        "attempted_no_receipt"
     }
 }
 
@@ -471,6 +512,8 @@ mod tests {
         )?;
 
         assert_eq!(value["classification"]["state"], "edited_forbidden_file");
+        assert_eq!(value["classification"]["outcome"], "unknown");
+        assert_eq!(value["attempt_outcome"], "unknown");
         assert_eq!(value["safety"]["forbidden_edit_flagged"], true);
         assert_eq!(
             value["evidence"]["edited_forbidden_files"],
@@ -491,7 +534,9 @@ mod tests {
         )?;
 
         assert_eq!(value["classification"]["state"], "uncertain");
+        assert_eq!(value["classification"]["outcome"], "receipt_present");
         assert_eq!(value["evidence"]["verify"]["present"], false);
+        assert_eq!(value["evidence"]["receipt"]["present"], true);
         assert!(
             value["classification"]["reason"]
                 .as_str()
@@ -509,6 +554,7 @@ mod tests {
             }"#,
         )?;
         assert_eq!(stopped["classification"]["state"], "stopped_by_agent");
+        assert_eq!(stopped["classification"]["outcome"], "attempted_no_receipt");
 
         let failed = render_value(
             r#"{
@@ -517,6 +563,7 @@ mod tests {
             }"#,
         )?;
         assert_eq!(failed["classification"]["state"], "verify_failed");
+        assert_eq!(failed["classification"]["outcome"], "attempted_no_receipt");
 
         let improved = render_value(
             r#"{
@@ -526,6 +573,7 @@ mod tests {
             }"#,
         )?;
         assert_eq!(improved["classification"]["state"], "partially_improved");
+        assert_eq!(improved["classification"]["outcome"], "evidence_improved");
 
         let closed = render_value(
             r#"{
@@ -535,6 +583,27 @@ mod tests {
             }"#,
         )?;
         assert_eq!(closed["classification"]["state"], "closed");
+        assert_eq!(closed["classification"]["outcome"], "resolved");
+
+        let unchanged = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:unchanged"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {"provenance": {"movement": "unchanged"}}
+            }"#,
+        )?;
+        assert_eq!(unchanged["classification"]["state"], "uncertain");
+        assert_eq!(unchanged["classification"]["outcome"], "evidence_unchanged");
+
+        let regressed = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:regressed"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {"provenance": {"movement": "regressed"}}
+            }"#,
+        )?;
+        assert_eq!(regressed["classification"]["state"], "uncertain");
+        assert_eq!(regressed["classification"]["outcome"], "evidence_regressed");
 
         let stale = render_value(
             r#"{
@@ -544,6 +613,7 @@ mod tests {
             }"#,
         )?;
         assert_eq!(stale["classification"]["state"], "stale_packet");
+        assert_eq!(stale["classification"]["outcome"], "unknown");
         Ok(())
     }
 }

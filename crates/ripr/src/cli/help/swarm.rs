@@ -46,5 +46,8 @@ The ingest command reads an existing result artifact and classifies it as
 closed, partially_improved, verify_failed, edited_forbidden_file,
 stopped_by_agent, stale_packet, or uncertain. Missing verify evidence is never
 treated as success, and edits to packet forbidden_files are flagged before any
-reported verify or receipt success.
+reported verify or receipt success. JSON also emits attempt_outcome using the
+repair-loop vocabulary: attempted_no_receipt, receipt_present,
+evidence_improved, evidence_unchanged, evidence_regressed, resolved, or
+unknown.
 "#;

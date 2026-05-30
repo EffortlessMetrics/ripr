@@ -9490,6 +9490,10 @@ trust an agent success claim, rerun the verify command, write receipts, call
 providers, generate tests, or inspect source code. Missing verify evidence is
 classified as `uncertain`, and edits to packet `forbidden_files` are classified
 as `edited_forbidden_file` before any reported verify or receipt success.
+`attempt_outcome` uses the shared repair-loop outcome vocabulary so downstream
+ledgers can distinguish `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown` without reinterpreting raw agent output.
 
 The ingest envelope is:
 
@@ -9501,11 +9505,13 @@ The ingest envelope is:
   "scope": "agent_result",
   "source": "external_agent_result",
   "status": "advisory",
+  "attempt_outcome": "unknown",
   "inputs": {
     "result": "target/ripr/workflow/agent-result.json"
   },
   "classification": {
     "state": "edited_forbidden_file",
+    "outcome": "unknown",
     "reason": "Agent result reports edits to files forbidden by the packet.",
     "gap_id": "gap:python:pricing-boundary",
     "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
@@ -9526,6 +9532,8 @@ The ingest envelope is:
       "failed": false
     },
     "receipt": {
+      "present": true,
+      "path": "target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json",
       "movement": "resolved"
     }
   },
@@ -9551,7 +9559,13 @@ The ingest envelope is:
 `verify_failed`, `edited_forbidden_file`, `stopped_by_agent`, `stale_packet`,
 or `uncertain`. Closure requires both passing verify evidence and recognized
 receipt movement such as `resolved` or `closed`; passing verify with only
-`improved` movement is `partially_improved`.
+`improved` movement is `partially_improved`. `classification.outcome` and the
+top-level `attempt_outcome` are one of `attempted_no_receipt`,
+`receipt_present`, `evidence_improved`, `evidence_unchanged`,
+`evidence_regressed`, `resolved`, or `unknown`. Ingest keeps
+`status: "advisory"` even when `attempt_outcome = "resolved"` because it
+classifies an external result artifact; it does not run verification or write
+the receipt.
 
 ```json
 {
