@@ -120,6 +120,18 @@ pub(crate) struct TargetedTestOutcomeSeam {
     grip_class: String,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct TargetedTestOutcomeGapSummary {
+    closed: usize,
+    opened: usize,
+    strengthened: usize,
+    weakened: usize,
+    unchanged: usize,
+    new: usize,
+    removed: usize,
+    changed: usize,
+}
+
 pub(crate) fn targeted_test_outcome_report_from_json(
     before_json: &str,
     after_json: &str,
@@ -149,7 +161,8 @@ pub(crate) fn render_targeted_test_outcome_json(
             "unchanged": report.unchanged.len(),
             "regressed": report.regressed.len(),
             "new": report.new.len(),
-            "removed": report.removed.len()
+            "removed": report.removed.len(),
+            "gap_movement": targeted_test_outcome_gap_summary_json(report)
         },
         "moved": report.moved.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
         "unchanged": report.unchanged.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
@@ -195,7 +208,8 @@ pub(crate) fn render_agent_verify_json(
             "regressed": report.regressed.len(),
             "unchanged": report.unchanged.len(),
             "new": report.new.len(),
-            "resolved": report.removed.len()
+            "resolved": report.removed.len(),
+            "gap_movement": targeted_test_outcome_gap_summary_json(report)
         },
         "changed_seams": changed_seams,
         "unchanged_seams": report.unchanged.iter().map(agent_verify_movement_json).collect::<Vec<_>>(),
@@ -220,6 +234,8 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
     out.push_str(&format!("| regressed | {} |\n", report.regressed.len()));
     out.push_str(&format!("| new | {} |\n", report.new.len()));
     out.push_str(&format!("| removed | {} |\n", report.removed.len()));
+
+    push_targeted_outcome_gap_summary_md(&mut out, report);
 
     out.push_str("\n## Grip Counts\n\n");
     out.push_str("| Class | Before | After |\n| --- | ---: | ---: |\n");
@@ -722,6 +738,7 @@ fn targeted_test_outcome_seam_json(seam: &TargetedTestOutcomeSeam) -> Value {
 
 fn targeted_test_outcome_review_receipt_json(report: &TargetedTestOutcomeReport) -> Value {
     serde_json::json!({
+        "gap_movement": targeted_test_outcome_gap_summary_json(report),
         "what_changed": review_what_changed(report),
         "ripr_flagged_before": review_ripr_flagged_before(report),
         "focused_proof_added": review_focused_proof_added(report),
@@ -731,6 +748,47 @@ fn targeted_test_outcome_review_receipt_json(report: &TargetedTestOutcomeReport)
         "reviewer_may_believe": reviewer_may_believe(report),
         "reviewer_should_not_believe": reviewer_should_not_believe()
     })
+}
+
+fn targeted_test_outcome_gap_summary_json(report: &TargetedTestOutcomeReport) -> Value {
+    let summary = targeted_test_outcome_gap_summary(report);
+    serde_json::json!({
+        "closed": summary.closed,
+        "opened": summary.opened,
+        "strengthened": summary.strengthened,
+        "weakened": summary.weakened,
+        "unchanged": summary.unchanged,
+        "new": summary.new,
+        "removed": summary.removed,
+        "changed": summary.changed,
+    })
+}
+
+fn targeted_test_outcome_gap_summary(
+    report: &TargetedTestOutcomeReport,
+) -> TargetedTestOutcomeGapSummary {
+    let mut summary = TargetedTestOutcomeGapSummary {
+        new: report.new.len(),
+        removed: report.removed.len(),
+        ..TargetedTestOutcomeGapSummary::default()
+    };
+    for movement in report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+    {
+        match movement.gap_movement.as_str() {
+            "closed" => summary.closed += 1,
+            "opened" => summary.opened += 1,
+            "improved" => summary.strengthened += 1,
+            "regressed" => summary.weakened += 1,
+            "changed" => summary.changed += 1,
+            "unchanged" => summary.unchanged += 1,
+            _ => summary.changed += 1,
+        }
+    }
+    summary
 }
 
 fn agent_verify_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
@@ -805,6 +863,8 @@ fn push_targeted_outcome_movements_md(
 
 fn push_targeted_outcome_review_receipt_md(out: &mut String, report: &TargetedTestOutcomeReport) {
     out.push_str("\n## Review Receipt\n\n");
+    let gap_summary = [targeted_test_outcome_gap_summary_sentence(report)];
+    push_review_receipt_list_md(out, "Gap movement summary", &gap_summary);
     push_review_receipt_list_md(out, "What changed?", &review_what_changed(report));
     push_review_receipt_list_md(
         out,
@@ -837,6 +897,20 @@ fn push_targeted_outcome_review_receipt_md(out: &mut String, report: &TargetedTe
         "Reviewer should not believe",
         &reviewer_should_not_believe(),
     );
+}
+
+fn push_targeted_outcome_gap_summary_md(out: &mut String, report: &TargetedTestOutcomeReport) {
+    let summary = targeted_test_outcome_gap_summary(report);
+    out.push_str("\n## Gap Movement\n\n");
+    out.push_str("| Movement | Count |\n| --- | ---: |\n");
+    out.push_str(&format!("| closed | {} |\n", summary.closed));
+    out.push_str(&format!("| opened | {} |\n", summary.opened));
+    out.push_str(&format!("| strengthened | {} |\n", summary.strengthened));
+    out.push_str(&format!("| weakened | {} |\n", summary.weakened));
+    out.push_str(&format!("| unchanged | {} |\n", summary.unchanged));
+    out.push_str(&format!("| new | {} |\n", summary.new));
+    out.push_str(&format!("| removed | {} |\n", summary.removed));
+    out.push_str(&format!("| changed | {} |\n", summary.changed));
 }
 
 fn push_review_receipt_list_md(out: &mut String, title: &str, items: &[String]) {
@@ -966,6 +1040,7 @@ fn review_movement_after_verification(report: &TargetedTestOutcomeReport) -> Vec
         report.regressed.len(),
         report.unchanged.len()
     ));
+    items.push(targeted_test_outcome_gap_summary_sentence(report));
     for movement in report.moved.iter().chain(report.regressed.iter()).take(4) {
         items.push(format!(
             "{} at {}:{} moved {} -> {} ({}).",
@@ -994,6 +1069,21 @@ fn review_movement_after_verification(report: &TargetedTestOutcomeReport) -> Vec
         });
     items.extend(unchanged_with_delta);
     items
+}
+
+fn targeted_test_outcome_gap_summary_sentence(report: &TargetedTestOutcomeReport) -> String {
+    let summary = targeted_test_outcome_gap_summary(report);
+    format!(
+        "Gap movement: {} closed, {} opened, {} strengthened, {} weakened, {} unchanged, {} new, {} removed, {} changed.",
+        summary.closed,
+        summary.opened,
+        summary.strengthened,
+        summary.weakened,
+        summary.unchanged,
+        summary.new,
+        summary.removed,
+        summary.changed
+    )
 }
 
 fn review_remaining_weak_or_unknown(report: &TargetedTestOutcomeReport) -> Vec<String> {
@@ -1506,9 +1596,16 @@ mod tests {
         );
         assert_eq!(value["status"], "advisory");
         assert_eq!(value["summary"]["moved"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["closed"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["unchanged"], 1);
         assert_eq!(
             value["review_receipt"]["movement_after_verification"][0],
             "1 improved, 0 changed without ranking higher, 0 regressed, 1 unchanged."
+        );
+        assert_eq!(value["review_receipt"]["gap_movement"]["closed"], 1);
+        assert_eq!(
+            value["review_receipt"]["movement_after_verification"][1],
+            "Gap movement: 1 closed, 0 opened, 0 strengthened, 0 weakened, 1 unchanged, 0 new, 0 removed, 0 changed."
         );
         assert!(
             value["review_receipt"]["focused_proof_added"][0]
@@ -1532,6 +1629,9 @@ mod tests {
         let markdown = render_targeted_test_outcome_md(&report);
         assert!(markdown.contains("# ripr targeted-test outcome report"));
         assert!(markdown.contains("| moved | 1 |"));
+        assert!(markdown.contains("## Gap Movement"));
+        assert!(markdown.contains("| closed | 1 |"));
+        assert!(markdown.contains("| unchanged | 1 |"));
         assert!(markdown.contains("## Unchanged"));
         assert!(markdown.contains("seam-same"));
         assert!(markdown.contains("new observed value: 100"));
@@ -1575,6 +1675,11 @@ mod tests {
         assert_eq!(value["summary"]["unchanged"], 1);
         assert_eq!(value["summary"]["new"], 1);
         assert_eq!(value["summary"]["resolved"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["closed"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["weakened"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["unchanged"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["new"], 1);
+        assert_eq!(value["summary"]["gap_movement"]["removed"], 1);
         assert_eq!(value["changed_seams"][0]["change"], "improved");
         assert_eq!(value["resolved_gaps"][0]["change"], "resolved");
         Ok(())
@@ -1754,6 +1859,7 @@ mod tests {
         let receipt_json = render_targeted_test_outcome_json(&report)?;
         let receipt: Value = serde_json::from_str(&receipt_json)
             .map_err(|err| format!("targeted-test outcome JSON should parse: {err}"))?;
+        assert_eq!(receipt["summary"]["gap_movement"]["closed"], 1);
         assert_eq!(receipt["moved"][0]["gap_movement"], "closed");
         assert_eq!(
             receipt["moved"][0]["evidence_source"],
@@ -1763,6 +1869,7 @@ mod tests {
         let verify_json = render_agent_verify_json(&report)?;
         let verify: Value = serde_json::from_str(&verify_json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
+        assert_eq!(verify["summary"]["gap_movement"]["closed"], 1);
         assert_eq!(verify["changed_seams"][0]["change"], "improved");
         assert_eq!(verify["changed_seams"][0]["gap_movement"], "closed");
         Ok(())

@@ -909,7 +909,7 @@ Suggest native pytest parameterization for clear boundary predicates.
 
 ### Work item: analysis/python-existing-test-strengthening
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -1005,6 +1005,10 @@ Make Python gap improvement durable.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.
+- Outcome, review-receipt, and agent-verify JSON now include
+  `summary.gap_movement` counts for closed, opened, strengthened, weakened,
+  unchanged, new, removed, and changed canonical gaps, so Python repair-loop
+  receipts expose closure without requiring row-by-row inspection.
 
 ### Work item: fixtures/python-false-positive-corpus
 

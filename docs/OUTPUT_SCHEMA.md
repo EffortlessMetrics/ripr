@@ -4263,7 +4263,17 @@ JSON shape:
     "unchanged": 12,
     "regressed": 0,
     "new": 0,
-    "removed": 1
+    "removed": 1,
+    "gap_movement": {
+      "closed": 2,
+      "opened": 0,
+      "strengthened": 0,
+      "weakened": 0,
+      "unchanged": 12,
+      "new": 0,
+      "removed": 1,
+      "changed": 0
+    }
   },
   "moved": [
     {
@@ -4310,6 +4320,16 @@ JSON shape:
   "new": [],
   "removed": [],
   "review_receipt": {
+    "gap_movement": {
+      "closed": 2,
+      "opened": 0,
+      "strengthened": 0,
+      "weakened": 0,
+      "unchanged": 12,
+      "new": 0,
+      "removed": 1,
+      "changed": 0
+    },
     "what_changed": [
       "Compared before snapshot target/ripr/before.json with after snapshot target/ripr/after.json.",
       "Static seam movement: 2 moved, 12 unchanged, 0 regressed, 0 new, 1 removed."
@@ -4322,6 +4342,7 @@ JSON shape:
     ],
     "movement_after_verification": [
       "2 improved, 0 changed without ranking higher, 0 regressed, 12 unchanged.",
+      "Gap movement: 2 closed, 0 opened, 0 strengthened, 0 weakened, 12 unchanged, 0 new, 1 removed, 0 changed.",
       "predicate_boundary at src/pricing.rs:88 moved weakly_gripped -> strongly_gripped (improved)."
     ],
     "remaining_weak_or_unknown": [
@@ -4367,6 +4388,12 @@ Field contract:
   `seam_id` changed grip class without ranking lower; `regressed` means the
   after class ranked lower than the before class; `unchanged` means the class
   stayed the same; `new` and `removed` cover seam IDs present in only one input.
+- `summary.gap_movement` - comparable canonical gap movement counts derived
+  from each matched row's `gap_movement`: `closed`, `opened`, `strengthened`
+  for row-level `improved`, `weakened` for row-level `regressed`,
+  `unchanged`, and `changed`. `new` and `removed` are one-sided identity counts.
+  These counts are receipt signals for static evidence movement; they are not
+  mutation proof or correctness proof.
 - `moved[]` / `unchanged[]` / `regressed[]` — matched seams with before/after
   grip classes, a direction string, and evidence-delta hints. When
   `seams[].evidence_record` is present, the comparison prefers that shared
@@ -4399,12 +4426,12 @@ Field contract:
   what reviewers should inspect or avoid inferring. It does not add gate
   authority or runtime evidence beyond the compared snapshots.
 
-The Markdown surface prints the same summary, highlights moved, unchanged,
-regressed, new, and removed seams for human review, and includes a "Review
-Receipt" section with the same reviewer-native fields. Unchanged seams can
-still carry evidence-delta hints, such as a new observed value, so reviewers can
-see when a targeted test improved rendered evidence without changing the grip
-class.
+The Markdown surface prints the same summary plus a "Gap Movement" table,
+highlights moved, unchanged, regressed, new, and removed seams for human review,
+and includes a "Review Receipt" section with the same reviewer-native fields.
+Unchanged seams can still carry evidence-delta hints, such as a new observed
+value, so reviewers can see when a targeted test improved rendered evidence
+without changing the grip class.
 
 ## Agent Verify
 
@@ -4439,7 +4466,17 @@ JSON shape:
     "regressed": 0,
     "unchanged": 0,
     "new": 0,
-    "resolved": 0
+    "resolved": 0,
+    "gap_movement": {
+      "closed": 1,
+      "opened": 0,
+      "strengthened": 0,
+      "weakened": 0,
+      "unchanged": 0,
+      "new": 0,
+      "removed": 0,
+      "changed": 0
+    }
   },
   "changed_seams": [
     {
@@ -4501,6 +4538,9 @@ Field contract:
 - `summary.resolved` - seam IDs absent from the after snapshot. This is
   advisory; it can mean a gap was fixed, or that the seam disappeared because
   the code changed.
+- `summary.gap_movement` - the same additive static gap-movement summary used
+  by `ripr outcome`, so agent receipts can read closed/opened/strengthened/
+  weakened/unchanged/new/removed/changed counts without scanning every row.
 - `changed_seams[]` - improved, same-rank changed, and regressed matched seams.
 - `unchanged_seams[]` - matched seams whose class stayed the same. These can
   still carry `evidence_delta` hints when rendered evidence improved without

@@ -10,6 +10,16 @@
   "status": "advisory",
   "summary": {
     "changed": 0,
+    "gap_movement": {
+      "changed": 0,
+      "closed": 0,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 1,
+      "weakened": 0
+    },
     "improved": 0,
     "new": 0,
     "regressed": 0,
