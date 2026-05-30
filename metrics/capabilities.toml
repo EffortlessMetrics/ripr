@@ -1512,6 +1512,7 @@ evidence = [
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/{closed,unchanged,opened}.{json,md} pin Python preview before/after outcome receipts where the canonical gap closes, stays unchanged, or opens",
   "fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json and expected/swarm-ingest/closed.json pin ripr swarm ingest classification for a Python preview test-only agent attempt with passing verify evidence and resolved receipt movement",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module with patch and monkeypatch syntax, opaque_custom_assertion_helper, property_based_test, unresolved_pytest_fixture, missing_import_graph, metaprogramming, and unsupported_syntax",
+  "python_generated_file_excluded pins detectable generated Python diffs such as *_pb2.py as zero-finding, zero-repair-card inputs so generated-code edits stay out of preview repair routing",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md records Python as opt-in preview rather than Rust parity"
@@ -1549,13 +1550,14 @@ fixtures = [
   "fixtures/python_opaque_custom_helper_limit",
   "fixtures/python_property_based_limit",
   "fixtures/python_unresolved_fixture_limit",
+  "fixtures/python_generated_file_excluded",
   "fixtures/python_missing_import_graph_limit",
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit",
   "fixtures/first_successful_pr/python-preview-gap"
 ]
 next = "cli/python-first-use-path"
-metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_existing_test_strengthening, language_adapter_python_agent_packet_v1, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_pilot_first_use_path, language_adapter_python_first_pr_start_here_path, language_adapter_python_first_pr_check_output_bridge, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_mocked_module, language_adapter_python_static_limit_opaque_custom_assertion_helper, language_adapter_python_static_limit_property_based_test, language_adapter_python_static_limit_unresolved_pytest_fixture, language_adapter_python_static_limit_*"
+metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_existing_test_strengthening, language_adapter_python_agent_packet_v1, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_pilot_first_use_path, language_adapter_python_first_pr_start_here_path, language_adapter_python_first_pr_check_output_bridge, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states, language_adapter_python_generated_file_exclusion, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_mocked_module, language_adapter_python_static_limit_opaque_custom_assertion_helper, language_adapter_python_static_limit_property_based_test, language_adapter_python_static_limit_unresolved_pytest_fixture, language_adapter_python_static_limit_*"
 
 [[capability]]
 id = "typescript_preview_static_facts"

@@ -3611,7 +3611,9 @@ impl LanguageAdapter for PythonAdapter {
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
         for changed in changed_files {
-            if !self.accepts_path(&changed.path) {
+            if !self.accepts_path(&changed.path)
+                || is_detectable_generated_python_file(&changed.path)
+            {
                 continue;
             }
             changed_count += 1;

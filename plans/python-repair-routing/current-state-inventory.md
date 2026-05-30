@@ -120,6 +120,7 @@ fixture families:
   [`fixtures/python_dynamic_dispatch_limit`](../../fixtures/python_dynamic_dispatch_limit),
   [`fixtures/python_decorator_indirection_limit`](../../fixtures/python_decorator_indirection_limit),
   [`fixtures/python_mocked_module_limit`](../../fixtures/python_mocked_module_limit),
+  [`fixtures/python_generated_file_excluded`](../../fixtures/python_generated_file_excluded),
   [`fixtures/python_missing_import_graph_limit`](../../fixtures/python_missing_import_graph_limit),
   [`fixtures/python_metaprogramming_limit`](../../fixtures/python_metaprogramming_limit),
   and [`fixtures/python_unsupported_syntax_limit`](../../fixtures/python_unsupported_syntax_limit).
@@ -144,7 +145,7 @@ before/after receipt movement.
 | `unittest_assert_equal` | `python_unittest_assertions`, `python_unittest_oracle_shapes`, `python_test_placement_verify` | `self.assertEqual(...)` becomes `exact_value` / strong; unittest related tests now carry `python -m unittest module.Class.test_method` verify-command evidence, and `assertIn` / `assertRegex` / `assertDictEqual` feed output, status-code, and field oracle shapes. Direct weak unittest findings also get suggested test methods and verify commands. | Tie unittest placement to repair cards and agent packets. |
 | `fastapi_route_optional` | Missing | FastAPI/Flask decorators currently look like decorator or call syntax, not framework facts. | Add HTTP/API fixture pack with route owner, status-code, and JSON-field repair cards; keep dynamic routing limited. |
 | `cli_output_optional` | Partial: `python_pytest_oracle_shapes`, `python_call_argument_shape` | Generic call, log/output, and side-effect shapes can carry missing discriminators such as `log contains "coupon expired"` or `call includes "receipt.sent"` when direct weak evidence exists, with generic placement/verify guidance. | Add Click/Typer/argparse output fixtures, output assertion cards, and exit-code-specific verify guidance. |
-| `dynamic_unsupported` | Static-limit fixture family | Dynamic dispatch, decorator, mocked module, missing import graph, metaprogramming, and unsupported syntax limits are visible and fail closed with typed stop reasons. | Keep those limitations out of first-use and queue projections while repairable Python cards move through agent packets. |
+| `dynamic_unsupported` | Static-limit and generated-file fixture family | Dynamic dispatch, decorator, mocked module, missing import graph, metaprogramming, and unsupported syntax limits are visible and fail closed with typed stop reasons; detectable generated Python diffs are excluded before repair routing. | Keep those limitations and generated-file changes out of first-use and queue projections while repairable Python cards move through agent packets. |
 
 ## Current Rust/Cargo Assumptions To Remove Or Contain
 

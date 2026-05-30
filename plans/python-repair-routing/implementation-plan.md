@@ -1088,6 +1088,9 @@ Prevent Python support from becoming noisy.
   substitution as a `mocked_module` static limitation so monkeypatch-only
   related tests stay visible but do not become repair cards, canonical gaps, or
   swarm packets.
+- `python_generated_file_excluded` pins detectable generated Python file diffs
+  such as `*_pb2.py` as excluded from preview diff analysis, so generated-code
+  edits do not produce repair cards, canonical repair gaps, or swarm packets.
 
 ### Work item: dogfood/python-real-repo-evals
 

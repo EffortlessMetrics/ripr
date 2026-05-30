@@ -1079,6 +1079,58 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
 }
 
 #[test]
+fn analyze_diff_skips_detectable_generated_python_files() -> Result<(), String> {
+    let root = unique_tempdir("analyze-diff-generated-file")?;
+    let generated_rel = PathBuf::from("src/schema_pb2.py");
+    write_file(
+        &root.join(&generated_rel),
+        "def encode_status(status):\n    return {'status': status, 'version': 2}\n",
+    )?;
+    write_file(
+        &root.join("tests/test_schema.py"),
+        "from src.schema_pb2 import encode_status\n\n\
+def test_encode_status():\n    assert encode_status('paid')['status'] == 'paid'\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: generated_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            text: "    return {'status': status, 'version': 2}".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.changed_files != 0 {
+        return Err(format!(
+            "expected generated Python diff to be excluded from changed files, got {}",
+            result.changed_files
+        ));
+    }
+    if !result.findings.is_empty() {
+        return Err(format!(
+            "expected generated Python diff to emit no preview findings, got {}",
+            result.findings.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn collect_workspace_python_files_skips_excluded_directories() -> Result<(), String> {
     let root = unique_tempdir("workspace-walk")?;
     let included = [

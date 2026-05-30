@@ -97,6 +97,9 @@ Read preview findings as syntax-first advisory evidence:
   only. Direct weak findings may name boundary, return, exception, field, or
   output/log/call-effect discriminators; heuristic, no-path, and static-limit
   findings do not become safe repair work.
+- Detectable generated Python files such as `*_pb2.py`, `*_pb2_grpc.py`,
+  `*.generated.py`, `*_generated.py`, and `generated_*.py` are excluded from
+  preview diff analysis instead of being routed as repairable behavior changes.
 
 The exposure class still uses RIPR's normal conservative vocabulary:
 `exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,
