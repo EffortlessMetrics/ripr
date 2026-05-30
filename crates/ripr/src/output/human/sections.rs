@@ -203,6 +203,7 @@ fn push_python_repair_card(out: &mut String, card: &PythonRepairCard) {
     } else {
         out.push_str(&format!("  receipt: {}\n", card.receipt_status));
     }
+    out.push_str(&format!("  receipt guidance: {}\n", card.receipt_guidance));
     out.push_str("  stop conditions:\n");
     for condition in &card.stop_conditions {
         out.push_str(&format!("    - {condition}\n"));

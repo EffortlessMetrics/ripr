@@ -479,6 +479,13 @@ fn push_python_repair_card_json(out: &mut String, card: &PythonRepairCard, inden
         &card.receipt_status,
         true,
     );
+    json_string_field(
+        out,
+        indent + 2,
+        "receipt_guidance",
+        &card.receipt_guidance,
+        true,
+    );
     json_string_array_field_refs(
         out,
         indent + 2,
@@ -615,6 +622,10 @@ fn push_python_repair_card_md(out: &mut String, card: &PythonRepairCard) {
     } else {
         out.push_str(&format!("  - Receipt status: `{}`\n", card.receipt_status));
     }
+    out.push_str(&format!(
+        "  - Receipt guidance: {}\n",
+        card.receipt_guidance
+    ));
     out.push('\n');
 }
 
@@ -662,4 +673,5 @@ fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
     } else {
         out.push_str(&format!("  receipt status: {}\n", card.receipt_status));
     }
+    out.push_str(&format!("  receipt guidance: {}\n", card.receipt_guidance));
 }

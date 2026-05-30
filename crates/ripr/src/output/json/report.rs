@@ -704,8 +704,13 @@ fn python_repair_card_json(out: &mut String, card: &PythonRepairCard, indent: us
     );
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
     out.push_str(&format!("{}\"receipt\": {{\n", "  ".repeat(indent + 1)));
-    out.push_str(&format!("{}\"command\": null,\n", "  ".repeat(indent + 2)));
-    field(out, indent + 2, "status", &card.receipt_status, false);
+    if let Some(command) = &card.receipt_command {
+        field(out, indent + 2, "command", command, true);
+    } else {
+        out.push_str(&format!("{}\"command\": null,\n", "  ".repeat(indent + 2)));
+    }
+    field(out, indent + 2, "status", &card.receipt_status, true);
+    field(out, indent + 2, "guidance", &card.receipt_guidance, false);
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
     array_field(
         out,

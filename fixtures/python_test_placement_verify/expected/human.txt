@@ -51,6 +51,7 @@ Python repair card (preview/advisory)
   pytest node: tests/test_pricing.py::test_calculate_discount_threshold_boundary
   verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary (high)
   receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
     - Stop if imports, fixtures, or test setup cannot call the changed owner.
     - Stop if the expected value for the missing discriminator is ambiguous.
@@ -109,6 +110,7 @@ Python repair card (preview/advisory)
   suggested test: test_require_positive_exception_path
   verify: python -m unittest tests.test_validation.TestValidation.test_require_positive_exception_path (high)
   receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
     - Stop if imports, fixtures, or test setup cannot call the changed owner.
     - Stop if the expected value for the missing discriminator is ambiguous.

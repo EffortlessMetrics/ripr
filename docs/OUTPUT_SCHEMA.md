@@ -440,8 +440,11 @@ The evidence-first fields are additive in schema `0.1`:
   `suggested_location`, `verify`, `receipt`, `stop_conditions`, and `limits`.
   In raw `ripr check` output, `receipt.command` may still be `null` because the
   renderer does not know where the caller will save before/after check
-  snapshots. The `reports gap-ledger --check-output` bridge can synthesize the
-  concrete receipt route from the supplied check-output path.
+  snapshots. Raw check cards include `receipt.guidance`, and pilot projections
+  carry the same text as `receipt_guidance`, so humans and agents can save the
+  check JSON and run `first-pr --check-output` or
+  `reports gap-ledger --check-output`; that bridge can synthesize the concrete
+  receipt route from the supplied check-output path.
 - `preview_actionability` is an additive optional object for TypeScript and
   JavaScript preview findings. It projects the preview adapter's fail-closed
   actionability state as structured data while preserving the original
@@ -10378,6 +10381,7 @@ is populated:
     "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
     "receipt_command": null,
     "receipt_status": "unavailable_until_python_gap_ledger",
+    "receipt_guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
     "stop_conditions": [
       "Stop if imports, fixtures, or test setup cannot call the changed owner.",
       "Stop if the expected value for the missing discriminator is ambiguous.",

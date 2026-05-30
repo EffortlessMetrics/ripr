@@ -109,6 +109,9 @@ fn python_repair_card() -> PythonRepairCard {
         verify_command_confidence: "high".to_string(),
         receipt_command: None,
         receipt_status: "unavailable_until_python_gap_ledger".to_string(),
+        receipt_guidance:
+            "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+                .to_string(),
         stop_conditions: vec![
             "Stop if imports, fixtures, or test setup cannot call the changed owner.".to_string(),
             "Stop if the expected value for the missing discriminator is ambiguous.".to_string(),
@@ -613,6 +616,7 @@ fn pilot_summary_json_projects_python_first_use_repair_card() {
         r#""suggested_test_name": "test_calculate_discount_threshold_boundary""#,
         r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary""#,
         r#""receipt_status": "unavailable_until_python_gap_ledger""#,
+        r#""receipt_guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.""#,
         r#""deferred_features": ["outcome_receipts", "runtime_mutation_execution", "gate_authority", "generated_tests"]"#,
     ] {
         assert!(
@@ -638,6 +642,7 @@ fn pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked() {
         "Suggested test: `test_calculate_discount_threshold_boundary` in `tests/test_pricing.py`",
         "Verify: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`",
         "Receipt status: `unavailable_until_python_gap_ledger`",
+        "Receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
         "## Python Preview First Use",
     ] {
         assert!(
@@ -654,6 +659,7 @@ fn pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked() {
         "recommended test: add test_calculate_discount_threshold_boundary in tests/test_pricing.py",
         "verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
         "receipt status: unavailable_until_python_gap_ledger",
+        "receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
         "Python preview:",
         "status: ready",
     ] {

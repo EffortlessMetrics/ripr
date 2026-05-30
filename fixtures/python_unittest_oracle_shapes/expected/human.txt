@@ -50,6 +50,7 @@ Python repair card (preview/advisory)
   suggested test: test_warn_coupon_return_value
   verify: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value (high)
   receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
     - Stop if imports, fixtures, or test setup cannot call the changed owner.
     - Stop if the expected value for the missing discriminator is ambiguous.

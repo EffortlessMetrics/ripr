@@ -782,8 +782,10 @@ Make first Python runs useful in CLI.
   JSON directly, materializes the check-output-derived
   `gap-decision-ledger.{json,md}`, and then selects the preview Python
   start-here repair through the normal GapRecord path.
-- A follow-up slice still needs, if useful, more contextual raw `ripr check` /
-  `pilot` receipt guidance.
+- Raw `ripr check` and `pilot` repair cards now include receipt guidance that
+  tells users to save check JSON and run `ripr first-pr --check-output` or
+  `ripr reports gap-ledger --check-output` to materialize a gap ledger with a
+  concrete receipt command.
 
 ### Work item: output/python-surface-projection
 

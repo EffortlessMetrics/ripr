@@ -21,6 +21,7 @@ pub(crate) struct PythonRepairCard {
     pub(crate) verify_command_confidence: String,
     pub(crate) receipt_command: Option<String>,
     pub(crate) receipt_status: String,
+    pub(crate) receipt_guidance: String,
     pub(crate) stop_conditions: Vec<String>,
     pub(crate) limits: Vec<String>,
 }
@@ -75,6 +76,7 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
         verify_command_confidence,
         receipt_command: None,
         receipt_status: "unavailable_until_python_gap_ledger".to_string(),
+        receipt_guidance: receipt_guidance(),
         stop_conditions: stop_conditions(),
         limits: limits(),
     })
@@ -217,6 +219,10 @@ fn limits() -> Vec<String> {
             .to_string(),
         "Verify success alone is not a gap-closure receipt.".to_string(),
     ]
+}
+
+fn receipt_guidance() -> String {
+    "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.".to_string()
 }
 
 fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
