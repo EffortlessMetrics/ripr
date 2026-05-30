@@ -2029,6 +2029,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md",
   "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+  "docs/handoffs/2026-05-30-typescript-preview-completion-closeout.md",
   "plans/typescript-preview-completion/implementation-plan.md",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
   "fixtures/typescript_mocked_module_limit/expected/human.txt",
@@ -2086,6 +2087,8 @@ metrics = [
   "language_adapter_typescript_lsp_preview_actionability_context",
   "language_adapter_typescript_ci_preview_grouping",
   "language_adapter_typescript_preview_repair_loop_dogfood",
+  "language_adapter_typescript_route_quality_by_language",
+  "language_adapter_javascript_route_quality_by_language",
 ]
 
 [[behavior]]

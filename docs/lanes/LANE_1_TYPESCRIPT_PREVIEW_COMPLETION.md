@@ -1,6 +1,6 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: TypeScript preview route-quality metrics landed; closeout decision next
+Status: Closed; TypeScript and JavaScript remain opt-in preview
 
 Date: 2026-05-29
 
@@ -374,11 +374,9 @@ support-tier promotion, complete repair-packet claims, runtime Jest/Vitest
 execution, generated tests, source edits, default gates, badge contribution,
 baseline authority, or RIPR Zero contribution.
 
-The next safe PR is:
-
-```text
-PR 15: campaign(ts): close TypeScript preview completion lane
-```
+The TypeScript preview completion lane is closed. Future work should be a
+separate support-tier promotion or analyzer-improvement packet, not a
+continuation of this completion lane.
 
 ## Validation
 
@@ -425,6 +423,9 @@ language and repair kind, so TypeScript and JavaScript preview outcomes can be
 measured without treating preview evidence as public repair packets, swarm-ready
 work, badge input, or blocking CI authority.
 
-Next slice: close the TypeScript preview completion lane by deciding whether
-the current evidence remains `preview` or supports a narrow, explicitly scoped
-support-tier move.
+Closeout decision: TypeScript and JavaScript remain `preview`. The current
+evidence proves opt-in advisory projection, repair-loop receipts, and
+route-quality learning, but not a public repair-packet queue, default gate
+input, badge input, baseline authority, RIPR Zero input, or
+calibrated-confidence support-tier move. See
+[TypeScript Preview Completion closeout](../handoffs/2026-05-30-typescript-preview-completion-closeout.md).

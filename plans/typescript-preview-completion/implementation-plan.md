@@ -589,7 +589,7 @@ git diff --check
 
 ## Work Item: campaign/typescript-preview-completion-closeout
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
@@ -600,3 +600,24 @@ Blocked by: none
 
 Decide whether TypeScript/JavaScript stay `preview` or earn a narrow
 `usable alpha` support claim, with proof links and deferred work explicit.
+
+### Current Delta
+
+Decision: TypeScript and JavaScript stay `preview`. The completion lane proved
+opt-in advisory static evidence, strict preview actionability, LSP/generated-CI
+projection, repair-loop dogfood receipts, and route-quality metrics by language
+and repair kind. It did not prove public repair-packet eligibility, default gate
+or badge authority, baseline/RIPR Zero participation, runtime Jest/Vitest
+execution, generated tests, autonomous edits, provider work, or mutation proof.
+
+### Proof Commands
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
