@@ -95,7 +95,11 @@ advisory actionable repair front panel: when existing
 `target/ripr/reports/actionable-gaps.json`, `actionable-gap-outcomes.json`, or
 `pr-review-front-panel.json` artifacts are present, it names repo and PR-local
 actionable counts, receipt movement state, static-limited counts, and one top
-next repair packet before raw path inventory. Missing artifacts stay visible as
+next repair packet before raw path inventory. When the actionable artifact
+contains an eligible Python preview packet, the same front panel also names the
+top Python repair card with its canonical gap, changed owner, missing
+discriminator, suggested test target, verify command, receipt command, stop
+conditions, and preview/advisory boundary. Missing artifacts stay visible as
 regeneration guidance; the summary does not infer analyzer truth, gate status,
 runtime proof, mutation proof, source edits, or generated tests.
 

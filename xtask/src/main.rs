@@ -54744,6 +54744,7 @@ fn pr_actionable_delta_front_panel_from_inputs(
 
     write_pr_actionable_delta_movement(&mut body, outcomes, front_panel);
     write_pr_actionable_top_packet(&mut body, changes, actionable);
+    write_pr_python_top_repair_card(&mut body, changes, actionable);
 
     body.push_str("\nBoundary:\n");
     body.push_str("- Static RIPR evidence only.\n");
@@ -54868,6 +54869,237 @@ fn write_pr_actionable_top_packet(
     {
         body.push_str(&format!("- receipt: `{}`\n", md_escape(&receipt)));
     }
+}
+
+fn write_pr_python_top_repair_card(
+    body: &mut String,
+    changes: &[ChangedPath],
+    actionable: &PrActionableInput,
+) {
+    let Some(report) = actionable.value() else {
+        return;
+    };
+    let packets = pr_actionable_packets(report);
+    let changed_paths = pr_changed_path_set(changes);
+    let selected = packets
+        .iter()
+        .copied()
+        .find(|packet| {
+            pr_packet_is_python(packet) && pr_packet_touches_changed_path(packet, &changed_paths)
+        })
+        .or_else(|| {
+            packets
+                .iter()
+                .copied()
+                .find(|packet| pr_packet_is_python(packet))
+        });
+    let Some(packet) = selected else {
+        return;
+    };
+
+    body.push_str("\nTop Python repair card:\n");
+    body.push_str("- language: `python` (`preview`)\n");
+    if let Some(authority) = pr_python_packet_authority_boundary(packet) {
+        body.push_str(&format!(
+            "- authority boundary: `{}`\n",
+            md_escape(&authority)
+        ));
+    }
+    body.push_str(&format!(
+        "- canonical gap: `{}`\n",
+        pr_string_path(packet, &["canonical_gap_id"]).unwrap_or_else(|| "unknown".to_string())
+    ));
+    if let Some(owner) = pr_python_packet_changed_owner(packet) {
+        body.push_str(&format!("- Changed owner: `{}`\n", md_escape(&owner)));
+    }
+    if let Some(changed) = pr_python_packet_changed_behavior(packet) {
+        body.push_str(&format!("- Changed behavior: {}\n", md_escape(&changed)));
+    }
+    if let Some(evidence) = pr_python_packet_current_test_evidence(packet) {
+        body.push_str(&format!(
+            "- Current test evidence: {}\n",
+            md_escape(&evidence)
+        ));
+    }
+    if let Some(missing) = pr_packet_missing_discriminator(packet) {
+        body.push_str(&format!(
+            "- Missing discriminator: {}\n",
+            md_escape(&missing)
+        ));
+    }
+    if let Some(action) = pr_python_packet_repair_action(packet) {
+        body.push_str(&format!("- repair action: `{}`\n", md_escape(&action)));
+    }
+    if let Some(shape) = pr_python_packet_test_shape(packet) {
+        body.push_str(&format!("- test shape: {}\n", md_escape(&shape)));
+    }
+    if let Some(assertion) = pr_python_packet_suggested_assertion(packet) {
+        body.push_str(&format!(
+            "- Suggested assertion: {}\n",
+            md_escape(&assertion)
+        ));
+    }
+    match (
+        pr_python_packet_suggested_test_name(packet),
+        pr_python_packet_suggested_test_file(packet),
+    ) {
+        (Some(name), Some(file)) => body.push_str(&format!(
+            "- Suggested test target: `{}` in `{}`\n",
+            md_escape(&name),
+            md_escape(&file)
+        )),
+        (Some(name), None) => {
+            body.push_str(&format!("- Suggested test: `{}`\n", md_escape(&name)));
+        }
+        (None, Some(file)) => {
+            body.push_str(&format!("- Suggested file: `{}`\n", md_escape(&file)));
+        }
+        (None, None) => {}
+    }
+    if let Some(verify) = pr_string_path(packet, &["verify_command"]) {
+        body.push_str(&format!("- Verify: `{}`\n", md_escape(&verify)));
+    }
+    if let Some(receipt) = pr_string_path(packet, &["receipt_command_or_path"])
+        .or_else(|| pr_string_path(packet, &["receipt_command"]))
+    {
+        body.push_str(&format!("- Receipt: `{}`\n", md_escape(&receipt)));
+    }
+    let stop_conditions = pr_python_packet_stop_conditions(packet);
+    if !stop_conditions.is_empty() {
+        body.push_str("- stop if:\n");
+        for condition in stop_conditions.iter().take(3) {
+            body.push_str(&format!("  - {}\n", md_escape(condition)));
+        }
+    }
+}
+
+fn pr_packet_is_python(packet: &Value) -> bool {
+    pr_first_string_path(packet, &[&["language"], &["repair_card", "language"]]).as_deref()
+        == Some("python")
+}
+
+fn pr_python_packet_authority_boundary(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["authority_boundary"],
+            &["repair_card", "authority_boundary"],
+            &["repair_card", "authority_boundary", "kind"],
+        ],
+    )
+}
+
+fn pr_python_packet_changed_owner(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["changed_owner"],
+            &["repair_card", "changed_owner"],
+            &["anchor", "owner"],
+            &["primary_anchor", "owner"],
+        ],
+    )
+}
+
+fn pr_python_packet_changed_behavior(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["changed_behavior"],
+            &["repair_card", "changed_behavior"],
+            &["repair_route", "changed_behavior"],
+        ],
+    )
+}
+
+fn pr_python_packet_current_test_evidence(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["current_test_evidence"],
+            &["repair_card", "current_test_evidence"],
+            &["evidence_summary"],
+        ],
+    )
+}
+
+fn pr_python_packet_repair_action(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["repair_action"],
+            &["repair_card", "repair_action"],
+            &["repair_route", "repair_kind"],
+            &["repair_route", "route_kind"],
+            &["repair_kind"],
+        ],
+    )
+}
+
+fn pr_python_packet_test_shape(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["recommended_test_shape"],
+            &["repair_card", "recommended_test_shape"],
+            &["repair_route", "target_test_type"],
+        ],
+    )
+}
+
+fn pr_python_packet_suggested_assertion(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["suggested_assertion"],
+            &["repair_card", "suggested_assertion"],
+            &["repair_route", "assertion_shape"],
+        ],
+    )
+}
+
+fn pr_python_packet_suggested_test_file(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["suggested_test_file"],
+            &["repair_card", "suggested_test_file"],
+            &["repair_route", "target_file"],
+        ],
+    )
+    .or_else(|| pr_first_string_array_path(packet, &["allowed_files"]))
+    .or_else(|| pr_first_string_array_path(packet, &["allowed_edit_surface"]))
+}
+
+fn pr_python_packet_suggested_test_name(packet: &Value) -> Option<String> {
+    pr_first_string_path(
+        packet,
+        &[
+            &["suggested_test_name"],
+            &["repair_card", "suggested_test_name"],
+            &["repair_route", "related_test"],
+            &["related_test_or_observer", "name"],
+        ],
+    )
+}
+
+fn pr_python_packet_stop_conditions(packet: &Value) -> Vec<String> {
+    audit_string_array(packet, &["stop_if"])
+        .or_else(|| audit_string_array(packet, &["stop_conditions"]))
+        .or_else(|| audit_string_array(packet, &["repair_card", "stop_conditions"]))
+        .or_else(|| audit_string_array(packet, &["repair_route", "stop_conditions"]))
+        .unwrap_or_default()
+}
+
+fn pr_first_string_path(value: &Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| pr_string_path(value, path))
+}
+
+fn pr_first_string_array_path(value: &Value, path: &[&str]) -> Option<String> {
+    audit_get(value, path)
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(json_scalar_as_string)
 }
 
 fn pr_packet_missing_discriminator(packet: &Value) -> Option<String> {
@@ -66455,6 +66687,78 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
             body.contains("- related test or observer: `tests/pricing.rs:42` `discount_boundary`")
         );
         assert!(body.contains("- verify: `ripr agent verify --root . --json`"));
+        assert!(body.contains("Does not run mutation testing"));
+    }
+
+    #[test]
+    fn pr_actionable_front_panel_highlights_top_python_repair_card() {
+        let changes = vec![ChangedPath {
+            path: "app/pricing.py".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+        let actionable = PrActionableInput::Read(serde_json::json!({
+            "report": "actionable-gaps",
+            "summary": {
+                "actionable_gaps": 1,
+                "packets_emitted": 1,
+                "public_projection_eligible_packets": 1,
+                "static_limitations": 0
+            },
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+                    "gap_state": "actionable",
+                    "public_projection_eligible": true,
+                    "language": "python",
+                    "language_status": "preview",
+                    "authority_boundary": "Python repair cards are preview advisory evidence.",
+                    "source_file": "app/pricing.py",
+                    "changed_owner": "calculate_discount",
+                    "changed_behavior": "if amount >= threshold:",
+                    "repair_kind": "add_boundary_assertion",
+                    "missing_discriminator": "amount == threshold",
+                    "current_test_evidence": "tests/test_pricing.py reaches calculate_discount but only asserts broad success.",
+                    "recommended_test_shape": "pytest exact boundary assertion",
+                    "suggested_assertion": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+                    "suggested_test_file": "tests/test_pricing.py",
+                    "suggested_test_name": "test_calculate_discount_threshold_boundary",
+                    "allowed_files": ["tests/test_pricing.py"],
+                    "forbidden_files": ["app/pricing.py"],
+                    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+                    "receipt_command": "ripr outcome --before target/ripr/reports/before-check.json --after target/ripr/reports/after-check.json --out target/ripr/receipts/python-pricing-boundary.json",
+                    "stop_if": [
+                        "import cannot be resolved",
+                        "expected value is ambiguous",
+                        "production code edit appears necessary"
+                    ]
+                }
+            ]
+        }));
+
+        let body = pr_actionable_delta_front_panel_from_inputs(
+            &changes,
+            &actionable,
+            &PrActionableInput::Missing,
+            &PrActionableInput::Missing,
+        );
+
+        assert!(body.contains("Top Python repair card:"));
+        assert!(body.contains("- language: `python` (`preview`)"));
+        assert!(body.contains("Python repair cards are preview advisory evidence."));
+        assert!(body.contains(
+            "- canonical gap: `gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold`"
+        ));
+        assert!(body.contains("- Changed owner: `calculate_discount`"));
+        assert!(body.contains("- Missing discriminator: amount == threshold"));
+        assert!(body.contains("- test shape: pytest exact boundary assertion"));
+        assert!(body.contains(
+            "- Suggested test target: `test_calculate_discount_threshold_boundary` in `tests/test_pricing.py`"
+        ));
+        assert!(body.contains(
+            "- Verify: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`"
+        ));
+        assert!(body.contains("- Receipt: `ripr outcome --before"));
+        assert!(body.contains("  - production code edit appears necessary"));
         assert!(body.contains("Does not run mutation testing"));
     }
 

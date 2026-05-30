@@ -813,6 +813,10 @@ Project Python repair cards consistently across output surfaces.
 - GitHub annotation output now includes a concise Python repair-card sentence
   with the missing discriminator, suggested test target, verify command, and
   preview/advisory boundary.
+- `cargo xtask pr-summary` now highlights the top Python preview repair card
+  from `actionable-gaps.json` with the canonical gap, changed owner, missing
+  discriminator, suggested test target, verify command, receipt command, and
+  stop conditions while preserving the static/advisory boundary.
 
 ### Work item: ci/python-advisory-mode
 

@@ -27,6 +27,6 @@ editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 editors/vscode/test-fixtures/**/Cargo.toml|fixture_input|lsp/editor|VS Code extension test fixture workspace Cargo manifest.
 fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may contain Cargo manifests as analyzed inputs.
-fixtures/python/basic/pyproject.toml|fixture_input|analysis-fixtures|Python project detection fixture needs a project marker as analyzed input.
 fixtures/first_successful_pr/python-preview-gap/pyproject.toml|fixture_input|analysis-fixtures|First successful PR Python preview fixture needs a project marker as analyzed input.
+fixtures/python/basic/pyproject.toml|fixture_input|analysis-fixtures|Python project detection fixture needs a project marker as analyzed input.
 xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.
