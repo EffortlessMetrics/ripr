@@ -57066,6 +57066,9 @@ fn forbids_active_line(lines: &[String], pattern: &str) -> bool {
 const DROID_SAFE_ACTION: &str = "EffortlessMetrics/droid-action-safe";
 const DROID_SAFE_ACTION_SHA: &str = "7c1377ccbacddc95560d1570547a5baa51de01ec";
 const DROID_UNSAFE_UPSTREAM_ACTION: &str = "Factory-AI/droid-action";
+const DROID_GH_CLI_ARCHIVE: &str = "gh_2.82.1_linux_amd64.tar.gz";
+const DROID_GH_CLI_SHA256: &str =
+    "afada88676dfccea384e6cc28ae990b3e31bbc55f9d75c4697f902c757fa462b";
 
 fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text: &str) {
     for (line_number, line) in text.lines().enumerate() {
@@ -57180,6 +57183,27 @@ fn check_droid_common(
     } else if !has_active_line(&lower_lines, "upload_debug_artifacts: false") {
         violations.push(format!(
             "{path_label}: must explicitly set upload_debug_artifacts: false"
+        ));
+    }
+
+    if !has_active_line(&lines, "command -v gh") {
+        violations.push(format!(
+            "{path_label}: must check for GitHub CLI before running Droid"
+        ));
+    }
+    if !has_active_line(&lines, DROID_GH_CLI_ARCHIVE) {
+        violations.push(format!(
+            "{path_label}: must install pinned GitHub CLI archive {DROID_GH_CLI_ARCHIVE}"
+        ));
+    }
+    if !has_active_line(&lines, DROID_GH_CLI_SHA256) {
+        violations.push(format!(
+            "{path_label}: must verify pinned GitHub CLI SHA256 {DROID_GH_CLI_SHA256}"
+        ));
+    }
+    if !has_active_line(&lines, "$GITHUB_PATH") {
+        violations.push(format!(
+            "{path_label}: must add the pinned GitHub CLI bin directory to $GITHUB_PATH"
         ));
     }
 
@@ -74252,6 +74276,39 @@ show_full_output: false
     }
 
     #[test]
+    fn check_droid_common_flags_missing_github_cli_bootstrap() {
+        let mut violations = Vec::new();
+        let yaml = "\
+security_model: \"custom:MiniMax-M2.7-0\"
+$HOME/.factory/settings.local.json
+${MINIMAX_API_KEY}
+show_full_output: false
+upload_debug_artifacts: false
+";
+        check_droid_common(&mut violations, "test.yml", yaml, false, false);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("must check for GitHub CLI"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("must install pinned GitHub CLI archive"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("must verify pinned GitHub CLI SHA256"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("must add the pinned GitHub CLI bin directory"))
+        );
+    }
+
+    #[test]
     fn check_droid_common_allows_security_scan_without_review_model_or_same_repo_guard() {
         let mut violations = Vec::new();
         let yaml = "\
@@ -74289,6 +74346,14 @@ jobs:
           cat > "$HOME/.factory/settings.local.json" <<'JSON'
           {"apiKey": "${MINIMAX_API_KEY}"}
           JSON
+      - name: Ensure GitHub CLI for Droid Action
+        run: |
+          if command -v gh >/dev/null 2>&1; then exit 0; fi
+          gh_archive="gh_2.82.1_linux_amd64.tar.gz"
+          gh_sha256="afada88676dfccea384e6cc28ae990b3e31bbc55f9d75c4697f902c757fa462b"
+          printf '%s  %s\n' "$gh_sha256" "$gh_archive" > gh.sha256
+          sha256sum -c gh.sha256
+          echo "/tmp/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
       - uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec
         with:
           upload_debug_artifacts: false

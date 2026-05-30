@@ -83,6 +83,26 @@ jobs:
           }
           JSON
 
+      - name: Ensure GitHub CLI for Droid Action
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+          gh_archive="gh_2.82.1_linux_amd64.tar.gz"
+          gh_sha256="afada88676dfccea384e6cc28ae990b3e31bbc55f9d75c4697f902c757fa462b"
+          gh_url="https://github.com/cli/cli/releases/download/v2.82.1/${gh_archive}"
+          gh_root="${RUNNER_TEMP:-/tmp}/gh-cli-2.82.1-${GITHUB_RUN_ID:-manual}"
+          mkdir -p "$gh_root"
+          curl -fsSL "$gh_url" -o "$gh_root/$gh_archive"
+          printf '%s  %s\n' "$gh_sha256" "$gh_root/$gh_archive" > "$gh_root/gh.sha256"
+          sha256sum -c "$gh_root/gh.sha256"
+          tar -xzf "$gh_root/$gh_archive" -C "$gh_root"
+          echo "$gh_root/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
+          "$gh_root/gh_2.82.1_linux_amd64/bin/gh" --version
+
       - name: Run Droid Exec with MiniMax M2.7 BYOK
         uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
         with:
