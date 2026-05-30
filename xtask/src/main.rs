@@ -22905,7 +22905,11 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     {
         missing_context.push("canonical_gap_id".to_string());
     }
-    if gap_state != "actionable" {
+    if gap_state != "actionable"
+        || projection_exclusion_reasons
+            .iter()
+            .any(|reason| reason == "not_actionable_gap_state")
+    {
         missing_context.push("actionable_gap_state".to_string());
     }
     if !has_repair_route {
@@ -85399,6 +85403,81 @@ covered_by = ["cargo xtask check-file-policy"]
                         example["state"] == "missing_related_test_or_observer"
                             && example["example_packet_id"]
                                 == "packet:explicit-missing-related-context"
+                    })
+                })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_routes_explicit_not_actionable_gap_state_projection_exclusion()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "packet_id": "packet:explicit-not-actionable-gap-state",
+                    "canonical_gap_id": "gap:explicit-not-actionable-gap-state",
+                    "evidence_class": "error_path",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_exact_error_variant",
+                    "target_test_type": "error_variant_observer",
+                    "assertion_shape": "assert!(matches!(err, Error::Exact))",
+                    "repair_route": {
+                        "repair_kind": "add_exact_error_variant",
+                        "target_test_type": "error_variant_observer",
+                        "assertion_shape": "assert!(matches!(err, Error::Exact))"
+                    },
+                    "verify_command": "cargo test exact_error_variant",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/error.rs",
+                        "name": "exact_error_variant"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "allowed_edit_surface": ["tests/error.rs"],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true,
+                    "projection_exclusion_reasons": ["not_actionable_gap_state"]
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        assert!(ready.is_empty());
+
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert_eq!(blocked[0].missing_context, vec!["actionable_gap_state"]);
+        assert_eq!(
+            blocked[0].projection_exclusion_reasons,
+            vec!["not_actionable_gap_state"]
+        );
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["not_actionable_gap_state"],
+            serde_json::Value::from(1)
+        );
+        assert!(
+            value["blocked_state_examples"]
+                .as_array()
+                .is_some_and(|examples| {
+                    examples.iter().any(|example| {
+                        example["state"] == "not_actionable_gap_state"
+                            && example["example_packet_id"]
+                                == "packet:explicit-not-actionable-gap-state"
                     })
                 })
         );
