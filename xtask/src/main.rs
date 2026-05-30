@@ -21974,6 +21974,23 @@ struct RiprSwarmAttemptLedgerSummary {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct RiprSwarmAttemptLedgerHistorySummary {
+    attempts_total: usize,
+    durable_attempts_total: usize,
+    canonical_gaps_total: usize,
+    not_attempted: usize,
+    attempted_no_receipt: usize,
+    receipt_present: usize,
+    missing_verify_result: usize,
+    evidence_improved: usize,
+    evidence_unchanged: usize,
+    expected_unchanged: usize,
+    evidence_regressed: usize,
+    resolved: usize,
+    unknown: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct RiprSwarmRepairRouteQualityRow {
     language: Option<String>,
     repair_kind: String,
@@ -24802,6 +24819,46 @@ fn ripr_swarm_attempt_ledger_summary(
     }
 }
 
+fn ripr_swarm_attempt_ledger_history_summary(
+    report: &RiprSwarmAttemptLedgerReport,
+) -> RiprSwarmAttemptLedgerHistorySummary {
+    let state_counts = actionable_gap_outcome_state_counts_from_entries(&report.attempts);
+    let canonical_gaps_total = report
+        .attempts
+        .iter()
+        .map(|attempt| attempt.canonical_gap_id.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    RiprSwarmAttemptLedgerHistorySummary {
+        attempts_total: report.attempts.len(),
+        durable_attempts_total: report
+            .attempts
+            .iter()
+            .filter(|attempt| attempt.outcome != "not_attempted")
+            .count(),
+        canonical_gaps_total,
+        not_attempted: state_counts.get("not_attempted").copied().unwrap_or(0),
+        attempted_no_receipt: state_counts
+            .get("attempted_no_receipt")
+            .copied()
+            .unwrap_or(0),
+        receipt_present: state_counts.get("receipt_present").copied().unwrap_or(0),
+        missing_verify_result: ripr_swarm_attempt_ledger_missing_verify_result_count(
+            &report.attempts,
+        ),
+        evidence_improved: state_counts.get("evidence_improved").copied().unwrap_or(0),
+        evidence_unchanged: state_counts.get("evidence_unchanged").copied().unwrap_or(0),
+        expected_unchanged: report
+            .attempts
+            .iter()
+            .filter(|attempt| ripr_swarm_attempt_expected_unchanged_negative_capability(attempt))
+            .count(),
+        evidence_regressed: state_counts.get("evidence_regressed").copied().unwrap_or(0),
+        resolved: state_counts.get("resolved").copied().unwrap_or(0),
+        unknown: state_counts.get("unknown").copied().unwrap_or(0),
+    }
+}
+
 fn actionable_gap_outcome_state_counts_from_entries(
     attempts: &[RiprSwarmAttemptLedgerEntry],
 ) -> BTreeMap<String, usize> {
@@ -25276,6 +25333,7 @@ fn ripr_swarm_missing_evidence_fields_json(
 
 fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Result<String, String> {
     let summary = ripr_swarm_attempt_ledger_summary(report);
+    let history_summary = ripr_swarm_attempt_ledger_history_summary(report);
     let value = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -25308,6 +25366,7 @@ fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Resu
             },
         },
         "summary": ripr_swarm_attempt_ledger_summary_json(&summary),
+        "attempt_history_summary": ripr_swarm_attempt_ledger_history_summary_json(&history_summary),
         "repair_route_quality": ripr_swarm_repair_route_quality_json(&report.repair_route_quality),
         "language_repair_route_quality": ripr_swarm_repair_route_quality_json(
             &report.language_repair_route_quality
@@ -25358,6 +25417,26 @@ fn ripr_swarm_attempt_ledger_summary_json(summary: &RiprSwarmAttemptLedgerSummar
     })
 }
 
+fn ripr_swarm_attempt_ledger_history_summary_json(
+    summary: &RiprSwarmAttemptLedgerHistorySummary,
+) -> Value {
+    serde_json::json!({
+        "attempts_total": summary.attempts_total,
+        "durable_attempts_total": summary.durable_attempts_total,
+        "canonical_gaps_total": summary.canonical_gaps_total,
+        "not_attempted": summary.not_attempted,
+        "attempted_no_receipt": summary.attempted_no_receipt,
+        "receipt_present": summary.receipt_present,
+        "missing_verify_result": summary.missing_verify_result,
+        "evidence_improved": summary.evidence_improved,
+        "evidence_unchanged": summary.evidence_unchanged,
+        "expected_unchanged": summary.expected_unchanged,
+        "evidence_regressed": summary.evidence_regressed,
+        "resolved": summary.resolved,
+        "unknown": summary.unknown,
+    })
+}
+
 fn ripr_swarm_attempt_ledger_entry_json(entry: &RiprSwarmAttemptLedgerEntry) -> Value {
     serde_json::json!({
         "packet_id": entry.packet_id,
@@ -25388,6 +25467,7 @@ fn ripr_swarm_attempt_ledger_entry_json(entry: &RiprSwarmAttemptLedgerEntry) -> 
 
 fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> String {
     let summary = ripr_swarm_attempt_ledger_summary(report);
+    let history_summary = ripr_swarm_attempt_ledger_history_summary(report);
     let mut out = String::new();
     out.push_str("# RIPR Swarm Attempt Ledger\n\n");
     out.push_str(&format!(
@@ -25450,6 +25530,34 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
         ("resolved", summary.resolved),
         ("unknown", summary.unknown),
         ("orphaned_receipts", summary.orphaned_receipts),
+    ] {
+        out.push_str(&format!("| {} | {} |\n", label.replace('_', " "), count));
+    }
+    out.push('\n');
+    out.push_str("## Attempt History Summary\n\n");
+    out.push_str("This table counts durable attempt history before the latest-attempt projection collapses repeated attempts by canonical gap. It preserves prior unchanged, no-receipt, and expected-unchanged evidence without making those older rows current route-quality failures.\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    for (label, count) in [
+        ("attempts_total", history_summary.attempts_total),
+        (
+            "durable_attempts_total",
+            history_summary.durable_attempts_total,
+        ),
+        ("canonical_gaps_total", history_summary.canonical_gaps_total),
+        ("not_attempted", history_summary.not_attempted),
+        ("attempted_no_receipt", history_summary.attempted_no_receipt),
+        ("receipt_present", history_summary.receipt_present),
+        (
+            "missing_verify_result",
+            history_summary.missing_verify_result,
+        ),
+        ("evidence_improved", history_summary.evidence_improved),
+        ("evidence_unchanged", history_summary.evidence_unchanged),
+        ("expected_unchanged", history_summary.expected_unchanged),
+        ("evidence_regressed", history_summary.evidence_regressed),
+        ("resolved", history_summary.resolved),
+        ("unknown", history_summary.unknown),
     ] {
         out.push_str(&format!("| {} | {} |\n", label.replace('_', " "), count));
     }
@@ -88561,6 +88669,18 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["summary"]["expected_unchanged"],
             serde_json::Value::from(0)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["evidence_unchanged"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["attempted_no_receipt"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["attempt_history_summary"]["expected_unchanged"],
+            serde_json::Value::from(1)
         );
         assert!(
             !value["top_failing_repair_routes"]

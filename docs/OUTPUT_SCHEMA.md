@@ -3100,6 +3100,21 @@ actionable operator evidence instead of only route-quality counts.
     "unknown": 0,
     "orphaned_receipts": 1
   },
+  "attempt_history_summary": {
+    "attempts_total": 5,
+    "durable_attempts_total": 4,
+    "canonical_gaps_total": 3,
+    "not_attempted": 1,
+    "attempted_no_receipt": 1,
+    "receipt_present": 0,
+    "missing_verify_result": 0,
+    "evidence_improved": 2,
+    "evidence_unchanged": 1,
+    "expected_unchanged": 0,
+    "evidence_regressed": 0,
+    "resolved": 0,
+    "unknown": 0
+  },
   "repair_route_quality": [
     {
       "language": null,
@@ -3274,6 +3289,12 @@ current `top_ready_packets[]` as synthetic `not_attempted` queue placeholders
 until a receipt or outcome row replaces them. It preserves
 `attempted_no_receipt`, `receipt_present`, `evidence_improved`,
 `evidence_unchanged`, `evidence_regressed`, `resolved`, and `unknown` outcomes.
+`summary` is the latest-projection state used for current routing, except
+`summary.attempts_total`, which reports the durable row count for operator
+visibility. `attempt_history_summary` counts full durable `attempts[]` history
+before latest-attempt collapse and is the place to inspect prior unchanged,
+no-receipt, regressed, or expected-unchanged outcomes that were superseded by a
+newer current attempt.
 It preserves prior `not_attempted` rows only when they remain tied to the current
 swarm plan or carry durable receipt/verification evidence; stale synthetic
 `not_attempted` placeholders are dropped so retired packets do not create
@@ -3294,7 +3315,8 @@ canonical gap, it increments `summary.expected_unchanged` and
 `repair_kind_failure_count`, top failing repair routes, or route-quality backlog
 packets. If a newer improved or resolved attempt supersedes it, the expected
 unchanged row remains in durable `attempts[]` history but no longer affects
-latest-route quality counts.
+latest-route quality counts. It still contributes to
+`attempt_history_summary.expected_unchanged`.
 
 Generated `attempt_id` values include a stable attempt-instance suffix when the
 outcome carries one, preferring explicit outcome `attempt_instance`, then
