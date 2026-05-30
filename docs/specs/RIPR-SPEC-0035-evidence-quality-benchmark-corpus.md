@@ -224,6 +224,13 @@ affinity.
   pins the production-wrapper ambiguity guard: duplicate production helper
   names with different owner-call targets do not become helper-owner-call
   activation.
+- `test_grip_evidence::tests::given_call_presence_when_module_qualified_ambiguous_production_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_module_qualified_wrapper_asserts_other_target_then_activation_stays_unknown`
+  pin the qualified-wrapper exception: an explicit `module::wrapper(...)`
+  call can disambiguate duplicate production wrapper names for value-insensitive
+  `call_presence` target-affinity activation, but only when the related
+  assertion mentions the matching call target and no activation values are
+  invented.
 - `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_production_wrapper_then_activation_stays_unknown`
   pins that a test-local helper with the same name as a production wrapper does
   not inherit the production wrapper's owner-call relation.
