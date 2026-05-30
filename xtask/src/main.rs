@@ -7977,6 +7977,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "targeted_outcome_exact_error_variant_receipt_improved",
+        "evidence_improved",
+    ),
+    (
         "dry_run_receipt_command_missing_named",
         "attempted_no_receipt",
     ),
@@ -24336,7 +24340,8 @@ fn ripr_swarm_attempt_ledger_entries_from_real_repair_attempts(
     }
     audit_array(corpus, &["cases"])
         .iter()
-        .filter_map(|case| {
+        .enumerate()
+        .filter_map(|(index, case)| {
             let canonical_gap_id = audit_non_empty_string(case, &["canonical_gap_id"])?;
             let outcome =
                 audit_non_empty_string(case, &["outcome"]).unwrap_or_else(|| "unknown".to_string());
@@ -24373,7 +24378,10 @@ fn ripr_swarm_attempt_ledger_entries_from_real_repair_attempts(
                 before_gap_state: audit_non_empty_string(case, &["before_gap_state"]),
                 after_gap_state: audit_non_empty_string(case, &["after_gap_state"]),
                 outcome,
-                timestamp: Some(generated_at.to_string()),
+                timestamp: Some(ripr_swarm_attempt_ledger_ordered_import_timestamp(
+                    generated_at,
+                    index,
+                )),
                 receipt_state,
                 movement_source: Some("real_repair_attempts".to_string()),
                 reason: audit_non_empty_string(case, &["reason"])
@@ -24381,6 +24389,13 @@ fn ripr_swarm_attempt_ledger_entries_from_real_repair_attempts(
             })
         })
         .collect()
+}
+
+fn ripr_swarm_attempt_ledger_ordered_import_timestamp(generated_at: &str, index: usize) -> String {
+    if let Some(ms) = ripr_swarm_attempt_ledger_unix_ms_timestamp(Some(generated_at)) {
+        return format!("unix_ms:{}", ms.saturating_add(index as u128));
+    }
+    format!("{generated_at}#{index:06}")
 }
 
 fn ripr_swarm_attempt_ledger_prior_entries_from_value(
@@ -88201,6 +88216,116 @@ covered_by = ["cargo xtask check-file-policy"]
                         })
                         .any(|gap| gap == "gap:report-config-label")
                 })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_ledger_real_corpus_supersedes_exact_error_variant_unchanged()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "outcomes": []
+        });
+        let corpus_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(REAL_REPAIR_ATTEMPTS_CORPUS);
+        let real_attempts = read_json_value(&corpus_path)?;
+
+        let report = ripr_swarm_attempt_ledger_from_values_with_real_repair_attempts(
+            "unix_ms:100".to_string(),
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "missing".to_string(),
+                limitation: Some("no prior ledger".to_string()),
+                value: None,
+            },
+            RiprSwarmReadinessInput {
+                path: REAL_REPAIR_ATTEMPTS_CORPUS.to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&real_attempts),
+            },
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_str(&ripr_swarm_attempt_ledger_json(&report)?)
+                .map_err(|err| err.to_string())?;
+        let latest = value["latest_attempts"]
+            .as_array()
+            .and_then(|attempts| {
+                attempts
+                    .iter()
+                    .find(|attempt| attempt["canonical_gap_id"] == "gap:unchanged")
+            })
+            .ok_or_else(|| "expected latest add_exact_error_variant attempt".to_string())?;
+        assert_eq!(latest["outcome"], "evidence_improved");
+        assert_eq!(latest["repair_kind"], "add_exact_error_variant");
+        assert_eq!(
+            latest["verify_command"],
+            "cargo test -p ripr exact_error_variant --lib"
+        );
+        assert_eq!(latest["receipt_command"], "cargo xtask dogfood");
+        assert_eq!(
+            latest["receipt_path"],
+            serde_json::Value::from(REAL_REPAIR_ATTEMPTS_CORPUS)
+        );
+
+        let route_quality = value["repair_route_quality"]
+            .as_array()
+            .and_then(|rows| {
+                rows.iter()
+                    .find(|row| row["repair_kind"] == "add_exact_error_variant")
+            })
+            .ok_or_else(|| "expected add_exact_error_variant route-quality row".to_string())?;
+        assert_eq!(
+            route_quality["repair_kind_unchanged"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            route_quality["repair_kind_improved"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            route_quality["repair_kind_failure_count"],
+            serde_json::Value::from(0)
+        );
+        assert!(
+            !value["repair_route_quality_backlog"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|row| row["repair_kind"] == "add_exact_error_variant")
         );
         Ok(())
     }

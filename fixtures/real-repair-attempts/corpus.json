@@ -173,6 +173,42 @@
       "reason": "A real merged route-quality PR improved add_exact_error_variant repair guidance after an unchanged dogfood attempt showed broad error guidance was not trustworthy enough."
     },
     {
+      "id": "targeted_outcome_exact_error_variant_receipt_improved",
+      "source_ref": "local:bounded-add-exact-error-variant-receipt-2026-05-30",
+      "canonical_gap_id": "gap:unchanged",
+      "packet_id": "evidence-unchanged-from-targeted-outcome",
+      "repair_kind": "add_exact_error_variant",
+      "target_test_or_observer_shape": "exact error-variant observer guidance that names the concrete variant and rejects broad Err/is_err/expect_err evidence",
+      "verify_command": "cargo test -p ripr exact_error_variant --lib",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "actionable",
+      "after_gap_state": "actionable",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Re-ran the add_exact_error_variant route through the bounded exact-error-variant guidance tests instead of treating the original unchanged targeted outcome as the latest route result.",
+      "evidence_movement": "improved: the add_exact_error_variant route now has a focused verify command and durable dogfood receipt while the historical unchanged attempt remains visible.",
+      "operator_note": "This records route-learning progress for the failed exact-error-variant route; it does not claim the original static gap was resolved or change public badge or gate semantics.",
+      "must_not_change": [
+        "unchanged attempt visibility",
+        "resolved classification",
+        "public badge semantics",
+        "CI gate defaults",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/real-repair-attempts/corpus.json:targeted_outcome_left_gap_unchanged",
+        "crates/ripr/src/output/agent_seam_packets.rs:packet_v2_carries_exact_error_variant_guidance_for_error_seams",
+        "crates/ripr/src/output/agent_seam_packets.rs:error_variant_assertion_shape_fallback_names_exact_variant_without_nested_comments",
+        "target/ripr/reports/swarm-readiness.json:route-quality:add-exact-error-variant:unchanged"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real follow-up run proved the add_exact_error_variant route can preserve a focused verify command and durable receipt path without turning the historical unchanged attempt into success."
+    },
+    {
       "id": "dry_run_receipt_command_missing_named",
       "source_ref": "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md",
       "canonical_gap_id": "gap:report-config-label",
