@@ -381,6 +381,7 @@ adapter contributes:
 - `language_adapter_python_test_placement_verify`
 - `language_adapter_python_repair_card_v1`
 - `language_adapter_python_agent_packet_v1`
+- `language_adapter_python_gap_receipt_from_check_output`
 - `language_adapter_python_pilot_first_use_path`
 - `language_adapter_python_static_limit_stop_reasons`
 - `language_adapter_python_static_limit_dynamic_dispatch`

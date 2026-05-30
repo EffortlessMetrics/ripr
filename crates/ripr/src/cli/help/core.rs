@@ -55,13 +55,14 @@ pub(super) const OUTCOME_HELP: &str = r#"Compare before/after static evidence af
 Usage: ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
 
 Options:
-  --before PATH    Repo-exposure JSON snapshot before the focused test.
-  --after PATH     Repo-exposure JSON snapshot after the focused test.
+  --before PATH    Static snapshot before the focused test: repo exposure or check JSON.
+  --after PATH     Static snapshot after the focused test: repo exposure or check JSON.
   --format FORMAT  md, markdown, text, or json. Defaults to md.
   --out PATH       Write the rendered receipt to a file instead of stdout.
 
 The outcome receipt is advisory. It compares static repo-exposure snapshots by
-seam_id and reports moved, unchanged, regressed, new, and removed seams. Its
+seam_id and check-output snapshots by canonical_gap_id, then reports moved,
+unchanged, regressed, new, and removed gaps or seams. Its
 review receipt summarizes what changed, what RIPR flagged before, which focused
 proof signals moved, what remains weak or unknown, and what reviewers should
 inspect or avoid inferring. It does not run analysis, edit source, generate

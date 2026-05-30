@@ -1,8 +1,10 @@
 //! Render the targeted-test before/after outcome receipt.
 //!
-//! `ripr outcome` compares two previously rendered `repo-exposure-json`
-//! artifacts. It does not run analysis or mutation testing; it only reports
-//! whether static seam evidence moved after a focused test change.
+//! `ripr outcome` compares two previously rendered RIPR static snapshots.
+//! Repo-exposure snapshots are matched by seam identity; check-output snapshots
+//! can also be matched by canonical gap identity. It does not run analysis or
+//! mutation testing; it only reports whether static evidence moved after a
+//! focused test change.
 
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -82,6 +84,7 @@ pub(crate) struct TargetedTestOutcomeMovement {
     before: String,
     after: String,
     direction: String,
+    gap_movement: String,
     evidence_delta: Vec<String>,
     evidence_source: String,
     reach_delta: Option<TargetedTestOutcomeStageDelta>,
@@ -255,11 +258,17 @@ fn count_for_class(counts: &BTreeMap<String, usize>, class: &str) -> usize {
 fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
     let value: Value = serde_json::from_str(json)
         .map_err(|err| format!("failed to parse repo exposure JSON: {err}"))?;
-    let seams = value
-        .get("seams")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "repo exposure JSON is missing `seams` array".to_string())?;
+    if let Some(seams) = value.get("seams").and_then(Value::as_array) {
+        return parse_repo_exposure_seams(seams);
+    }
+    if let Some(findings) = value.get("findings").and_then(Value::as_array) {
+        return parse_check_output_findings(findings);
+    }
 
+    Err("static snapshot JSON is missing repo-exposure `seams` array or check-output `findings` array".to_string())
+}
+
+fn parse_repo_exposure_seams(seams: &[Value]) -> Result<Vec<StaticSeamRecord>, String> {
     let mut records = Vec::new();
     for seam in seams {
         let evidence_record = seam
@@ -321,6 +330,75 @@ fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>,
     Ok(records)
 }
 
+fn parse_check_output_findings(findings: &[Value]) -> Result<Vec<StaticSeamRecord>, String> {
+    let mut records = Vec::new();
+    for finding in findings {
+        let Some(record) = static_seam_record_from_check_finding(finding) else {
+            continue;
+        };
+        records.push(record);
+    }
+    Ok(records)
+}
+
+fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRecord> {
+    let canonical_gap_id = string_at_path(
+        finding,
+        &[
+            &["canonical_gap_id"],
+            &["canonical_gap", "id"],
+            &["python_repair_card", "canonical_gap_id"],
+        ],
+    )?;
+    let canonical_gap = finding
+        .get("canonical_gap")
+        .filter(|value| value.is_object());
+    let seam_kind = string_at_path(
+        finding,
+        &[
+            &["canonical_gap", "behavior_kind"],
+            &["probe", "family"],
+            &["python_repair_card", "source"],
+        ],
+    )
+    .unwrap_or("unknown");
+    let file = string_at_path(
+        finding,
+        &[
+            &["canonical_gap", "file"],
+            &["probe", "file"],
+            &["python_repair_card", "suggested_location", "source_file"],
+        ],
+    )
+    .map(normalize_report_path)
+    .unwrap_or_else(|| "unknown".to_string());
+    let line = usize_at_path(finding, &[&["probe", "line"]]).unwrap_or(0);
+    let classification =
+        string_at_path(finding, &[&["classification"]]).unwrap_or("static_unknown");
+    let (oracle_kind, oracle_strength) = strongest_related_oracle(finding);
+    let evidence_path = check_output_ripr_stages(finding);
+    let related_tests_total = related_tests_total(None, finding);
+    let observed_values = observed_value_strings(finding);
+    let missing_discriminators = missing_discriminator_strings(finding);
+
+    Some(StaticSeamRecord {
+        seam_id: canonical_gap_id.to_string(),
+        seam_kind: canonical_gap
+            .and_then(|gap| optional_json_string(Some(gap), "behavior_kind"))
+            .unwrap_or_else(|| seam_kind.to_string()),
+        file,
+        line,
+        seam_grip_class: grip_class_from_check_classification(classification).to_string(),
+        oracle_kind,
+        oracle_strength,
+        observed_values,
+        missing_discriminators,
+        evidence_source: "check_output_finding".to_string(),
+        evidence_path,
+        related_tests_total,
+    })
+}
+
 fn build_targeted_test_outcome_report(
     before: &[StaticSeamRecord],
     after: &[StaticSeamRecord],
@@ -380,7 +458,7 @@ fn targeted_outcome_seams_by_id(
     for seam in seams {
         if out.insert(seam.seam_id.clone(), seam.clone()).is_some() {
             return Err(format!(
-                "{label} repo exposure JSON contains duplicate seam_id `{}`",
+                "{label} static snapshot JSON contains duplicate seam_id `{}`",
                 seam.seam_id
             ));
         }
@@ -415,6 +493,11 @@ fn targeted_test_outcome_movement(
     } else {
         "changed"
     };
+    let gap_movement = targeted_outcome_gap_movement(
+        before.seam_grip_class.as_str(),
+        after.seam_grip_class.as_str(),
+        direction,
+    );
     let evidence_source = movement_evidence_source(before, after);
     let reach_delta = stage_delta(before, after, "reach");
     let activate_delta = stage_delta(before, after, "activate");
@@ -460,6 +543,7 @@ fn targeted_test_outcome_movement(
         before: before.seam_grip_class.clone(),
         after: after.seam_grip_class.clone(),
         direction: direction.to_string(),
+        gap_movement: gap_movement.to_string(),
         evidence_delta,
         evidence_source,
         reach_delta,
@@ -499,6 +583,19 @@ fn targeted_outcome_grip_rank(class: &str) -> u8 {
         "opaque" => 2,
         "ungripped" => 1,
         _ => 0,
+    }
+}
+
+fn targeted_outcome_gap_movement(before: &str, after: &str, direction: &str) -> &'static str {
+    let before_needs_attention = review_attention_class(before);
+    let after_needs_attention = review_attention_class(after);
+    match (before_needs_attention, after_needs_attention, direction) {
+        (true, false, _) => "closed",
+        (false, true, _) => "opened",
+        (true, true, "improved") => "improved",
+        (true, true, "regressed") => "regressed",
+        (_, _, "changed") => "changed",
+        _ => "unchanged",
     }
 }
 
@@ -595,6 +692,7 @@ fn targeted_test_outcome_movement_json(movement: &TargetedTestOutcomeMovement) -
         "before": movement.before.as_str(),
         "after": movement.after.as_str(),
         "direction": movement.direction.as_str(),
+        "gap_movement": movement.gap_movement.as_str(),
         "evidence_delta": movement.evidence_delta,
         "evidence_source": movement.evidence_source.as_str(),
         "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
@@ -644,6 +742,7 @@ fn agent_verify_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
         "before": movement.before.as_str(),
         "after": movement.after.as_str(),
         "change": movement.direction.as_str(),
+        "gap_movement": movement.gap_movement.as_str(),
         "evidence_delta": movement.evidence_delta,
         "evidence_source": movement.evidence_source.as_str(),
         "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
@@ -684,13 +783,14 @@ fn push_targeted_outcome_movements_md(
     }
     for movement in movements {
         out.push_str(&format!(
-            "- `{}` {}:{} {} -> {} ({})\n",
+            "- `{}` {}:{} {} -> {} ({}; gap {})\n",
             md_escape(&movement.seam_id),
             md_escape(&movement.file),
             movement.line,
             movement.before,
             movement.after,
-            movement.direction
+            movement.direction,
+            movement.gap_movement
         ));
         for delta in &movement.evidence_delta {
             out.push_str(&format!("  - {}\n", md_escape(delta)));
@@ -1006,6 +1106,26 @@ fn optional_json_usize(value: Option<&Value>, key: &str) -> Option<usize> {
     value?.get(key).and_then(json_scalar_as_usize)
 }
 
+fn string_at_path<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a str> {
+    paths
+        .iter()
+        .find_map(|path| path_value(value, path).and_then(Value::as_str))
+}
+
+fn usize_at_path(value: &Value, paths: &[&[&str]]) -> Option<usize> {
+    paths
+        .iter()
+        .find_map(|path| path_value(value, path).and_then(json_scalar_as_usize))
+}
+
+fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut cursor = value;
+    for segment in path {
+        cursor = cursor.get(*segment)?;
+    }
+    Some(cursor)
+}
+
 fn strongest_related_oracle(seam: &Value) -> (String, String) {
     let mut best_kind = "unknown".to_string();
     let mut best_strength = "unknown".to_string();
@@ -1128,6 +1248,48 @@ fn evidence_path_stages(evidence_record: Option<&Value>) -> BTreeMap<String, Sta
         );
     }
     stages
+}
+
+fn check_output_ripr_stages(finding: &Value) -> BTreeMap<String, StaticEvidenceStage> {
+    let mut stages = BTreeMap::new();
+    let Some(ripr) = finding.get("ripr").and_then(Value::as_object) else {
+        return stages;
+    };
+    for (stage, source_stage) in [
+        ("reach", "reach"),
+        ("activate", "infect"),
+        ("propagate", "propagate"),
+        ("observe", "observe"),
+        ("discriminate", "discriminate"),
+    ] {
+        let Some(value) = ripr.get(source_stage) else {
+            continue;
+        };
+        stages.insert(
+            stage.to_string(),
+            StaticEvidenceStage {
+                state: optional_json_string_or_empty(Some(value), "state"),
+                confidence: optional_json_string_or_empty(Some(value), "confidence"),
+                summary: optional_json_string_or_empty(Some(value), "summary"),
+            },
+        );
+    }
+    stages
+}
+
+fn grip_class_from_check_classification(classification: &str) -> &'static str {
+    match classification {
+        "exposed" => "strongly_gripped",
+        "weakly_exposed" => "weakly_gripped",
+        "reachable_unrevealed" => "reachable_unrevealed",
+        "no_static_path" => "ungripped",
+        "infection_unknown" => "activation_unknown",
+        "propagation_unknown" => "propagation_unknown",
+        "observation_unknown" => "observation_unknown",
+        "discrimination_unknown" => "discrimination_unknown",
+        "static_unknown" => "opaque",
+        _ => "opaque",
+    }
 }
 
 fn optional_json_string_or_empty(value: Option<&Value>, key: &str) -> String {
@@ -1473,6 +1635,136 @@ mod tests {
                 .iter()
                 .any(|delta| delta.contains("threshold equality"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids() -> Result<(), String>
+    {
+        let before = r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap": {
+        "id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/discount.py",
+        "owner": "apply_discount",
+        "behavior_kind": "predicate_boundary"
+      },
+      "classification": "weakly_exposed",
+      "probe": {"family": "predicate", "file": "src/discount.py", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "yes", "confidence": "low", "summary": "predicate can alter branch"},
+        "propagate": {"state": "weak", "confidence": "low", "summary": "branch can propagate"},
+        "observe": {"state": "weak", "confidence": "low", "summary": "smoke assertion only"},
+        "discriminate": {"state": "weak", "confidence": "low", "summary": "boundary not asserted"}
+      },
+      "missing_discriminators": [
+        {"value": "amount == threshold", "reason": "not observed"}
+      ],
+      "related_tests": [
+        {"name": "test_apply_discount_smoke", "file": "tests/test_discount.py", "line": 4, "oracle_strength": "unknown", "oracle_kind": "unknown"}
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+        let after = r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap": {
+        "id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/discount.py",
+        "owner": "apply_discount",
+        "behavior_kind": "predicate_boundary"
+      },
+      "classification": "exposed",
+      "probe": {"family": "predicate", "file": "src/discount.py", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "yes", "confidence": "low", "summary": "predicate can alter branch"},
+        "propagate": {"state": "weak", "confidence": "low", "summary": "branch can propagate"},
+        "observe": {"state": "yes", "confidence": "low", "summary": "exact assertion"},
+        "discriminate": {"state": "yes", "confidence": "low", "summary": "boundary asserted"}
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {"name": "test_apply_discount_boundary", "file": "tests/test_discount.py", "line": 4, "oracle_strength": "strong", "oracle_kind": "exact_value", "oracle": "assert apply_discount(100, 100) == 90"}
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+
+        let report = targeted_test_outcome_report_from_json(
+            before,
+            after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+
+        assert_eq!(report.moved.len(), 1);
+        let movement = &report.moved[0];
+        assert_eq!(
+            movement.seam_id,
+            "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        );
+        assert_eq!(movement.seam_kind, "predicate_boundary");
+        assert_eq!(movement.file, "src/discount.py");
+        assert_eq!(movement.before, "weakly_gripped");
+        assert_eq!(movement.after, "strongly_gripped");
+        assert_eq!(movement.direction, "improved");
+        assert_eq!(movement.gap_movement, "closed");
+        assert_eq!(movement.evidence_source, "check_output_finding");
+        assert_eq!(
+            movement.missing_discriminators_resolved,
+            vec!["amount == threshold (not observed)".to_string()]
+        );
+        assert_eq!(
+            movement.oracle_strength_delta,
+            Some("unknown -> strong".to_string())
+        );
+        assert_eq!(
+            movement
+                .discriminate_delta
+                .as_ref()
+                .and_then(|delta| delta.before_state.as_deref()),
+            Some("weak")
+        );
+        assert_eq!(
+            movement
+                .discriminate_delta
+                .as_ref()
+                .and_then(|delta| delta.after_state.as_deref()),
+            Some("yes")
+        );
+
+        let receipt_json = render_targeted_test_outcome_json(&report)?;
+        let receipt: Value = serde_json::from_str(&receipt_json)
+            .map_err(|err| format!("targeted-test outcome JSON should parse: {err}"))?;
+        assert_eq!(receipt["moved"][0]["gap_movement"], "closed");
+        assert_eq!(
+            receipt["moved"][0]["evidence_source"],
+            "check_output_finding"
+        );
+
+        let verify_json = render_agent_verify_json(&report)?;
+        let verify: Value = serde_json::from_str(&verify_json)
+            .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
+        assert_eq!(verify["changed_seams"][0]["change"], "improved");
+        assert_eq!(verify["changed_seams"][0]["gap_movement"], "closed");
         Ok(())
     }
 

@@ -30,6 +30,7 @@
       ],
       "evidence_source": "legacy_fields",
       "file": "src/lib.rs",
+      "gap_movement": "unchanged",
       "line": 2,
       "missing_discriminators_reopened": [],
       "missing_discriminators_resolved": [],
@@ -48,4 +49,3 @@
     }
   ]
 }
-

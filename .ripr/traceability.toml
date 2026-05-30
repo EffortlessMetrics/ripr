@@ -2061,6 +2061,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_python_repair_card_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_packet_carries_shared_repair_route_and_stop_conditions",
+  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
 ]
@@ -2118,6 +2119,7 @@ code = [
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/gap_decision_ledger.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/output/outcome.rs",
   "crates/ripr/src/output/first_pr.rs",
 ]
 outputs = [
@@ -2165,6 +2167,7 @@ metrics = [
   "language_adapter_python_test_placement_verify",
   "language_adapter_python_repair_card_v1",
   "language_adapter_python_agent_packet_v1",
+  "language_adapter_python_gap_receipt_from_check_output",
   "language_adapter_python_pilot_first_use_path",
   "language_adapter_python_first_pr_start_here_path",
   "language_adapter_python_static_limit_stop_reasons",

@@ -39,7 +39,7 @@ None.
 
 ## Unchanged
 
-- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> weakly_gripped (unchanged)
+- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> weakly_gripped (unchanged; gap unchanged)
   - new observed value: 100
   - related test count increased by 1
 

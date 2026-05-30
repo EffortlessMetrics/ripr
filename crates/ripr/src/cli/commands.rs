@@ -429,7 +429,7 @@ fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
         output::outcome::display_path(&options.after),
     )?;
     let rendered = output::outcome::render_agent_verify_json(&report)?;
-    println!("{rendered}");
+    print!("{rendered}");
     Ok(())
 }
 
