@@ -501,7 +501,7 @@ cargo test -p xtask dogfood_language_preview_run_checks_static_limit_receipt --b
 
 ## Work Item: dogfood/typescript-preview-repair-loop
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
@@ -513,6 +513,29 @@ Blocked by: none
 Record real TS/JS repair-loop receipts for at least one improved/resolved case,
 one limitation, one weak-oracle downgrade, and unchanged or skipped cases.
 
+### Current Delta
+
+`fixtures/real-repair-attempts/corpus.json` now records TypeScript and
+JavaScript preview dogfood receipts for LSP preview context, generated-CI
+preview grouping, mocked-module static-limitation routing, and weak-oracle
+non-promotion. These receipts are repair-loop evidence only: they do not make
+preview evidence public repair packets, swarm-ready work, badge inputs, or CI
+gates.
+
+### Proof Commands
+
+```bash
+cargo test -p xtask dogfood_real_repair_attempt_receipts_are_checked -- --test-threads=1
+cargo xtask ripr-swarm attempt-ledger
+cargo xtask ripr-swarm readiness
+cargo xtask check-fixture-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
+
 ## Work Item: metrics/typescript-preview-route-quality
 
 Status: ready
@@ -520,7 +543,7 @@ Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
 Blocks: campaign/typescript-preview-completion-closeout
-Blocked by: dogfood/typescript-preview-repair-loop
+Blocked by: none
 
 ### Goal
 

@@ -7916,6 +7916,22 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "local_computed_boundary_limitation_route_improved",
         "evidence_improved",
     ),
+    (
+        "typescript_preview_lsp_repair_context_improved",
+        "evidence_improved",
+    ),
+    (
+        "javascript_preview_generated_ci_grouping_improved",
+        "evidence_improved",
+    ),
+    (
+        "typescript_preview_mocked_module_limitation_improved",
+        "evidence_improved",
+    ),
+    (
+        "typescript_preview_weak_oracle_downgrade_unchanged",
+        "evidence_unchanged",
+    ),
 ];
 
 const USER_SURFACE_PROJECTION_REQUIRED_SURFACES: &[&str] = &["badge", "lsp", "pr_comment", "ci"];

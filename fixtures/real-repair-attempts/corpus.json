@@ -408,6 +408,140 @@
       ],
       "missing_receipt_reason": null,
       "reason": "A real merged repair-loop PR made route-quality next actions more actionable by preserving concrete failed-attempt samples."
+    },
+    {
+      "id": "typescript_preview_lsp_repair_context_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#617",
+      "canonical_gap_id": "gap:typescript-preview-lsp-repair-context",
+      "packet_id": "limitation:typescript-preview-lsp-repair-context",
+      "repair_kind": "project_preview_actionability_context",
+      "target_test_or_observer_shape": "LSP diagnostic, hover, and inspect context preserve TypeScript preview actionability without offering repair-packet commands.",
+      "verify_command": "cargo test -p ripr lsp --lib",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask check-capabilities",
+      "receipt_path": "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "advisory",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Projected TypeScript preview LSP context as advisory evidence so editors can explain the limitation without creating a delegated repair packet.",
+      "evidence_movement": "improved: TypeScript preview context became inspectable while remaining non-actionable and outside public repair projection.",
+      "operator_note": "Useful as a preview repair-loop receipt because it proves the LSP surface can carry bounded context without inventing verify or receipt commands for TypeScript analysis.",
+      "must_not_change": [
+        "do not emit public repair packets for TypeScript preview advisory context",
+        "do not add generated test edits",
+        "do not change badge or gate semantics",
+        "do not claim full TypeScript support"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/lsp/diagnostics.rs",
+        "crates/ripr/src/lsp/hover.rs",
+        "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+        "EffortlessMetrics/ripr-swarm#617"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "TypeScript preview evidence became visible to the editor surface without crossing the actionability boundary."
+    },
+    {
+      "id": "javascript_preview_generated_ci_grouping_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#622",
+      "canonical_gap_id": "gap:javascript-preview-generated-ci-grouping",
+      "packet_id": "limitation:javascript-preview-generated-ci-grouping",
+      "repair_kind": "project_preview_ci_grouping",
+      "target_test_or_observer_shape": "Generated CI groups JavaScript preview evidence under the TypeScript-family preview configuration and keeps actionability/gate impact set to none.",
+      "verify_command": "cargo test -p ripr init_generated_github_workflow_groups_preview_languages_only_when_configured --lib",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "advisory",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Recorded generated-CI grouping proof for JavaScript/TypeScript preview artifacts without making preview language evidence block CI.",
+      "evidence_movement": "improved: preview language CI grouping is now represented as auditable advisory evidence with no public repair or gate claim.",
+      "operator_note": "This receipt documents the generated-CI proof path needed before route-quality metrics can distinguish TypeScript-family preview evidence from Rust repair packets.",
+      "must_not_change": [
+        "do not make preview language evidence blocking",
+        "do not mark JavaScript preview gaps public_projection_eligible",
+        "do not emit repair verify commands for preview language artifacts",
+        "do not change published badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/cli/commands.rs:init_generated_github_workflow_groups_preview_languages_only_when_configured",
+        "xtask/src/main.rs:dogfood_language_preview_scenarios_cover_projection_boundaries",
+        "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md",
+        "EffortlessMetrics/ripr-swarm#622"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "JavaScript preview evidence is grouped and receipted without changing public actionability."
+    },
+    {
+      "id": "typescript_preview_mocked_module_limitation_improved",
+      "source_ref": "fixtures/typescript_mocked_module_limit",
+      "canonical_gap_id": "gap:typescript-preview-mocked-module-limitation",
+      "packet_id": "limitation:typescript-preview-mocked-module-limitation",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "Mocked-module TypeScript preview evidence remains a static limitation with samples and route context, not a repair packet.",
+      "verify_command": "cargo xtask fixtures typescript_mocked_module_limit",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask check-fixture-contracts",
+      "receipt_path": "fixtures/typescript_mocked_module_limit/expected/check.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Dogfooded the mocked-module preview limitation as analyzer backlog evidence instead of promoting it to a repair queue item.",
+      "evidence_movement": "improved: mocked-module preview evidence has a stable limitation receipt and does not leak into public repair projection.",
+      "operator_note": "The useful movement is sharper non-actionability: the fixture tells future analyzer work what context is missing without telling an agent to edit tests.",
+      "must_not_change": [
+        "do not emit a public repair packet from mocked-module preview evidence",
+        "do not invent module-resolution certainty",
+        "do not edit production TypeScript from this backlog item alone",
+        "do not add verify or receipt commands to the preview limitation itself"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/typescript_mocked_module_limit/expected/check.json",
+        "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+        "metrics/capabilities.toml:language_adapter_typescript_preview"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "The mocked-module preview route is useful as analyzer backlog, not as delegated repair work."
+    },
+    {
+      "id": "typescript_preview_weak_oracle_downgrade_unchanged",
+      "source_ref": "fixtures/typescript_jest_vitest_assertion_facts",
+      "canonical_gap_id": "gap:typescript-preview-weak-oracle-downgrade",
+      "packet_id": "limitation:typescript-preview-weak-oracle-downgrade",
+      "repair_kind": "preserve_preview_weak_oracle_boundary",
+      "target_test_or_observer_shape": "Weak TypeScript preview oracles stay advisory/static-limitation evidence until the analyzer can prove a bounded repair shape.",
+      "verify_command": "cargo xtask fixtures typescript_jest_vitest_assertion_facts",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask check-fixture-contracts",
+      "receipt_path": "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json",
+      "receipt_state": "receipt_missing",
+      "actor_kind": "codex",
+      "before_gap_state": "advisory",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_unchanged",
+      "attempted_repair": "Checked the weak-oracle preview boundary and intentionally left it non-actionable because it lacks a safe delegated repair contract.",
+      "evidence_movement": "unchanged: weak-oracle preview evidence remains advisory, which is the correct outcome until TypeScript oracle semantics are stronger.",
+      "operator_note": "This is a useful unchanged receipt: the route should not be promoted just to increase actionable count.",
+      "must_not_change": [
+        "do not promote weak TypeScript preview oracles to actionable repair packets",
+        "do not invent exact observer expectations",
+        "do not emit generated tests",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json",
+        "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md",
+        "metrics/capabilities.toml:language_adapter_typescript_preview"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "The unchanged outcome documents the trust boundary for weak TypeScript preview oracle evidence."
     }
   ]
 }
