@@ -1061,6 +1061,10 @@ Prevent Python support from becoming noisy.
 - Static-limit findings now keep revealability/discriminator evidence
   `unknown`, even when a related test has an exact-looking oracle, because the
   named limitation prevents a safe discriminator claim.
+- `python_monkeypatch_module_limit` pins pytest `monkeypatch.setattr(...)`
+  substitution as a `mocked_module` static limitation so monkeypatch-only
+  related tests stay visible but do not become repair cards, canonical gaps, or
+  swarm packets.
 
 ### Work item: dogfood/python-real-repo-evals
 

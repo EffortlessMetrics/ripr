@@ -2351,9 +2351,9 @@ fn static_limit_for_change(
     {
         return Some(PythonStaticLimit {
             kind: StaticLimitKind::MockedModule,
-            evidence: "static_limit mocked_module: related test uses patch/mock module syntax"
+            evidence: "static_limit mocked_module: related test uses patch/mock/monkeypatch module syntax"
                 .to_string(),
-            missing: "Static limit `mocked_module`: a related Python test uses patch/mock-module syntax; the preview adapter does not resolve runtime substitution semantics.".to_string(),
+            missing: "Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.".to_string(),
         });
     }
     if related_candidates_have_property_based_test_limit(related_candidates) {

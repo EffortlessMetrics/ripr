@@ -2144,6 +2144,7 @@ fixtures = [
   "fixtures/python_dynamic_dispatch_limit",
   "fixtures/python_decorator_indirection_limit",
   "fixtures/python_mocked_module_limit",
+  "fixtures/python_monkeypatch_module_limit",
   "fixtures/python_opaque_custom_helper_limit",
   "fixtures/python_property_based_limit",
   "fixtures/python_unresolved_fixture_limit",
