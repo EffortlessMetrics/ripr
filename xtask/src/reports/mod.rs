@@ -23,7 +23,7 @@ mod test_oracles;
 
 pub(crate) use annotations::ripr_annotations;
 pub(crate) use badges::{
-    badge_artifacts, badge_basis, check_badge_endpoints, repo_badge_artifacts,
+    badge_artifacts, badge_basis, check_badge_endpoints, repo_badge_artifacts, ripr_plus,
     update_badge_endpoints,
 };
 pub(crate) use dogfood::dogfood;

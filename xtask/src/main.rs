@@ -38398,6 +38398,153 @@ fn build_badge_basis_report(
     })
 }
 
+pub(crate) fn ripr_plus_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "ripr-plus")?;
+    run_with_repo_root_cwd(|| {
+        let repo_badge_json =
+            run_repo_badge_artifact_job("repo-badge-json", options.gap_ledger.as_deref())?;
+        let head = git_value(&["rev-parse", "HEAD"]);
+        let receipt = ripr_plus_receipt_from_repo_badge_json(
+            &repo_badge_json,
+            &head,
+            options.gap_ledger.as_deref(),
+        )?;
+        let json = serde_json::to_string_pretty(&receipt)
+            .map_err(|err| format!("failed to serialize ripr-plus receipt: {err}"))?;
+        write_report("ripr-plus.json", &format!("{json}\n"))?;
+        write_report("ripr-plus.md", &ripr_plus_receipt_markdown(&receipt))
+    })
+}
+
+fn ripr_plus_receipt_from_repo_badge_json(
+    json: &str,
+    head: &str,
+    gap_ledger: Option<&Path>,
+) -> Result<Value, String> {
+    let badge = badge_native_audit_snapshot(json)?;
+    ripr_plus_receipt_from_badge(&badge, head, gap_ledger)
+}
+
+fn ripr_plus_receipt_from_badge(
+    badge: &BadgeNativeAuditSnapshot,
+    head: &str,
+    gap_ledger: Option<&Path>,
+) -> Result<Value, String> {
+    if !ripr_plus_accepts_badge_basis(&badge.basis) {
+        return Err(format!(
+            "ripr-plus requires repo-badge-json with canonical actionable or gap decision ledger basis, got {:?}",
+            badge.basis
+        ));
+    }
+    let unresolved = badge
+        .counts
+        .get("unsuppressed_exposure_gaps")
+        .copied()
+        .ok_or_else(|| {
+            "repo-badge-json counts are missing unsuppressed_exposure_gaps".to_string()
+        })?;
+    let suppressed = badge
+        .counts
+        .get("suppressed_exposure_gaps")
+        .copied()
+        .unwrap_or(0)
+        + badge
+            .counts
+            .get("suppressed_test_efficiency_findings")
+            .copied()
+            .unwrap_or(0);
+    let raw_seams = badge
+        .counts
+        .get("raw_seams")
+        .or_else(|| badge.counts.get("analyzed_seams"))
+        .copied();
+    let status = if unresolved == 0 { "pass" } else { "warn" };
+
+    let source_command = if let Some(gap_ledger) = gap_ledger {
+        format!(
+            "ripr check --root . --format repo-badge-json --gap-ledger {}",
+            normalize_path(gap_ledger)
+        )
+    } else {
+        "ripr check --root . --format repo-badge-json".to_string()
+    };
+
+    Ok(serde_json::json!({
+        "schema_version": "0.1",
+        "status": status,
+        "basis": &badge.basis,
+        "source_format": "repo-badge-json",
+        "source_command": source_command,
+        "unresolved": unresolved,
+        "top_files": [],
+        "suppressed": suppressed,
+        "head": head,
+        "counts": &badge.counts,
+        "reason_counts": &badge.reason_counts,
+        "raw_inventory": {
+            "raw_seams": raw_seams,
+            "debt_basis": false,
+            "note": "Raw seam inventory is supporting analyzer pressure only; it is not the RIPR+ unresolved debt counter."
+        },
+        "basis_note": "RIPR+ unresolved is sourced from counts.unsuppressed_exposure_gaps in repo-badge-json when the badge basis is canonical_actionable_gap or gap_decision_ledger. top_files is intentionally empty because bounded repo-badge-json does not expose per-file debt and this command must not run full repo-exposure-json.",
+        "warnings": &badge.warnings,
+        "non_claims": [
+            "not raw seam inventory",
+            "not runtime mutation confirmation",
+            "not coverage",
+            "not badge endpoint regeneration"
+        ]
+    }))
+}
+
+fn ripr_plus_accepts_badge_basis(basis: &str) -> bool {
+    matches!(basis, "canonical_actionable_gap" | "gap_decision_ledger")
+}
+
+fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
+    let mut body = String::from("# ripr+ Repo Receipt\n\n");
+    body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
+    body.push_str("## Basis\n\n");
+    body.push_str("| Field | Value |\n");
+    body.push_str("| --- | --- |\n");
+    body.push_str(&format!(
+        "| Status | `{}` |\n",
+        markdown_cell(&json_string_field_value(receipt, "status"))
+    ));
+    body.push_str(&format!(
+        "| Basis | `{}` |\n",
+        markdown_cell(&json_string_field_value(receipt, "basis"))
+    ));
+    body.push_str(&format!(
+        "| Source format | `{}` |\n",
+        markdown_cell(&json_string_field_value(receipt, "source_format"))
+    ));
+    body.push_str(&format!(
+        "| Unresolved | {} |\n",
+        receipt
+            .get("unresolved")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Suppressed | {} |\n",
+        receipt
+            .get("suppressed")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Head | `{}` |\n",
+        markdown_cell(&json_string_field_value(receipt, "head"))
+    ));
+    body.push_str("\n## Reason Counts\n\n");
+    let reason_counts = json_object_usize_map(receipt, "reason_counts");
+    append_count_table(&mut body, &reason_counts);
+    body.push_str("\n## Top Files\n\n");
+    body.push_str("No bounded top-file summary is available from `repo-badge-json`; this command intentionally does not run full `repo-exposure-json`.\n");
+    body
+}
+
 fn write_repo_badge_artifacts(options: &RepoBadgeArtifactOptions) -> Result<(), String> {
     test_efficiency_report_impl()?;
 
@@ -59770,7 +59917,8 @@ mod tests {
         report_index_markdown, report_index_missing_artifact_count, report_index_missing_expected,
         report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
         report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
-        ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
+        ripr_plus_receipt_from_badge, ripr_plus_receipt_from_repo_badge_json,
+        ripr_plus_receipt_markdown, ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
         ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
         ripr_swarm_attempt_ledger_from_values,
         ripr_swarm_attempt_ledger_from_values_with_real_repair_attempts,
@@ -75905,6 +76053,154 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_plus_receipt_counts_canonical_gaps_not_raw_inventory() -> Result<(), String> {
+        let fixture = r#"{
+            "schema_version": "0.5",
+            "label": "ripr",
+            "kind": "ripr",
+            "scope": "repo",
+            "basis": "canonical_actionable_gap",
+            "message": "2",
+            "status": "warn",
+            "color": "orange",
+            "counts": {
+                "raw_seams": 5,
+                "unsuppressed_exposure_gaps": 2,
+                "suppressed_exposure_gaps": 1
+            },
+            "reason_counts": {
+                "no_assertion_detected": 1,
+                "smoke_oracle_only": 1
+            },
+            "warnings": []
+        }"#;
+        let receipt = ripr_plus_receipt_from_repo_badge_json(fixture, "HEAD", None)?;
+
+        assert_eq!(receipt["basis"], "canonical_actionable_gap");
+        assert_eq!(receipt["source_format"], "repo-badge-json");
+        assert_eq!(receipt["unresolved"], 2);
+        assert_ne!(receipt["unresolved"], receipt["raw_inventory"]["raw_seams"]);
+        assert_eq!(receipt["raw_inventory"]["raw_seams"], 5);
+        assert_eq!(receipt["raw_inventory"]["debt_basis"], false);
+        assert_eq!(receipt["suppressed"], 1);
+        assert_eq!(receipt["top_files"].as_array().map(Vec::len), Some(0));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_plus_receipt_rejects_non_canonical_basis() {
+        let badge = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "seam_native".to_string(),
+            message: "5".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([
+                ("raw_seams".to_string(), 5),
+                ("unsuppressed_exposure_gaps".to_string(), 2),
+            ]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let err = ripr_plus_receipt_from_badge(&badge, "HEAD", None)
+            .expect_err("seam-native inventory must not become RIPR+ debt");
+        assert!(err.contains("canonical actionable or gap decision ledger basis"));
+    }
+
+    #[test]
+    fn ripr_plus_receipt_accepts_gap_decision_ledger_basis() -> Result<(), String> {
+        let badge = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "gap_decision_ledger".to_string(),
+            message: "1".to_string(),
+            status: "warn".to_string(),
+            color: "yellow".to_string(),
+            counts: BTreeMap::from([
+                ("analyzed_gap_records".to_string(), 18),
+                ("unsuppressed_exposure_gaps".to_string(), 1),
+            ]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let receipt = ripr_plus_receipt_from_badge(
+            &badge,
+            "HEAD",
+            Some(Path::new("fixtures/gap-decision-ledger/corpus.json")),
+        )?;
+        assert_eq!(receipt["basis"], "gap_decision_ledger");
+        assert_eq!(receipt["unresolved"], 1);
+        assert_eq!(receipt["counts"]["analyzed_gap_records"], 18);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_plus_receipt_markdown_names_bounded_top_file_behavior() -> Result<(), String> {
+        let fixture = r#"{
+            "schema_version": "0.5",
+            "label": "ripr",
+            "kind": "ripr",
+            "scope": "repo",
+            "basis": "canonical_actionable_gap",
+            "message": "2",
+            "status": "warn",
+            "color": "orange",
+            "counts": {
+                "unsuppressed_exposure_gaps": 2,
+                "suppressed_exposure_gaps": 0
+            },
+            "reason_counts": {
+                "smoke_oracle_only": 2
+            },
+            "warnings": []
+        }"#;
+        let receipt = ripr_plus_receipt_from_repo_badge_json(fixture, "HEAD", None)?;
+        let markdown = ripr_plus_receipt_markdown(&receipt);
+
+        assert!(markdown.contains("canonical_actionable_gap"));
+        assert!(markdown.contains("| Unresolved | 2 |"));
+        assert!(markdown.contains("repo-badge-json"));
+        assert!(markdown.contains("does not run full `repo-exposure-json`"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_plus_receipt_source_command_names_gap_ledger() -> Result<(), String> {
+        let fixture = r#"{
+            "schema_version": "0.5",
+            "label": "ripr",
+            "kind": "ripr",
+            "scope": "repo",
+            "basis": "canonical_actionable_gap",
+            "message": "2",
+            "status": "warn",
+            "color": "orange",
+            "counts": {
+                "unsuppressed_exposure_gaps": 2,
+                "suppressed_exposure_gaps": 0
+            },
+            "reason_counts": {},
+            "warnings": []
+        }"#;
+        let receipt = ripr_plus_receipt_from_repo_badge_json(
+            fixture,
+            "HEAD",
+            Some(Path::new("target/ripr/reports/gap-decision-ledger.json")),
+        )?;
+
+        assert_eq!(
+            receipt["source_command"],
+            "ripr check --root . --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json"
+        );
         Ok(())
     }
 

@@ -20,6 +20,7 @@ pub(crate) enum XtaskCommand {
     BadgeArtifacts,
     RepoBadgeArtifacts(Vec<String>),
     BadgeBasis(Vec<String>),
+    RiprPlus(Vec<String>),
     RepoSeamInventory,
     RepoExposureReport,
     RepoExposureLatencyReport,
@@ -139,6 +140,7 @@ impl XtaskCommand {
             "badge-artifacts" => Self::BadgeArtifacts,
             "repo-badge-artifacts" => Self::RepoBadgeArtifacts(rest),
             "badge-basis" => Self::BadgeBasis(rest),
+            "ripr-plus" => Self::RiprPlus(rest),
             "repo-seam-inventory" => Self::RepoSeamInventory,
             "repo-exposure-report" => Self::RepoExposureReport,
             "repo-exposure-latency-report" => Self::RepoExposureLatencyReport,
@@ -294,6 +296,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "badge-artifacts",
         "repo-badge-artifacts [--gap-ledger <path>]",
         "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
+        "ripr-plus [--gap-ledger <path>]",
         "repo-seam-inventory",
         "repo-exposure-report",
         "repo-exposure-latency-report",
@@ -565,6 +568,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/badge-basis.{json,md}",
             false,
             "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
+        ),
+        command_entry(
+            "ripr-plus [--gap-ledger <path>]",
+            "report_only",
+            "target/ripr/reports/ripr-plus.{json,md}",
+            false,
+            "Writes the repo-wide RIPR+ quality receipt from repo-badge-json canonical actionable gaps, not raw seam inventory; --gap-ledger uses an existing gap decision ledger to avoid an expensive fresh repo scan.",
         ),
         command_entry(
             "repo-seam-inventory",
@@ -1366,6 +1376,7 @@ mod tests {
             note("badge-basis [--gap-ledger <path>] [--include-seam-classes]")
                 .contains("Audits public badge endpoint counts")
         );
+        assert!(note("ripr-plus [--gap-ledger <path>]").contains("canonical actionable gaps"));
     }
 
     #[test]
