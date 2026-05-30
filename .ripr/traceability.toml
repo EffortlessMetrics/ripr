@@ -3983,6 +3983,7 @@ tests = [
   "xtask::tests::dogfood_surface_projection_alignment_covers_missing_receipt_route_quality",
   "xtask::tests::dogfood_real_repair_attempt_receipts_are_checked",
   "xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions",
+  "xtask::tests::first_successful_pr_corpus_reports_outcome_receipt_drift",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
 ]
 fixtures = [
@@ -3994,6 +3995,10 @@ fixtures = [
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md",
+  "fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.json",
+  "fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.md",
+  "fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.json",
+  "fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md",
 ]
 code = [
   "xtask/src/command.rs",

@@ -1285,7 +1285,7 @@ spec = "RIPR-SPEC-0009"
 evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr outcome",
   "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id, preferring seams[].evidence_record stage/value/discriminator/oracle/related-test movement when present and falling back to legacy fields",
-  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, and fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.{json,md} pin a Python preview weak-to-strong receipt with gap_movement = closed",
+  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, and fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened}.{json,md} pin Python preview closed, unchanged, and opened receipts",
   "ripr outcome prints Markdown by default and supports --format json plus --out",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
@@ -1509,7 +1509,7 @@ evidence = [
   "ripr first-pr selects Python preview GapRecords from the gap decision ledger, emits preview-limited start-here.{json,md} for Python project roots without Cargo, and recovers missing Python-only gap ledgers through ripr check --json plus reports gap-ledger --check-output instead of Rust repo-exposure",
   "ripr first-pr --check-output <check.json> materializes a check-output-derived gap decision ledger before selecting the preview Python start-here repair",
   "reports gap-ledger --check-output derives PR-local Python GapRecords from python_repair_card findings, synthesizes receipt commands for check-output before/after snapshots when raw cards lack one, agent packet --gap-ledger exports bounded packets with allowed files, forbidden files, conflict groups, verify commands, receipt commands/status, and stop conditions, and swarm queue blocks rootless or wrong-root ledgers before emitting packets",
-  "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, expected/outcome/closed.json, and expected/outcome/closed.md pin a Python preview before/after outcome receipt where the canonical gap closes",
+  "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/{closed,unchanged,opened}.{json,md} pin Python preview before/after outcome receipts where the canonical gap closes, stays unchanged, or opens",
   "fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json and expected/swarm-ingest/closed.json pin ripr swarm ingest classification for a Python preview test-only agent attempt with passing verify evidence and resolved receipt movement",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module with patch and monkeypatch syntax, opaque_custom_assertion_helper, property_based_test, unresolved_pytest_fixture, missing_import_graph, metaprogramming, and unsupported_syntax",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",

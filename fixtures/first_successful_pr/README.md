@@ -19,4 +19,6 @@ generated tests, provider calls, mutation execution, or gate changes.
 The `python-preview-gap` case pins the preview-language bridge: an explicit
 Python GapRecord from the gap decision ledger can become a `preview_limited`
 `start-here` packet for a Python project root without requiring Cargo or
-promoting Python beyond advisory preview status.
+promoting Python beyond advisory preview status. Its outcome receipt fixtures
+also show the same canonical Python gap closing, staying unchanged, and opening
+from check-output before/after snapshots.

@@ -1878,34 +1878,93 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_preview_fixture_matches_expected_receipts() -> Result<(), String>
     {
-        let before = include_str!(
+        let weak = include_str!(
             "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json"
         );
-        let after = include_str!(
+        let strong = include_str!(
             "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
         );
-        let report = targeted_test_outcome_report_from_json(
-            before,
-            after,
-            "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json"
-                .to_string(),
-            "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
-                .to_string(),
-        )?;
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: weak,
+            after: strong,
+            before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
+            expected_gap_movement: "closed",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md"
+            ),
+        })?;
 
-        assert_eq!(report.moved.len(), 1);
-        assert_eq!(report.moved[0].gap_movement, "closed");
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: weak,
+            after: weak,
+            before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            expected_gap_movement: "unchanged",
+            expected_bucket: "unchanged",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.md"
+            ),
+        })?;
+
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: strong,
+            after: weak,
+            before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
+            after_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            expected_gap_movement: "opened",
+            expected_bucket: "regressed",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md"
+            ),
+        })?;
+        Ok(())
+    }
+
+    struct PythonPreviewOutcomeFixture<'a> {
+        before: &'a str,
+        after: &'a str,
+        before_path: &'a str,
+        after_path: &'a str,
+        expected_gap_movement: &'a str,
+        expected_bucket: &'a str,
+        expected_json: &'a str,
+        expected_md: &'a str,
+    }
+
+    fn assert_python_preview_outcome_fixture(
+        fixture: PythonPreviewOutcomeFixture<'_>,
+    ) -> Result<(), String> {
+        let report = targeted_test_outcome_report_from_json(
+            fixture.before,
+            fixture.after,
+            fixture.before_path.to_string(),
+            fixture.after_path.to_string(),
+        )?;
+        let value: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("targeted-test outcome JSON should parse: {err}"))?;
+        assert_eq!(
+            value["summary"]["gap_movement"][fixture.expected_gap_movement],
+            1
+        );
+        assert_eq!(value["summary"][fixture.expected_bucket], 1);
         assert_eq!(
             render_targeted_test_outcome_json(&report)?,
-            include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json"
-            )
+            fixture.expected_json
         );
         assert_eq!(
             render_targeted_test_outcome_md(&report),
-            include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md"
-            )
+            fixture.expected_md
         );
         Ok(())
     }
@@ -1941,7 +2000,9 @@ mod tests {
         "observed_values": [{"value": "50", "line": 9, "text": "discounted_total(50)", "context": "function_argument"}],
         "missing_discriminators": [{"value": "threshold equality", "reason": "not observed"}],
         "related_tests_total": 1,
-        "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "weak"}]
+        "related_tests": [
+          {"oracle_kind": "exact_value", "oracle_strength": "weak"}
+        ]
       }
     }
   ]

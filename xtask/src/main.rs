@@ -10424,7 +10424,232 @@ fn validate_first_successful_pr_case(
             validate_first_successful_pr_actionable_markdown(case_id, &markdown, violations);
         }
     }
+    validate_first_successful_pr_outcome_receipts(root, case, case_id, violations)?;
     Ok(())
+}
+
+fn validate_first_successful_pr_outcome_receipts(
+    root: &Path,
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if case.get("expected_outcome").is_some() {
+        let receipt = serde_json::json!({
+            "id": "default",
+            "before": json_string_field(case, "outcome_before"),
+            "after": json_string_field(case, "outcome_after"),
+            "expected": json_string_field(case, "expected_outcome"),
+            "expected_markdown": json_string_field(case, "expected_outcome_markdown"),
+            "expected_gap_movement": json_string_field(case, "expected_gap_movement")
+        });
+        validate_first_successful_pr_outcome_receipt(root, case_id, &receipt, violations)?;
+    }
+
+    let Some(receipts) = case.get("outcome_receipts") else {
+        return Ok(());
+    };
+    let Some(receipts) = receipts.as_array() else {
+        violations.push(format!(
+            "first successful PR case {case_id} outcome_receipts must be an array"
+        ));
+        return Ok(());
+    };
+
+    let mut seen = BTreeSet::new();
+    for receipt in receipts {
+        let id = json_string_field(receipt, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen.insert(id.clone()) {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {id} is duplicated"
+            ));
+        }
+        validate_first_successful_pr_outcome_receipt(root, case_id, receipt, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_first_successful_pr_outcome_receipt(
+    root: &Path,
+    case_id: &str,
+    receipt: &Value,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let receipt_id = json_string_field(receipt, "id").unwrap_or_else(|| "unknown".to_string());
+    let required_fields = [
+        "before",
+        "after",
+        "expected",
+        "expected_markdown",
+        "expected_gap_movement",
+    ];
+    for field in required_fields {
+        if json_string_field(receipt, field).is_none() {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} is missing {field}"
+            ));
+        }
+    }
+
+    let Some(before) = json_string_field(receipt, "before") else {
+        return Ok(());
+    };
+    let Some(after) = json_string_field(receipt, "after") else {
+        return Ok(());
+    };
+    let Some(expected) = json_string_field(receipt, "expected") else {
+        return Ok(());
+    };
+    let Some(expected_markdown) = json_string_field(receipt, "expected_markdown") else {
+        return Ok(());
+    };
+    let Some(expected_gap_movement) = json_string_field(receipt, "expected_gap_movement") else {
+        return Ok(());
+    };
+
+    for movement in [
+        "closed",
+        "opened",
+        "strengthened",
+        "weakened",
+        "unchanged",
+        "new",
+        "removed",
+        "changed",
+    ] {
+        if movement == expected_gap_movement {
+            break;
+        }
+        if movement == "changed" {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} has unknown expected_gap_movement {expected_gap_movement}"
+            ));
+        }
+    }
+
+    for rel in [&before, &after, &expected, &expected_markdown] {
+        let path = root.join(rel);
+        if !path.exists() {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let expected_path = root.join(&expected);
+    if expected_path.exists() {
+        let outcome = read_json_value(&expected_path)?;
+        if json_string_field(&outcome, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} schema_version must be 0.1"
+            ));
+        }
+        if json_string_field(&outcome, "tool").as_deref() != Some("ripr") {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} tool must be ripr"
+            ));
+        }
+        if json_string_field(&outcome, "status").as_deref() != Some("advisory") {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} status must be advisory"
+            ));
+        }
+        let expected_before_input = first_successful_pr_outcome_input_path(root, &before);
+        let expected_after_input = first_successful_pr_outcome_input_path(root, &after);
+        if audit_string(&outcome, &["inputs", "before"]).as_deref()
+            != Some(expected_before_input.as_str())
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} before input must be {expected_before_input}"
+            ));
+        }
+        if audit_string(&outcome, &["inputs", "after"]).as_deref()
+            != Some(expected_after_input.as_str())
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} after input must be {expected_after_input}"
+            ));
+        }
+        let movement_count = outcome
+            .get("summary")
+            .and_then(|summary| summary.get("gap_movement"))
+            .and_then(|movement| movement.get(expected_gap_movement.as_str()))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if movement_count == 0 {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} must report expected gap movement {expected_gap_movement}"
+            ));
+        }
+        if !outcome.get("review_receipt").is_some_and(Value::is_object) {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} must include review_receipt"
+            ));
+        }
+    }
+
+    let expected_markdown_path = root.join(&expected_markdown);
+    if expected_markdown_path.exists() {
+        let markdown = read_text_lossy(&expected_markdown_path)?;
+        for required in [
+            "# ripr targeted-test outcome report",
+            "Status: advisory",
+            "## Gap Movement",
+            "## Review Receipt",
+        ] {
+            if !markdown.contains(required) {
+                violations.push(format!(
+                    "first successful PR case {case_id} outcome receipt {receipt_id} Markdown is missing `{required}`"
+                ));
+            }
+        }
+        let expected_row = format!("| {expected_gap_movement} | 1 |");
+        if !markdown.contains(&expected_row) {
+            violations.push(format!(
+                "first successful PR case {case_id} outcome receipt {receipt_id} Markdown must show `{expected_row}`"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn first_successful_pr_outcome_input_path(root: &Path, relative: &str) -> String {
+    let path = root.join(relative);
+    if let Some(stable) = first_successful_pr_fixture_relative_path(&path) {
+        return stable;
+    }
+    if let Ok(current_dir) = std::env::current_dir() {
+        if let Ok(stripped) = path.strip_prefix(&current_dir) {
+            return normalize_path(stripped);
+        }
+        if let Some(parent) = current_dir.parent()
+            && let Ok(stripped) = path.strip_prefix(parent)
+        {
+            return normalize_path(stripped);
+        }
+    }
+    normalize_path(&path)
+}
+
+fn first_successful_pr_fixture_relative_path(path: &Path) -> Option<String> {
+    let parts = path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    for index in 0..parts.len().saturating_sub(1) {
+        if parts[index] == "fixtures" && parts[index + 1] == "first_successful_pr" {
+            let mut stable = PathBuf::new();
+            for part in &parts[index..] {
+                stable.push(part);
+            }
+            return Some(normalize_path(&stable));
+        }
+    }
+
+    None
 }
 
 fn validate_first_successful_pr_actionable_json(
@@ -61913,6 +62138,196 @@ mod tests {
     }
 
     #[test]
+    fn first_successful_pr_outcome_input_path_is_stable_outside_repo_cwd() -> Result<(), String> {
+        let corpus = first_successful_pr_corpus_path()?;
+        let root = corpus
+            .parent()
+            .ok_or_else(|| "first successful PR corpus must have parent".to_string())?;
+
+        with_temp_cwd("first-successful-pr-outcome-input-cwd", |_| {
+            let input = super::first_successful_pr_outcome_input_path(
+                root,
+                "python-preview-gap/inputs/reports/after-check.json",
+            );
+            assert_eq!(
+                input,
+                "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
+            );
+        });
+
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_outcome_input_path_uses_non_fixture_fallbacks() -> Result<(), String> {
+        with_temp_cwd(
+            "first-successful-pr-outcome-input-fallback-cwd",
+            |root| -> Result<(), String> {
+                let direct_root = root.join("direct-case");
+                let direct = super::first_successful_pr_outcome_input_path(
+                    &direct_root,
+                    "inputs/reports/before.json",
+                );
+                assert_eq!(direct, "direct-case/inputs/reports/before.json");
+
+                let nested = root.join("nested");
+                fs::create_dir_all(&nested).map_err(|err| format!("create nested cwd: {err}"))?;
+                std::env::set_current_dir(&nested)
+                    .map_err(|err| format!("enter nested cwd: {err}"))?;
+                let sibling_root = root.join("sibling-case");
+                let sibling = super::first_successful_pr_outcome_input_path(
+                    &sibling_root,
+                    "inputs/reports/after.json",
+                );
+                assert_eq!(sibling, "sibling-case/inputs/reports/after.json");
+
+                let outside_root = std::env::temp_dir().join("ripr-outcome-path-outside");
+                let outside =
+                    super::first_successful_pr_outcome_input_path(&outside_root, "outside.json");
+                assert!(outside.ends_with("ripr-outcome-path-outside/outside.json"));
+                Ok(())
+            },
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_reports_outcome_receipt_shape_drift() -> Result<(), String> {
+        let root = temp_dir("first-successful-pr-outcome-shape-drift");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "first_successful_pr_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0051",
+  "cases": [
+    {
+      "id": "python-preview-gap",
+      "description": "bad outcome receipt case",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "preview_limited",
+      "outcome_receipts": {
+        "id": "not-an-array"
+      }
+    }
+  ]
+}"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("outcome_receipts must be an array")),
+            "expected malformed outcome_receipts violation, got {violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_outcome_receipt_reports_field_and_render_drift() -> Result<(), String> {
+        let root = temp_dir("first-successful-pr-outcome-render-drift");
+        let mut violations = Vec::new();
+
+        for receipt in [
+            serde_json::json!({"id": "missing-before"}),
+            serde_json::json!({
+                "id": "missing-after",
+                "before": "inputs/before.json"
+            }),
+            serde_json::json!({
+                "id": "missing-expected",
+                "before": "inputs/before.json",
+                "after": "inputs/after.json"
+            }),
+            serde_json::json!({
+                "id": "missing-markdown",
+                "before": "inputs/before.json",
+                "after": "inputs/after.json",
+                "expected": "expected/outcome.json"
+            }),
+            serde_json::json!({
+                "id": "missing-movement",
+                "before": "inputs/before.json",
+                "after": "inputs/after.json",
+                "expected": "expected/outcome.json",
+                "expected_markdown": "expected/outcome.md"
+            }),
+        ] {
+            super::validate_first_successful_pr_outcome_receipt(
+                &root,
+                "python-preview-gap",
+                &receipt,
+                &mut violations,
+            )?;
+        }
+
+        write(&root.join("inputs/before.json"), "{}");
+        write(&root.join("inputs/after.json"), "{}");
+        write(
+            &root.join("expected/outcome.json"),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "other",
+  "status": "complete",
+  "inputs": {
+    "before": "wrong-before.json",
+    "after": "wrong-after.json"
+  },
+  "summary": {
+    "gap_movement": {
+      "closed": 1
+    }
+  },
+  "review_receipt": {}
+}"#,
+        );
+        write(
+            &root.join("expected/outcome.md"),
+            "not a targeted outcome report\n",
+        );
+        let rendered_drift = serde_json::json!({
+            "id": "rendered-drift",
+            "before": "inputs/before.json",
+            "after": "inputs/after.json",
+            "expected": "expected/outcome.json",
+            "expected_markdown": "expected/outcome.md",
+            "expected_gap_movement": "closed"
+        });
+        super::validate_first_successful_pr_outcome_receipt(
+            &root,
+            "python-preview-gap",
+            &rendered_drift,
+            &mut violations,
+        )?;
+
+        let report = violations.join("\n");
+        for expected in [
+            "is missing before",
+            "is missing after",
+            "is missing expected",
+            "is missing expected_markdown",
+            "is missing expected_gap_movement",
+            "schema_version must be 0.1",
+            "tool must be ripr",
+            "status must be advisory",
+            "before input must be",
+            "after input must be",
+            "Markdown is missing `# ripr targeted-test outcome report`",
+            "Markdown must show `| closed | 1 |`",
+        ] {
+            assert!(
+                report.contains(expected),
+                "expected `{expected}` in outcome receipt drift report:\n{report}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn first_successful_pr_corpus_reports_contract_drift() -> Result<(), String> {
         let root = temp_dir("first-successful-pr-invalid");
         let corpus = root.join("corpus.json");
@@ -61959,6 +62374,81 @@ mod tests {
         assert!(report.contains("inputs/reports/gap-decision-ledger.json"));
         assert!(report.contains("expected/start-here.json"));
         assert!(report.contains("expected/start-here.md"));
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_reports_outcome_receipt_drift() -> Result<(), String> {
+        let root = temp_dir("first-successful-pr-outcome-drift");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "first_successful_pr_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0051",
+  "cases": [
+    {
+      "id": "python-preview-gap",
+      "description": "bad outcome receipt case",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "preview_limited",
+      "outcome_receipts": [
+        {
+          "id": "bad",
+          "before": "python-preview-gap/inputs/reports/missing-before.json",
+          "after": "python-preview-gap/inputs/reports/missing-after.json",
+          "expected": "python-preview-gap/expected/outcome/bad.json",
+          "expected_markdown": "python-preview-gap/expected/outcome/bad.md",
+          "expected_gap_movement": "closed"
+        },
+        {
+          "id": "bad",
+          "before": "python-preview-gap/inputs/reports/missing-before.json",
+          "after": "python-preview-gap/inputs/reports/missing-after.json",
+          "expected": "python-preview-gap/expected/outcome/bad.json",
+          "expected_markdown": "python-preview-gap/expected/outcome/bad.md",
+          "expected_gap_movement": "mystery"
+        }
+      ]
+    }
+  ]
+}"#,
+        );
+        write(
+            &root.join("python-preview-gap/expected/outcome/bad.json"),
+            r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "before": "wrong-before.json",
+    "after": "wrong-after.json"
+  },
+  "summary": {
+    "gap_movement": {
+      "closed": 0
+    }
+  }
+}"#,
+        );
+        write(
+            &root.join("python-preview-gap/expected/outcome/bad.md"),
+            "# ripr targeted-test outcome report\n\nStatus: advisory\n\n## Gap Movement\n\n## Review Receipt\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("outcome receipt bad is duplicated"));
+        assert!(report.contains("missing-before.json"));
+        assert!(report.contains("unknown expected_gap_movement mystery"));
+        assert!(report.contains("before input must be"));
+        assert!(report.contains("must report expected gap movement closed"));
+        assert!(report.contains("must include review_receipt"));
+        assert!(report.contains("Markdown must show `| closed | 1 |`"));
         Ok(())
     }
 
