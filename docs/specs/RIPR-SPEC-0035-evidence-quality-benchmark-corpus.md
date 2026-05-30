@@ -231,6 +231,12 @@ affinity.
   `call_presence` target-affinity activation, but only when the related
   assertion mentions the matching call target and no activation values are
   invented.
+- `test_grip_evidence::tests::given_call_presence_when_unit_test_calls_same_file_target_affinity_wrapper_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_target_affinity_wrapper_then_activation_stays_unknown`
+  pin the same-source-file unit-test exception: a call that resolves to a
+  production wrapper imported from the parent module can use production wrapper
+  target affinity, while an unqualified test-local helper shadow does not
+  inherit that production relation.
 - `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_production_wrapper_then_activation_stays_unknown`
   pins that a test-local helper with the same name as a production wrapper does
   not inherit the production wrapper's owner-call relation.

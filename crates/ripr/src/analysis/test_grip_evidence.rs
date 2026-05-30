@@ -112,6 +112,7 @@ impl<'a> CompactGripContext<'a> {
         let target_affinity_production_owner_calls_by_module_path =
             target_affinity_production_owner_calls_by_module_path(index);
         let function_names_by_file = local_function_names_by_file(index);
+        let test_scoped_function_names_by_file = test_scoped_function_names_by_file(index);
         let tests = index
             .tests
             .iter()
@@ -154,6 +155,14 @@ impl<'a> CompactGripContext<'a> {
                         &call_names,
                         &target_affinity_production_owner_calls_by_package,
                         local_function_names,
+                    ),
+                );
+                target_affinity_owner_call_names.extend(
+                    helper_owner_call_names_from_same_file_unit_production_helpers(
+                        test,
+                        &target_affinity_production_owner_calls_by_package,
+                        local_function_names,
+                        test_scoped_function_names_by_file.get(&test.file),
                     ),
                 );
                 for call_name in &call_names {
@@ -617,6 +626,66 @@ fn local_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet
     names_by_file
 }
 
+fn test_scoped_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet<String>> {
+    let mut names_by_file: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
+    for (file, facts) in &index.files {
+        let cfg_test_module_ranges = cfg_test_module_line_ranges(&facts.source);
+        for function in facts.functions.iter().filter(|function| {
+            !function.is_test
+                && (rust_index::is_test_file(file)
+                    || cfg_test_module_ranges.iter().any(|(start, end)| {
+                        *start < function.start_line && function.start_line <= *end
+                    }))
+        }) {
+            names_by_file
+                .entry(file.clone())
+                .or_default()
+                .insert(function.name.clone());
+        }
+    }
+    names_by_file
+}
+
+fn cfg_test_module_line_ranges(source: &str) -> Vec<(usize, usize)> {
+    let mut pending_cfg_test = false;
+    let mut depth = 0isize;
+    let mut active_modules: Vec<(usize, isize)> = Vec::new();
+    let mut ranges = Vec::new();
+    let mut last_line = 0usize;
+    for (idx, raw_line) in source.lines().enumerate() {
+        let line_number = idx + 1;
+        last_line = line_number;
+        let line = strip_comments_and_strings(raw_line);
+        let trimmed = line.trim();
+        if trimmed.contains("#[cfg(test)]") {
+            pending_cfg_test = true;
+        }
+        let opens = line.chars().filter(|ch| *ch == '{').count() as isize;
+        let closes = line.chars().filter(|ch| *ch == '}').count() as isize;
+        if pending_cfg_test && line.contains("mod ") && opens > 0 {
+            active_modules.push((line_number, depth + opens));
+            pending_cfg_test = false;
+        } else if pending_cfg_test && !trimmed.is_empty() && !trimmed.starts_with("#[") {
+            pending_cfg_test = false;
+        }
+        depth += opens - closes;
+        while active_modules
+            .last()
+            .is_some_and(|(_start, module_depth)| depth < *module_depth)
+        {
+            if let Some((start, _module_depth)) = active_modules.pop() {
+                ranges.push((start, line_number));
+            }
+        }
+    }
+    ranges.extend(
+        active_modules
+            .into_iter()
+            .map(|(start, _module_depth)| (start, last_line)),
+    );
+    ranges
+}
+
 fn production_owner_names(index: &RustIndex) -> BTreeSet<String> {
     index
         .functions
@@ -869,6 +938,54 @@ fn helper_owner_call_names_from_production_helpers(
         .filter_map(|helper_name| package_helpers.get(helper_name))
         .flat_map(|owner_names| owner_names.iter().cloned())
         .collect()
+}
+
+fn helper_owner_call_names_from_same_file_unit_production_helpers(
+    test: &TestSummary,
+    production_helpers: &HelperOwnerCallsByPackage,
+    local_function_names: Option<&BTreeSet<String>>,
+    test_scoped_function_names: Option<&BTreeSet<String>>,
+) -> BTreeSet<String> {
+    let Some(local_function_names) = local_function_names else {
+        return BTreeSet::new();
+    };
+    let Some(package) = package_scope(&test.file) else {
+        return BTreeSet::new();
+    };
+    let Some(package_helpers) = production_helpers.get(&package) else {
+        return BTreeSet::new();
+    };
+    test.calls
+        .iter()
+        .filter(|call| local_function_names.contains(&call.name))
+        .filter(|call| {
+            same_file_unit_production_helper_call_is_allowed(call, test_scoped_function_names)
+        })
+        .filter_map(|call| package_helpers.get(&call.name))
+        .flat_map(|owner_names| owner_names.iter().cloned())
+        .collect()
+}
+
+fn same_file_unit_production_helper_call_is_allowed(
+    call: &CallFact,
+    test_scoped_function_names: Option<&BTreeSet<String>>,
+) -> bool {
+    let cleaned = strip_comments_and_strings(&call.text);
+    if code_contains_parent_qualified_helper_call(&cleaned, &call.name) {
+        return true;
+    }
+    !test_scoped_function_names.is_some_and(|names| names.contains(&call.name))
+        && call_text_contains_named_call(&cleaned, &call.name)
+}
+
+fn code_contains_parent_qualified_helper_call(code: &str, helper_name: &str) -> bool {
+    let pattern = format!("super::{helper_name}(");
+    code.match_indices(&pattern).any(|(start, _)| {
+        code[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|before| !is_rust_path_identifier_char(before))
+    })
 }
 
 /// Why this test is related to the seam. v1: a single highest-priority
@@ -5296,6 +5413,75 @@ fn multi_owner_wrapper_observes_pipeline_call_target() {
     }
 
     #[test]
+    fn given_call_presence_when_unit_test_calls_same_file_target_affinity_wrapper_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_both(input: &str) -> String {
+    let pipeline = render_pipeline(input);
+    let report = render_report(input);
+    format!("format_output={pipeline};format_report={report}")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unit_wrapper_observes_pipeline_call_target() {
+        let rendered = exercise_both("alpha");
+        assert!(rendered.contains("format_output"));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected same-file target-affinity wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "same-file target-affinity wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_call_presence_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown()
     -> Result<(), String> {
         let prod = PathBuf::from("src/pipeline.rs");
@@ -5708,6 +5894,77 @@ fn local_shadow_keeps_pipeline_limited() {
                 .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
             "test-local shadow must not inherit production wrapper relation: {:?}",
             evidence.related_tests
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_shadows_target_affinity_wrapper_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_both(input: &str) -> String {
+    let pipeline = render_pipeline(input);
+    let report = render_report(input);
+    format!("format_output={pipeline};format_report={report}")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    fn exercise_both(_: &str) -> String {
+        "format_output".to_string()
+    }
+
+    #[test]
+    fn local_shadow_only_mentions_target() {
+        let rendered = exercise_both("alpha");
+        assert!(rendered.contains("format_output"));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "test-local target-affinity shadow must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "test-local target-affinity shadow must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
