@@ -21983,6 +21983,7 @@ struct RiprSwarmLimitationRouteRow {
     sample_packet_id: Option<String>,
     sample_limitation_category: Option<String>,
     sample_canonical_gap_ids: Vec<String>,
+    sample_sources: Vec<Lane1StaticLimitationBacklogSample>,
     dominant_evidence_class: Option<String>,
     why_not_actionable: Option<String>,
     unlock_condition: Option<String>,
@@ -26235,6 +26236,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 sample_packet_id: None,
                 sample_limitation_category: None,
                 sample_canonical_gap_ids: Vec::new(),
+                sample_sources: Vec::new(),
                 dominant_evidence_class: None,
                 why_not_actionable: None,
                 unlock_condition: None,
@@ -26261,6 +26263,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 sample_packet_id: None,
                 sample_limitation_category: None,
                 sample_canonical_gap_ids: Vec::new(),
+                sample_sources: Vec::new(),
                 dominant_evidence_class: None,
                 why_not_actionable: None,
                 unlock_condition: None,
@@ -26270,6 +26273,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
             row.sample_packet_id = audit_non_empty_string(packet, &["packet_id"]);
             row.sample_limitation_category = category;
             row.sample_canonical_gap_ids = ripr_swarm_limitation_route_sample_gap_ids(packet);
+            row.sample_sources = ripr_swarm_limitation_route_sample_sources(packet);
             row.dominant_evidence_class =
                 audit_non_empty_string(packet, &["dominant_evidence_class"]);
             row.why_not_actionable = audit_non_empty_string(packet, &["why_not_actionable"]);
@@ -26307,6 +26311,24 @@ fn ripr_swarm_limitation_route_sample_gap_ids(packet: &Value) -> Vec<String> {
         .collect()
 }
 
+fn ripr_swarm_limitation_route_sample_sources(
+    packet: &Value,
+) -> Vec<Lane1StaticLimitationBacklogSample> {
+    audit_array(packet, &["sample_sources"])
+        .iter()
+        .filter_map(|sample| {
+            let source_file = audit_non_empty_string(sample, &["source_file"])?;
+            Some(Lane1StaticLimitationBacklogSample {
+                canonical_gap_id: audit_non_empty_string(sample, &["canonical_gap_id"]),
+                evidence_class: audit_non_empty_string(sample, &["evidence_class"])
+                    .unwrap_or_else(|| "unknown".to_string()),
+                source_file,
+            })
+        })
+        .take(3)
+        .collect()
+}
+
 fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Vec<Value> {
     rows.iter()
         .map(|row| {
@@ -26316,6 +26338,11 @@ fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Ve
                 "sample_packet_id": row.sample_packet_id,
                 "sample_limitation_category": row.sample_limitation_category,
                 "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
+                "sample_sources": row
+                    .sample_sources
+                    .iter()
+                    .map(lane1_static_limitation_backlog_sample_json)
+                    .collect::<Vec<_>>(),
                 "dominant_evidence_class": row.dominant_evidence_class,
                 "why_not_actionable": row.why_not_actionable,
                 "unlock_condition": row.unlock_condition,
@@ -27337,11 +27364,11 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
     out.push_str(
         "Limitation routes are analyzer backlog signals, not swarm-ready repair work.\n\n",
     );
-    out.push_str("| Repair route | Signals | Sample packet | Category | Dominant class | Unlock condition |\n");
-    out.push_str("| --- | ---: | --- | --- | --- | --- |\n");
+    out.push_str("| Repair route | Signals | Sample packet | Category | Dominant class | Sample sources | Unlock condition |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | {} | `{}` | `{}` | `{}` | {} |\n",
+            "| `{}` | {} | `{}` | `{}` | `{}` | {} | {} |\n",
             audit_markdown_cell(&row.repair_route),
             row.signal_count,
             audit_markdown_cell(row.sample_packet_id.as_deref().unwrap_or("unknown")),
@@ -27351,6 +27378,7 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
                     .unwrap_or("unknown")
             ),
             audit_markdown_cell(row.dominant_evidence_class.as_deref().unwrap_or("unknown")),
+            audit_markdown_cell(&ripr_swarm_limitation_route_sample_sources_markdown(row)),
             audit_markdown_cell(
                 row.unlock_condition
                     .as_deref()
@@ -27359,6 +27387,22 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
         ));
     }
     out.push('\n');
+}
+
+fn ripr_swarm_limitation_route_sample_sources_markdown(
+    row: &RiprSwarmLimitationRouteRow,
+) -> String {
+    if row.sample_sources.is_empty() {
+        return "unknown".to_string();
+    }
+    row.sample_sources
+        .iter()
+        .map(|sample| {
+            let gap = sample.canonical_gap_id.as_deref().unwrap_or("unknown");
+            format!("{} ({gap})", sample.source_file)
+        })
+        .collect::<Vec<_>>()
+        .join("<br>")
 }
 
 fn ripr_swarm_readiness_push_next_actions_table(
@@ -83727,10 +83771,20 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_limitation_routes"][0]["sample_canonical_gap_ids"][0],
             "gap:affinity-owner-call"
         );
+        assert_eq!(
+            value["top_limitation_routes"][0]["sample_sources"][0]["source_file"],
+            "src/lib.rs"
+        );
+        assert_eq!(
+            value["top_limitation_routes"][0]["sample_sources"][0]["canonical_gap_id"],
+            "gap:affinity-owner-call"
+        );
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("## Top Limitation Routes"));
         assert!(markdown.contains("route_static_limitation_backlog"));
         assert!(markdown.contains("analysis/related-test-affinity-owner-call-tracing"));
+        assert!(markdown.contains("src/lib.rs"));
+        assert!(markdown.contains("gap:affinity-owner-call"));
         Ok(())
     }
 
