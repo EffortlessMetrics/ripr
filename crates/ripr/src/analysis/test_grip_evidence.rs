@@ -274,7 +274,7 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
                         local_function_names,
                         external_owner_names,
                     ))
-                    && call.text.contains(&format!("{}(", call.name))
+                    && call_text_contains_named_call(&call.text, &call.name)
             })
             .map(|call| call.name.clone())
             .collect::<BTreeSet<_>>();
@@ -411,7 +411,7 @@ fn target_affinity_direct_owner_calls_for_function(
         .filter(|call| call.name != function.name)
         .filter(|call| supported_helper_owner_call_name(&call.name, local_function_names, None))
         .filter(|call| owner_token_is_specific_enough(&call.name.to_ascii_lowercase()))
-        .filter(|call| call.text.contains(&format!("{}(", call.name)))
+        .filter(|call| call_text_contains_named_call(&call.text, &call.name))
         .map(|call| call.name.clone())
         .collect()
 }
@@ -466,7 +466,7 @@ fn helper_directly_delegates_to_specific_owner(
             &candidate.name,
             local_function_names,
             external_owner_names,
-        ) && candidate.text.contains(&format!("{}(", candidate.name))
+        ) && call_text_contains_named_call(&candidate.text, &candidate.name)
             && owner_token_is_specific_enough(&candidate.name.to_ascii_lowercase())
         {
             direct_local_owner_call_names.insert(candidate.name.clone());
@@ -482,6 +482,10 @@ fn helper_directly_delegates_to_specific_owner(
         && direct_local_owner_call_names.contains(&call.name)
         && delegates_to_call
         && !has_disallowed_extra_call
+}
+
+fn call_text_contains_named_call(text: &str, name: &str) -> bool {
+    text.contains(&format!("{name}(")) || text.contains(&format!("{name}::"))
 }
 
 fn supported_helper_owner_call_name(
@@ -1829,12 +1833,9 @@ fn observed_value_facts_for_test(
 }
 
 fn has_direct_owner_call(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
-    let call_open = format!("{owner_name}(");
-    indexed
-        .test
-        .calls
-        .iter()
-        .any(|call| call.name == owner_name && call.text.contains(&call_open))
+    indexed.test.calls.iter().any(|call| {
+        call.name == owner_name && call_text_contains_named_call(&call.text, owner_name)
+    })
 }
 
 fn has_owner_call_via_one_hop_helper(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
@@ -4467,6 +4468,72 @@ fn emit_receipt_sends_value() {
         assert_eq!(evidence.propagate.state, StageState::Yes);
         assert_eq!(evidence.observe.state, StageState::Yes);
         assert_eq!(evidence.discriminate.state, StageState::Yes);
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline<T: ToString>(input: T) -> String {
+    format_output(input.to_string())
+}
+
+fn format_output(input: String) -> String {
+    input
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+#[test]
+fn direct_generic_owner_call_observes_call_presence() {
+    let rendered = render_pipeline::<String>("alpha".to_string());
+    assert_eq!(rendered, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.related_tests.iter().any(|test| {
+                test.relation_reason == RelationReason::DirectOwnerCall
+                    && test.test_name == "direct_generic_owner_call_observes_call_presence"
+            }),
+            "expected turbofish direct owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "call_presence turbofish activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "call_presence turbofish owner calls must not create boundary debt"
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("Observed direct owner call for value-insensitive seam"),
+            "activation summary should explain direct owner-call route: {}",
+            evidence.activate.summary
+        );
         Ok(())
     }
 

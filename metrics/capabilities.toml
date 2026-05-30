@@ -418,6 +418,7 @@ evidence = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown keeps the route target-scoped so another call target does not confirm this owner",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_has_target_affinity_then_activation_is_yes validates assertion-target affinity can disambiguate a value-insensitive same-package production wrapper that directly calls multiple owners without inventing observed values",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown keeps the value-insensitive route target-scoped so another asserted target does not confirm this owner",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes and analysis::extract::calls::tests::call_extraction_recognizes_turbofish_function_calls validate direct generic owner calls can reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
   "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while analysis/call-presence-target-affinity-owner-call-tracing remains the next sampled work-queue proof"
 ]
 fixtures = [

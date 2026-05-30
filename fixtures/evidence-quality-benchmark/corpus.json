@@ -956,6 +956,71 @@
       "repair_route": "analysis/related-test-ranking-audit-fixes"
     },
     {
+      "id": "call_presence_direct_turbofish_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A direct generic owner call using turbofish syntax can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let rendered = render_pipeline::<String>(\"alpha\".to_string());\nassert_eq!(rendered, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-turbofish-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-direct-turbofish-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For call-presence seams, a related test that directly calls the owner through turbofish syntax can satisfy activation without observed activation values.",
+      "must_not_claim": [
+        "Do not infer call-presence activation without a direct owner call.",
+        "Do not invent synthetic observed values for opaque call-presence arguments.",
+        "Do not treat activation alone as strong exposure without matching observation and discrimination.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
       "id": "call_presence_same_file_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",
