@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: is_priority
   changed behavior: return_value changed at src/priority.py:2: `return amount >= 100`
   current test evidence: tests/test_priority.py:4 test_priority_amount currently has oracle_strength=smoke, oracle_kind=smoke_only: assert is_priority(100)
   missing discriminator: return value == amount >= 100
-  recommended test shape: Add or strengthen a pytest exact return-value assertion for `return value == amount >= 100`.
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == amount >= 100`.
   suggested assertion: Assert the returned value equals the expected value for the changed inputs.
   suggested file: tests/test_priority.py
-  suggested test: test_is_priority_return_value
-  pytest node: tests/test_priority.py::test_is_priority_return_value
-  verify: pytest tests/test_priority.py::test_is_priority_return_value (high)
+  suggested test: test_priority_amount
+  pytest node: tests/test_priority.py::test_priority_amount
+  verify: pytest tests/test_priority.py::test_priority_amount (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == amount >= 100`.
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.

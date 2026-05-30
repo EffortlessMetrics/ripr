@@ -252,6 +252,8 @@ can show:
 - a check-output gap-ledger fixture proving Python repair cards can become
   bounded agent packets with verify and receipt commands while remaining
   preview/advisory
+- fixtures proving direct weak related pytest and unittest tests are preferred
+  as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub
   annotations and diff-scoped SARIF as advisory repair context, not gate or
   receipt authority
@@ -389,6 +391,7 @@ adapter contributes:
 - `language_adapter_python_repair_ranking_noise_control`
 - `language_adapter_python_test_placement_verify`
 - `language_adapter_python_repair_card_v1`
+- `language_adapter_python_existing_test_strengthening`
 - `language_adapter_python_agent_packet_v1`
 - `language_adapter_python_gap_receipt_from_check_output`
 - `language_adapter_python_pilot_first_use_path`

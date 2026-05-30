@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":3}
       ],
-      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_apply_threshold_boundary", "suggested_test_node_id: tests/test_policy.py::test_apply_threshold_boundary", "suggested_verify_command: pytest tests/test_policy.py::test_apply_threshold_boundary", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
+      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
       "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_policy.py",
-        "suggested_test_name": "test_apply_threshold_boundary",
-        "suggested_test_node_id": "tests/test_policy.py::test_apply_threshold_boundary",
-        "verify_command": "pytest tests/test_policy.py::test_apply_threshold_boundary",
+        "suggested_test_name": "test_discount_policy_apply",
+        "suggested_test_node_id": "tests/test_policy.py::test_discount_policy_apply",
+        "verify_command": "pytest tests/test_policy.py::test_discount_policy_apply",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "DiscountPolicy.apply",
         "changed_behavior": "predicate_boundary changed at src/policy.py:3: `if amount >= threshold:`",
         "current_test_evidence": "tests/test_policy.py:4 test_discount_policy_apply currently has oracle_strength=unknown, oracle_kind=unknown",
         "missing_discriminator": "amount == threshold",
-        "recommended_test_shape": "Add or strengthen a pytest boundary assertion for `amount == threshold`.",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`.",
         "suggested_assertion": "Assert the owner result or effect at the boundary `amount == threshold`.",
         "suggested_location": {
           "test_file": "tests/test_policy.py",
-          "test_name": "test_apply_threshold_boundary",
-          "pytest_node_id": "tests/test_policy.py::test_apply_threshold_boundary"
+          "test_name": "test_discount_policy_apply",
+          "pytest_node_id": "tests/test_policy.py::test_discount_policy_apply"
          },
         "verify": {
-          "command": "pytest tests/test_policy.py::test_apply_threshold_boundary",
+          "command": "pytest tests/test_policy.py::test_discount_policy_apply",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: add a focused boundary assertion for missing discriminator `amount == threshold`.",
-      "suggested_next_action": "Python preview: add a focused boundary assertion for missing discriminator `amount == threshold`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "method"

@@ -26,9 +26,9 @@
         "dedupe_fingerprint": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold"
       },
       "repair_route": {
-        "route_kind": "AddBoundaryAssertion",
+        "route_kind": "StrengthenExistingTest",
         "target_file": "tests/test_pricing.py",
-        "related_test": "test_calculate_discount_threshold_boundary",
+        "related_test": "test_calculate_discount_smoke",
         "assertion_shape": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
         "missing_discriminator": "amount == threshold",
         "changed_behavior": "if amount >= threshold:",
@@ -39,7 +39,7 @@
         ]
       },
       "verification_commands": [
-        "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+        "pytest tests/test_pricing.py::test_calculate_discount_smoke"
       ],
       "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json"
     }

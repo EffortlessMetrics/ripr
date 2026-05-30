@@ -9,6 +9,7 @@ pub(crate) struct PythonRepairCard {
     pub(crate) language: String,
     pub(crate) language_status: String,
     pub(crate) authority_boundary: String,
+    pub(crate) repair_action: String,
     pub(crate) changed_owner: String,
     pub(crate) changed_behavior: String,
     pub(crate) current_test_evidence: String,
@@ -47,6 +48,9 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
     let verify_command = evidence_value(finding, "suggested_verify_command: ")?.to_string();
     let verify_command_confidence =
         evidence_value(finding, "suggested_verify_command_confidence: ")?.to_string();
+    let repair_action = evidence_value(finding, "suggested_repair_action: ")
+        .unwrap_or("add_or_strengthen_test")
+        .to_string();
     let related_test = strongest_related_test(finding)?;
 
     Some(PythonRepairCard {
@@ -56,6 +60,7 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
         language: "python".to_string(),
         language_status: "preview".to_string(),
         authority_boundary: "preview_advisory_only".to_string(),
+        repair_action: repair_action.clone(),
         changed_owner: gap.owner.clone(),
         changed_behavior: changed_behavior(finding, gap.behavior_kind.as_str()),
         current_test_evidence: current_test_evidence(related_test),
@@ -64,6 +69,7 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
             &finding.probe.family,
             &missing_discriminator,
             &verify_command,
+            &repair_action,
         ),
         suggested_assertion: suggested_assertion(
             &finding.probe.family,
@@ -104,6 +110,7 @@ pub(crate) fn python_repair_card_json_value(card: &PythonRepairCard) -> Value {
         "language": card.language.as_str(),
         "language_status": card.language_status.as_str(),
         "authority_boundary": card.authority_boundary.as_str(),
+        "repair_action": card.repair_action.as_str(),
         "changed_owner": card.changed_owner.as_str(),
         "changed_behavior": card.changed_behavior.as_str(),
         "current_test_evidence": card.current_test_evidence.as_str(),
@@ -160,27 +167,33 @@ fn recommended_test_shape(
     family: &ProbeFamily,
     missing_discriminator: &str,
     verify_command: &str,
+    repair_action: &str,
 ) -> String {
     let framework = framework_label(verify_command);
+    let verb = if repair_action == "strengthen_existing_test" {
+        "Strengthen the existing"
+    } else {
+        "Add or strengthen a"
+    };
     match family {
-        ProbeFamily::Predicate => format!(
-            "Add or strengthen a {framework} boundary assertion for `{missing_discriminator}`."
-        ),
-        ProbeFamily::ReturnValue => format!(
-            "Add or strengthen a {framework} exact return-value assertion for `{missing_discriminator}`."
-        ),
-        ProbeFamily::ErrorPath => format!(
-            "Add or strengthen a {framework} exception assertion for `{missing_discriminator}`."
-        ),
-        ProbeFamily::FieldConstruction => format!(
-            "Add or strengthen a {framework} field/object assertion for `{missing_discriminator}`."
-        ),
+        ProbeFamily::Predicate => {
+            format!("{verb} {framework} boundary assertion for `{missing_discriminator}`.")
+        }
+        ProbeFamily::ReturnValue => {
+            format!(
+                "{verb} {framework} exact return-value assertion for `{missing_discriminator}`."
+            )
+        }
+        ProbeFamily::ErrorPath => {
+            format!("{verb} {framework} exception assertion for `{missing_discriminator}`.")
+        }
+        ProbeFamily::FieldConstruction => {
+            format!("{verb} {framework} field/object assertion for `{missing_discriminator}`.")
+        }
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => format!(
-            "Add or strengthen a {framework} output/log/call-effect assertion for `{missing_discriminator}`."
+            "{verb} {framework} output/log/call-effect assertion for `{missing_discriminator}`."
         ),
-        _ => format!(
-            "Add or strengthen a {framework} focused assertion for `{missing_discriminator}`."
-        ),
+        _ => format!("{verb} {framework} focused assertion for `{missing_discriminator}`."),
     }
 }
 

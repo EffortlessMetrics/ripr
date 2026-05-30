@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"error_variant","text":"raise ValueError(\"positive required\")","line":3}
       ],
-      "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_require_positive_exception_path", "suggested_test_node_id: tests/test_validation.py::test_require_positive_exception_path", "suggested_verify_command: pytest tests/test_validation.py::test_require_positive_exception_path", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_rejects_zero_value)", "test_verify_command: pytest tests/test_validation.py::test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
+      "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_rejects_zero_value", "suggested_test_node_id: tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command: pytest tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_value)", "test_verify_command: pytest tests/test_validation.py::test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
       "missing": ["Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_validation.py",
-        "suggested_test_name": "test_require_positive_exception_path",
-        "suggested_test_node_id": "tests/test_validation.py::test_require_positive_exception_path",
-        "verify_command": "pytest tests/test_validation.py::test_require_positive_exception_path",
+        "suggested_test_name": "test_rejects_zero_value",
+        "suggested_test_node_id": "tests/test_validation.py::test_rejects_zero_value",
+        "verify_command": "pytest tests/test_validation.py::test_rejects_zero_value",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "require_positive",
         "changed_behavior": "exception_path changed at src/validation.py:3: `raise ValueError(\"positive required\")`",
         "current_test_evidence": "tests/test_validation.py:6 test_rejects_zero_value currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
         "missing_discriminator": "raises ValueError matching \"positive required\"",
-        "recommended_test_shape": "Add or strengthen a pytest exception assertion for `raises ValueError matching \"positive required\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest exception assertion for `raises ValueError matching \"positive required\"`.",
         "suggested_assertion": "with pytest.raises(ValueError, match=\"positive required\"): ...",
         "suggested_location": {
           "test_file": "tests/test_validation.py",
-          "test_name": "test_require_positive_exception_path",
-          "pytest_node_id": "tests/test_validation.py::test_require_positive_exception_path"
+          "test_name": "test_rejects_zero_value",
+          "pytest_node_id": "tests/test_validation.py::test_rejects_zero_value"
          },
         "verify": {
-          "command": "pytest tests/test_validation.py::test_require_positive_exception_path",
+          "command": "pytest tests/test_validation.py::test_rejects_zero_value",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or strengthen an exception assertion for missing discriminator `raises ValueError matching \"positive required\"`.",
-      "suggested_next_action": "Python preview: add or strengthen an exception assertion for missing discriminator `raises ValueError matching \"positive required\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching \"positive required\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching \"positive required\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

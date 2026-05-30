@@ -87,6 +87,7 @@ fn python_repair_card() -> PythonRepairCard {
         language: "python".to_string(),
         language_status: "preview".to_string(),
         authority_boundary: "preview_advisory_only".to_string(),
+        repair_action: "strengthen_existing_test".to_string(),
         changed_owner: "calculate_discount".to_string(),
         changed_behavior: "predicate_boundary changed at src/pricing.py:2: `amount >= threshold`"
             .to_string(),
@@ -95,17 +96,17 @@ fn python_repair_card() -> PythonRepairCard {
                 .to_string(),
         missing_discriminator: "amount == threshold".to_string(),
         recommended_test_shape:
-            "Add or strengthen a pytest boundary assertion for `amount == threshold`."
+            "Strengthen the existing pytest boundary assertion for `amount == threshold`."
                 .to_string(),
         suggested_assertion: "Assert the owner result or effect at the boundary `amount == threshold`."
             .to_string(),
         suggested_test_file: "tests/test_pricing.py".to_string(),
-        suggested_test_name: "test_calculate_discount_threshold_boundary".to_string(),
+        suggested_test_name: "test_calculate_discount_above_threshold".to_string(),
         suggested_test_node_id: Some(
-            "tests/test_pricing.py::test_calculate_discount_threshold_boundary".to_string(),
+            "tests/test_pricing.py::test_calculate_discount_above_threshold".to_string(),
         ),
         verify_command:
-            "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary".to_string(),
+            "pytest tests/test_pricing.py::test_calculate_discount_above_threshold".to_string(),
         verify_command_confidence: "high".to_string(),
         receipt_command: None,
         receipt_status: "unavailable_until_python_gap_ledger".to_string(),
@@ -610,11 +611,12 @@ fn pilot_summary_json_projects_python_first_use_repair_card() {
         r#""repair_cards_total": 1"#,
         r#""top_repair_card": {"#,
         "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+        r#""repair_action": "strengthen_existing_test""#,
         r#""changed_owner": "calculate_discount""#,
         r#""missing_discriminator": "amount == threshold""#,
         r#""suggested_test_file": "tests/test_pricing.py""#,
-        r#""suggested_test_name": "test_calculate_discount_threshold_boundary""#,
-        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary""#,
+        r#""suggested_test_name": "test_calculate_discount_above_threshold""#,
+        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_above_threshold""#,
         r#""receipt_status": "unavailable_until_python_gap_ledger""#,
         r#""receipt_guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.""#,
         r#""deferred_features": ["outcome_receipts", "runtime_mutation_execution", "gate_authority", "generated_tests"]"#,
@@ -637,10 +639,11 @@ fn pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked() {
     for needle in [
         "## Top Recommendation",
         "Top Python repairable gap",
+        "Repair action: `strengthen_existing_test`",
         "Changed owner: `calculate_discount`",
         "Missing discriminator: `amount == threshold`",
-        "Suggested test: `test_calculate_discount_threshold_boundary` in `tests/test_pricing.py`",
-        "Verify: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`",
+        "Suggested test target: `test_calculate_discount_above_threshold` in `tests/test_pricing.py`",
+        "Verify: `pytest tests/test_pricing.py::test_calculate_discount_above_threshold`",
         "Receipt status: `unavailable_until_python_gap_ledger`",
         "Receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
         "## Python Preview First Use",
@@ -654,10 +657,11 @@ fn pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked() {
     for needle in [
         "Top recommendation:",
         "language: python (preview)",
+        "repair action: strengthen_existing_test",
         "changed owner: calculate_discount",
         "missing discriminator: amount == threshold",
-        "recommended test: add test_calculate_discount_threshold_boundary in tests/test_pricing.py",
-        "verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "recommended repair: strengthen test_calculate_discount_above_threshold in tests/test_pricing.py",
+        "verify: pytest tests/test_pricing.py::test_calculate_discount_above_threshold",
         "receipt status: unavailable_until_python_gap_ledger",
         "receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
         "Python preview:",

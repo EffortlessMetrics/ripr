@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
-      "evidence": ["owner: risk_score", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_test_file: tests/test_risk.py", "suggested_test_name: test_risk_score_100_boundary", "suggested_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct unittest relation", "test_framework: unittest (test_risk_score_high)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high (test_risk_score_high)", "related_test_relation: syntactic_call (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)", "test_oracle_shape: broad_smoke_assertion (test_risk_score_high)"],
+      "evidence": ["owner: risk_score", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_risk.py", "suggested_test_name: test_risk_score_high", "suggested_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_risk_score_high)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high (test_risk_score_high)", "related_test_relation: syntactic_call (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)", "test_oracle_shape: broad_smoke_assertion (test_risk_score_high)"],
       "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
@@ -77,8 +77,8 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_risk.py",
-        "suggested_test_name": "test_risk_score_100_boundary",
-        "verify_command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary",
+        "suggested_test_name": "test_risk_score_high",
+        "verify_command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -88,18 +88,19 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "risk_score",
         "changed_behavior": "predicate_boundary changed at src/risk.py:2: `if amount >= 100:`",
         "current_test_evidence": "tests/test_risk.py:7 test_risk_score_high currently has oracle_strength=smoke, oracle_kind=smoke_only: self.assertTrue(value)",
         "missing_discriminator": "amount == 100",
-        "recommended_test_shape": "Add or strengthen a unittest boundary assertion for `amount == 100`.",
+        "recommended_test_shape": "Strengthen the existing unittest boundary assertion for `amount == 100`.",
         "suggested_assertion": "Assert the owner result or effect at the boundary `amount == 100`.",
         "suggested_location": {
           "test_file": "tests/test_risk.py",
-          "test_name": "test_risk_score_100_boundary"
+          "test_name": "test_risk_score_high"
          },
         "verify": {
-          "command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_100_boundary",
+          "command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high",
           "confidence": "high"
          },
         "receipt": {
@@ -113,8 +114,8 @@
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.",
-      "suggested_next_action": "Python preview: add a focused boundary assertion for missing discriminator `amount == 100`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

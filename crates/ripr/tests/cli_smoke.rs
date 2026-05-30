@@ -1992,10 +1992,11 @@ fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
     for needle in [
         "Top recommendation:",
         "language: python (preview)",
+        "repair action: strengthen_existing_test",
         "changed owner: calculate_discount",
         "missing discriminator: amount == threshold",
-        "recommended test: add test_calculate_discount_threshold_boundary in tests/test_pricing.py",
-        "verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "recommended repair: strengthen test_calculate_discount_smoke in tests/test_pricing.py",
+        "verify: pytest tests/test_pricing.py::test_calculate_discount_smoke",
         "receipt status: unavailable_until_python_gap_ledger",
     ] {
         assert!(stdout.contains(needle), "missing stdout needle: {needle}");
@@ -2012,10 +2013,11 @@ fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
         r#""status": "ready""#,
         r#""language": "python""#,
         r#""language_status": "preview""#,
+        r#""repair_action": "strengthen_existing_test""#,
         r#""changed_owner": "calculate_discount""#,
         r#""missing_discriminator": "amount == threshold""#,
         r#""suggested_test_file": "tests/test_pricing.py""#,
-        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary""#,
+        r#""verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke""#,
     ] {
         assert!(
             summary_json.contains(needle),

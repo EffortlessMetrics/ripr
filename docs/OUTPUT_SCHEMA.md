@@ -435,9 +435,12 @@ The evidence-first fields are additive in schema `0.1`:
   Python-scoped so it does not collide with the existing GapRecord
   `repair_card` packet contract. The v1 card carries `card_version`, `source`,
   `canonical_gap_id`, `language`, `language_status`, `authority_boundary`,
-  `changed_owner`, `changed_behavior`, `current_test_evidence`,
+  `repair_action`, `changed_owner`, `changed_behavior`, `current_test_evidence`,
   `missing_discriminator`, `recommended_test_shape`, `suggested_assertion`,
   `suggested_location`, `verify`, `receipt`, `stop_conditions`, and `limits`.
+  `repair_action = "strengthen_existing_test"` means the card and derived
+  packet should strengthen the named weak related test instead of adding a
+  redundant new test.
   In raw `ripr check` output, `receipt.command` may still be `null` because the
   renderer does not know where the caller will save before/after check
   snapshots. Raw check cards include `receipt.guidance`, and pilot projections
@@ -9522,12 +9525,12 @@ The queue envelope is:
       "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "language": "python",
       "language_status": "preview",
-      "repair_kind": "AddBoundaryAssertion",
+      "repair_kind": "StrengthenExistingTest",
       "changed_owner": "calculate_discount",
       "missing_discriminator": "amount == threshold",
       "suggested_test_file": "tests/test_pricing.py",
-      "suggested_test_name": "test_calculate_discount_threshold_boundary",
-      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+      "suggested_test_name": "test_calculate_discount_smoke",
+      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
       "conflict_group": "file:tests/test_pricing.py",
       "conflict_group_size": 2,
       "allowed_edit_surface": ["tests/test_pricing.py"],
@@ -9880,6 +9883,8 @@ Field contract:
   versions may add tasks like `"strengthen_oracle"` or
   `"add_match_arm_observer"`. Gap-ledger packet mode also uses
   `"write_targeted_test"` for repairable assertion routes,
+  `"strengthen_targeted_test"` for Python preview routes that strengthen an
+  existing weak related test,
   `"inspect_static_limitation"` for explicit inspection routes, and
   `"add_output_golden"` for `MissingOutputContract` records whose repair
   route is `AddOutputGolden`.
@@ -10386,11 +10391,12 @@ is populated:
     "language": "python",
     "language_status": "preview",
     "authority_boundary": "preview_advisory_only",
+    "repair_action": "strengthen_existing_test",
     "changed_owner": "calculate_discount",
     "missing_discriminator": "amount == threshold",
     "suggested_test_file": "tests/test_pricing.py",
-    "suggested_test_name": "test_calculate_discount_threshold_boundary",
-    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    "suggested_test_name": "test_calculate_discount_smoke",
+    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
     "receipt_command": null,
     "receipt_status": "unavailable_until_python_gap_ledger",
     "receipt_guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",

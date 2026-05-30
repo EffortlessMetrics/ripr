@@ -635,6 +635,7 @@ fn python_repair_card_json(out: &mut String, card: &PythonRepairCard, indent: us
         &card.authority_boundary,
         true,
     );
+    field(out, indent + 1, "repair_action", &card.repair_action, true);
     field(out, indent + 1, "changed_owner", &card.changed_owner, true);
     field(
         out,

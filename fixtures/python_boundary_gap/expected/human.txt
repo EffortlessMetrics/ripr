@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: apply_discount
   changed behavior: predicate_boundary changed at src/discount.py:2: `if amount >= threshold:`
   current test evidence: tests/test_discount.py:4 test_apply_discount_smoke currently has oracle_strength=unknown, oracle_kind=unknown
   missing discriminator: amount == threshold
-  recommended test shape: Add or strengthen a pytest boundary assertion for `amount == threshold`.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == threshold`.
   suggested assertion: Assert the owner result or effect at the boundary `amount == threshold`.
   suggested file: tests/test_discount.py
-  suggested test: test_apply_discount_threshold_boundary
-  pytest node: tests/test_discount.py::test_apply_discount_threshold_boundary
-  verify: pytest tests/test_discount.py::test_apply_discount_threshold_boundary (high)
+  suggested test: test_apply_discount_smoke
+  pytest node: tests/test_discount.py::test_apply_discount_smoke
+  verify: pytest tests/test_discount.py::test_apply_discount_smoke (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add a focused boundary assertion for missing discriminator `amount == threshold`.
+  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.

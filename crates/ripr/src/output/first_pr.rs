@@ -1709,6 +1709,11 @@ fn focused_proof_intent(
         "AddBoundaryAssertion" => suggested_assertion
             .map(|assertion| format!("Add a focused boundary assertion{target}: `{assertion}`."))
             .unwrap_or_else(|| format!("Add a focused boundary assertion{target}.")),
+        "StrengthenExistingTest" => suggested_assertion
+            .map(|assertion| {
+                format!("Strengthen the existing related test{target}: `{assertion}`.")
+            })
+            .unwrap_or_else(|| format!("Strengthen the existing related test{target}.")),
         "AddValueAssertion" => suggested_assertion
             .map(|assertion| format!("Add a focused value assertion{target}: `{assertion}`."))
             .unwrap_or_else(|| format!("Add a focused value assertion{target}.")),
@@ -3587,7 +3592,7 @@ mod tests {
         );
         assert_eq!(
             packet["selected"]["verify_command"],
-            "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+            "pytest tests/test_pricing.py::test_calculate_discount_smoke"
         );
         assert_eq!(
             packet["selected"]["receipt_command_source"],
@@ -3601,7 +3606,9 @@ mod tests {
             Path::new("target/ripr/reports/start-here.md"),
         );
         assert!(summary.contains("Safe next action: repair one named gap `gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold`"));
-        assert!(summary.contains("Verify command: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`"));
+        assert!(summary.contains(
+            "Verify command: `pytest tests/test_pricing.py::test_calculate_discount_smoke`"
+        ));
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
     }
@@ -3811,9 +3818,9 @@ mod tests {
                         "dedupe_fingerprint": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold"
                     },
                     "repair_route": {
-                        "route_kind": "AddBoundaryAssertion",
+                        "route_kind": "StrengthenExistingTest",
                         "target_file": "tests/test_pricing.py",
-                        "related_test": "test_calculate_discount_threshold_boundary",
+                        "related_test": "test_calculate_discount_smoke",
                         "assertion_shape": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
                         "missing_discriminator": "amount == threshold",
                         "changed_behavior": "if amount >= threshold:",
@@ -3824,7 +3831,7 @@ mod tests {
                         ]
                     },
                     "verification_commands": [
-                        "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+                        "pytest tests/test_pricing.py::test_calculate_discount_smoke"
                     ],
                     "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json"
                 }
@@ -3869,15 +3876,16 @@ mod tests {
                             "existing test asserts broad success"
                         ],
                         "missing_discriminator": "amount == threshold",
+                        "repair_action": "strengthen_existing_test",
                         "test_shape": "pytest exact boundary assertion",
                         "suggested_assertion": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
                         "suggested_location": {
                             "source_file": "app/pricing.py",
                             "test_file": "tests/test_pricing.py",
-                            "test_name": "test_calculate_discount_threshold_boundary"
+                            "test_name": "test_calculate_discount_smoke"
                         },
                         "verify": {
-                            "command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+                            "command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
                             "confidence": "high"
                         },
                         "receipt": {

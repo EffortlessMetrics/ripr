@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: require_positive
   changed behavior: exception_path changed at src/validation.py:3: `raise ValueError("positive required")`
   current test evidence: tests/test_validation.py:6 test_rejects_zero_value currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)
   missing discriminator: raises ValueError matching "positive required"
-  recommended test shape: Add or strengthen a pytest exception assertion for `raises ValueError matching "positive required"`.
+  recommended test shape: Strengthen the existing pytest exception assertion for `raises ValueError matching "positive required"`.
   suggested assertion: with pytest.raises(ValueError, match="positive required"): ...
   suggested file: tests/test_validation.py
-  suggested test: test_require_positive_exception_path
-  pytest node: tests/test_validation.py::test_require_positive_exception_path
-  verify: pytest tests/test_validation.py::test_require_positive_exception_path (high)
+  suggested test: test_rejects_zero_value
+  pytest node: tests/test_validation.py::test_rejects_zero_value
+  verify: pytest tests/test_validation.py::test_rejects_zero_value (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an exception assertion for missing discriminator `raises ValueError matching "positive required"`.
+  Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching "positive required"`.

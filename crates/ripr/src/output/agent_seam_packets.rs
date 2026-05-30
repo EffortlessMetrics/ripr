@@ -627,6 +627,7 @@ fn task_for_gap_route(route: &GapRepairRoute) -> &'static str {
     match route.route_kind.as_str() {
         "InspectStaticLimit" => "inspect_static_limitation",
         "AddOutputGolden" => "add_output_golden",
+        "StrengthenExistingTest" => "strengthen_targeted_test",
         _ => "write_targeted_test",
     }
 }
@@ -635,6 +636,7 @@ fn recommended_test_reason(route: &GapRepairRoute) -> &'static str {
     match route.route_kind.as_str() {
         "AddOutputGolden" => "add or update the output-contract proof named by the gap route",
         "InspectStaticLimit" => "inspect the static limitation before changing tests",
+        "StrengthenExistingTest" => "strengthen the existing weak related test",
         _ => "place the focused repair where the gap route points",
     }
 }
@@ -930,6 +932,13 @@ fn gap_record_packet_focused_proof_intent(route: &GapRepairRoute) -> String {
             .as_deref()
             .map(|assertion| format!("Add a focused boundary assertion{target}: `{assertion}`."))
             .unwrap_or_else(|| format!("Add a focused boundary assertion{target}.")),
+        "StrengthenExistingTest" => route
+            .assertion_shape
+            .as_deref()
+            .map(|assertion| {
+                format!("Strengthen the existing related test{target}: `{assertion}`.")
+            })
+            .unwrap_or_else(|| format!("Strengthen the existing related test{target}.")),
         "AddValueAssertion" => route
             .assertion_shape
             .as_deref()

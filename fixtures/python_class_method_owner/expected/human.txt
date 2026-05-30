@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: PriceRule.from_config
   changed behavior: return_value changed at src/factory.py:4: `return cls(config["discount"] + 1)`
   current test evidence: tests/test_factory.py:4 test_price_rule_from_config currently has oracle_strength=weak, oracle_kind=relational_check: assert PriceRule.from_config({"discount": 4}) is not None
   missing discriminator: return value == cls(config["discount"] + 1)
-  recommended test shape: Add or strengthen a pytest exact return-value assertion for `return value == cls(config["discount"] + 1)`.
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == cls(config["discount"] + 1)`.
   suggested assertion: Assert the returned value equals the expected value for the changed inputs.
   suggested file: tests/test_factory.py
-  suggested test: test_from_config_return_value
-  pytest node: tests/test_factory.py::test_from_config_return_value
-  verify: pytest tests/test_factory.py::test_from_config_return_value (high)
+  suggested test: test_price_rule_from_config
+  pytest node: tests/test_factory.py::test_price_rule_from_config
+  verify: pytest tests/test_factory.py::test_price_rule_from_config (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == cls(config["discount"] + 1)`.
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config["discount"] + 1)`.

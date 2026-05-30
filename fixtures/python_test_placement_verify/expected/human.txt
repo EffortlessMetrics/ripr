@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: calculate_discount
   changed behavior: predicate_boundary changed at src/pricing.py:2: `if amount >= threshold:`
   current test evidence: tests/test_pricing.py:4 test_calculate_discount_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result
   missing discriminator: amount == threshold
-  recommended test shape: Add or strengthen a pytest boundary assertion for `amount == threshold`.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == threshold`.
   suggested assertion: Assert the owner result or effect at the boundary `amount == threshold`.
   suggested file: tests/test_pricing.py
-  suggested test: test_calculate_discount_threshold_boundary
-  pytest node: tests/test_pricing.py::test_calculate_discount_threshold_boundary
-  verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary (high)
+  suggested test: test_calculate_discount_smoke
+  pytest node: tests/test_pricing.py::test_calculate_discount_smoke
+  verify: pytest tests/test_pricing.py::test_calculate_discount_smoke (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,7 +63,7 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add a focused boundary assertion for missing discriminator `amount == threshold`.
+  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.
 
 WARNING src/validation.py:3
 
@@ -100,15 +101,16 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: require_positive
   changed behavior: exception_path changed at src/validation.py:3: `raise ValueError("positive required")`
   current test evidence: tests/test_validation.py:7 test_rejects_zero_value currently has oracle_strength=weak, oracle_kind=broad_error: self.assertRaises(ValueError)
   missing discriminator: raises ValueError matching "positive required"
-  recommended test shape: Add or strengthen a unittest exception assertion for `raises ValueError matching "positive required"`.
+  recommended test shape: Strengthen the existing unittest exception assertion for `raises ValueError matching "positive required"`.
   suggested assertion: with self.assertRaisesRegex(ValueError, "positive required"): ...
   suggested file: tests/test_validation.py
-  suggested test: test_require_positive_exception_path
-  verify: python -m unittest tests.test_validation.TestValidation.test_require_positive_exception_path (high)
+  suggested test: test_rejects_zero_value
+  verify: python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -121,4 +123,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an exception assertion for missing discriminator `raises ValueError matching "positive required"`.
+  Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching "positive required"`.

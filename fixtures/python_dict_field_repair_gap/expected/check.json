@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"struct_field","text":"return {\"status\": \"paid\", \"id\": invoice_id}","line":2}
       ],
-      "evidence": ["owner: invoice_payload", "owner_kind: function", "missing_discriminator: status == \"paid\"", "suggested_test_file: tests/test_invoice.py", "suggested_test_name: test_invoice_payload_field_value", "suggested_test_node_id: tests/test_invoice.py::test_invoice_payload_field_value", "suggested_verify_command: pytest tests/test_invoice.py::test_invoice_payload_field_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_invoice_payload_smoke)", "test_verify_command: pytest tests/test_invoice.py::test_invoice_payload_smoke (test_invoice_payload_smoke)", "related_test_relation: syntactic_call (test_invoice_payload_smoke)", "test_oracle: smoke_only smoke (test_invoice_payload_smoke)", "test_oracle_shape: broad_smoke_assertion (test_invoice_payload_smoke)"],
+      "evidence": ["owner: invoice_payload", "owner_kind: function", "missing_discriminator: status == \"paid\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_invoice.py", "suggested_test_name: test_invoice_payload_smoke", "suggested_test_node_id: tests/test_invoice.py::test_invoice_payload_smoke", "suggested_verify_command: pytest tests/test_invoice.py::test_invoice_payload_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_invoice_payload_smoke)", "test_verify_command: pytest tests/test_invoice.py::test_invoice_payload_smoke (test_invoice_payload_smoke)", "related_test_relation: syntactic_call (test_invoice_payload_smoke)", "test_oracle: smoke_only smoke (test_invoice_payload_smoke)", "test_oracle_shape: broad_smoke_assertion (test_invoice_payload_smoke)"],
       "missing": ["Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_invoice.py",
-        "suggested_test_name": "test_invoice_payload_field_value",
-        "suggested_test_node_id": "tests/test_invoice.py::test_invoice_payload_field_value",
-        "verify_command": "pytest tests/test_invoice.py::test_invoice_payload_field_value",
+        "suggested_test_name": "test_invoice_payload_smoke",
+        "suggested_test_node_id": "tests/test_invoice.py::test_invoice_payload_smoke",
+        "verify_command": "pytest tests/test_invoice.py::test_invoice_payload_smoke",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "invoice_payload",
         "changed_behavior": "field_value changed at src/invoice.py:2: `return {\"status\": \"paid\", \"id\": invoice_id}`",
         "current_test_evidence": "tests/test_invoice.py:4 test_invoice_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload",
         "missing_discriminator": "status == \"paid\"",
-        "recommended_test_shape": "Add or strengthen a pytest field/object assertion for `status == \"paid\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest field/object assertion for `status == \"paid\"`.",
         "suggested_assertion": "Assert the returned object or field satisfies `status == \"paid\"`.",
         "suggested_location": {
           "test_file": "tests/test_invoice.py",
-          "test_name": "test_invoice_payload_field_value",
-          "pytest_node_id": "tests/test_invoice.py::test_invoice_payload_field_value"
+          "test_name": "test_invoice_payload_smoke",
+          "pytest_node_id": "tests/test_invoice.py::test_invoice_payload_smoke"
          },
         "verify": {
-          "command": "pytest tests/test_invoice.py::test_invoice_payload_field_value",
+          "command": "pytest tests/test_invoice.py::test_invoice_payload_smoke",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "Python preview: add or strengthen a field/object assertion for missing discriminator `status == \"paid\"`.",
-      "suggested_next_action": "Python preview: add or strengthen a field/object assertion for missing discriminator `status == \"paid\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

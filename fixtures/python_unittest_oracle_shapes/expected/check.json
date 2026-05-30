@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return \"coupon expired\"","line":3}
       ],
-      "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: return value == \"coupon expired\"", "suggested_test_file: tests/test_notifications.py", "suggested_test_name: test_warn_coupon_return_value", "suggested_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct unittest relation", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
+      "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: return value == \"coupon expired\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifications.py", "suggested_test_name: test_warn_coupon_output_message", "suggested_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
       "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
       "activation": {
         "observed_values": [
@@ -77,8 +77,8 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_notifications.py",
-        "suggested_test_name": "test_warn_coupon_return_value",
-        "verify_command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value",
+        "suggested_test_name": "test_warn_coupon_output_message",
+        "verify_command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -88,18 +88,19 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "warn_coupon",
         "changed_behavior": "return_value changed at src/notifications.py:3: `return \"coupon expired\"`",
         "current_test_evidence": "tests/test_notifications.py:7 test_warn_coupon_output_message currently has oracle_strength=weak, oracle_kind=relational_check: self.assertIn(\"coupon expired\", result.output)",
         "missing_discriminator": "return value == \"coupon expired\"",
-        "recommended_test_shape": "Add or strengthen a unittest exact return-value assertion for `return value == \"coupon expired\"`.",
+        "recommended_test_shape": "Strengthen the existing unittest exact return-value assertion for `return value == \"coupon expired\"`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_notifications.py",
-          "test_name": "test_warn_coupon_return_value"
+          "test_name": "test_warn_coupon_output_message"
          },
         "verify": {
-          "command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value",
+          "command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message",
           "confidence": "high"
          },
         "receipt": {
@@ -113,8 +114,8 @@
       "stop_reasons": [],
       "oracle_kind": "relational_check",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
-      "suggested_next_action": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"call_effect","text":"callback(\"receipt.sent\", order_id)","line":2}
       ],
-      "evidence": ["owner: send_receipt", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "suggested_test_file: tests/test_notify.py", "suggested_test_name: test_send_receipt_output_effect", "suggested_test_node_id: tests/test_notify.py::test_send_receipt_output_effect", "suggested_verify_command: pytest tests/test_notify.py::test_send_receipt_output_effect", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_verify_command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)", "test_oracle_shape: mock_expectation (test_send_receipt_notifies_callback)"],
+      "evidence": ["owner: send_receipt", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notify.py", "suggested_test_name: test_send_receipt_notifies_callback", "suggested_test_node_id: tests/test_notify.py::test_send_receipt_notifies_callback", "suggested_verify_command: pytest tests/test_notify.py::test_send_receipt_notifies_callback", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_verify_command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)", "test_oracle_shape: mock_expectation (test_send_receipt_notifies_callback)"],
       "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_notify.py",
-        "suggested_test_name": "test_send_receipt_output_effect",
-        "suggested_test_node_id": "tests/test_notify.py::test_send_receipt_output_effect",
-        "verify_command": "pytest tests/test_notify.py::test_send_receipt_output_effect",
+        "suggested_test_name": "test_send_receipt_notifies_callback",
+        "suggested_test_node_id": "tests/test_notify.py::test_send_receipt_notifies_callback",
+        "verify_command": "pytest tests/test_notify.py::test_send_receipt_notifies_callback",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "send_receipt",
         "changed_behavior": "call_or_output_effect changed at src/notify.py:2: `callback(\"receipt.sent\", order_id)`",
         "current_test_evidence": "tests/test_notify.py:6 test_send_receipt_notifies_callback currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_called_once_with(\"receipt.sent\", \"ord-123\")",
         "missing_discriminator": "call includes \"receipt.sent\"",
-        "recommended_test_shape": "Add or strengthen a pytest output/log/call-effect assertion for `call includes \"receipt.sent\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest output/log/call-effect assertion for `call includes \"receipt.sent\"`.",
         "suggested_assertion": "Assert the changed output, log text, or call effect for `call includes \"receipt.sent\"`.",
         "suggested_location": {
           "test_file": "tests/test_notify.py",
-          "test_name": "test_send_receipt_output_effect",
-          "pytest_node_id": "tests/test_notify.py::test_send_receipt_output_effect"
+          "test_name": "test_send_receipt_notifies_callback",
+          "pytest_node_id": "tests/test_notify.py::test_send_receipt_notifies_callback"
          },
         "verify": {
-          "command": "pytest tests/test_notify.py::test_send_receipt_output_effect",
+          "command": "pytest tests/test_notify.py::test_send_receipt_notifies_callback",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "mock_expectation",
       "oracle_strength": "medium",
-      "recommended_next_step": "Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
-      "suggested_next_action": "Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

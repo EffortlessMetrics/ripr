@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if value <= 0:","line":2}
       ],
-      "evidence": ["owner: normalize_quantity", "owner_kind: function", "missing_discriminator: value == 0", "suggested_test_file: tests/test_quantity.py", "suggested_test_name: test_normalize_quantity_0_boundary", "suggested_test_node_id: tests/test_quantity.py::test_normalize_quantity_0_boundary", "suggested_verify_command: pytest tests/test_quantity.py::test_normalize_quantity_0_boundary", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_rejects_zero_quantity)", "test_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)", "test_oracle_shape: exception_assertion (test_rejects_zero_quantity)"],
+      "evidence": ["owner: normalize_quantity", "owner_kind: function", "missing_discriminator: value == 0", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_quantity.py", "suggested_test_name: test_rejects_zero_quantity", "suggested_test_node_id: tests/test_quantity.py::test_rejects_zero_quantity", "suggested_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_quantity)", "test_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)", "test_oracle_shape: exception_assertion (test_rejects_zero_quantity)"],
       "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_quantity.py",
-        "suggested_test_name": "test_normalize_quantity_0_boundary",
-        "suggested_test_node_id": "tests/test_quantity.py::test_normalize_quantity_0_boundary",
-        "verify_command": "pytest tests/test_quantity.py::test_normalize_quantity_0_boundary",
+        "suggested_test_name": "test_rejects_zero_quantity",
+        "suggested_test_node_id": "tests/test_quantity.py::test_rejects_zero_quantity",
+        "verify_command": "pytest tests/test_quantity.py::test_rejects_zero_quantity",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "normalize_quantity",
         "changed_behavior": "predicate_boundary changed at src/quantity.py:2: `if value <= 0:`",
         "current_test_evidence": "tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
         "missing_discriminator": "value == 0",
-        "recommended_test_shape": "Add or strengthen a pytest boundary assertion for `value == 0`.",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `value == 0`.",
         "suggested_assertion": "Assert the owner result or effect at the boundary `value == 0`.",
         "suggested_location": {
           "test_file": "tests/test_quantity.py",
-          "test_name": "test_normalize_quantity_0_boundary",
-          "pytest_node_id": "tests/test_quantity.py::test_normalize_quantity_0_boundary"
+          "test_name": "test_rejects_zero_quantity",
+          "pytest_node_id": "tests/test_quantity.py::test_rejects_zero_quantity"
          },
         "verify": {
-          "command": "pytest tests/test_quantity.py::test_normalize_quantity_0_boundary",
+          "command": "pytest tests/test_quantity.py::test_rejects_zero_quantity",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add a focused boundary assertion for missing discriminator `value == 0`.",
-      "suggested_next_action": "Python preview: add a focused boundary assertion for missing discriminator `value == 0`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

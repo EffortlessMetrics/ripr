@@ -394,6 +394,7 @@ fn push_python_repair_card_json(out: &mut String, card: &PythonRepairCard, inden
         &card.authority_boundary,
         true,
     );
+    json_string_field(out, indent + 2, "repair_action", &card.repair_action, true);
     json_string_field(out, indent + 2, "changed_owner", &card.changed_owner, true);
     json_string_field(
         out,
@@ -591,6 +592,7 @@ fn push_python_first_use_md(out: &mut String, first_use: &PilotPythonFirstUse) {
 fn push_python_repair_card_md(out: &mut String, card: &PythonRepairCard) {
     out.push_str("- Top Python repairable gap:\n");
     out.push_str(&format!("  - Gap: `{}`\n", card.canonical_gap_id));
+    out.push_str(&format!("  - Repair action: `{}`\n", card.repair_action));
     out.push_str(&format!("  - Changed owner: `{}`\n", card.changed_owner));
     out.push_str(&format!(
         "  - Changed behavior: {}\n",
@@ -613,7 +615,7 @@ fn push_python_repair_card_md(out: &mut String, card: &PythonRepairCard) {
         card.suggested_assertion
     ));
     out.push_str(&format!(
-        "  - Suggested test: `{}` in `{}`\n",
+        "  - Suggested test target: `{}` in `{}`\n",
         card.suggested_test_name, card.suggested_test_file
     ));
     out.push_str(&format!("  - Verify: `{}`\n", card.verify_command));
@@ -651,6 +653,7 @@ fn push_python_first_use_terminal(out: &mut String, first_use: &PilotPythonFirst
 fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
     out.push_str("  language: python (preview)\n");
     out.push_str(&format!("  gap: {}\n", card.canonical_gap_id));
+    out.push_str(&format!("  repair action: {}\n", card.repair_action));
     out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
     out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
     out.push_str(&format!(
@@ -662,8 +665,10 @@ fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
         card.missing_discriminator
     ));
     out.push_str(&format!(
-        "  recommended test: add {} in {}\n",
-        card.suggested_test_name, card.suggested_test_file
+        "  recommended repair: {} {} in {}\n",
+        repair_action_label(&card.repair_action),
+        card.suggested_test_name,
+        card.suggested_test_file
     ));
     out.push_str(&format!("  test shape: {}\n", card.recommended_test_shape));
     out.push_str(&format!("  assertion: {}\n", card.suggested_assertion));
@@ -674,4 +679,11 @@ fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
         out.push_str(&format!("  receipt status: {}\n", card.receipt_status));
     }
     out.push_str(&format!("  receipt guidance: {}\n", card.receipt_guidance));
+}
+
+fn repair_action_label(action: &str) -> &'static str {
+    match action {
+        "strengthen_existing_test" => "strengthen",
+        _ => "add or strengthen",
+    }
 }

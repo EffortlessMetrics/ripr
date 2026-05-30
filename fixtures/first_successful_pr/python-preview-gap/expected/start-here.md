@@ -13,8 +13,8 @@ State: actionable
 - Why this matters: A related Python test reaches this change, but no boundary discriminator was found for the changed behavior.
 - Current evidence strength: Static evidence found related Python test context, but the current proof is weak because the discriminator is missing.
 - Missing discriminator: amount == threshold
-- Focused proof intent: Add a focused boundary assertion in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.
-- Verify command: `pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`
+- Focused proof intent: Strengthen the existing related test in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.
+- Verify command: `pytest tests/test_pricing.py::test_calculate_discount_smoke`
 - Receipt command: `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
 - Receipt path: `target/ripr/receipts/gap-pr-gap-python-app-pricing-py-calculate-discount-predicate-boundary-amount-threshold.targeted-test-outcome.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
@@ -30,12 +30,12 @@ Why this matters:
 A related Python test reaches this change, but no boundary discriminator was found for the changed behavior.
 
 Repair:
-- Route: `AddBoundaryAssertion`
+- Route: `StrengthenExistingTest`
 - Target: `tests/test_pricing.py`
 - Assertion: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`
 
 Verify command:
-`pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary`
+`pytest tests/test_pricing.py::test_calculate_discount_smoke`
 
 Receipt command:
 `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`

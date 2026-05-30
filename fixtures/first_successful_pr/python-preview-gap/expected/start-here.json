@@ -27,12 +27,12 @@
     "changed_behavior": "if amount >= threshold:",
     "current_evidence_strength": "Static evidence found related Python test context, but the current proof is weak because the discriminator is missing.",
     "missing_discriminator": "amount == threshold",
-    "focused_proof_intent": "Add a focused boundary assertion in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.",
+    "focused_proof_intent": "Strengthen the existing related test in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.",
     "why": "A related Python test reaches this change, but no boundary discriminator was found for the changed behavior.",
     "repair": {
-      "route": "AddBoundaryAssertion",
+      "route": "StrengthenExistingTest",
       "target_file": "tests/test_pricing.py",
-      "related_test": "test_calculate_discount_threshold_boundary",
+      "related_test": "test_calculate_discount_smoke",
       "suggested_assertion": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount"
     },
     "anchor": {
@@ -41,7 +41,7 @@
       "owner": "python:app/pricing.py::calculate_discount",
       "dedupe_fingerprint": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold"
     },
-    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
     "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json",
     "receipt_path": "target/ripr/receipts/gap-pr-gap-python-app-pricing-py-calculate-discount-predicate-boundary-amount-threshold.targeted-test-outcome.json",
     "receipt_command_source": "gap_ledger.receipt_command",
@@ -54,7 +54,7 @@
   "commands": {
     "regenerate_gap_ledger": "ripr check --root fixtures/first_successful_pr/python-preview-gap --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root fixtures/first_successful_pr/python-preview-gap --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
     "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json",
-    "verify": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    "verify": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
     "receipt": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json"
   },
   "artifacts": [

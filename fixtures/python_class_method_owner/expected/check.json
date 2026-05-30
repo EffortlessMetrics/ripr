@@ -43,7 +43,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return cls(config[\"discount\"] + 1)","line":4}
       ],
-      "evidence": ["owner: PriceRule.from_config", "owner_kind: class_method", "owner_decorators: classmethod", "missing_discriminator: return value == cls(config[\"discount\"] + 1)", "suggested_test_file: tests/test_factory.py", "suggested_test_name: test_from_config_return_value", "suggested_test_node_id: tests/test_factory.py::test_from_config_return_value", "suggested_verify_command: pytest tests/test_factory.py::test_from_config_return_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: nearest direct pytest relation", "test_framework: pytest (test_price_rule_from_config)", "test_verify_command: pytest tests/test_factory.py::test_price_rule_from_config (test_price_rule_from_config)", "related_test_relation: syntactic_call (test_price_rule_from_config)", "test_oracle: relational_check weak (test_price_rule_from_config)", "test_oracle_shape: boundary_assertion (test_price_rule_from_config)"],
+      "evidence": ["owner: PriceRule.from_config", "owner_kind: class_method", "owner_decorators: classmethod", "missing_discriminator: return value == cls(config[\"discount\"] + 1)", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_factory.py", "suggested_test_name: test_price_rule_from_config", "suggested_test_node_id: tests/test_factory.py::test_price_rule_from_config", "suggested_verify_command: pytest tests/test_factory.py::test_price_rule_from_config", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_price_rule_from_config)", "test_verify_command: pytest tests/test_factory.py::test_price_rule_from_config (test_price_rule_from_config)", "related_test_relation: syntactic_call (test_price_rule_from_config)", "test_oracle: relational_check weak (test_price_rule_from_config)", "test_oracle_shape: boundary_assertion (test_price_rule_from_config)"],
       "missing": ["Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
       "activation": {
         "observed_values": [
@@ -77,9 +77,9 @@
       ],
       "repair_placement": {
         "suggested_test_file": "tests/test_factory.py",
-        "suggested_test_name": "test_from_config_return_value",
-        "suggested_test_node_id": "tests/test_factory.py::test_from_config_return_value",
-        "verify_command": "pytest tests/test_factory.py::test_from_config_return_value",
+        "suggested_test_name": "test_price_rule_from_config",
+        "suggested_test_node_id": "tests/test_factory.py::test_price_rule_from_config",
+        "verify_command": "pytest tests/test_factory.py::test_price_rule_from_config",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -89,19 +89,20 @@
         "language": "python",
         "language_status": "preview",
         "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
         "changed_owner": "PriceRule.from_config",
         "changed_behavior": "return_value changed at src/factory.py:4: `return cls(config[\"discount\"] + 1)`",
         "current_test_evidence": "tests/test_factory.py:4 test_price_rule_from_config currently has oracle_strength=weak, oracle_kind=relational_check: assert PriceRule.from_config({\"discount\": 4}) is not None",
         "missing_discriminator": "return value == cls(config[\"discount\"] + 1)",
-        "recommended_test_shape": "Add or strengthen a pytest exact return-value assertion for `return value == cls(config[\"discount\"] + 1)`.",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == cls(config[\"discount\"] + 1)`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_factory.py",
-          "test_name": "test_from_config_return_value",
-          "pytest_node_id": "tests/test_factory.py::test_from_config_return_value"
+          "test_name": "test_price_rule_from_config",
+          "pytest_node_id": "tests/test_factory.py::test_price_rule_from_config"
          },
         "verify": {
-          "command": "pytest tests/test_factory.py::test_from_config_return_value",
+          "command": "pytest tests/test_factory.py::test_price_rule_from_config",
           "confidence": "high"
          },
         "receipt": {
@@ -115,8 +116,8 @@
       "stop_reasons": [],
       "oracle_kind": "relational_check",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
-      "suggested_next_action": "Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "class_method"

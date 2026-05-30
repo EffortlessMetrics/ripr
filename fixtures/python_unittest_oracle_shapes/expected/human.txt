@@ -40,15 +40,16 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: warn_coupon
   changed behavior: return_value changed at src/notifications.py:3: `return "coupon expired"`
   current test evidence: tests/test_notifications.py:7 test_warn_coupon_output_message currently has oracle_strength=weak, oracle_kind=relational_check: self.assertIn("coupon expired", result.output)
   missing discriminator: return value == "coupon expired"
-  recommended test shape: Add or strengthen a unittest exact return-value assertion for `return value == "coupon expired"`.
+  recommended test shape: Strengthen the existing unittest exact return-value assertion for `return value == "coupon expired"`.
   suggested assertion: Assert the returned value equals the expected value for the changed inputs.
   suggested file: tests/test_notifications.py
-  suggested test: test_warn_coupon_return_value
-  verify: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_return_value (high)
+  suggested test: test_warn_coupon_output_message
+  verify: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -61,4 +62,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an exact return-value assertion for missing discriminator `return value == "coupon expired"`.
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == "coupon expired"`.

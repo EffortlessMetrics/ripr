@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: recording_callback
   changed behavior: call_or_output_effect changed at src/callbacks.py:4: `callback = MagicMock(name="receipt.sent")`
   current test evidence: tests/test_callbacks.py:4 test_recording_callback_starts_idle currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_not_called()
   missing discriminator: call includes "receipt.sent"
-  recommended test shape: Add or strengthen a pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
+  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
   suggested assertion: Assert the changed output, log text, or call effect for `call includes "receipt.sent"`.
   suggested file: tests/test_callbacks.py
-  suggested test: test_recording_callback_output_effect
-  pytest node: tests/test_callbacks.py::test_recording_callback_output_effect
-  verify: pytest tests/test_callbacks.py::test_recording_callback_output_effect (high)
+  suggested test: test_recording_callback_starts_idle
+  pytest node: tests/test_callbacks.py::test_recording_callback_starts_idle
+  verify: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.

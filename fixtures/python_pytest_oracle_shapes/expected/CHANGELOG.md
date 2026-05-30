@@ -83,3 +83,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Python repair routing now strengthens existing weak related tests instead of suggesting redundant new tests.
+
+Command:
+`cargo xtask goldens bless python_pytest_oracle_shapes --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

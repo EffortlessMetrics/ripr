@@ -40,16 +40,17 @@ Python repair card (preview/advisory)
   card version: python_repair_card.v1
   canonical gap: gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired
   authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
   changed owner: warn_coupon
   changed behavior: call_or_output_effect changed at src/notifications.py:6: `logger.warning("coupon expired")`
   current test evidence: tests/test_notifications.py:4 test_warn_coupon_logs_expired_message currently has oracle_strength=weak, oracle_kind=relational_check: assert "coupon expired" in caplog.text
   missing discriminator: log contains "coupon expired"
-  recommended test shape: Add or strengthen a pytest output/log/call-effect assertion for `log contains "coupon expired"`.
+  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `log contains "coupon expired"`.
   suggested assertion: Assert the changed output, log text, or call effect for `log contains "coupon expired"`.
   suggested file: tests/test_notifications.py
-  suggested test: test_warn_coupon_output_effect
-  pytest node: tests/test_notifications.py::test_warn_coupon_output_effect
-  verify: pytest tests/test_notifications.py::test_warn_coupon_output_effect (high)
+  suggested test: test_warn_coupon_logs_expired_message
+  pytest node: tests/test_notifications.py::test_warn_coupon_logs_expired_message
+  verify: pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:
@@ -62,4 +63,4 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or strengthen an output/log/call-effect assertion for missing discriminator `log contains "coupon expired"`.
+  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `log contains "coupon expired"`.

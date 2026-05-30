@@ -1957,6 +1957,7 @@ struct PythonRelatedCandidate<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PythonRepairPlacement {
+    repair_action: &'static str,
     suggested_test_file: String,
     suggested_test_name: String,
     suggested_test_node_id: Option<String>,
@@ -2051,63 +2052,6 @@ fn verify_command_for_test(test: &PythonTest) -> Option<String> {
     }
 }
 
-fn suggested_python_test_name(
-    owner: &PythonOwner,
-    probe_family: &ProbeFamily,
-    missing_discriminator: &str,
-) -> String {
-    let owner_name = python_identifier_slug(&owner.name);
-    let suffix = match probe_family {
-        ProbeFamily::Predicate => predicate_boundary_test_suffix(missing_discriminator)
-            .unwrap_or_else(|| "boundary".to_string()),
-        ProbeFamily::ReturnValue => "return_value".to_string(),
-        ProbeFamily::ErrorPath => "exception_path".to_string(),
-        ProbeFamily::FieldConstruction => "field_value".to_string(),
-        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => "output_effect".to_string(),
-        ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => "behavior".to_string(),
-    };
-    format!("test_{owner_name}_{suffix}")
-}
-
-fn predicate_boundary_test_suffix(missing_discriminator: &str) -> Option<String> {
-    let (_, right) = missing_discriminator.split_once("==")?;
-    let right = python_identifier_slug(right.trim());
-    if right.is_empty() {
-        None
-    } else {
-        Some(format!("{right}_boundary"))
-    }
-}
-
-fn python_identifier_slug(input: &str) -> String {
-    let mut out = String::new();
-    let mut last_was_separator = false;
-    for ch in input.chars().flat_map(char::to_lowercase) {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch);
-            last_was_separator = false;
-        } else if !out.is_empty() && !last_was_separator {
-            out.push('_');
-            last_was_separator = true;
-        }
-    }
-    while out.ends_with('_') {
-        out.pop();
-    }
-    if out.is_empty() {
-        "behavior".to_string()
-    } else {
-        out
-    }
-}
-
-fn suggested_qualified_test_name(test: &PythonTest, suggested_test_name: &str) -> String {
-    test.qualified_name
-        .rsplit_once('.')
-        .map(|(prefix, _)| format!("{prefix}.{suggested_test_name}"))
-        .unwrap_or_else(|| suggested_test_name.to_string())
-}
-
 fn unittest_module_for_path(path: &str) -> String {
     path.strip_suffix(".py")
         .unwrap_or(path)
@@ -2116,42 +2060,45 @@ fn unittest_module_for_path(path: &str) -> String {
 
 fn python_repair_placement(
     class: &ExposureClass,
-    owner: &PythonOwner,
-    probe_family: &ProbeFamily,
-    missing_discriminators: &[MissingDiscriminatorFact],
     related_candidates: &[PythonRelatedCandidate<'_>],
 ) -> Option<PythonRepairPlacement> {
     if !matches!(class, ExposureClass::WeaklyExposed) {
         return None;
     }
-    let missing = missing_discriminators.first()?;
     let candidate = related_candidates
         .iter()
         .find(|candidate| candidate.relation.uses_oracle())?;
     let path = normalized_path(&candidate.test.file);
-    let suggested_test_name = suggested_python_test_name(owner, probe_family, &missing.value);
-    let qualified_name = suggested_qualified_test_name(candidate.test, &suggested_test_name);
     match candidate.test.framework {
         "pytest" => {
-            let node_id = format!("{path}::{}", qualified_name.replace('.', "::"));
+            let node_id = format!(
+                "{path}::{}",
+                candidate.test.qualified_name.replace('.', "::")
+            );
             Some(PythonRepairPlacement {
+                repair_action: "strengthen_existing_test",
                 suggested_test_file: path,
-                suggested_test_name,
+                suggested_test_name: candidate.test.name.clone(),
                 suggested_test_node_id: Some(node_id.clone()),
                 verify_command: format!("pytest {node_id}"),
                 verify_command_confidence: "high",
-                location_reason: "nearest direct pytest relation",
+                location_reason: "strengthen existing weak pytest relation",
             })
         }
         "unittest" => {
-            let selector = format!("{}.{}", unittest_module_for_path(&path), qualified_name);
+            let selector = format!(
+                "{}.{}",
+                unittest_module_for_path(&path),
+                candidate.test.qualified_name
+            );
             Some(PythonRepairPlacement {
+                repair_action: "strengthen_existing_test",
                 suggested_test_file: path,
-                suggested_test_name,
+                suggested_test_name: candidate.test.name.clone(),
                 suggested_test_node_id: None,
                 verify_command: format!("python -m unittest {selector}"),
                 verify_command_confidence: "high",
-                location_reason: "nearest direct unittest relation",
+                location_reason: "strengthen existing weak unittest relation",
             })
         }
         _ => None,
@@ -3048,15 +2995,21 @@ fn python_recommended_next_step(
         _ => {
             let missing = &missing_discriminators.first()?.value;
             let action = match probe_family {
-                ProbeFamily::Predicate => "add a focused boundary assertion",
-                ProbeFamily::ReturnValue => "add or strengthen an exact return-value assertion",
-                ProbeFamily::ErrorPath => "add or strengthen an exception assertion",
-                ProbeFamily::FieldConstruction => "add or strengthen a field/object assertion",
+                ProbeFamily::Predicate => "strengthen the existing related test with a focused boundary assertion",
+                ProbeFamily::ReturnValue => {
+                    "strengthen the existing related test with an exact return-value assertion"
+                }
+                ProbeFamily::ErrorPath => {
+                    "strengthen the existing related test with an exception assertion"
+                }
+                ProbeFamily::FieldConstruction => {
+                    "strengthen the existing related test with a field/object assertion"
+                }
                 ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
-                    "add or strengthen an output/log/call-effect assertion"
+                    "strengthen the existing related test with an output/log/call-effect assertion"
                 }
                 ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => {
-                    "add or strengthen a focused assertion"
+                    "strengthen the existing related test with a focused assertion"
                 }
             };
             Some(format!(
@@ -3269,13 +3222,7 @@ fn classify_change(
         has_oracle_eligible_relation,
         &missing_discriminators,
     );
-    let repair_placement = python_repair_placement(
-        &class,
-        owner,
-        &family,
-        &missing_discriminators,
-        &related_candidates,
-    );
+    let repair_placement = python_repair_placement(&class, &related_candidates);
     let confidence_value = if matches!(class, ExposureClass::Exposed) {
         0.6
     } else if matches!(class, ExposureClass::StaticUnknown) {
@@ -3298,6 +3245,10 @@ fn classify_change(
         evidence.push(format!("missing_discriminator: {}", discriminator.value));
     }
     if let Some(placement) = &repair_placement {
+        evidence.push(format!(
+            "suggested_repair_action: {}",
+            placement.repair_action
+        ));
         evidence.push(format!(
             "suggested_test_file: {}",
             placement.suggested_test_file
@@ -4172,20 +4123,24 @@ def test_notifies_callback():
         .ok_or_else(|| "pytest boundary change should classify".to_string())?;
         assert_eq!(pytest_finding.class, ExposureClass::WeaklyExposed);
         assert_eq!(
+            evidence_value(&pytest_finding, "suggested_repair_action: "),
+            Some("strengthen_existing_test")
+        );
+        assert_eq!(
             evidence_value(&pytest_finding, "suggested_test_file: "),
             Some("tests/test_pricing.py")
         );
         assert_eq!(
             evidence_value(&pytest_finding, "suggested_test_name: "),
-            Some("test_calculate_discount_threshold_boundary")
+            Some("test_calculate_discount_smoke")
         );
         assert_eq!(
             evidence_value(&pytest_finding, "suggested_test_node_id: "),
-            Some("tests/test_pricing.py::test_calculate_discount_threshold_boundary")
+            Some("tests/test_pricing.py::test_calculate_discount_smoke")
         );
         assert_eq!(
             evidence_value(&pytest_finding, "suggested_verify_command: "),
-            Some("pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary")
+            Some("pytest tests/test_pricing.py::test_calculate_discount_smoke")
         );
         assert_eq!(
             evidence_value(&pytest_finding, "suggested_verify_command_confidence: "),
@@ -4209,12 +4164,16 @@ def test_notifies_callback():
         .ok_or_else(|| "unittest exception change should classify".to_string())?;
         assert_eq!(unittest_finding.class, ExposureClass::WeaklyExposed);
         assert_eq!(
+            evidence_value(&unittest_finding, "suggested_repair_action: "),
+            Some("strengthen_existing_test")
+        );
+        assert_eq!(
             evidence_value(&unittest_finding, "suggested_test_file: "),
             Some("tests/test_validation.py")
         );
         assert_eq!(
             evidence_value(&unittest_finding, "suggested_test_name: "),
-            Some("test_require_positive_exception_path")
+            Some("test_rejects_zero_value")
         );
         assert_eq!(
             evidence_value(&unittest_finding, "suggested_test_node_id: "),
@@ -4222,9 +4181,7 @@ def test_notifies_callback():
         );
         assert_eq!(
             evidence_value(&unittest_finding, "suggested_verify_command: "),
-            Some(
-                "python -m unittest tests.test_validation.TestValidation.test_require_positive_exception_path"
-            )
+            Some("python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value")
         );
         assert_eq!(
             evidence_value(&unittest_finding, "suggested_verify_command_confidence: "),

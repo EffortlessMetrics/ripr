@@ -171,6 +171,7 @@ fn push_python_repair_card(out: &mut String, card: &PythonRepairCard) {
         "  authority: {} ({}/{})\n",
         card.authority_boundary, card.language, card.language_status
     ));
+    out.push_str(&format!("  repair action: {}\n", card.repair_action));
     out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
     out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
     out.push_str(&format!(

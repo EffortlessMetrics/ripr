@@ -816,7 +816,7 @@ Project Python repair cards consistently across output surfaces.
 
 ### Work item: ci/python-advisory-mode
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -924,6 +924,23 @@ Prefer strengthening weak related tests over adding redundant tests.
 - Cards can distinguish "strengthen existing test" from "add new test".
 - Agent packets can restrict edits to one existing test.
 - Outcome receipt shows broad oracle becoming more exact.
+
+#### Delivered
+
+- Direct weak pytest and unittest placements now emit
+  `suggested_repair_action: strengthen_existing_test`, target the existing weak
+  related test name/node, and verify that test instead of proposing a redundant
+  new test.
+- Python repair cards expose `repair_action`, render "strengthen existing"
+  guidance in human, JSON, pilot, SARIF, and GitHub-projected card payloads,
+  and keep the preview/advisory receipt boundary.
+- Check-output-derived Python GapRecords map strengthening cards to
+  `StrengthenExistingTest`, so `ripr agent packet --gap-ledger ...` emits
+  `task = "strengthen_targeted_test"` with the existing test file as the
+  allowed edit surface and production Python files forbidden.
+- Python fixture goldens now pin the stronger routing across predicate,
+  return, exception, field/object, output/log/call-effect, pytest, and unittest
+  examples.
 
 ### Work item: swarm/python-gap-work-queue
 

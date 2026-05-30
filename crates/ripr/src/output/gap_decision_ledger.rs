@@ -632,6 +632,7 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
         string_at(card, &["suggested_location", "test_name"]).map(ToString::to_string);
     let related_test_line = first_related_test_line(finding);
     let verify_command = string_at(card, &["verify", "command"]).map(ToString::to_string);
+    let repair_action = string_at(card, &["repair_action"]).unwrap_or("add_or_strengthen_test");
     let repairability = if suggested_test_file.is_some() && verify_command.is_some() {
         "repairable"
     } else {
@@ -645,7 +646,7 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
     };
     let repair_route = if repairability == "repairable" {
         Some(GapRepairRoute {
-            route_kind: python_route_kind(behavior_kind).to_string(),
+            route_kind: python_route_kind(behavior_kind, repair_action).to_string(),
             target_file: suggested_test_file,
             target_line: related_test_line,
             related_test: suggested_test_name,
@@ -806,7 +807,10 @@ fn first_related_test_line(finding: &Value) -> Option<u64> {
         .and_then(|test| u64_at(test, &["line"]))
 }
 
-fn python_route_kind(behavior_kind: &str) -> &'static str {
+fn python_route_kind(behavior_kind: &str, repair_action: &str) -> &'static str {
+    if repair_action == "strengthen_existing_test" {
+        return "StrengthenExistingTest";
+    }
     match behavior_kind {
         "predicate_boundary" | "match_arm" => "AddBoundaryAssertion",
         "exception_path" | "error_variant" => "AddErrorDiscriminator",
@@ -2268,16 +2272,17 @@ mod tests {
                     "language": "python",
                     "language_status": "preview",
                     "authority_boundary": "preview_advisory_only",
+                    "repair_action": "strengthen_existing_test",
                     "changed_owner": "calculate_discount",
                     "changed_behavior": "predicate_boundary changed at src/pricing.py:2: `if amount >= threshold:`",
                     "missing_discriminator": "amount == threshold",
                     "suggested_assertion": "Assert the owner result or effect at the boundary `amount == threshold`.",
                     "suggested_location": {
                         "test_file": "tests/test_pricing.py",
-                        "test_name": "test_calculate_discount_threshold_boundary"
+                        "test_name": "test_calculate_discount_smoke"
                     },
                     "verify": {
-                        "command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+                        "command": "pytest tests/test_pricing.py::test_calculate_discount_smoke"
                     },
                     "receipt": {
                         "command": null,
@@ -2316,16 +2321,13 @@ mod tests {
         assert!(!projection_eligible(record, "gate_candidate"));
         assert_eq!(
             record.verification_commands,
-            vec![
-                "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
-                    .to_string()
-            ]
+            vec!["pytest tests/test_pricing.py::test_calculate_discount_smoke".to_string()]
         );
         let route = record
             .repair_route
             .as_ref()
             .ok_or("expected repair route")?;
-        assert_eq!(route.route_kind, "AddBoundaryAssertion");
+        assert_eq!(route.route_kind, "StrengthenExistingTest");
         assert_eq!(route.target_file.as_deref(), Some("tests/test_pricing.py"));
         assert_eq!(
             route.missing_discriminator.as_deref(),
@@ -2333,7 +2335,7 @@ mod tests {
         );
         assert_eq!(
             route.related_test.as_deref(),
-            Some("test_calculate_discount_threshold_boundary")
+            Some("test_calculate_discount_smoke")
         );
         assert_eq!(route.target_line, Some(4));
         assert_eq!(
