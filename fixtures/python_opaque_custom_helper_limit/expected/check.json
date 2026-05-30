@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_opaque_custom_helper_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    if amount >= threshold:",
+        "owner": "python:src/pricing.py::apply_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `opaque_custom_assertion_helper` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim.", "propagation unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "related test tests/test_pricing.py:8 test_apply_discount_custom_helper uses unknown unknown oracle: assert_discounted(result)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit opaque_custom_assertion_helper: related test uses an opaque custom assertion helper", "test_framework: pytest (test_apply_discount_custom_helper)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_custom_helper (test_apply_discount_custom_helper)", "related_test_relation: syntactic_call (test_apply_discount_custom_helper)", "test_oracle: unknown unknown (test_apply_discount_custom_helper)", "test_oracle_shape: unknown_custom_helper (test_apply_discount_custom_helper)"],
+      "missing": ["Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or determine whether it already observes the changed discriminator."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_apply_discount_custom_helper",
+          "file": "tests/test_pricing.py",
+          "line": 8,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": "assert_discounted(result)"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "opaque_custom_assertion_helper"
+    }
+  ]
+}

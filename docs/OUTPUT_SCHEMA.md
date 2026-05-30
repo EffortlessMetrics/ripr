@@ -498,7 +498,8 @@ The evidence-first fields are additive in schema `0.1`:
 - `static_limit_kind` is an additive optional per-finding static limitation
   discriminator. It is omitted when no structured static limit is known. Values
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
-  `decorator_indirection`, `mocked_module`, or `unsupported_syntax`.
+  `decorator_indirection`, `mocked_module`,
+  `opaque_custom_assertion_helper`, or `unsupported_syntax`.
 
 ## Enums
 
@@ -543,6 +544,7 @@ The evidence-first fields are additive in schema `0.1`:
 - `missing_import_graph`
 - `decorator_indirection`
 - `mocked_module`
+- `opaque_custom_assertion_helper`
 - `unsupported_syntax`
 
 Reserved `flow_sink` values:

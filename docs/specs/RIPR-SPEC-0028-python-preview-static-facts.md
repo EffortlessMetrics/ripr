@@ -160,6 +160,9 @@ values defined in RIPR-SPEC-0026:
   way the syntax-first adapter cannot follow)
 - `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
   observed at the related-test call site)
+- `opaque_custom_assertion_helper` (e.g., a related test observes the changed
+  owner only through an `assert_*(...)` helper body the adapter does not
+  inspect)
 - `unsupported_syntax`
 
 ## Canonical Gap Identity
@@ -401,4 +404,5 @@ adapter contributes:
 - `language_adapter_python_static_limit_missing_import_graph`
 - `language_adapter_python_static_limit_metaprogramming`
 - `language_adapter_python_static_limit_mocked_module`
+- `language_adapter_python_static_limit_opaque_custom_assertion_helper`
 - `language_adapter_python_static_limit_unsupported_syntax`

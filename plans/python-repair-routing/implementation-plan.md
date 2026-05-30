@@ -1047,6 +1047,10 @@ Prevent Python support from becoming noisy.
   `StaticLimitation` GapRecords with `repairability = "analyzer_limitation"`.
   The swarm queue excludes those records instead of turning preview limitations
   into agent repair packets.
+- `python_opaque_custom_helper_limit` pins custom assertion helpers as
+  `opaque_custom_assertion_helper` static limitations so the adapter does not
+  route a repair packet when the helper body might already observe the changed
+  discriminator.
 
 ### Work item: dogfood/python-real-repo-evals
 

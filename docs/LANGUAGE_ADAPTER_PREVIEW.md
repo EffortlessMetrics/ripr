@@ -116,6 +116,7 @@ interpretation guide and integration rules.
 | `missing_import_graph` | The adapter did not resolve a full project import graph. |
 | `decorator_indirection` | A Python decorator may change the callable boundary. |
 | `mocked_module` | A test replaces or mocks the module or symbol under review. |
+| `opaque_custom_assertion_helper` | A Python test uses a custom assertion helper whose body is not inspected. |
 | `unsupported_syntax` | The parser or preview adapter found syntax outside the current preview contract. |
 
 A static limit does not automatically erase a useful related test or strong

@@ -2356,6 +2356,14 @@ fn static_limit_for_change(
             missing: "Static limit `mocked_module`: a related Python test uses patch/mock-module syntax; the preview adapter does not resolve runtime substitution semantics.".to_string(),
         });
     }
+    if related_candidates_have_opaque_custom_assertion_limit(related_candidates) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::OpaqueCustomAssertionHelper,
+            evidence: "static_limit opaque_custom_assertion_helper: related test uses an opaque custom assertion helper"
+                .to_string(),
+            missing: "Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or determine whether it already observes the changed discriminator.".to_string(),
+        });
+    }
     if line_uses_imported_symbol(trimmed, &owner.imports) {
         return Some(PythonStaticLimit {
             kind: StaticLimitKind::MissingImportGraph,
@@ -2396,6 +2404,28 @@ fn test_has_mocked_module(test: &PythonTest) -> bool {
         || test.body_text.contains("monkeypatch.setattr(")
         || test.body_text.contains("monkeypatch.setitem(")
         || test.body_text.contains("monkeypatch.delattr(")
+}
+
+fn related_candidates_have_opaque_custom_assertion_limit(
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> bool {
+    let mut has_opaque_helper = false;
+    let mut has_known_strong_oracle = false;
+
+    for candidate in related_candidates
+        .iter()
+        .filter(|candidate| candidate.relation.uses_oracle())
+    {
+        for assertion in &candidate.test.assertions {
+            if assertion.oracle_shape == PythonOracleShape::UnknownCustomHelper {
+                has_opaque_helper = true;
+            } else if assertion.oracle_strength.rank() >= OracleStrength::Strong.rank() {
+                has_known_strong_oracle = true;
+            }
+        }
+    }
+
+    has_opaque_helper && !has_known_strong_oracle
 }
 
 fn line_uses_imported_symbol(text: &str, imports: &[PythonImport]) -> bool {
@@ -4542,6 +4572,17 @@ def test_notifies_callback():
             "from src.service import total\n\ndef test_total(monkeypatch):\n    monkeypatch.setattr(\"src.service.remote_total\", lambda: 1)\n    assert total() == 1\n",
         );
         let monkeypatch_candidates = related_test_candidates(&plain_owner, &monkeypatch_tests);
+        let opaque_helper_tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from src.service import total\n\ndef test_total_custom_helper():\n    result = total()\n    assert_total_result(result)\n",
+        );
+        let opaque_helper_candidates = related_test_candidates(&plain_owner, &opaque_helper_tests);
+        let opaque_helper_with_exact_tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from src.service import total\n\ndef test_total_custom_helper_and_exact():\n    result = total()\n    assert_total_result(result)\n    assert result == 1\n",
+        );
+        let opaque_helper_with_exact_candidates =
+            related_test_candidates(&plain_owner, &opaque_helper_with_exact_tests);
 
         assert_eq!(
             static_limit_for_change("    return getattr(client, name)()", &plain_owner, &[])
@@ -4566,6 +4607,20 @@ def test_notifies_callback():
             static_limit_for_change("    return total()", &plain_owner, &monkeypatch_candidates)
                 .map(|limit| limit.kind),
             Some(StaticLimitKind::MockedModule)
+        );
+        assert_eq!(
+            static_limit_for_change("    return 1", &plain_owner, &opaque_helper_candidates)
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::OpaqueCustomAssertionHelper)
+        );
+        assert_eq!(
+            static_limit_for_change(
+                "    return 1",
+                &plain_owner,
+                &opaque_helper_with_exact_candidates
+            )
+            .map(|limit| limit.kind),
+            None
         );
         assert_eq!(
             static_limit_for_change("    return remote_total()", &imported_owner, &[])
@@ -4638,6 +4693,51 @@ def test_notifies_callback():
                 .missing
                 .iter()
                 .any(|entry| entry.contains("Static limit `dynamic_dispatch`"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_opaque_custom_assertion_helper_fails_closed() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import apply_discount\n\ndef assert_discounted(result):\n    assert result < 100\n\ndef test_apply_discount_custom_helper():\n    result = apply_discount(100, 50)\n    assert_discounted(result)\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    if amount >= threshold:",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::OpaqueCustomAssertionHelper)
+        );
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.canonical_gap.is_none());
+        assert!(finding.recommended_next_step.is_none());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry.starts_with("static_limit opaque_custom_assertion_helper:"))
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("Static limit `opaque_custom_assertion_helper`"))
         );
         Ok(())
     }

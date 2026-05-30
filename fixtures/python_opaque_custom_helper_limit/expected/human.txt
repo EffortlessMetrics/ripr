@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_opaque_custom_helper_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/pricing.py:2
+
+Changed
+  after:      if amount >= threshold:
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/pricing.py::apply_discount
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply_discount`
+  - infection unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python propagation claim.
+  - observation yes: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - related test tests/test_pricing.py:8 test_apply_discount_custom_helper uses unknown unknown oracle: assert_discounted(result)
+
+Weakness
+  - Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or determine whether it already observes the changed discriminator.
+
+Stop reasons:
+  - static_probe_unknown

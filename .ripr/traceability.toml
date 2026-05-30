@@ -2141,6 +2141,7 @@ fixtures = [
   "fixtures/python_dynamic_dispatch_limit",
   "fixtures/python_decorator_indirection_limit",
   "fixtures/python_mocked_module_limit",
+  "fixtures/python_opaque_custom_helper_limit",
   "fixtures/python_missing_import_graph_limit",
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit",
@@ -2223,6 +2224,7 @@ metrics = [
   "language_adapter_python_static_limit_missing_import_graph",
   "language_adapter_python_static_limit_metaprogramming",
   "language_adapter_python_static_limit_mocked_module",
+  "language_adapter_python_static_limit_opaque_custom_assertion_helper",
   "language_adapter_python_static_limit_unsupported_syntax",
 ]
 

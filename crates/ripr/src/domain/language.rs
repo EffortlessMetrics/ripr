@@ -117,6 +117,7 @@ pub enum StaticLimitKind {
     MissingImportGraph,
     DecoratorIndirection,
     MockedModule,
+    OpaqueCustomAssertionHelper,
     UnsupportedSyntax,
 }
 
@@ -130,6 +131,7 @@ impl StaticLimitKind {
             StaticLimitKind::MissingImportGraph => "missing_import_graph",
             StaticLimitKind::DecoratorIndirection => "decorator_indirection",
             StaticLimitKind::MockedModule => "mocked_module",
+            StaticLimitKind::OpaqueCustomAssertionHelper => "opaque_custom_assertion_helper",
             StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
         }
     }
@@ -201,6 +203,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::UnsupportedSyntax.as_str(),
             "unsupported_syntax"
+        );
+        assert_eq!(
+            StaticLimitKind::OpaqueCustomAssertionHelper.as_str(),
+            "opaque_custom_assertion_helper"
         );
     }
 }
