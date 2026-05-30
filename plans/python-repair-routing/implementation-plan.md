@@ -840,7 +840,7 @@ Let teams run Python repair-routing in PRs safely.
 
 ### Work item: lsp/python-repair-card-projection
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -856,6 +856,21 @@ Bring Python repair cards into editor surfaces.
 - Code actions can copy repair card, pytest skeleton, agent packet, and open
   related test file.
 - Stale state is obvious and no hidden code edits occur.
+
+#### Progress
+
+- LSP GapRecord command validation now accepts bounded Python verify commands
+  for `pytest ...` and `python -m unittest ...` while preserving shell
+  metacharacter and parent-directory rejection.
+- Python preview GapRecord diagnostics with a safe pytest verify command now
+  expose a `Write Python test: copy pytest skeleton` code action. The copied
+  skeleton includes the canonical gap, suggested file, missing discriminator,
+  changed behavior, verify command, stop conditions, and a fail-fast
+  `NotImplementedError` placeholder rather than silently generating a passing
+  test.
+- GapRecord code actions now fall back from a bare Python test name to
+  `repair_route.target_file` when opening the related test file, matching the
+  check-output-derived Python repair-card shape.
 
 ### Work item: analysis/python-http-api-pack-v1
 

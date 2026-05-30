@@ -1674,6 +1674,112 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
 }
 
 #[test]
+fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-pytest-actions")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_calculate_discount_threshold_boundary():\n    pass\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["repair_route"]["target_file"] = serde_json::json!("tests/test_pricing.py");
+    data["repair_route"]["target_line"] = serde_json::json!(1);
+    data["repair_route"]["related_test"] =
+        serde_json::json!("test_calculate_discount_threshold_boundary");
+    data["repair_route"]["missing_discriminator"] = serde_json::json!("amount == threshold");
+    data["repair_route"]["assertion_shape"] = serde_json::json!(
+        "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount"
+    );
+    data["repair_route"]["changed_behavior"] = serde_json::json!("if amount >= threshold:");
+    data["verification_commands"] = serde_json::json!([
+        "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+    ]);
+    data["receipt_command"] = serde_json::json!(
+        "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/python-pricing-boundary.json"
+    );
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_kind");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_detail");
+    data["static_limits"] = serde_json::json!([]);
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .any(|(title, _, _)| title == "Copy first repair packet"),
+        "pytest verify commands should be safe enough for first repair packets: {commands:?}"
+    );
+    let skeleton = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Write Python test: copy pytest skeleton"
+                && command == COPY_TARGETED_TEST_BRIEF_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing Python pytest skeleton action: {commands:?}"))?;
+    assert_eq!(skeleton["label"], "python_pytest_skeleton");
+    assert_eq!(skeleton["target_file"], "tests/test_pricing.py");
+    assert_eq!(
+        skeleton["test_name"],
+        "test_calculate_discount_threshold_boundary"
+    );
+    let brief = skeleton["brief"]
+        .as_str()
+        .ok_or_else(|| format!("missing skeleton brief: {skeleton:?}"))?;
+    for needle in [
+        "# RIPR Python repair skeleton",
+        "# Missing discriminator: amount == threshold",
+        "# Verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "def test_calculate_discount_threshold_boundary():",
+        "# assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "raise NotImplementedError",
+    ] {
+        assert!(brief.contains(needle), "missing {needle:?} in:\n{brief}");
+    }
+    let open_target = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Write targeted test: open best related test"
+                && command == OPEN_RELATED_TEST_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing open related test action: {commands:?}"))?;
+    assert_eq!(
+        open_target["uri"],
+        file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
+    );
+    assert_eq!(
+        open_target["test_name"],
+        "test_calculate_discount_threshold_boundary"
+    );
+    Ok(())
+}
+
+#[test]
 fn gap_code_actions_fail_closed_without_valid_current_artifact() -> Result<(), String> {
     let diagnostic = gap_action_diagnostic();
     let uri = test_uri("file:///workspace/src/pricing.py")?;

@@ -365,7 +365,10 @@ check-output-derived gap decision ledger before selecting the same preview
 Python repair card. The repo-ops PR summary also projects the top eligible
 Python preview repair card from `actionable-gaps.json` so local reviewer
 packets preserve the same canonical gap, missing discriminator, verify command,
-receipt command, and advisory boundary.
+receipt command, and advisory boundary. Editor projection accepts bounded
+`pytest ...` and `python -m unittest ...` verify commands from Python
+GapRecords, can copy a fail-fast pytest skeleton, and can open the suggested
+test file when the repair route carries a bare test name.
 
 ## Implementation Mapping
 
@@ -408,6 +411,7 @@ adapter contributes:
 - `language_adapter_python_gap_receipt_from_check_output`
 - `language_adapter_python_pilot_first_use_path`
 - `language_adapter_python_pr_summary_repair_card_projection`
+- `language_adapter_python_lsp_pytest_skeleton_action`
 - `language_adapter_python_static_limit_stop_reasons`
 - `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`

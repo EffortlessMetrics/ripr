@@ -1237,7 +1237,7 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
         return false;
     }
     let tokens = command_tokens(trimmed);
-    if !matches!(tokens.first().map(String::as_str), Some("cargo" | "ripr")) {
+    if !command_program_is_allowed(&tokens) {
         return false;
     }
     for index in 0..tokens.len() {
@@ -1256,9 +1256,23 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     true
 }
 
+fn command_program_is_allowed(tokens: &[String]) -> bool {
+    match tokens.first().map(String::as_str) {
+        Some("cargo" | "ripr" | "pytest") => true,
+        Some("python") => {
+            tokens.get(1).map(String::as_str) == Some("-m")
+                && tokens.get(2).map(String::as_str) == Some("unittest")
+        }
+        _ => false,
+    }
+}
+
 fn looks_like_command_payload(value: &str) -> bool {
     let trimmed = value.trim_start();
-    trimmed.starts_with("cargo ") || trimmed.starts_with("ripr ")
+    trimmed.starts_with("cargo ")
+        || trimmed.starts_with("ripr ")
+        || trimmed.starts_with("pytest ")
+        || trimmed.starts_with("python -m unittest ")
 }
 
 fn command_tokens(command: &str) -> Vec<String> {
@@ -2360,6 +2374,35 @@ mod tests {
         let command = "ripr agent verify --root \"/workspace\" --json";
 
         assert!(command_payload_is_safe(&workspace, command));
+    }
+
+    #[test]
+    fn command_payload_accepts_python_test_verify_commands() {
+        let workspace = root();
+
+        assert!(command_payload_is_safe(
+            &workspace,
+            "pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(command_payload_is_safe(
+            &workspace,
+            "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python script.py --do-anything"
+        ));
+        assert!(!command_payload_is_safe(&workspace, "tox -e py"));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "pytest ../outside/test_pricing.py"
+        ));
+        assert!(looks_like_command_payload(
+            " pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(looks_like_command_payload(
+            "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
     }
 
     #[test]
