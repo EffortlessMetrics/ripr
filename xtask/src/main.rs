@@ -937,6 +937,69 @@ struct DogfoodRealRepairAttemptRun {
 }
 
 #[derive(Debug)]
+struct DogfoodTypescriptPreviewRepairLoopScenario {
+    name: String,
+    source_fixture: String,
+    source_finding_id: String,
+    language: String,
+    language_status: String,
+    classification: String,
+    changed_owner: String,
+    probe_family: String,
+    oracle_kind: String,
+    oracle_strength: String,
+    gap_state: String,
+    actionability_category: String,
+    static_limit_kind: Option<String>,
+    repair_packet_ready: bool,
+    authority_boundary: String,
+    expected_test_or_observer_shape: String,
+    verify_command: String,
+    verify_result: String,
+    receipt_command: String,
+    receipt_state: String,
+    outcome: String,
+    why_not_actionable: String,
+    repair_route: String,
+    operator_note: String,
+    must_not_change: Vec<String>,
+    raw_evidence_refs: Vec<String>,
+    non_claims: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodTypescriptPreviewRepairLoopRun {
+    name: String,
+    source_fixture: String,
+    source_finding_id: String,
+    language: String,
+    classification: String,
+    changed_owner: String,
+    probe_family: String,
+    oracle_kind: String,
+    oracle_strength: String,
+    gap_state: String,
+    actionability_category: String,
+    static_limit_kind: Option<String>,
+    repair_packet_ready: bool,
+    expected_test_or_observer_shape: String,
+    verify_command: String,
+    verify_result: String,
+    receipt_command: String,
+    receipt_state: String,
+    outcome: String,
+    why_not_actionable: String,
+    repair_route: String,
+    operator_note: String,
+    must_not_change: Vec<String>,
+    raw_evidence_refs: Vec<String>,
+    non_claims: Vec<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
 struct DogfoodUserSurfaceProjectionScenario {
     name: String,
     surface: String,
@@ -1013,6 +1076,7 @@ struct DogfoodReportInputs<'a> {
     finding_alignment_runs: &'a [DogfoodFindingAlignmentRun],
     surface_projection_alignment_runs: &'a [DogfoodSurfaceProjectionAlignmentRun],
     real_repair_attempt_runs: &'a [DogfoodRealRepairAttemptRun],
+    typescript_preview_repair_loop_runs: &'a [DogfoodTypescriptPreviewRepairLoopRun],
     user_surface_projection_runs: &'a [DogfoodUserSurfaceProjectionRun],
     pr_inline_comment_runs: &'a [DogfoodPrInlineCommentRun],
 }
@@ -5378,6 +5442,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
+                    | "typescript-preview-repair-loop"
                     | "user-surface-projection-alignment"
             )
         })
@@ -7692,6 +7757,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_real_repair_attempt_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
+    validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
     validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
@@ -7875,6 +7941,8 @@ const FINDING_ALIGNMENT_DOGFOOD_CORPUS: &str = "fixtures/finding-alignment-dogfo
 const REAL_REPAIR_ATTEMPTS_CORPUS: &str = "fixtures/real-repair-attempts/corpus.json";
 const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
+const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
+    "fixtures/typescript-preview-repair-loop/corpus.json";
 const USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/user-surface-projection-alignment/corpus.json";
 
@@ -7931,6 +7999,34 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
     (
         "typescript_preview_weak_oracle_downgrade_unchanged",
         "evidence_unchanged",
+    ),
+];
+
+const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
+    ("typescript_boundary_predicate_proof", "proof_improved"),
+    (
+        "typescript_smoke_return_weak_oracle",
+        "weak_oracle_downgraded",
+    ),
+    (
+        "typescript_snapshot_return_weak_oracle",
+        "weak_oracle_downgraded",
+    ),
+    (
+        "typescript_async_rejection_broad_error",
+        "weak_oracle_downgraded",
+    ),
+    (
+        "javascript_mock_interaction_preview",
+        "intentionally_skipped",
+    ),
+    (
+        "typescript_mocked_module_static_limit",
+        "static_limitation_recorded",
+    ),
+    (
+        "javascript_already_observed_unchanged",
+        "already_observed_unchanged",
     ),
 ];
 
@@ -8949,6 +9045,132 @@ fn validate_real_repair_attempt_fixture_corpus_at(
     if !outcomes.contains_key("attempted_no_receipt") {
         violations.push(
             "real repair attempt corpus must include at least one attempted_no_receipt attempt"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_typescript_preview_repair_loop_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/typescript-preview-repair-loop");
+    let corpus = root.join("corpus.json");
+    if !corpus.exists() {
+        violations.push(format!(
+            "TypeScript preview repair-loop fixture corpus is missing {}",
+            normalize_path(&corpus)
+        ));
+    }
+    validate_typescript_preview_repair_loop_fixture_corpus_at(
+        Path::new(TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS),
+        violations,
+    )
+}
+
+fn validate_typescript_preview_repair_loop_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "TypeScript preview repair-loop corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let scenarios = dogfood_typescript_preview_repair_loop_scenarios_at(path);
+    let mut seen = BTreeMap::new();
+    let mut outcomes = BTreeMap::<String, usize>::new();
+    let mut languages = BTreeSet::<String>::new();
+    let mut static_limit_cases = 0usize;
+    let mut weak_oracle_cases = 0usize;
+    let mut skipped_cases = 0usize;
+    let mut packet_ready_cases = 0usize;
+
+    for scenario in &scenarios {
+        if seen
+            .insert(scenario.name.clone(), scenario.outcome.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "TypeScript preview repair-loop case {} is duplicated",
+                scenario.name
+            ));
+        }
+        *outcomes.entry(scenario.outcome.clone()).or_default() += 1;
+        languages.insert(scenario.language.clone());
+        if scenario.gap_state == "static_limitation" {
+            static_limit_cases += 1;
+        }
+        if scenario.outcome == "weak_oracle_downgraded" {
+            weak_oracle_cases += 1;
+        }
+        if scenario.outcome == "intentionally_skipped" {
+            skipped_cases += 1;
+        }
+        if scenario.repair_packet_ready {
+            packet_ready_cases += 1;
+        }
+        let run = dogfood_typescript_preview_repair_loop_run(scenario);
+        for error in run.errors {
+            violations.push(format!(
+                "TypeScript preview repair-loop case {}: {error}",
+                scenario.name
+            ));
+        }
+    }
+
+    for (case_id, outcome) in TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == outcome => {}
+            Some(actual) => violations.push(format!(
+                "TypeScript preview repair-loop case {case_id} must have outcome {outcome}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "TypeScript preview repair-loop corpus is missing case {case_id}"
+            )),
+        }
+    }
+    if scenarios.len() < 5 {
+        violations.push(
+            "TypeScript preview repair-loop corpus must record at least five cases".to_string(),
+        );
+    }
+    if !languages.contains("typescript") {
+        violations
+            .push("TypeScript preview repair-loop corpus must include TypeScript".to_string());
+    }
+    if !languages.contains("javascript") {
+        violations
+            .push("TypeScript preview repair-loop corpus must include JavaScript".to_string());
+    }
+    if !outcomes.contains_key("proof_improved") {
+        violations
+            .push("TypeScript preview repair-loop corpus must include improved proof".to_string());
+    }
+    if static_limit_cases == 0 {
+        violations.push(
+            "TypeScript preview repair-loop corpus must include a static limitation".to_string(),
+        );
+    }
+    if weak_oracle_cases == 0 {
+        violations.push(
+            "TypeScript preview repair-loop corpus must include a weak-oracle downgrade"
+                .to_string(),
+        );
+    }
+    if skipped_cases == 0 {
+        violations.push(
+            "TypeScript preview repair-loop corpus must include an intentionally skipped case"
+                .to_string(),
+        );
+    }
+    if packet_ready_cases > 0 {
+        violations.push(
+            "TypeScript preview repair-loop corpus must not claim complete repair packets yet"
                 .to_string(),
         );
     }
@@ -38358,6 +38580,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_real_repair_attempt_run(&scenario))
         .collect::<Vec<_>>();
+    let typescript_preview_repair_loop_runs = dogfood_typescript_preview_repair_loop_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_typescript_preview_repair_loop_run(&scenario))
+        .collect::<Vec<_>>();
     let user_surface_projection_runs = dogfood_user_surface_projection_scenarios()
         .into_iter()
         .map(|scenario| dogfood_user_surface_projection_run(&scenario))
@@ -38383,6 +38609,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         finding_alignment_runs: &finding_alignment_runs,
         surface_projection_alignment_runs: &surface_projection_alignment_runs,
         real_repair_attempt_runs: &real_repair_attempt_runs,
+        typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
         user_surface_projection_runs: &user_surface_projection_runs,
         pr_inline_comment_runs: &pr_inline_comment_runs,
     };
@@ -41209,7 +41436,9 @@ fn dogfood_real_repair_attempt_run(
         ("evidence_movement", &scenario.evidence_movement),
         ("operator_note", &scenario.operator_note),
     ] {
-        if value.trim().is_empty() || value == "unknown" {
+        if value.trim().is_empty()
+            || (value == "unknown" && !matches!(label, "oracle_kind" | "oracle_strength"))
+        {
             errors.push(format!("{label} must be present"));
         }
     }
@@ -41356,6 +41585,502 @@ fn dogfood_real_repair_attempt_conflicting_evidence_movement_tokens(
     .filter(|(token, term)| Some(*term) != expected && normalized.contains(token))
     .map(|(token, _)| token.to_string())
     .collect()
+}
+
+fn dogfood_typescript_preview_repair_loop_scenarios()
+-> Vec<DogfoodTypescriptPreviewRepairLoopScenario> {
+    dogfood_typescript_preview_repair_loop_scenarios_at(Path::new(
+        TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS,
+    ))
+}
+
+fn dogfood_typescript_preview_repair_loop_scenarios_at(
+    corpus_path: &Path,
+) -> Vec<DogfoodTypescriptPreviewRepairLoopScenario> {
+    let fallback = |reason: String| {
+        vec![DogfoodTypescriptPreviewRepairLoopScenario {
+            name: "corpus".to_string(),
+            source_fixture: "unknown".to_string(),
+            source_finding_id: "unknown".to_string(),
+            language: "unknown".to_string(),
+            language_status: "unknown".to_string(),
+            classification: "unknown".to_string(),
+            changed_owner: "unknown".to_string(),
+            probe_family: "unknown".to_string(),
+            oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            gap_state: "unknown".to_string(),
+            actionability_category: "unknown".to_string(),
+            static_limit_kind: None,
+            repair_packet_ready: true,
+            authority_boundary: "unknown".to_string(),
+            expected_test_or_observer_shape: "unknown".to_string(),
+            verify_command: "unknown".to_string(),
+            verify_result: "unknown".to_string(),
+            receipt_command: "unknown".to_string(),
+            receipt_state: "unknown".to_string(),
+            outcome: "unknown".to_string(),
+            why_not_actionable: "unknown".to_string(),
+            repair_route: "unknown".to_string(),
+            operator_note: "unknown".to_string(),
+            must_not_change: Vec::new(),
+            raw_evidence_refs: Vec::new(),
+            non_claims: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback(
+            "TypeScript preview repair-loop corpus schema_version must be 0.1".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "kind").as_deref()
+        != Some("typescript_preview_repair_loop_corpus")
+    {
+        return fallback(
+            "TypeScript preview repair-loop corpus kind must be typescript_preview_repair_loop_corpus"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0027") {
+        return fallback(
+            "TypeScript preview repair-loop corpus spec must be RIPR-SPEC-0027".to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback(
+            "TypeScript preview repair-loop corpus is missing cases array".to_string(),
+        );
+    };
+
+    cases
+        .iter()
+        .map(|case| DogfoodTypescriptPreviewRepairLoopScenario {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            source_fixture: json_string_field(case, "source_fixture")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_finding_id: json_string_field(case, "source_finding_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            language: json_string_field(case, "language").unwrap_or_else(|| "unknown".to_string()),
+            language_status: json_string_field(case, "language_status")
+                .unwrap_or_else(|| "unknown".to_string()),
+            classification: json_string_field(case, "classification")
+                .unwrap_or_else(|| "unknown".to_string()),
+            changed_owner: json_string_field(case, "changed_owner")
+                .unwrap_or_else(|| "unknown".to_string()),
+            probe_family: json_string_field(case, "probe_family")
+                .unwrap_or_else(|| "unknown".to_string()),
+            oracle_kind: json_string_field(case, "oracle_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            oracle_strength: json_string_field(case, "oracle_strength")
+                .unwrap_or_else(|| "unknown".to_string()),
+            gap_state: json_string_field(case, "gap_state")
+                .unwrap_or_else(|| "unknown".to_string()),
+            actionability_category: json_string_field(case, "actionability_category")
+                .unwrap_or_else(|| "unknown".to_string()),
+            static_limit_kind: json_string_field(case, "static_limit_kind"),
+            repair_packet_ready: json_bool_field(case, "repair_packet_ready").unwrap_or(true),
+            authority_boundary: json_string_field(case, "authority_boundary")
+                .unwrap_or_else(|| "unknown".to_string()),
+            expected_test_or_observer_shape: json_string_field(
+                case,
+                "expected_test_or_observer_shape",
+            )
+            .unwrap_or_else(|| "unknown".to_string()),
+            verify_command: json_string_field(case, "verify_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_result: json_string_field(case, "verify_result")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_command: json_string_field(case, "receipt_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_state: json_string_field(case, "receipt_state")
+                .unwrap_or_else(|| "unknown".to_string()),
+            outcome: json_string_field(case, "outcome").unwrap_or_else(|| "unknown".to_string()),
+            why_not_actionable: json_string_field(case, "why_not_actionable")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_route: json_string_field(case, "repair_route")
+                .unwrap_or_else(|| "unknown".to_string()),
+            operator_note: json_string_field(case, "operator_note")
+                .unwrap_or_else(|| "unknown".to_string()),
+            must_not_change: json_string_array_field(case, "must_not_change"),
+            raw_evidence_refs: json_string_array_field(case, "raw_evidence_refs"),
+            non_claims: json_string_array_field(case, "non_claims"),
+            reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                "TypeScript preview repair-loop case did not document a reason".to_string()
+            }),
+        })
+        .collect()
+}
+
+fn dogfood_typescript_preview_repair_loop_run(
+    scenario: &DogfoodTypescriptPreviewRepairLoopScenario,
+) -> DogfoodTypescriptPreviewRepairLoopRun {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &scenario.name),
+        ("source_fixture", &scenario.source_fixture),
+        ("source_finding_id", &scenario.source_finding_id),
+        ("language", &scenario.language),
+        ("language_status", &scenario.language_status),
+        ("classification", &scenario.classification),
+        ("changed_owner", &scenario.changed_owner),
+        ("probe_family", &scenario.probe_family),
+        ("oracle_kind", &scenario.oracle_kind),
+        ("oracle_strength", &scenario.oracle_strength),
+        ("gap_state", &scenario.gap_state),
+        ("actionability_category", &scenario.actionability_category),
+        ("authority_boundary", &scenario.authority_boundary),
+        (
+            "expected_test_or_observer_shape",
+            &scenario.expected_test_or_observer_shape,
+        ),
+        ("verify_command", &scenario.verify_command),
+        ("verify_result", &scenario.verify_result),
+        ("receipt_command", &scenario.receipt_command),
+        ("receipt_state", &scenario.receipt_state),
+        ("outcome", &scenario.outcome),
+        ("why_not_actionable", &scenario.why_not_actionable),
+        ("repair_route", &scenario.repair_route),
+        ("operator_note", &scenario.operator_note),
+        ("reason", &scenario.reason),
+    ] {
+        if value.trim().is_empty()
+            || (value == "unknown" && !matches!(label, "oracle_kind" | "oracle_strength"))
+        {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+
+    if !matches!(scenario.language.as_str(), "typescript" | "javascript") {
+        errors.push(format!(
+            "language must be typescript or javascript, got {}",
+            scenario.language
+        ));
+    }
+    if scenario.language_status != "preview" {
+        errors.push("language_status must be preview".to_string());
+    }
+    if scenario.authority_boundary != "preview_advisory_only" {
+        errors.push("authority_boundary must be preview_advisory_only".to_string());
+    }
+    if !matches!(
+        scenario.verify_result.as_str(),
+        "pass" | "fail" | "not_run" | "not_applicable"
+    ) {
+        errors.push(format!(
+            "verify_result must be pass, fail, not_run, or not_applicable, got {}",
+            scenario.verify_result
+        ));
+    }
+    if scenario.receipt_command == scenario.verify_command {
+        errors.push("receipt_command must stay distinct from verify_command".to_string());
+    }
+    if scenario.must_not_change.is_empty() {
+        errors.push("must_not_change must name bounded edit constraints".to_string());
+    }
+    if scenario.raw_evidence_refs.is_empty() {
+        errors.push("raw_evidence_refs must keep lineage to preview evidence".to_string());
+    }
+    if scenario.non_claims.is_empty() {
+        errors.push("non_claims must keep preview boundary denials visible".to_string());
+    }
+    for required in typescript_preview_repair_loop_required_non_claims() {
+        if !scenario
+            .non_claims
+            .iter()
+            .any(|non_claim| non_claim.contains(required))
+        {
+            errors.push(format!("non_claims must deny {required}"));
+        }
+    }
+    if !scenario.source_fixture.starts_with("fixtures/")
+        || scenario.source_fixture.contains("..")
+        || scenario.source_fixture.contains('\\')
+    {
+        errors.push(format!(
+            "source_fixture must be a normalized fixtures/ path, got {}",
+            scenario.source_fixture
+        ));
+    }
+    if !scenario.repair_packet_ready && scenario.gap_state == "actionable" {
+        errors.push(
+            "repair_packet_ready=false must not be paired with gap_state=actionable".to_string(),
+        );
+    }
+    if !scenario.repair_packet_ready && scenario.outcome == "resolved" {
+        errors.push("repair_packet_ready=false must not claim resolved".to_string());
+    }
+    if !typescript_preview_repair_loop_allowed_outcomes().contains(&scenario.outcome.as_str()) {
+        errors.push(format!(
+            "outcome must be a TypeScript preview repair-loop outcome, got {}",
+            scenario.outcome
+        ));
+    }
+    if scenario.static_limit_kind.is_some() && scenario.gap_state != "static_limitation" {
+        errors.push("static_limit_kind requires gap_state=static_limitation".to_string());
+    }
+    if scenario.gap_state == "static_limitation" {
+        if scenario
+            .static_limit_kind
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            errors.push("static_limitation cases must name static_limit_kind".to_string());
+        }
+        if scenario.outcome != "static_limitation_recorded" {
+            errors.push(
+                "static_limitation cases must use outcome static_limitation_recorded".to_string(),
+            );
+        }
+    }
+    if scenario.outcome == "weak_oracle_downgraded" {
+        if matches!(
+            scenario.oracle_kind.as_str(),
+            "exact_value" | "exact_error_variant"
+        ) || scenario.oracle_strength == "strong"
+        {
+            errors.push("weak_oracle_downgraded must not use a strong oracle".to_string());
+        }
+        if scenario.gap_state == "already_observed"
+            || scenario.actionability_category == "strong_oracle_observed"
+        {
+            errors.push(
+                "weak_oracle_downgraded must not claim already-observed actionability".to_string(),
+            );
+        }
+    }
+    if scenario.outcome == "already_observed_unchanged"
+        && (scenario.gap_state != "already_observed"
+            || scenario.actionability_category != "strong_oracle_observed")
+    {
+        errors.push(
+            "already_observed_unchanged must preserve already_observed / strong_oracle_observed"
+                .to_string(),
+        );
+    }
+
+    dogfood_typescript_preview_repair_loop_check_source_fixture(scenario, &mut errors);
+
+    DogfoodTypescriptPreviewRepairLoopRun {
+        name: scenario.name.clone(),
+        source_fixture: scenario.source_fixture.clone(),
+        source_finding_id: scenario.source_finding_id.clone(),
+        language: scenario.language.clone(),
+        classification: scenario.classification.clone(),
+        changed_owner: scenario.changed_owner.clone(),
+        probe_family: scenario.probe_family.clone(),
+        oracle_kind: scenario.oracle_kind.clone(),
+        oracle_strength: scenario.oracle_strength.clone(),
+        gap_state: scenario.gap_state.clone(),
+        actionability_category: scenario.actionability_category.clone(),
+        static_limit_kind: scenario.static_limit_kind.clone(),
+        repair_packet_ready: scenario.repair_packet_ready,
+        expected_test_or_observer_shape: scenario.expected_test_or_observer_shape.clone(),
+        verify_command: scenario.verify_command.clone(),
+        verify_result: scenario.verify_result.clone(),
+        receipt_command: scenario.receipt_command.clone(),
+        receipt_state: scenario.receipt_state.clone(),
+        outcome: scenario.outcome.clone(),
+        why_not_actionable: scenario.why_not_actionable.clone(),
+        repair_route: scenario.repair_route.clone(),
+        operator_note: scenario.operator_note.clone(),
+        must_not_change: scenario.must_not_change.clone(),
+        raw_evidence_refs: scenario.raw_evidence_refs.clone(),
+        non_claims: scenario.non_claims.clone(),
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
+fn dogfood_typescript_preview_repair_loop_check_source_fixture(
+    scenario: &DogfoodTypescriptPreviewRepairLoopScenario,
+    errors: &mut Vec<String>,
+) {
+    if !scenario.source_fixture.starts_with("fixtures/") || scenario.source_fixture.contains("..") {
+        return;
+    }
+    let check_path = Path::new(&scenario.source_fixture)
+        .join("expected")
+        .join("check.json");
+    let report = match read_json_value(&check_path) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(format!(
+                "source fixture check output is unavailable at {}: {err}",
+                normalize_path(&check_path)
+            ));
+            return;
+        }
+    };
+    let finding = report
+        .get("findings")
+        .and_then(Value::as_array)
+        .and_then(|findings| {
+            findings.iter().find(|finding| {
+                json_string_field(finding, "id").as_deref()
+                    == Some(scenario.source_finding_id.as_str())
+            })
+        });
+    let Some(finding) = finding else {
+        errors.push(format!(
+            "source fixture {} does not contain finding {}",
+            normalize_path(&check_path),
+            scenario.source_finding_id
+        ));
+        return;
+    };
+
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        finding,
+        "classification",
+        &scenario.classification,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        finding,
+        "language",
+        &scenario.language,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        finding,
+        "language_status",
+        &scenario.language_status,
+    );
+    if json_string_field(finding, "oracle_kind").as_deref() != Some(scenario.oracle_kind.as_str()) {
+        errors.push(format!(
+            "source finding oracle_kind must be {}, got {:?}",
+            scenario.oracle_kind,
+            json_string_field(finding, "oracle_kind")
+        ));
+    }
+    if json_string_field(finding, "oracle_strength").as_deref()
+        != Some(scenario.oracle_strength.as_str())
+    {
+        errors.push(format!(
+            "source finding oracle_strength must be {}, got {:?}",
+            scenario.oracle_strength,
+            json_string_field(finding, "oracle_strength")
+        ));
+    }
+    if json_string_field(finding, "static_limit_kind") != scenario.static_limit_kind {
+        errors.push(format!(
+            "source finding static_limit_kind must be {:?}, got {:?}",
+            scenario.static_limit_kind,
+            json_string_field(finding, "static_limit_kind")
+        ));
+    }
+    if !scenario
+        .raw_evidence_refs
+        .iter()
+        .any(|reference| reference.contains(&scenario.source_finding_id))
+    {
+        errors.push("raw_evidence_refs must include the source finding id".to_string());
+    }
+
+    let Some(probe) = finding.get("probe") else {
+        errors.push("source finding is missing probe".to_string());
+        return;
+    };
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        probe,
+        "family",
+        &scenario.probe_family,
+    );
+    let source_owner = json_string_field(probe, "owner").unwrap_or_default();
+    if !source_owner.ends_with(&format!("::{}", scenario.changed_owner)) {
+        errors.push(format!(
+            "source finding owner `{source_owner}` must end with ::{}",
+            scenario.changed_owner
+        ));
+    }
+
+    let Some(actionability) = finding.get("preview_actionability") else {
+        errors.push("source finding is missing preview_actionability".to_string());
+        return;
+    };
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "gap_state",
+        &scenario.gap_state,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "actionability_category",
+        &scenario.actionability_category,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "authority_boundary",
+        &scenario.authority_boundary,
+    );
+    if json_bool_field(actionability, "repair_packet_ready") != Some(scenario.repair_packet_ready) {
+        errors.push(format!(
+            "source finding repair_packet_ready must be {}, got {:?}",
+            scenario.repair_packet_ready,
+            json_bool_field(actionability, "repair_packet_ready")
+        ));
+    }
+    if json_string_field(actionability, "why_not_actionable").as_deref()
+        != Some(scenario.why_not_actionable.as_str())
+    {
+        errors.push("why_not_actionable must match source preview actionability".to_string());
+    }
+    if json_string_field(actionability, "repair_route").as_deref()
+        != Some(scenario.repair_route.as_str())
+    {
+        errors.push("repair_route must match source preview actionability".to_string());
+    }
+}
+
+fn dogfood_typescript_preview_repair_loop_expect_string(
+    errors: &mut Vec<String>,
+    value: &Value,
+    field: &str,
+    expected: &str,
+) {
+    if json_string_field(value, field).as_deref() != Some(expected) {
+        errors.push(format!(
+            "source finding {field} must be {expected}, got {:?}",
+            json_string_field(value, field)
+        ));
+    }
+}
+
+fn typescript_preview_repair_loop_allowed_outcomes() -> &'static [&'static str] {
+    &[
+        "proof_improved",
+        "weak_oracle_downgraded",
+        "static_limitation_recorded",
+        "already_observed_unchanged",
+        "intentionally_skipped",
+    ]
+}
+
+fn typescript_preview_repair_loop_required_non_claims() -> &'static [&'static str] {
+    &[
+        "provider",
+        "source edits",
+        "generated tests",
+        "runtime Jest/Vitest execution",
+        "mutation execution",
+        "default gates",
+        "public badge",
+        "baseline",
+        "RIPR Zero",
+        "support-tier promotion",
+    ]
 }
 
 fn dogfood_user_surface_projection_scenarios() -> Vec<DogfoodUserSurfaceProjectionScenario> {
@@ -42525,6 +43250,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
 
@@ -42559,6 +43285,9 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
             .iter()
             .any(|run| !run.errors.is_empty())
         || real_repair_attempt_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || typescript_preview_repair_loop_runs
             .iter()
             .any(|run| !run.errors.is_empty())
         || user_surface_projection_runs
@@ -42610,6 +43339,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
@@ -43155,6 +43885,150 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
                 body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
             }
             body.push('\n');
+        }
+    }
+    let ts_preview_repair_loop_total = typescript_preview_repair_loop_runs.len();
+    let ts_preview_repair_loop_typescript = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.language == "typescript")
+        .count();
+    let ts_preview_repair_loop_javascript = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.language == "javascript")
+        .count();
+    let ts_preview_repair_loop_static_limits = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.gap_state == "static_limitation")
+        .count();
+    let ts_preview_repair_loop_weak_oracles = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.outcome == "weak_oracle_downgraded")
+        .count();
+    let ts_preview_repair_loop_skipped = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.outcome == "intentionally_skipped")
+        .count();
+    let ts_preview_repair_loop_packet_ready = typescript_preview_repair_loop_runs
+        .iter()
+        .filter(|run| run.repair_packet_ready)
+        .count();
+    body.push_str("## TypeScript Preview Repair-Loop Receipts\n\n");
+    body.push_str("These receipts pin TypeScript-family preview repair-loop evidence against checked fixture outputs. They record useful advisory routes, weak-oracle downgrades, static limitations, and skipped incomplete-packet cases without claiming TypeScript parity or complete repair packets.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Preview authority: advisory\n");
+    body.push_str("- Repair packets: none until `repair_packet_ready` is true\n");
+    body.push_str("- Receipt input: `fixtures/typescript-preview-repair-loop/corpus.json`\n");
+    body.push_str(&format!(
+        "- Cases: {}; TypeScript: {}; JavaScript: {}; static limitations: {}; weak-oracle downgrades: {}; skipped: {}; packet-ready: {}\n\n",
+        ts_preview_repair_loop_total,
+        ts_preview_repair_loop_typescript,
+        ts_preview_repair_loop_javascript,
+        ts_preview_repair_loop_static_limits,
+        ts_preview_repair_loop_weak_oracles,
+        ts_preview_repair_loop_skipped,
+        ts_preview_repair_loop_packet_ready
+    ));
+    body.push_str("| Case | Language | Owner | Probe | Oracle | Gap state | Actionability | Outcome | Packet ready |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    for run in typescript_preview_repair_loop_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}`/`{}` | `{}` | `{}` | `{}` | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.language),
+            markdown_cell(&run.changed_owner),
+            markdown_cell(&run.probe_family),
+            markdown_cell(&run.oracle_kind),
+            markdown_cell(&run.oracle_strength),
+            markdown_cell(&run.gap_state),
+            markdown_cell(&run.actionability_category),
+            markdown_cell(&run.outcome),
+            if run.repair_packet_ready { "yes" } else { "no" }
+        ));
+    }
+    body.push('\n');
+    for run in typescript_preview_repair_loop_runs {
+        body.push_str(&format!(
+            "### TypeScript Preview Repair-Loop `{}`\n\n",
+            run.name
+        ));
+        body.push_str(&format!(
+            "- Source fixture: `{}` / `{}`\n",
+            markdown_cell(&run.source_fixture),
+            markdown_cell(&run.source_finding_id)
+        ));
+        body.push_str(&format!(
+            "- Language: `{}` preview\n",
+            markdown_cell(&run.language)
+        ));
+        body.push_str(&format!(
+            "- Classification: `{}`\n",
+            markdown_cell(&run.classification)
+        ));
+        body.push_str(&format!(
+            "- Changed owner: `{}`\n",
+            markdown_cell(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "- Probe/oracle: `{}` / `{}` `{}`\n",
+            markdown_cell(&run.probe_family),
+            markdown_cell(&run.oracle_kind),
+            markdown_cell(&run.oracle_strength)
+        ));
+        body.push_str(&format!(
+            "- Gap/actionability: `{}` / `{}`\n",
+            markdown_cell(&run.gap_state),
+            markdown_cell(&run.actionability_category)
+        ));
+        body.push_str(&format!(
+            "- Static limit: `{}`\n",
+            markdown_cell(run.static_limit_kind.as_deref().unwrap_or("none"))
+        ));
+        body.push_str(&format!(
+            "- Repair packet ready: {}\n",
+            run.repair_packet_ready
+        ));
+        body.push_str(&format!(
+            "- Expected observer shape: `{}`\n",
+            markdown_cell(&run.expected_test_or_observer_shape)
+        ));
+        body.push_str(&format!(
+            "- Verify route: `{}` ({})\n",
+            markdown_cell(&run.verify_command),
+            markdown_cell(&run.verify_result)
+        ));
+        body.push_str(&format!(
+            "- Receipt route: `{}` ({})\n",
+            markdown_cell(&run.receipt_command),
+            markdown_cell(&run.receipt_state)
+        ));
+        body.push_str(&format!(
+            "- Why not actionable: {}\n",
+            markdown_cell(&run.why_not_actionable)
+        ));
+        body.push_str(&format!(
+            "- Repair route: {}\n",
+            markdown_cell(&run.repair_route)
+        ));
+        body.push_str(&format!(
+            "- Operator note: {}\n",
+            markdown_cell(&run.operator_note)
+        ));
+        body.push_str(&format!(
+            "- Must not change: `{}`\n",
+            markdown_cell(&run.must_not_change.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Non-claims: `{}`\n",
+            markdown_cell(&run.non_claims.join(", "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Receipt validation: pass\n\n");
+        } else {
+            body.push_str(&format!(
+                "- Receipt validation: fail - `{}`\n\n",
+                markdown_cell(&run.errors.join("; "))
+            ));
         }
     }
     body.push_str("## Editor Gap Cockpit Receipts\n\n");
@@ -43942,6 +44816,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
@@ -44489,6 +45364,168 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str("],\n");
         body.push_str("        \"expected_static_limit_kinds\": [");
         write_json_string_array(&mut body, &run.expected_static_limit_kinds);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"typescript_preview_repair_loop\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"preview_authority\": \"advisory\",\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/typescript-preview-repair-loop\",\n");
+    body.push_str("    \"summary\": {\n");
+    body.push_str(&format!(
+        "      \"cases\": {},\n",
+        typescript_preview_repair_loop_runs.len()
+    ));
+    body.push_str(&format!(
+        "      \"typescript\": {},\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.language == "typescript")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"javascript\": {},\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.language == "javascript")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"static_limitations\": {},\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.gap_state == "static_limitation")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"weak_oracle_downgrades\": {},\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.outcome == "weak_oracle_downgraded")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"intentionally_skipped\": {},\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.outcome == "intentionally_skipped")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"repair_packet_ready\": {}\n",
+        typescript_preview_repair_loop_runs
+            .iter()
+            .filter(|run| run.repair_packet_ready)
+            .count()
+    ));
+    body.push_str("    },\n    \"cases\": [\n");
+    for (index, run) in typescript_preview_repair_loop_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"source_fixture\": \"{}\",\n",
+            json_escape(&run.source_fixture)
+        ));
+        body.push_str(&format!(
+            "        \"source_finding_id\": \"{}\",\n",
+            json_escape(&run.source_finding_id)
+        ));
+        body.push_str(&format!(
+            "        \"language\": \"{}\",\n",
+            json_escape(&run.language)
+        ));
+        body.push_str(&format!(
+            "        \"classification\": \"{}\",\n",
+            json_escape(&run.classification)
+        ));
+        body.push_str(&format!(
+            "        \"changed_owner\": \"{}\",\n",
+            json_escape(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "        \"probe_family\": \"{}\",\n",
+            json_escape(&run.probe_family)
+        ));
+        body.push_str(&format!(
+            "        \"oracle_kind\": \"{}\",\n",
+            json_escape(&run.oracle_kind)
+        ));
+        body.push_str(&format!(
+            "        \"oracle_strength\": \"{}\",\n",
+            json_escape(&run.oracle_strength)
+        ));
+        body.push_str(&format!(
+            "        \"gap_state\": \"{}\",\n",
+            json_escape(&run.gap_state)
+        ));
+        body.push_str(&format!(
+            "        \"actionability_category\": \"{}\",\n",
+            json_escape(&run.actionability_category)
+        ));
+        body.push_str(&format!(
+            "        \"static_limit_kind\": {},\n",
+            json_optional_string(run.static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"repair_packet_ready\": {},\n",
+            run.repair_packet_ready
+        ));
+        body.push_str(&format!(
+            "        \"expected_test_or_observer_shape\": \"{}\",\n",
+            json_escape(&run.expected_test_or_observer_shape)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": \"{}\",\n",
+            json_escape(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "        \"verify_result\": \"{}\",\n",
+            json_escape(&run.verify_result)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_command\": \"{}\",\n",
+            json_escape(&run.receipt_command)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_state\": \"{}\",\n",
+            json_escape(&run.receipt_state)
+        ));
+        body.push_str(&format!(
+            "        \"outcome\": \"{}\",\n",
+            json_escape(&run.outcome)
+        ));
+        body.push_str(&format!(
+            "        \"why_not_actionable\": \"{}\",\n",
+            json_escape(&run.why_not_actionable)
+        ));
+        body.push_str(&format!(
+            "        \"repair_route\": \"{}\",\n",
+            json_escape(&run.repair_route)
+        ));
+        body.push_str(&format!(
+            "        \"operator_note\": \"{}\",\n",
+            json_escape(&run.operator_note)
+        ));
+        body.push_str("        \"must_not_change\": [");
+        write_json_string_array(&mut body, &run.must_not_change);
+        body.push_str("],\n");
+        body.push_str("        \"raw_evidence_refs\": [");
+        write_json_string_array(&mut body, &run.raw_evidence_refs);
+        body.push_str("],\n");
+        body.push_str("        \"non_claims\": [");
+        write_json_string_array(&mut body, &run.non_claims);
         body.push_str("],\n");
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
@@ -57625,7 +58662,8 @@ mod tests {
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
         DogfoodRealRepairAttemptScenario, DogfoodReportInputs, DogfoodReportPacketIndexRun,
         DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
-        DogfoodUserSurfaceProjectionScenario, EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        DogfoodTypescriptPreviewRepairLoopScenario, DogfoodUserSurfaceProjectionScenario,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
@@ -57639,23 +58677,24 @@ mod tests {
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
         SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES,
-        USER_SURFACE_PROJECTION_REQUIRED_SURFACES, WorktreeDoctorFinding, WorktreeDoctorSeverity,
-        actionable_gap_outcomes_json, actionable_gap_outcomes_markdown,
-        actionable_gap_outcomes_report_from_values, actionable_gap_outcomes_report_impl,
-        badge_artifact_command_args, badge_artifact_command_label, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_impl_with_runners,
-        badge_artifacts_summary_markdown, badge_basis_canonical_projection,
-        badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
-        badge_basis_report_json, badge_basis_report_markdown, badge_basis_seam_native_counts,
-        badge_diff_policy_violations, badge_native_audit_snapshot, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_doc_artifacts,
-        check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
-        check_network_policy, check_no_panic_family, check_process_policy, check_static_language,
-        check_support_tiers, check_workflows, ci_full_evidence_gates, cockpit_json,
-        cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
+        USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
+        WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
+        actionable_gap_outcomes_markdown, actionable_gap_outcomes_report_from_values,
+        actionable_gap_outcomes_report_impl, badge_artifact_command_args,
+        badge_artifact_command_label, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_impl_with_runners, badge_artifacts_summary_markdown,
+        badge_basis_canonical_projection, badge_basis_derived_ripr_plus_snapshot,
+        badge_basis_needs_repo_badge_plus_job, badge_basis_report_json,
+        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
+        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_doc_artifacts, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_support_tiers,
+        check_workflows, ci_full_evidence_gates, cockpit_json, cockpit_markdown,
+        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
         command_catalog_violations, commands_report_json, commands_report_markdown,
         critic_findings, days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
         dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
@@ -57670,7 +58709,8 @@ mod tests {
         dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
-        dogfood_surface_projection_alignment_scenarios, dogfood_user_surface_projection_run,
+        dogfood_surface_projection_alignment_scenarios, dogfood_typescript_preview_repair_loop_run,
+        dogfood_typescript_preview_repair_loop_scenarios, dogfood_user_surface_projection_run,
         dogfood_user_surface_projection_scenarios, evaluate_semantic_no_panic_policy,
         evidence_health_args, evidence_quality_scorecard_audit_regeneration_failure_audit,
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
@@ -60024,6 +61064,9 @@ mod tests {
         )));
         assert!(super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/gap-decision-ledger"
+        )));
+        assert!(super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/typescript-preview-repair-loop"
         )));
         assert!(!super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/boundary_gap"
@@ -65500,6 +66543,53 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "real merged repair-loop PR improved route-quality evidence".to_string(),
             errors: Vec::new(),
         };
+        let typescript_preview_repair_loop_run = super::DogfoodTypescriptPreviewRepairLoopRun {
+            name: "typescript_boundary_predicate_proof".to_string(),
+            source_fixture: "fixtures/typescript_boundary_gap".to_string(),
+            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            language: "typescript".to_string(),
+            classification: "weakly_exposed".to_string(),
+            changed_owner: "applyDiscount".to_string(),
+            probe_family: "predicate".to_string(),
+            oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            gap_state: "advisory".to_string(),
+            actionability_category: "incomplete_repair_packet".to_string(),
+            static_limit_kind: None,
+            repair_packet_ready: false,
+            expected_test_or_observer_shape: "exact equality-boundary assertion".to_string(),
+            verify_command: "npm test -- discount".to_string(),
+            verify_result: "not_run".to_string(),
+            receipt_command: "ripr agent receipt --source fixtures/typescript_boundary_gap"
+                .to_string(),
+            receipt_state: "fixture_receipt_recorded".to_string(),
+            outcome: "proof_improved".to_string(),
+            why_not_actionable: "preview lacks complete packet fields".to_string(),
+            repair_route: "project canonical TypeScript repair packet fields later".to_string(),
+            operator_note: "proof stays advisory".to_string(),
+            must_not_change: vec![
+                "production behavior".to_string(),
+                "default gate or badge policy".to_string(),
+            ],
+            raw_evidence_refs: vec![
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview"
+                    .to_string(),
+            ],
+            non_claims: vec![
+                "no provider calls".to_string(),
+                "no source edits".to_string(),
+                "no generated tests".to_string(),
+                "no runtime Jest/Vitest execution".to_string(),
+                "no mutation execution".to_string(),
+                "no default gates".to_string(),
+                "no public badge contribution".to_string(),
+                "no baseline authority".to_string(),
+                "no RIPR Zero authority".to_string(),
+                "no support-tier promotion".to_string(),
+            ],
+            reason: "sample TypeScript preview repair-loop receipt".to_string(),
+            errors: Vec::new(),
+        };
         let user_surface_projection_run = super::DogfoodUserSurfaceProjectionRun {
             name: "badge_actionable_count_from_canonical_state".to_string(),
             surface: "badge".to_string(),
@@ -65578,6 +66668,7 @@ fn exact_owner_call_has_external_expected_value() {
         let finding_alignment_runs = [finding_alignment_run];
         let surface_projection_alignment_runs = [surface_projection_alignment_run];
         let real_repair_attempt_runs = [real_repair_attempt_run];
+        let typescript_preview_repair_loop_runs = [typescript_preview_repair_loop_run];
         let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
             generated_ci_cockpit: &generated_ci_runs,
@@ -65603,6 +66694,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &markdown_pr_inline_comment_runs,
         };
@@ -65623,6 +66715,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &empty_pr_inline_comment_runs,
         };
@@ -65642,6 +66735,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Finding Alignment Receipts"));
         assert!(markdown.contains("Surface Projection Alignment Receipts"));
         assert!(markdown.contains("Real Repair Attempt Receipts"));
+        assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
@@ -65664,7 +66758,9 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"finding_alignment\""));
         assert!(json.contains("\"surface_projection_alignment\""));
         assert!(json.contains("\"real_repair_attempts\""));
+        assert!(json.contains("\"typescript_preview_repair_loop\""));
         assert!(json.contains("\"repair_route_quality_metrics_improved\""));
+        assert!(json.contains("\"typescript_boundary_predicate_proof\""));
         assert!(json.contains("\"user_surface_projection_alignment\""));
         assert!(json.contains("\"badge_actionable_count_from_canonical_state\""));
         let value: Value =
@@ -65834,6 +66930,35 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(
             real_attempt_case.get("outcome").and_then(Value::as_str),
             Some("evidence_improved")
+        );
+        let typescript_preview_repair_loop = value
+            .get("typescript_preview_repair_loop")
+            .ok_or_else(|| "typescript_preview_repair_loop section missing".to_string())?;
+        assert_eq!(
+            typescript_preview_repair_loop
+                .get("receipt_dir")
+                .and_then(Value::as_str),
+            Some("fixtures/typescript-preview-repair-loop")
+        );
+        let typescript_preview_repair_loop_summary = typescript_preview_repair_loop
+            .get("summary")
+            .ok_or_else(|| "typescript_preview_repair_loop summary missing".to_string())?;
+        assert_eq!(
+            typescript_preview_repair_loop_summary
+                .get("repair_packet_ready")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        let typescript_preview_repair_loop_cases = typescript_preview_repair_loop
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "typescript_preview_repair_loop cases missing".to_string())?;
+        assert_eq!(typescript_preview_repair_loop_cases.len(), 1);
+        assert_eq!(
+            typescript_preview_repair_loop_cases[0]
+                .get("outcome")
+                .and_then(Value::as_str),
+            Some("proof_improved")
         );
         assert!(json.contains("\"pr_inline_comment_publisher\""));
         Ok(())
@@ -66405,6 +67530,159 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(missing_report.contains(
             "evidence_movement for attempted_no_receipt must not claim conflicting movement tokens: evidence_improved"
         ));
+    }
+
+    #[test]
+    fn dogfood_typescript_preview_repair_loop_receipts_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_typescript_preview_repair_loop_scenarios();
+            for required in TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0 && scenario.outcome == required.1
+                    }),
+                    "{} TypeScript preview repair-loop receipt should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.language == "typescript"),
+                "TypeScript preview repair-loop receipts should include TypeScript"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.language == "javascript"),
+                "TypeScript preview repair-loop receipts should include JavaScript"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.gap_state == "static_limitation"),
+                "TypeScript preview repair-loop receipts should include a static limitation"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.outcome == "weak_oracle_downgraded"),
+                "TypeScript preview repair-loop receipts should include a weak-oracle downgrade"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .all(|scenario| !scenario.repair_packet_ready),
+                "TypeScript preview repair-loop receipts should not claim complete repair packets yet"
+            );
+
+            for scenario in scenarios {
+                let run = dogfood_typescript_preview_repair_loop_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} TypeScript preview repair-loop receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    fn valid_typescript_preview_repair_loop_scenario() -> DogfoodTypescriptPreviewRepairLoopScenario
+    {
+        DogfoodTypescriptPreviewRepairLoopScenario {
+            name: "typescript_boundary_predicate_proof".to_string(),
+            source_fixture: "fixtures/typescript_boundary_gap".to_string(),
+            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            language: "typescript".to_string(),
+            language_status: "preview".to_string(),
+            classification: "weakly_exposed".to_string(),
+            changed_owner: "applyDiscount".to_string(),
+            probe_family: "predicate".to_string(),
+            oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            gap_state: "advisory".to_string(),
+            actionability_category: "incomplete_repair_packet".to_string(),
+            static_limit_kind: None,
+            repair_packet_ready: false,
+            authority_boundary: "preview_advisory_only".to_string(),
+            expected_test_or_observer_shape: "exact equality-boundary assertion".to_string(),
+            verify_command: "npm test -- discount".to_string(),
+            verify_result: "not_run".to_string(),
+            receipt_command: "ripr agent receipt --source fixtures/typescript_boundary_gap"
+                .to_string(),
+            receipt_state: "fixture_receipt_recorded".to_string(),
+            outcome: "proof_improved".to_string(),
+            why_not_actionable: "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract".to_string(),
+            repair_route: "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available".to_string(),
+            operator_note: "proof stays advisory".to_string(),
+            must_not_change: vec![
+                "production behavior".to_string(),
+                "default gate or badge policy".to_string(),
+            ],
+            raw_evidence_refs: vec![
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview".to_string(),
+            ],
+            non_claims: vec![
+                "no provider calls".to_string(),
+                "no source edits".to_string(),
+                "no generated tests".to_string(),
+                "no runtime Jest/Vitest execution".to_string(),
+                "no mutation execution".to_string(),
+                "no default gates".to_string(),
+                "no public badge contribution".to_string(),
+                "no baseline authority".to_string(),
+                "no RIPR Zero authority".to_string(),
+                "no support-tier promotion".to_string(),
+            ],
+            reason: "sample TypeScript preview repair-loop receipt".to_string(),
+        }
+    }
+
+    #[test]
+    fn dogfood_typescript_preview_repair_loop_rejects_overclaiming() {
+        let mut scenario = valid_typescript_preview_repair_loop_scenario();
+        scenario.language_status = "alpha".to_string();
+        scenario.authority_boundary = "gate_eligible".to_string();
+        scenario.gap_state = "actionable".to_string();
+        scenario.outcome = "resolved".to_string();
+        scenario.non_claims.clear();
+
+        let report = dogfood_typescript_preview_repair_loop_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("language_status must be preview"));
+        assert!(report.contains("authority_boundary must be preview_advisory_only"));
+        assert!(report.contains("repair_packet_ready=false must not be paired"));
+        assert!(report.contains("repair_packet_ready=false must not claim resolved"));
+        assert!(report.contains("non_claims must keep preview boundary denials visible"));
+
+        let mut static_limit = valid_typescript_preview_repair_loop_scenario();
+        static_limit.static_limit_kind = Some("mocked_module".to_string());
+        static_limit.gap_state = "advisory".to_string();
+        let static_report = dogfood_typescript_preview_repair_loop_run(&static_limit)
+            .errors
+            .join("\n");
+        assert!(static_report.contains("static_limit_kind requires gap_state=static_limitation"));
+
+        let mut weak_overclaim = valid_typescript_preview_repair_loop_scenario();
+        weak_overclaim.outcome = "weak_oracle_downgraded".to_string();
+        weak_overclaim.oracle_kind = "exact_value".to_string();
+        weak_overclaim.oracle_strength = "strong".to_string();
+        weak_overclaim.gap_state = "already_observed".to_string();
+        weak_overclaim.actionability_category = "strong_oracle_observed".to_string();
+        let weak_report = dogfood_typescript_preview_repair_loop_run(&weak_overclaim)
+            .errors
+            .join("\n");
+        assert!(weak_report.contains("weak_oracle_downgraded must not use a strong oracle"));
+        assert!(
+            weak_report
+                .contains("weak_oracle_downgraded must not claim already-observed actionability")
+        );
     }
 
     #[test]

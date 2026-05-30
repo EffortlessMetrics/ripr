@@ -1977,6 +1977,8 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::typescript_preview_code_action_copies_actionability_without_repair_packet",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_groups_preview_languages_only_when_configured",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
+  "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_receipts_are_checked",
+  "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_rejects_overclaiming",
 ]
 fixtures = [
   "fixtures/typescript_boundary_gap",
@@ -1997,6 +1999,7 @@ fixtures = [
   "fixtures/typescript_probe_facts",
   "fixtures/typescript_static_limit_taxonomy",
   "fixtures/typescript_strict_actionability",
+  "fixtures/typescript-preview-repair-loop",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
@@ -2041,6 +2044,7 @@ outputs = [
   "fixtures/typescript_static_limit_taxonomy/expected/human.txt",
   "fixtures/typescript_strict_actionability/expected/check.json",
   "fixtures/typescript_strict_actionability/expected/human.txt",
+  "fixtures/typescript-preview-repair-loop/corpus.json",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -2081,6 +2085,7 @@ metrics = [
   "language_adapter_typescript_actionability_already_observed",
   "language_adapter_typescript_lsp_preview_actionability_context",
   "language_adapter_typescript_ci_preview_grouping",
+  "language_adapter_typescript_preview_repair_loop_dogfood",
 ]
 
 [[behavior]]

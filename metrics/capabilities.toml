@@ -1557,6 +1557,7 @@ evidence = [
   "fixtures/typescript_related_test_name_proximity",
   "fixtures/typescript_probe_facts",
   "fixtures/typescript_strict_actionability",
+  "fixtures/typescript-preview-repair-loop",
   "fixtures/mixed_rust_typescript_preview",
   "TypeScript/JavaScript findings project structural owner ids and owner_kind metadata for functions, arrow functions, methods, class methods, TSX/JSX components, and module initializers",
   "TypeScript/Jest/Vitest assertion facts cover nested describe, test.each, it.each, exact-value, async resolves, mock interaction, snapshot, and smoke-only evidence while keeping weak oracles weak",
@@ -1567,7 +1568,8 @@ evidence = [
   "TypeScript/JavaScript preview actionability projects as structured preview_actionability in check JSON, human output, GitHub annotations, and diff-scoped SARIF properties while repair-packet, gate, badge, baseline, and RIPR Zero surfaces remain unchanged",
   "TypeScript/JavaScript preview actionability reaches LSP diagnostic data, hover preview actionability context, and inspect-context code actions while incomplete preview items stay bounded to inspect and refresh actions without repair-packet, verify, receipt, edit, or generated-test actions",
   "generated CI groups TypeScript-family preview evidence as separately labeled TypeScript and JavaScript advisory groups with actionability states/categories, repair-packet-ready counts, static-limit context, and gate impact none",
-  "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing"
+  "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing",
+  "fixtures/typescript-preview-repair-loop/corpus.json records TypeScript and JavaScript repair-loop dogfood receipts for advisory boundary proof, smoke and snapshot weak-oracle downgrades, async broad-error evidence, JavaScript mock-interaction skip, mocked-module static limitation, and already-observed unchanged evidence while keeping repair_packet_ready=false and advisory preview authority"
 ]
 fixtures = [
   "fixtures/typescript_boundary_gap",
@@ -1588,10 +1590,11 @@ fixtures = [
   "fixtures/typescript_related_test_name_proximity",
   "fixtures/typescript_probe_facts",
   "fixtures/typescript_strict_actionability",
+  "fixtures/typescript-preview-repair-loop",
   "fixtures/mixed_rust_typescript_preview"
 ]
 next = "metrics/typescript-preview-route-quality"
-metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_probe_predicate, language_adapter_typescript_probe_return_value, language_adapter_typescript_probe_error_path, language_adapter_typescript_probe_field_construction, language_adapter_typescript_probe_call_side_effect, language_adapter_typescript_probe_mock_interaction, language_adapter_typescript_probe_ambiguous_suppressed, language_adapter_typescript_static_limit_dynamic_dispatch, language_adapter_typescript_static_limit_metaprogramming, language_adapter_typescript_static_limit_missing_import_graph, language_adapter_typescript_static_limit_decorator_indirection, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax, language_adapter_typescript_actionability_advisory, language_adapter_typescript_actionability_static_limitation, language_adapter_typescript_actionability_already_observed, language_adapter_typescript_lsp_preview_actionability_context, language_adapter_typescript_ci_preview_grouping"
+metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_probe_predicate, language_adapter_typescript_probe_return_value, language_adapter_typescript_probe_error_path, language_adapter_typescript_probe_field_construction, language_adapter_typescript_probe_call_side_effect, language_adapter_typescript_probe_mock_interaction, language_adapter_typescript_probe_ambiguous_suppressed, language_adapter_typescript_static_limit_dynamic_dispatch, language_adapter_typescript_static_limit_metaprogramming, language_adapter_typescript_static_limit_missing_import_graph, language_adapter_typescript_static_limit_decorator_indirection, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax, language_adapter_typescript_actionability_advisory, language_adapter_typescript_actionability_static_limitation, language_adapter_typescript_actionability_already_observed, language_adapter_typescript_lsp_preview_actionability_context, language_adapter_typescript_ci_preview_grouping, language_adapter_typescript_preview_repair_loop_dogfood"
 
 [[capability]]
 id = "sarif_ci_policy"
