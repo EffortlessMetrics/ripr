@@ -22940,7 +22940,11 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     {
         missing_context.push("receipt_command".to_string());
     }
-    if must_not_change_count == 0 {
+    if must_not_change_count == 0
+        || projection_exclusion_reasons
+            .iter()
+            .any(|reason| reason == "missing_must_not_change")
+    {
         missing_context.push("must_not_change".to_string());
     }
     if allowed_edit_surface_count == 0 {
@@ -23398,7 +23402,16 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
         "missing_must_not_change": report
             .packets
             .iter()
-            .filter(|packet| packet.missing_context.iter().any(|field| field == "must_not_change"))
+            .filter(|packet| {
+                packet
+                    .missing_context
+                    .iter()
+                    .any(|field| field == "must_not_change")
+                    || packet
+                        .projection_exclusion_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_must_not_change")
+            })
             .count(),
         "missing_allowed_edit_surface": report
             .packets
@@ -23629,6 +23642,10 @@ fn ripr_swarm_plan_blocked_state_examples_json(report: &RiprSwarmPlanReport) -> 
                 .missing_context
                 .iter()
                 .any(|field| field == "must_not_change")
+                || packet
+                    .projection_exclusion_reasons
+                    .iter()
+                    .any(|reason| reason == "missing_must_not_change")
         },
     );
     ripr_swarm_plan_push_blocked_state_example(
@@ -26124,6 +26141,10 @@ fn ripr_swarm_readiness_blocked_state_routes(
         "cargo xtask lane1-evidence-audit",
         ripr_swarm_readiness_plan_packet_sample(swarm_plan, "missing_must_not_change", |packet| {
             ripr_swarm_readiness_packet_missing_context(packet, "must_not_change")
+                || ripr_swarm_readiness_packet_projection_exclusion(
+                    packet,
+                    "missing_must_not_change",
+                )
         }),
     );
     ripr_swarm_readiness_push_blocked_state_route(
@@ -85037,6 +85058,81 @@ covered_by = ["cargo xtask check-file-policy"]
                     examples.iter().any(|example| {
                         example["state"] == "missing_receipt_command"
                             && example["example_packet_id"] == "packet:explicit-missing-receipt"
+                    })
+                })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_routes_explicit_missing_must_not_change_projection_exclusion()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "packet_id": "packet:explicit-missing-must-not-change",
+                    "canonical_gap_id": "gap:explicit-missing-must-not-change",
+                    "evidence_class": "error_path",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_exact_error_variant",
+                    "target_test_type": "error_variant_observer",
+                    "assertion_shape": "assert!(matches!(err, Error::Exact))",
+                    "repair_route": {
+                        "repair_kind": "add_exact_error_variant",
+                        "target_test_type": "error_variant_observer",
+                        "assertion_shape": "assert!(matches!(err, Error::Exact))"
+                    },
+                    "verify_command": "cargo test exact_error_variant",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/error.rs",
+                        "name": "exact_error_variant"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["stale boundary text"],
+                    "allowed_edit_surface": ["tests/error.rs"],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true,
+                    "projection_exclusion_reasons": ["missing_must_not_change"]
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        assert!(ready.is_empty());
+
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert_eq!(blocked[0].missing_context, vec!["must_not_change"]);
+        assert_eq!(
+            blocked[0].projection_exclusion_reasons,
+            vec!["missing_must_not_change"]
+        );
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["missing_must_not_change"],
+            serde_json::Value::from(1)
+        );
+        assert!(
+            value["blocked_state_examples"]
+                .as_array()
+                .is_some_and(|examples| {
+                    examples.iter().any(|example| {
+                        example["state"] == "missing_must_not_change"
+                            && example["example_packet_id"]
+                                == "packet:explicit-missing-must-not-change"
                     })
                 })
         );
