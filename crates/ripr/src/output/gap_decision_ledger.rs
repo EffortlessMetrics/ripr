@@ -1,9 +1,12 @@
+use crate::agent::loop_commands::{outcome_command, shell_arg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "gap_decision_ledger";
+const DEFAULT_CHECK_AFTER_OUTPUT: &str = "target/ripr/reports/after-check.json";
+const DEFAULT_RECEIPTS_DIR: &str = "target/ripr/receipts";
 
 pub(crate) const DEFAULT_GAP_DECISION_LEDGER_OUT: &str =
     "target/ripr/reports/gap-decision-ledger.json";
@@ -194,7 +197,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     input: GapDecisionLedgerInput,
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
-    let records = match input.records_json {
+    let mut records = match input.records_json {
         Ok(contents) => match parse_gap_decision_source(input.source_kind, &contents) {
             Ok(records) => records,
             Err(err) => {
@@ -207,6 +210,10 @@ pub(crate) fn build_gap_decision_ledger_report(
             Vec::new()
         }
     };
+
+    if input.source_kind == GapDecisionLedgerSourceKind::CheckOutput {
+        attach_check_output_python_receipt_routes(&mut records, &input.root, &input.records_path);
+    }
 
     for record in &records {
         validate_record(record, &mut warnings);
@@ -528,6 +535,11 @@ fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
     cursor.as_str()
 }
 
+fn non_empty(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
 fn string_array_at(value: &Value, path: &[&str]) -> Vec<String> {
     let mut cursor = value;
     for segment in path {
@@ -702,6 +714,88 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
             .unwrap_or("preview_advisory_only")
             .to_string(),
     })
+}
+
+fn attach_check_output_python_receipt_routes(
+    records: &mut [GapRecord],
+    root: &str,
+    before_check_output: &str,
+) {
+    let after_check_command = format!(
+        "ripr check --root {} --json > {}",
+        shell_arg(root),
+        shell_arg(DEFAULT_CHECK_AFTER_OUTPUT)
+    );
+
+    for record in records {
+        if record.language != "python"
+            || record.language_status != "preview"
+            || record.repairability != "repairable"
+        {
+            continue;
+        }
+        if record
+            .receipt_command
+            .as_deref()
+            .and_then(non_empty)
+            .is_none()
+        {
+            let receipt_path = default_python_receipt_path(record);
+            record.receipt_command = Some(outcome_command(
+                before_check_output,
+                DEFAULT_CHECK_AFTER_OUTPUT,
+                Some(&receipt_path),
+            ));
+        }
+        if !record
+            .regeneration_commands
+            .iter()
+            .any(|command| command == &after_check_command)
+        {
+            record
+                .regeneration_commands
+                .push(after_check_command.clone());
+        }
+    }
+}
+
+fn default_python_receipt_path(record: &GapRecord) -> String {
+    let id = non_empty(&record.canonical_gap_id)
+        .or_else(|| non_empty(&record.gap_id))
+        .unwrap_or("python-gap");
+    format!(
+        "{}/{}.json",
+        DEFAULT_RECEIPTS_DIR,
+        receipt_slug_for_gap_id(id)
+    )
+}
+
+fn receipt_slug_for_gap_id(id: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_separator = false;
+    for ch in id.chars() {
+        let next = if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.') {
+            last_was_separator = false;
+            Some(ch.to_ascii_lowercase())
+        } else if !last_was_separator {
+            last_was_separator = true;
+            Some('-')
+        } else {
+            None
+        };
+        if let Some(next) = next {
+            slug.push(next);
+        }
+        if slug.len() >= 120 {
+            break;
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        "python-gap".to_string()
+    } else {
+        slug.to_string()
+    }
 }
 
 fn first_related_test_line(finding: &Value) -> Option<u64> {
@@ -1345,6 +1439,10 @@ fn render_record_markdown(record: &GapRecord, out: &mut String) {
         for command in &record.regeneration_commands {
             out.push_str(&format!("  - `{}`\n", md_inline(command)));
         }
+    }
+    if let Some(command) = &record.receipt_command {
+        out.push_str("- Receipt:\n");
+        out.push_str(&format!("  - `{}`\n", md_inline(command)));
     }
     if let Some(receipt) = &record.receipt {
         out.push_str(&format!(
@@ -2193,8 +2291,19 @@ mod tests {
                 }
             }]
         });
-        let records = gap_records_from_check_output_json(&payload.to_string())
-            .map_err(|e| format!("parse failed: {e}"))?;
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "target/ripr/reports/check.json".to_string(),
+            records_json: Ok(payload.to_string()),
+        });
+        assert!(
+            report.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            report.warnings
+        );
+        let records = &report.records;
 
         assert_eq!(records.len(), 1);
         let record = &records[0];
@@ -2235,6 +2344,24 @@ mod tests {
             Some("src/pricing.py")
         );
         assert_eq!(record.authority_boundary, "preview_advisory_only");
+        assert_eq!(
+            record.regeneration_commands,
+            vec!["ripr check --root . --json > target/ripr/reports/after-check.json".to_string()]
+        );
+        assert_eq!(
+            record.receipt_command.as_deref(),
+            Some(
+                "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/gap-python-src-pricing.py-calculate_discount-predicate_boundary-predicate-amount-threshold.json"
+            )
+        );
+        let packet = crate::output::agent_seam_packets::render_agent_gap_record_packet_json(
+            "target/ripr/reports/gap-decision-ledger.json",
+            record,
+        )?;
+        assert!(
+            packet.contains("\"receipt_status\": \"available\""),
+            "expected packet receipt availability in {packet}"
+        );
         Ok(())
     }
 

@@ -249,6 +249,9 @@ can show:
   field/object values, and output/log/call effects
 - fixtures proving strong-oracle, no-path, heuristic-only, and static-limit
   cases suppress repair guidance rather than becoming repair-ready work
+- a check-output gap-ledger fixture proving Python repair cards can become
+  bounded agent packets with verify and receipt commands while remaining
+  preview/advisory
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases

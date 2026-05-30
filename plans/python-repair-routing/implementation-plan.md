@@ -733,6 +733,10 @@ Export deterministic, bounded Python repair packets for swarm use.
 - Gap-ledger packets now carry explicit `allowed_files`, `forbidden_files`,
   `conflict_group`, `receipt_command`, and `receipt_status` fields so agents
   get bounded test-edit scope and same-file conflict grouping.
+- Check-output-derived Python GapRecords now synthesize deterministic
+  `ripr outcome` receipt commands from the supplied before check JSON,
+  `target/ripr/reports/after-check.json`, and a gap-scoped receipt path, so
+  the same records can render through `ripr agent packet --gap-ledger`.
 - Python preview records remain advisory: gate and RIPR-zero projections stay
   ineligible until later policy and outcome-ledger work exists.
 
@@ -771,12 +775,16 @@ Make first Python runs useful in CLI.
 - Python-only `first-pr` gap-ledger recovery now points at the existing bridge:
   `ripr check --json` followed by `ripr reports gap-ledger --check-output`,
   rather than the Rust repo-exposure path.
-- A follow-up slice still needs Python before/after outcome receipts and, if
-  useful, a direct `first-pr` producer flag for supplied check-output JSON.
+- Python before/after outcome receipts can now compare check-output JSON by
+  canonical gap ID, and the check-output gap-ledger bridge now supplies the
+  packet receipt command.
+- A follow-up slice still needs, if useful, a direct `first-pr` producer flag
+  for supplied check-output JSON and more contextual raw `ripr check` / `pilot`
+  receipt guidance.
 
 ### Work item: output/python-surface-projection
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -943,7 +951,7 @@ Classify agent repair attempts without trusting them blindly.
 
 ### Work item: outcome/python-gap-ledger
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -959,6 +967,14 @@ Make Python gap improvement durable.
 - Canonical Python gaps can open and close across runs.
 - PR summary can report scoped Python gap movement without claiming
   correctness beyond static evidence movement.
+
+#### Progress
+
+- `ripr outcome` can compare Python check-output JSON snapshots by canonical
+  gap ID and report weak-to-strong evidence movement as closed.
+- `ripr reports gap-ledger --check-output` now carries the corresponding
+  receipt command into repairable Python GapRecords, which makes bounded
+  packet delegation receipt-ready.
 
 ### Work item: fixtures/python-false-positive-corpus
 

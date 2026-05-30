@@ -438,9 +438,10 @@ The evidence-first fields are additive in schema `0.1`:
   `changed_owner`, `changed_behavior`, `current_test_evidence`,
   `missing_discriminator`, `recommended_test_shape`, `suggested_assertion`,
   `suggested_location`, `verify`, `receipt`, `stop_conditions`, and `limits`.
-  In this preview slice, `receipt.command` is `null` and `receipt.status`
-  explains that Python gap-ledger receipts are unavailable until the dedicated
-  outcome work item.
+  In raw `ripr check` output, `receipt.command` may still be `null` because the
+  renderer does not know where the caller will save before/after check
+  snapshots. The `reports gap-ledger --check-output` bridge can synthesize the
+  concrete receipt route from the supplied check-output path.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
   Those records are advisory preview inputs for `ripr agent packet
@@ -9405,8 +9406,12 @@ return an actionable error instead of a repair packet.
 When the gap ledger was derived from check JSON, actionable Python
 `python_repair_card` findings become preview-language GapRecords with
 `policy_state = "new"`, `repairability = "repairable"`, gate and RIPR-zero
-projection ineligible, and `agent_packet` projection eligible. This is the
-Python swarm handoff path until a dedicated Python outcome ledger exists.
+projection ineligible, and `agent_packet` projection eligible. If the raw
+repair card does not carry `receipt.command`, the check-output ledger bridge
+synthesizes a deterministic command that compares the supplied before check
+JSON with `target/ripr/reports/after-check.json` and writes a gap-scoped receipt
+under `target/ripr/receipts/`. This keeps Python packets delegable without
+claiming runtime proof or gate authority.
 
 `ripr swarm queue --language python --top 10` reads
 `target/ripr/reports/gap-decision-ledger.json` by default and emits a
@@ -11313,14 +11318,17 @@ are repo-scoped projection inputs for reports, badges, LSP diagnostics, and
 agent packets when the evidence record already supplies a repair route and
 verification command.
 
-`ripr reports gap-ledger --check-output <path>` derives PR-local
-presentation/output contract gap records from an existing check JSON
-`finding_alignment.items[]` section. Supported visible output text without a
-checked observer becomes `MissingOutputContract` with
+`ripr reports gap-ledger --check-output <path>` derives PR-local records from
+an existing check JSON `finding_alignment.items[]` section and actionable
+Python `findings[].python_repair_card` objects. Supported visible output text
+without a checked observer becomes `MissingOutputContract` with
 `repair_route.route_kind = "AddOutputGolden"` and
-`verification_commands = ["cargo xtask goldens check"]`. Visibility-unknown
-presentation text remains a static limitation and does not become a generic
-`static_unknown` repair instruction.
+`verification_commands = ["cargo xtask goldens check"]`. Actionable Python
+repair cards become preview-language records with bounded test edit surfaces,
+verify commands, and a synthesized `ripr outcome` command that compares the
+supplied before check JSON with `target/ripr/reports/after-check.json`.
+Visibility-unknown presentation text and Python static limits remain
+limitations and do not become generic `static_unknown` repair instructions.
 
 The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
 Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does

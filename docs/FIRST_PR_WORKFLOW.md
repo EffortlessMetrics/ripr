@@ -85,8 +85,8 @@ ripr reports gap-ledger \
   --out-md target/ripr/reports/gap-decision-ledger.md
 ```
 
-For presentation or output-text changes, derive the output-contract route from
-the checked JSON output:
+For presentation/output-text changes or Python preview repair-card findings,
+derive the PR-local route from the checked JSON output:
 
 ```bash
 ripr check --root . --format json > target/ripr/reports/check.json
@@ -97,8 +97,10 @@ ripr reports gap-ledger \
 ```
 
 That path should produce `MissingOutputContract` with an `AddOutputGolden`
-repair route when user-facing output changed without checked output evidence.
-It should not turn generic `static_unknown` into an interruption.
+repair route when user-facing output changed without checked output evidence,
+or a preview Python repair record with a verify command and check-output
+receipt command when the Python card is actionable. It should not turn generic
+`static_unknown` into an interruption.
 
 ## 4. Pick One Repairable Gap
 
