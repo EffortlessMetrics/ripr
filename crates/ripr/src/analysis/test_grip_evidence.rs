@@ -1664,8 +1664,18 @@ fn activate_evidence(
     }
     sort_value_facts(&mut observed);
 
-    let missing =
-        missing_discriminators_for(seam, &observed, boundary_activation_operands_unresolved);
+    let boundary_equality_observed = owner_fn.is_some_and(|owner_fn| {
+        seam.kind() == SeamKind::PredicateBoundary
+            && related
+                .iter()
+                .any(|indexed| boundary_equality_overlap_score(seam, indexed, index, owner_fn) > 0)
+    });
+    let missing = missing_discriminators_for(
+        seam,
+        &observed,
+        boundary_activation_operands_unresolved,
+        boundary_equality_observed,
+    );
     let direct_value_insensitive_owner_call = !owner_name.is_empty()
         && !requires_concrete_activation_values(seam)
         && related
@@ -2264,10 +2274,11 @@ fn missing_discriminators_for(
     seam: &RepoSeam,
     observed: &[ValueFact],
     boundary_activation_operands_unresolved: bool,
+    boundary_equality_observed: bool,
 ) -> Vec<MissingDiscriminatorFact> {
     match seam.kind() {
         SeamKind::PredicateBoundary => {
-            if boundary_activation_operands_unresolved {
+            if boundary_activation_operands_unresolved || boundary_equality_observed {
                 return Vec::new();
             }
             // Without a value model we cannot prove the boundary value is
@@ -3154,6 +3165,47 @@ fn equality_boundary_returns_discount() {
                 evidence.discriminate.summary
             ));
         }
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "equal boundary arguments should satisfy the missing-discriminator hypothesis: {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_seam_when_parameter_operands_are_called_with_equal_strings_then_missing_discriminator_is_cleared()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/similarity.rs");
+        let prod_src = r#"
+pub fn similarity_key_contains(haystack: &str, needle: &str) -> bool {
+    haystack == needle || haystack.contains(needle)
+}
+"#;
+        let tests = PathBuf::from("tests/similarity_tests.rs");
+        let tests_src = r#"
+#[test]
+fn exact_similarity_key_matches() {
+    assert!(similarity_key_contains("apply_discount", "apply_discount"));
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/similarity.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("haystack == needle")
+            })
+            .ok_or_else(|| "expected equality predicate seam".to_string())?;
+
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "equal string boundary arguments should clear the missing-discriminator hypothesis: {:?}",
+            evidence.missing_discriminators
+        );
         Ok(())
     }
 

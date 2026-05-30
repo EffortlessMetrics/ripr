@@ -319,6 +319,10 @@ operands:
 - `crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_computed_local_then_activation_stays_static_limitation`
   keeps computed locals as named limitations and suppresses exact candidate
   values;
+- `crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_seam_when_parameter_operands_are_called_with_equal_strings_then_missing_discriminator_is_cleared`
+  keeps parameter-vs-parameter equality boundaries from becoming repair
+  packets when a related test already calls the owner with equal concrete
+  operands;
 - `crates/ripr/src/output/evidence_record.rs::tests::evidence_record_keeps_unresolved_boundary_operands_as_named_limitation`
   maps iterator-derived unresolved boundary operands to
   `analysis/iterator-boundary-operand-resolution`;

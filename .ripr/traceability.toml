@@ -211,6 +211,7 @@ tests = [
   "crates/ripr/src/output/repo_seams.rs::tests::markdown_uses_static_exposure_vocabulary",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_seam_when_tests_skip_equal_value_then_evidence_reports_missing_boundary_discriminator",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_seam_when_test_uses_equal_value_and_exact_assertion_then_discriminate_evidence_is_yes",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_seam_when_parameter_operands_are_called_with_equal_strings_then_missing_discriminator_is_cleared",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_error_variant_seam_when_test_only_asserts_is_err_then_discriminate_evidence_is_weak",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_error_variant_seam_when_test_asserts_exact_variant_then_discriminate_evidence_is_yes",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_side_effect_seam_when_no_effect_observer_exists_then_observe_evidence_is_weak_or_unknown",
