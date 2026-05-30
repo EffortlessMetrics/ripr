@@ -3050,6 +3050,7 @@ actionable operator evidence instead of only route-quality counts.
   },
   "repair_route_quality": [
     {
+      "language": null,
       "repair_kind": "add_boundary_assertion",
       "repair_kind_attempted": 2,
       "repair_kind_improved": 1,
@@ -3068,8 +3069,30 @@ actionable operator evidence instead of only route-quality counts.
       "sample_missing_receipt_reasons": []
     }
   ],
+  "language_repair_route_quality": [
+    {
+      "language": "typescript",
+      "repair_kind": "sharpen_static_limitation_route",
+      "repair_kind_attempted": 1,
+      "repair_kind_improved": 1,
+      "repair_kind_unchanged": 0,
+      "repair_kind_regressed": 0,
+      "repair_kind_resolved": 0,
+      "repair_kind_attempted_no_receipt": 0,
+      "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
+      "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 0,
+      "repair_kind_dominant_failure_reason": null,
+      "repair_kind_success_rate": 1.0,
+      "sample_packet_ids": [],
+      "sample_canonical_gap_ids": [],
+      "sample_missing_receipt_reasons": []
+    }
+  ],
   "top_failing_repair_routes": [
     {
+      "language": null,
       "repair_kind": "add_boundary_assertion",
       "repair_kind_attempted": 2,
       "repair_kind_improved": 1,
@@ -3216,6 +3239,11 @@ a new history row from a plain ledger rerun over the same artifacts.
 `repair_route_quality[]` is grouped from latest attempts by `repair_kind` and
 reports attempted, improved, unchanged, regressed, resolved, no-receipt,
 receipt-only, missing-verify-result, unknown, and success-rate counts.
+Rows include `language = null` because they are repo-level repair-kind rollups.
+`language_repair_route_quality[]` is the additive language-scoped projection
+grouped by `language` and `repair_kind` for attempts that carry a known language
+field. It lets TypeScript/JavaScript preview route outcomes be measured without
+promoting preview evidence into public repair packets, badge inputs, or gates.
 `top_failing_repair_routes[]` is the subset with unchanged, regressed,
 no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
@@ -3446,6 +3474,7 @@ limits.
   ],
   "repair_route_quality": [
     {
+      "language": null,
       "repair_kind": "add_boundary_assertion",
       "repair_kind_attempted": 2,
       "repair_kind_improved": 1,
@@ -3464,8 +3493,30 @@ limits.
       "sample_missing_receipt_reasons": []
     }
   ],
+  "language_repair_route_quality": [
+    {
+      "language": "typescript",
+      "repair_kind": "sharpen_static_limitation_route",
+      "repair_kind_attempted": 1,
+      "repair_kind_improved": 1,
+      "repair_kind_unchanged": 0,
+      "repair_kind_regressed": 0,
+      "repair_kind_resolved": 0,
+      "repair_kind_attempted_no_receipt": 0,
+      "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
+      "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 0,
+      "repair_kind_dominant_failure_reason": null,
+      "repair_kind_success_rate": 1.0,
+      "sample_packet_ids": [],
+      "sample_canonical_gap_ids": [],
+      "sample_missing_receipt_reasons": []
+    }
+  ],
   "top_failing_repair_routes": [
     {
+      "language": null,
       "repair_kind": "add_boundary_assertion",
       "repair_kind_attempted": 2,
       "repair_kind_improved": 1,

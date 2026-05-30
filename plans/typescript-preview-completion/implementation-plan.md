@@ -550,7 +550,7 @@ git diff --check
 
 ## Work Item: metrics/typescript-preview-route-quality
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
@@ -563,6 +563,30 @@ Track attempted, improved, unchanged, regressed, resolved, success rate,
 missing evidence fields, and failing routes by language and repair kind without
 automatic promotion.
 
+### Current Delta
+
+Attempt-ledger and readiness reports now preserve `language` on attempt rows and
+emit `language_repair_route_quality[]`, an additive projection grouped by
+language and repair kind. TypeScript/JavaScript preview receipt outcomes can be
+measured separately from Rust repair-route quality without becoming public
+repair packets, badge inputs, blocking gates, or support-tier evidence by
+itself.
+
+### Proof Commands
+
+```bash
+cargo test -p xtask ripr_swarm_attempt_ledger_imports_real_repair_attempts -- --test-threads=1
+cargo test -p xtask ripr_swarm_readiness_recomputes_route_quality_from_latest_attempts_when_rows_absent -- --test-threads=1
+cargo xtask ripr-swarm attempt-ledger
+cargo xtask ripr-swarm readiness
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
+
 ## Work Item: campaign/typescript-preview-completion-closeout
 
 Status: ready
@@ -570,7 +594,7 @@ Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: n/a
 Blocks: n/a
-Blocked by: metrics/typescript-preview-route-quality
+Blocked by: none
 
 ### Goal
 
