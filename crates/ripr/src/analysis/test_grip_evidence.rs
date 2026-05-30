@@ -261,6 +261,8 @@ type HelperOwnerCallsByFile = BTreeMap<PathBuf, BTreeMap<String, BTreeSet<String
 type HelperOwnerCallsByName = BTreeMap<String, BTreeSet<String>>;
 type HelperOwnerCallsByModulePath = BTreeMap<String, BTreeMap<String, BTreeSet<String>>>;
 type HelperOwnerCallsByPackage = BTreeMap<String, HelperOwnerCallsByName>;
+type ModuleImportAliasesByFile = BTreeMap<PathBuf, BTreeMap<String, String>>;
+type OwnerNamesByModulePath = BTreeMap<String, BTreeSet<String>>;
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
@@ -371,6 +373,8 @@ fn target_affinity_production_owner_calls_by_package(
     index: &RustIndex,
 ) -> HelperOwnerCallsByPackage {
     let function_names_by_file = local_function_names_by_file(index);
+    let imported_module_aliases_by_file = module_import_aliases_by_file(index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(index);
     let mut by_package: BTreeMap<String, BTreeMap<String, Vec<BTreeSet<String>>>> = BTreeMap::new();
     for function in index
         .functions
@@ -383,8 +387,12 @@ fn target_affinity_production_owner_calls_by_package(
         let Some(local_function_names) = function_names_by_file.get(&function.file) else {
             continue;
         };
-        let owner_calls =
-            target_affinity_direct_owner_calls_for_function(function, local_function_names);
+        let owner_calls = target_affinity_direct_owner_calls_for_function(
+            function,
+            local_function_names,
+            imported_module_aliases_by_file.get(&function.file),
+            &owner_names_by_module_path,
+        );
         if owner_calls.is_empty() {
             continue;
         }
@@ -413,6 +421,8 @@ fn target_affinity_production_owner_calls_by_module_path(
     index: &RustIndex,
 ) -> HelperOwnerCallsByModulePath {
     let function_names_by_file = local_function_names_by_file(index);
+    let imported_module_aliases_by_file = module_import_aliases_by_file(index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(index);
     let mut by_module_path: HelperOwnerCallsByModulePath = BTreeMap::new();
     for function in index
         .functions
@@ -425,8 +435,12 @@ fn target_affinity_production_owner_calls_by_module_path(
         let Some(local_function_names) = function_names_by_file.get(&function.file) else {
             continue;
         };
-        let owner_calls =
-            target_affinity_direct_owner_calls_for_function(function, local_function_names);
+        let owner_calls = target_affinity_direct_owner_calls_for_function(
+            function,
+            local_function_names,
+            imported_module_aliases_by_file.get(&function.file),
+            &owner_names_by_module_path,
+        );
         if owner_calls.is_empty() {
             continue;
         }
@@ -441,8 +455,10 @@ fn target_affinity_production_owner_calls_by_module_path(
 fn target_affinity_direct_owner_calls_for_function(
     function: &FunctionSummary,
     local_function_names: &BTreeSet<String>,
+    imported_module_aliases: Option<&BTreeMap<String, String>>,
+    owner_names_by_module_path: &OwnerNamesByModulePath,
 ) -> BTreeSet<String> {
-    function
+    let mut owner_calls = function
         .calls
         .iter()
         .filter(|call| call.name != function.name)
@@ -450,7 +466,144 @@ fn target_affinity_direct_owner_calls_for_function(
         .filter(|call| owner_token_is_specific_enough(&call.name.to_ascii_lowercase()))
         .filter(|call| call_text_contains_named_call(&call.text, &call.name))
         .map(|call| call.name.clone())
+        .collect::<BTreeSet<_>>();
+    owner_calls.extend(qualified_external_owner_calls_for_function(
+        function,
+        imported_module_aliases,
+        owner_names_by_module_path,
+    ));
+    owner_calls
+}
+
+fn qualified_external_owner_calls_for_function(
+    function: &FunctionSummary,
+    imported_module_aliases: Option<&BTreeMap<String, String>>,
+    owner_names_by_module_path: &OwnerNamesByModulePath,
+) -> BTreeSet<String> {
+    let Some(imported_module_aliases) = imported_module_aliases else {
+        return BTreeSet::new();
+    };
+    function
+        .calls
+        .iter()
+        .filter(|call| call.name != function.name)
+        .filter(|call| owner_token_is_specific_enough(&call.name.to_ascii_lowercase()))
+        .filter(|call| {
+            call_text_contains_imported_module_owner_call(
+                &call.text,
+                &call.name,
+                imported_module_aliases,
+                owner_names_by_module_path,
+            )
+        })
+        .map(|call| call.name.clone())
         .collect()
+}
+
+fn call_text_contains_imported_module_owner_call(
+    text: &str,
+    call_name: &str,
+    imported_module_aliases: &BTreeMap<String, String>,
+    owner_names_by_module_path: &OwnerNamesByModulePath,
+) -> bool {
+    let cleaned = strip_comments_and_strings(text);
+    imported_module_aliases.iter().any(|(alias, module_path)| {
+        owner_names_by_module_path
+            .get(module_path)
+            .is_some_and(|owner_names| owner_names.contains(call_name))
+            && code_contains_qualified_helper_call(&cleaned, alias, call_name)
+    })
+}
+
+fn production_owner_names_by_module_path(index: &RustIndex) -> OwnerNamesByModulePath {
+    let mut by_module_path: OwnerNamesByModulePath = BTreeMap::new();
+    for function in index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && !rust_index::is_test_file(&function.file))
+    {
+        let Some(module_path) = module_path_for(&function.file) else {
+            continue;
+        };
+        by_module_path
+            .entry(module_path.replace('/', "::"))
+            .or_default()
+            .insert(function.name.clone());
+    }
+    by_module_path
+}
+
+fn module_import_aliases_by_file(index: &RustIndex) -> ModuleImportAliasesByFile {
+    index
+        .files
+        .iter()
+        .filter_map(|(file, facts)| {
+            let aliases = module_import_aliases(&facts.source);
+            (!aliases.is_empty()).then_some((file.clone(), aliases))
+        })
+        .collect()
+}
+
+fn module_import_aliases(source: &str) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    for line in source.lines() {
+        let line = strip_comments_and_strings(line);
+        let Some(import) = line.trim().strip_prefix("use ") else {
+            continue;
+        };
+        collect_module_import_aliases_from_use(import.trim(), &mut aliases);
+    }
+    aliases
+}
+
+fn collect_module_import_aliases_from_use(import: &str, aliases: &mut BTreeMap<String, String>) {
+    let import = import.trim_end_matches(';').trim();
+    if let Some((base, rest)) = import.split_once("::{") {
+        let Some(module_path) = normalize_module_import_path(base) else {
+            return;
+        };
+        let Some(body) = rest.strip_suffix('}') else {
+            return;
+        };
+        for item in body.split(',').map(str::trim) {
+            if item == "self" {
+                if let Some(alias) = module_path.rsplit("::").next() {
+                    aliases.insert(alias.to_string(), module_path.clone());
+                }
+            } else if let Some(alias) = item.strip_prefix("self as ").map(str::trim)
+                && !alias.is_empty()
+            {
+                aliases.insert(alias.to_string(), module_path.clone());
+            }
+        }
+        return;
+    }
+
+    let (path, alias) = match import.split_once(" as ") {
+        Some((path, alias)) => (path.trim(), Some(alias.trim())),
+        None => (import, None),
+    };
+    let Some(module_path) = normalize_module_import_path(path) else {
+        return;
+    };
+    let alias = alias
+        .filter(|alias| !alias.is_empty())
+        .or_else(|| module_path.rsplit("::").next());
+    if let Some(alias) = alias {
+        aliases.insert(alias.to_string(), module_path);
+    }
+}
+
+fn normalize_module_import_path(path: &str) -> Option<String> {
+    let path = path
+        .trim()
+        .strip_prefix("crate::")
+        .unwrap_or(path.trim())
+        .trim();
+    if path.is_empty() || path.starts_with("super::") || path.starts_with("self::") {
+        return None;
+    }
+    Some(path.to_string())
 }
 
 fn local_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet<String>> {
@@ -5349,6 +5502,83 @@ fn qualified_wrapper_observes_pipeline_call_target() {
         assert!(
             evidence.observed_values.is_empty(),
             "qualified target-affinity wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_imported_module_wrapper_has_target_affinity_then_activation_is_yes()
+    -> Result<(), String> {
+        let loop_commands = PathBuf::from("src/agent/loop_commands.rs");
+        let loop_commands_src = r#"
+use std::path::Path;
+
+pub fn display_path(path: &Path) -> String {
+    path.display().to_string()
+}
+
+pub fn shell_path(path: &Path) -> String {
+    shell_arg(&display_path(path))
+}
+
+pub fn shell_arg(value: &str) -> String {
+    value.to_string()
+}
+"#;
+        let pilot_commands = PathBuf::from("src/output/pilot/commands.rs");
+        let pilot_commands_src = r#"
+use crate::agent::loop_commands::{self, display_path};
+use std::path::Path;
+
+pub fn pilot_paths(root: &Path, after: &Path) -> String {
+    let root = display_path(root);
+    let after = loop_commands::shell_path(after);
+    format!("display_path={root};shell_arg={after}")
+}
+"#;
+        let tests = PathBuf::from("tests/pilot_commands_tests.rs");
+        let tests_src = r#"
+use output::pilot::commands::pilot_paths;
+use std::path::Path;
+
+#[test]
+fn pilot_paths_preserve_shell_arg_route() {
+    let rendered = pilot_paths(Path::new("."), Path::new("target/out file.json"));
+    assert!(rendered.contains("shell_arg="));
+}
+"#;
+        let index = index_from_files(&[
+            (loop_commands, loop_commands_src),
+            (pilot_commands, pilot_commands_src),
+            (tests, tests_src),
+        ])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/agent/loop_commands.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::shell_path")
+                    && s.expression().contains("shell_arg")
+            })
+            .ok_or_else(|| "expected shell_path call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected imported-module wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "imported module call_presence wrapper activation must not invent values: {:?}",
             evidence.observed_values
         );
         Ok(())

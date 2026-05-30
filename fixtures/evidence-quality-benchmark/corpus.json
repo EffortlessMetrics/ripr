@@ -1593,6 +1593,60 @@
       "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
     },
     {
+      "id": "call_presence_imported_module_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "An imported module-qualified production wrapper call can disambiguate a call-presence target-affinity seam when the wrapper directly calls the matching owner and the assertion mentions the call target.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_imported_module_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pilot_commands_tests.rs",
+        "source": "let rendered = pilot_paths(Path::new(\".\"), Path::new(\"target/out file.json\"));\nassert!(rendered.contains(\"shell_arg=\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-imported-module-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-imported-module-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "agent::loop_commands::shell_path",
+          "location": {
+            "file": "src/agent/loop_commands.rs",
+            "line": 7
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an imported module-qualified production wrapper can establish owner-call activation when the import resolves to the owner module and assertion tokens match the call target.",
+      "must_not_claim": [
+        "Do not treat imported module target affinity as activation without a direct wrapper-to-owner call.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not resolve arbitrary cross-module calls without an imported module alias.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
       "id": "call_presence_super_qualified_support_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",

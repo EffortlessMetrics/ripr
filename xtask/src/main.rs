@@ -7989,6 +7989,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "call_presence_imported_module_wrapper_route_improved",
+        "evidence_improved",
+    ),
+    (
         "typescript_preview_lsp_repair_context_improved",
         "evidence_improved",
     ),
