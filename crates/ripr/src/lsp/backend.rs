@@ -904,6 +904,7 @@ mod gap_record_context_tests {
         "agent_packet": { "eligible": true, "reason": "bounded_repair_route" }
       },
       "verification_commands": ["cargo xtask fixtures boundary_gap"],
+      "receipt_command": "ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json",
       "authority_boundary": "advisory"
     }
   ]

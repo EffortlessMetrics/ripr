@@ -9746,15 +9746,18 @@ Field contract:
   `allowed_edit_surface`. `forbidden_files` is the source anchor file when it
   differs from the allowed file. Python preview packets use this to bound
   agents to the suggested test file and keep production Python files read-only.
+- `packets[].must_not_change` - GapRecord safety boundaries in gap-ledger
+  packet mode. The list mirrors the copyable packet's do-not-do section so
+  JSON consumers and agent handoffs receive the same edit and authority limits.
 - `packets[].conflict_group` - optional gap-ledger packet grouping key used by
   swarm schedulers to avoid parallel edits to the same target file. It is
   `file:<allowed_edit_surface>` when an edit surface exists and otherwise falls back to the
   selected gap ID.
-- `packets[].receipt_command` and `packets[].receipt_status` - optional
-  receipt projection in gap-ledger packet mode. `receipt_status` is
-  `"available"` when the source GapRecord supplied a receipt command and
-  `"missing_from_gap_record"` otherwise. A missing receipt is advisory
-  incompleteness, not verification failure.
+- `packets[].receipt_command` and `packets[].receipt_status` - receipt
+  projection in gap-ledger packet mode. Rendering fails closed when an
+  agent-packet-eligible GapRecord lacks `receipt_command`; emitted packets use
+  `receipt_status: "available"`. This prevents delegable repair work without a
+  receipt route.
 - `packets[].static_evidence_boundary` - optional static/advisory non-claim
   string. Gap-ledger packet mode uses the same boundary text as `first-pr` so
   coding agents do not infer runtime mutation proof, coverage adequacy, gate

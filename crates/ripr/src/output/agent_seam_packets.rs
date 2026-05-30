@@ -121,6 +121,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
     let forbidden_files = forbidden_files_for_gap_record(record, &allowed_edit_surface);
     let conflict_group = conflict_group_for_gap_record(record, &allowed_edit_surface);
     let receipt_status = receipt_status_for_gap_record(record);
+    let must_not_change = gap_record_packet_do_not_do(record);
     let missing_discriminator = missing_discriminator_for_gap_route(route);
     let authority_boundary = if record.authority_boundary.trim().is_empty() {
         "Agent packets are advisory; configured gate-decision artifacts remain pass/fail authority."
@@ -201,6 +202,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "verify_command": &verify_command,
         "receipt_command": record.receipt_command.as_deref(),
         "receipt_status": receipt_status,
+        "must_not_change": must_not_change,
         "stop_conditions": &stop_conditions,
         "repair_card": repair_card_json,
         "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
@@ -595,6 +597,14 @@ fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
     }
     if allowed_edit_surface_for_gap_route(route).is_empty() {
         return Err("requires allowed_edit_surface".to_string());
+    }
+    if record
+        .receipt_command
+        .as_deref()
+        .and_then(non_empty)
+        .is_none()
+    {
+        return Err("requires receipt_command".to_string());
     }
     Ok(())
 }
@@ -2372,6 +2382,15 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("available")
         );
+        let must_not_change = packet
+            .get("must_not_change")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("missing must_not_change boundaries in: {json}"))?;
+        assert!(
+            must_not_change.iter().any(|boundary| boundary.as_str()
+                == Some("Do not broaden the change beyond this GapRecord and its repair route.")),
+            "gap packets should expose bounded must_not_change guidance: {json}"
+        );
         assert_eq!(
             packet
                 .get("current_evidence_strength")
@@ -2561,6 +2580,7 @@ mod tests {
                 ]
               },
               "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json",
               "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
               "authority_boundary":"Python repair cards are preview advisory evidence."
             }]}"#,
@@ -2677,6 +2697,7 @@ mod tests {
                 "changed_behavior":"if amount >= threshold:"
               },
               "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json",
               "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
             },
             {
@@ -2700,6 +2721,7 @@ mod tests {
                 "changed_behavior":"return expected_discount"
               },
               "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_exact_value"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-python-pricing-return.targeted-test-outcome.json",
               "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
             },
             {
@@ -2931,6 +2953,45 @@ mod tests {
         assert_eq!(
             render_agent_gap_record_packet_json("gap-ledger.json", record),
             Err("requires allowed_edit_surface".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_rejects_missing_receipt_command() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:missing-receipt",
+              "canonical_gap_id":"gap:rust:missing-receipt",
+              "kind":"MissingBoundaryAssertion",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount","dedupe_fingerprint":"gap:pricing"},
+              "evidence_ids":["evidence:pricing-boundary"],
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "target_file":"tests/pricing.rs",
+                "related_test":"discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert_eq!(discount(100, 100), 90)",
+                "changed_behavior":"amount == threshold"
+              },
+              "verification_commands":["cargo xtask fixtures boundary_gap"],
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
+              "authority_boundary":"Gate decision remains pass/fail authority."
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed gap record".to_string())?;
+        assert_eq!(
+            render_agent_gap_record_packet_json("gap-ledger.json", record),
+            Err("requires receipt_command".to_string())
         );
         Ok(())
     }
