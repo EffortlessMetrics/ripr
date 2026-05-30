@@ -4228,6 +4228,7 @@ tests = [
     "xtask::tests::ripr_swarm_plan_routes_explicit_missing_must_not_change_projection_exclusion",
     "xtask::tests::ripr_swarm_plan_routes_explicit_missing_raw_evidence_refs_projection_exclusion",
     "xtask::tests::ripr_swarm_plan_routes_explicit_missing_confidence_projection_exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_related_context_projection_exclusion",
     "xtask::tests::ripr_swarm_plan_blocks_missing_target_test_shape",
   "xtask::tests::ripr_swarm_plan_blocks_missing_raw_evidence_refs",
   "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",

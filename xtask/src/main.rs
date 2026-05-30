@@ -22923,7 +22923,11 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     {
         missing_context.push("target_test_shape".to_string());
     }
-    if !related_test_or_observer_available {
+    if !related_test_or_observer_available
+        || projection_exclusion_reasons
+            .iter()
+            .any(|reason| reason == "missing_related_test_or_observer")
+    {
         missing_context.push("related_test_or_observer".to_string());
     }
     if !has_verify_command
@@ -23462,7 +23466,17 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
         "related_context_missing": report
             .packets
             .iter()
-            .filter(|packet| !packet.related_test_or_observer_available)
+            .filter(|packet| {
+                !packet.related_test_or_observer_available
+                    || packet
+                        .missing_context
+                        .iter()
+                        .any(|field| field == "related_test_or_observer")
+                    || packet
+                        .projection_exclusion_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_related_test_or_observer")
+            })
             .count(),
         "static_limitation_packets": report
             .packets
@@ -26144,6 +26158,10 @@ fn ripr_swarm_readiness_blocked_state_routes(
                     || ripr_swarm_readiness_packet_missing_context(
                         packet,
                         "related_test_or_observer",
+                    )
+                    || ripr_swarm_readiness_packet_projection_exclusion(
+                        packet,
+                        "missing_related_test_or_observer",
                     )
             },
         ),
@@ -85306,6 +85324,81 @@ covered_by = ["cargo xtask check-file-policy"]
                     examples.iter().any(|example| {
                         example["state"] == "missing_confidence"
                             && example["example_packet_id"] == "packet:explicit-missing-confidence"
+                    })
+                })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_routes_explicit_missing_related_context_projection_exclusion()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "packet_id": "packet:explicit-missing-related-context",
+                    "canonical_gap_id": "gap:explicit-missing-related-context",
+                    "evidence_class": "error_path",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_exact_error_variant",
+                    "target_test_type": "error_variant_observer",
+                    "assertion_shape": "assert!(matches!(err, Error::Exact))",
+                    "repair_route": {
+                        "repair_kind": "add_exact_error_variant",
+                        "target_test_type": "error_variant_observer",
+                        "assertion_shape": "assert!(matches!(err, Error::Exact))"
+                    },
+                    "verify_command": "cargo test exact_error_variant",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/error.rs",
+                        "name": "stale_exact_error_variant"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "allowed_edit_surface": ["tests/error.rs"],
+                    "raw_findings": [{"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true,
+                    "projection_exclusion_reasons": ["missing_related_test_or_observer"]
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        assert!(ready.is_empty());
+
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert_eq!(blocked[0].missing_context, vec!["related_test_or_observer"]);
+        assert_eq!(
+            blocked[0].projection_exclusion_reasons,
+            vec!["missing_related_test_or_observer"]
+        );
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["related_context_missing"],
+            serde_json::Value::from(1)
+        );
+        assert!(
+            value["blocked_state_examples"]
+                .as_array()
+                .is_some_and(|examples| {
+                    examples.iter().any(|example| {
+                        example["state"] == "missing_related_test_or_observer"
+                            && example["example_packet_id"]
+                                == "packet:explicit-missing-related-context"
                     })
                 })
         );

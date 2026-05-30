@@ -2397,8 +2397,9 @@ Field contract:
   not change public badge endpoint semantics. Swarm planning treats explicit
   packet-field projection exclusions such as `missing_verify_command`,
   `missing_receipt_command`, `missing_must_not_change`,
-  `missing_raw_evidence_refs`, or `missing_confidence` as field-level blocked
-  states even if stale command, boundary text, placeholder evidence, or stale
+  `missing_raw_evidence_refs`, `missing_related_test_or_observer`, or
+  `missing_confidence` as field-level blocked states even if stale command,
+  boundary text, placeholder evidence, stale related target text, or stale
   confidence text is still present in the packet artifact.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
