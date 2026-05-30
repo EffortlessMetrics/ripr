@@ -2390,7 +2390,7 @@ Field contract:
   public-projection eligible packets, excluded packets, and stable
   `projection_exclusion_reasons` rows such as `not_actionable_gap_state`,
   `missing_canonical_gap_id`, `missing_receipt_command`,
-  `missing_related_test_or_observer`, `missing_confidence`,
+  `missing_target_test_shape`, `missing_related_test_or_observer`, `missing_confidence`,
   `missing_must_not_change`, `missing_allowed_edit_surface`,
   `missing_raw_evidence_refs`, `unbounded_verify_command`, and
   `static_limitation_present`. This is advisory report evidence only and does
@@ -2706,6 +2706,7 @@ are not public repair packets and must not enter the swarm-ready queue.
     "missing_verify_command": 0,
     "missing_receipt_command": 0,
     "missing_repair_route": 0,
+    "missing_target_test_shape": 0,
     "missing_must_not_change": 0,
     "missing_allowed_edit_surface": 0,
     "missing_confidence": 0,
@@ -2723,6 +2724,15 @@ are not public repair packets and must not enter the swarm-ready queue.
       "example_missing_context": ["canonical_gap_id"],
       "example_projection_exclusion_reasons": ["missing_canonical_gap_id"],
       "example_blocked_reasons": ["missing_canonical_gap_id"]
+    },
+    {
+      "state": "missing_target_test_shape",
+      "example_packet_id": "packet:missing-target-test-shape",
+      "example_canonical_gap_id": "gap:missing-target-test-shape",
+      "example_repair_kind": "add_boundary_assertion",
+      "example_missing_context": ["target_test_shape"],
+      "example_projection_exclusion_reasons": [],
+      "example_blocked_reasons": ["missing_target_test_shape"]
     },
     {
       "state": "missing_allowed_edit_surface",
@@ -3424,6 +3434,7 @@ limits.
     "missing_verify_command": 0,
     "missing_verify_result": 0,
     "missing_receipt_command": 0,
+    "missing_target_test_shape": 0,
     "static_limitation_packets": 2,
     "high_confidence_packets": 4,
     "attempted_packets": 3,
@@ -3685,7 +3696,7 @@ count, reason, next action kind, repair route, and example packet/canonical gap
 identity when source artifacts provide one, so no blocked class is visible only
 through raw packet JSON. It includes coarse states such as
 `blocked_by_missing_context`, field-level blockers such as
-`missing_canonical_gap_id`, `missing_allowed_edit_surface`,
+`missing_canonical_gap_id`, `missing_target_test_shape`, `missing_allowed_edit_surface`,
 `missing_confidence`, and
 `missing_raw_evidence_refs`, and outcome blockers such as `orphan_receipt`,
 `unchanged_attempt`, and

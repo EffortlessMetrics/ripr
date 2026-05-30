@@ -22047,6 +22047,7 @@ struct RiprSwarmReadinessSummary {
     missing_verify_result: usize,
     missing_receipt_command: usize,
     missing_repair_route: usize,
+    missing_target_test_shape: usize,
     missing_must_not_change: usize,
     missing_allowed_edit_surface: usize,
     missing_confidence: usize,
@@ -22823,6 +22824,20 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
         .unwrap_or_else(|| "target_test_type_unknown".to_string());
     let assertion_shape = audit_non_empty_string(packet, &["assertion_shape"])
         .unwrap_or_else(|| "assertion_shape_unknown".to_string());
+    let explicit_target_test_shape = audit_non_empty_string(packet, &["target_test_shape"]);
+    let target_test_shape = match explicit_target_test_shape.as_deref() {
+        Some(value) if !ripr_swarm_plan_field_missing(value) => value.to_string(),
+        Some(_) => "target_test_shape_unknown".to_string(),
+        None => {
+            if !ripr_swarm_plan_field_missing(&target_test_type)
+                && !ripr_swarm_plan_field_missing(&assertion_shape)
+            {
+                audit_actionable_gap_target_test_shape(&target_test_type, &assertion_shape)
+            } else {
+                "target_test_shape_unknown".to_string()
+            }
+        }
+    };
     let confidence_basis = audit_non_empty_string(packet, &["confidence_basis"])
         .unwrap_or_else(|| "unknown".to_string());
     let verify_command = audit_non_empty_string(packet, &["verify_command"]);
@@ -22898,6 +22913,15 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     }
     if has_repair_route && !repair_route_consistent {
         missing_context.push("repair_route_consistency".to_string());
+    }
+    if gap_state == "actionable"
+        && (ripr_swarm_plan_field_missing(&target_test_shape)
+            || target_test_shape == "target_test_shape_unknown"
+            || projection_exclusion_reasons
+                .iter()
+                .any(|reason| reason == "missing_target_test_shape"))
+    {
+        missing_context.push("target_test_shape".to_string());
     }
     if !related_test_or_observer_available {
         missing_context.push("related_test_or_observer".to_string());
@@ -23329,6 +23353,20 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
             .iter()
             .filter(|packet| packet.missing_context.iter().any(|field| field == "repair_route"))
             .count(),
+        "missing_target_test_shape": report
+            .packets
+            .iter()
+            .filter(|packet| {
+                packet
+                    .missing_context
+                    .iter()
+                    .any(|field| field == "target_test_shape")
+                    || packet
+                        .projection_exclusion_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_target_test_shape")
+            })
+            .count(),
         "missing_must_not_change": report
             .packets
             .iter()
@@ -23522,6 +23560,21 @@ fn ripr_swarm_plan_blocked_state_examples_json(report: &RiprSwarmPlanReport) -> 
     ripr_swarm_plan_push_blocked_state_example(
         &mut rows,
         &report.packets,
+        "missing_target_test_shape",
+        |packet| {
+            packet
+                .missing_context
+                .iter()
+                .any(|field| field == "target_test_shape")
+                || packet
+                    .projection_exclusion_reasons
+                    .iter()
+                    .any(|reason| reason == "missing_target_test_shape")
+        },
+    );
+    ripr_swarm_plan_push_blocked_state_example(
+        &mut rows,
+        &report.packets,
         "missing_related_test_or_observer",
         |packet| {
             !packet.related_test_or_observer_available
@@ -23649,6 +23702,7 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
         "missing_verify_result",
         "missing_receipt_command",
         "missing_repair_route",
+        "missing_target_test_shape",
         "missing_must_not_change",
         "missing_allowed_edit_surface",
         "missing_confidence",
@@ -25619,6 +25673,8 @@ fn ripr_swarm_readiness_summary(
             audit_usize(plan, &["summary", "missing_receipt_command"]).unwrap_or_default();
         summary.missing_repair_route =
             audit_usize(plan, &["summary", "missing_repair_route"]).unwrap_or_default();
+        summary.missing_target_test_shape =
+            audit_usize(plan, &["summary", "missing_target_test_shape"]).unwrap_or_default();
         summary.missing_must_not_change =
             audit_usize(plan, &["summary", "missing_must_not_change"]).unwrap_or_default();
         summary.missing_allowed_edit_surface =
@@ -25812,6 +25868,7 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "missing_verify_result": summary.missing_verify_result,
         "missing_receipt_command": summary.missing_receipt_command,
         "missing_repair_route": summary.missing_repair_route,
+        "missing_target_test_shape": summary.missing_target_test_shape,
         "missing_must_not_change": summary.missing_must_not_change,
         "missing_allowed_edit_surface": summary.missing_allowed_edit_surface,
         "missing_confidence": summary.missing_confidence,
@@ -25975,6 +26032,25 @@ fn ripr_swarm_readiness_blocked_state_routes(
         ripr_swarm_readiness_plan_packet_sample(swarm_plan, "missing_repair_route", |packet| {
             ripr_swarm_readiness_packet_missing_context(packet, "repair_route")
         }),
+    );
+    ripr_swarm_readiness_push_blocked_state_route(
+        &mut routes,
+        "missing_target_test_shape",
+        summary.missing_target_test_shape,
+        "the packet has no target_test_shape repair/test shape",
+        "fix_target_test_shape",
+        "cargo xtask lane1-evidence-audit",
+        ripr_swarm_readiness_plan_packet_sample(
+            swarm_plan,
+            "missing_target_test_shape",
+            |packet| {
+                ripr_swarm_readiness_packet_missing_context(packet, "target_test_shape")
+                    || ripr_swarm_readiness_packet_projection_exclusion(
+                        packet,
+                        "missing_target_test_shape",
+                    )
+            },
+        ),
     );
     ripr_swarm_readiness_push_blocked_state_route(
         &mut routes,
@@ -26849,6 +26925,20 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
+    if summary.missing_target_test_shape > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "fix_target_test_shape".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            reason: format!(
+                "{} packet(s) are missing target_test_shape repair/test shape; repair packet target-shape projection before attempting swarm work",
+                summary.missing_target_test_shape
+            ),
+        });
+    }
     if summary.missing_canonical_gap_id > 0 {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_canonical_gap_identity".to_string(),
@@ -27348,6 +27438,7 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
         "missing_verify_result",
         "missing_receipt_command",
         "missing_repair_route",
+        "missing_target_test_shape",
         "missing_must_not_change",
         "missing_allowed_edit_surface",
         "missing_confidence",
@@ -29181,9 +29272,13 @@ fn audit_actionable_gap_projection_exclusion_reasons(
         || input.repair_kind == "repair_route_unknown"
         || input.target_test_type == "target_test_type_unknown"
         || input.assertion_shape == "assertion_shape_unknown"
-        || input.target_test_shape == "target_test_shape_unknown"
     {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_repair_route");
+    }
+    if input.target_test_shape == "target_test_shape_unknown"
+        || audit_guidance_field_is_missing(input.target_test_shape)
+    {
+        audit_push_projection_exclusion_reason(&mut reasons, "missing_target_test_shape");
     }
     if !matches!(
         input.verify_command_source,
@@ -81291,6 +81386,36 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_actionable_gap_public_projection_requires_target_test_shape() {
+        let reasons = crate::audit_actionable_gap_projection_exclusion_reasons(
+            crate::AuditActionableGapProjectionInput {
+                canonical_gap_id: "gap:missing-target-shape",
+                gap_state: "actionable",
+                actionability: "extend_related_test",
+                repair_kind: "add_boundary_assertion",
+                target_test_type: "boundary_discriminator",
+                assertion_shape: "assert_eq!(value, expected)",
+                target_test_shape: "target_test_shape_unknown",
+                repair_route_present: true,
+                repair_route_source: "canonical_item.repair_route",
+                verify_command: "cargo test missing_target_shape",
+                verify_command_source: "canonical_item.verify_command",
+                receipt_command_or_path: Some("cargo xtask receipts check"),
+                receipt_source: "canonical_item.receipt_command",
+                typed_related_target_available: true,
+                has_stable_canonical_gap_id: true,
+                confidence_basis: "fixture_backed",
+                must_not_change_count: 1,
+                allowed_edit_surface_count: 1,
+                raw_evidence_refs_count: 1,
+                static_limitations_count: 0,
+            },
+        );
+
+        assert_eq!(reasons, vec!["missing_target_test_shape"]);
+    }
+
+    #[test]
     fn lane1_actionable_gap_public_projection_requires_confidence_basis() {
         let reasons = crate::audit_actionable_gap_projection_exclusion_reasons(
             crate::AuditActionableGapProjectionInput {
@@ -84736,6 +84861,67 @@ covered_by = ["cargo xtask check-file-policy"]
                 .as_deref()
                 .is_some_and(|limitation| limitation.contains("`packets` array"))
         );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_missing_target_test_shape() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:no-target-test-shape",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(value, expected)"
+                    },
+                    "target_test_shape": "target_test_shape_unknown",
+                    "verify_command": "cargo test no_target_test_shape",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/lib.rs",
+                        "name": "no_target_test_shape"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "allowed_edit_surface": ["tests/lib.rs"],
+                    "raw_evidence_refs": [
+                        {"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}
+                    ],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        let summary = crate::ripr_swarm_plan_summary_json(&report);
+        let examples = crate::ripr_swarm_plan_blocked_state_examples_json(&report);
+
+        assert!(ready.is_empty());
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert_eq!(blocked[0].missing_context, vec!["target_test_shape"]);
+        assert_eq!(
+            summary["missing_target_test_shape"],
+            serde_json::Value::from(1)
+        );
+        assert!(examples.iter().any(|example| {
+            example["state"] == "missing_target_test_shape"
+                && example["example_missing_context"] == serde_json::json!(["target_test_shape"])
+        }));
     }
 
     #[test]
@@ -88652,6 +88838,7 @@ covered_by = ["cargo xtask check-file-policy"]
             packet["projection_exclusion_reasons"],
             serde_json::json!([
                 "missing_repair_route",
+                "missing_target_test_shape",
                 "missing_verify_command",
                 "missing_receipt_command",
                 "missing_related_test_or_observer",
