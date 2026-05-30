@@ -2303,6 +2303,126 @@ mod tests {
     }
 
     #[test]
+    fn gap_record_packet_bounds_python_preview_to_suggested_test_file() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:python:pricing-boundary",
+              "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+              "kind":"MissingBoundaryAssertion",
+              "language":"python",
+              "language_status":"preview",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.py","line":7,"owner":"calculate_discount","dedupe_fingerprint":"gap:python:pricing"},
+              "evidence_ids":["evidence:python-pricing-boundary"],
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "target_file":"tests/test_pricing.py",
+                "related_test":"test_calculate_discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+                "changed_behavior":"if amount >= threshold:",
+                "stop_conditions":[
+                  "Stop if imports, fixtures, or test setup cannot call the changed owner.",
+                  "Stop if adding the test appears to require a production-code edit."
+                ]
+              },
+              "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"],
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
+              "authority_boundary":"Python repair cards are preview advisory evidence."
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed Python gap record".to_string())?;
+        let json = render_agent_gap_record_packet_json(
+            "target/ripr/reports/python-gap-decision-ledger.json",
+            record,
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("gap packet JSON should parse: {err}"))?;
+        let packet = value
+            .get("packets")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing gap packet in: {json}"))?;
+
+        assert_eq!(
+            packet.get("language").and_then(serde_json::Value::as_str),
+            Some("python")
+        );
+        assert_eq!(
+            packet
+                .get("language_status")
+                .and_then(serde_json::Value::as_str),
+            Some("preview")
+        );
+        assert_eq!(
+            packet
+                .get("allowed_edit_surface")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("tests/test_pricing.py")
+        );
+        assert_eq!(
+            packet
+                .get("allowed_files")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("tests/test_pricing.py")
+        );
+        assert_eq!(
+            packet
+                .get("forbidden_files")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("src/pricing.py")
+        );
+        assert_eq!(
+            packet
+                .get("conflict_group")
+                .and_then(serde_json::Value::as_str),
+            Some("file:tests/test_pricing.py")
+        );
+        assert_eq!(
+            packet
+                .get("verify_command")
+                .and_then(serde_json::Value::as_str),
+            Some("pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary")
+        );
+        assert_eq!(
+            packet
+                .get("repair_card")
+                .and_then(|card| card.get("authority_boundary"))
+                .and_then(serde_json::Value::as_str),
+            Some("Python repair cards are preview advisory evidence.")
+        );
+        let copyable_markdown = packet
+            .get("llm_guidance")
+            .and_then(|guidance| guidance.get("copyable_packet"))
+            .and_then(|copyable| copyable.get("markdown"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("missing copyable markdown in: {json}"))?;
+        assert!(
+            copyable_markdown.contains("- Allowed edit surface: tests/test_pricing.py."),
+            "copyable packet should cage Python edits to the suggested test file: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains(
+                "- Do not edit production code unless the focused proof exposes a real product defect."
+            ),
+            "copyable packet should preserve the production-code boundary: {copyable_markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn gap_record_packet_uses_path_like_related_test_as_allowed_edit_surface() -> Result<(), String>
     {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
