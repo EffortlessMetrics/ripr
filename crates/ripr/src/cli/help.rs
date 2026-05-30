@@ -130,6 +130,10 @@ pub(super) fn print_swarm_queue_help() {
     println!("{SWARM_QUEUE_HELP}");
 }
 
+pub(super) fn print_swarm_ingest_help() {
+    println!("{SWARM_INGEST_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -155,16 +159,16 @@ mod tests {
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
         GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, POLICY_HELP,
         PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP,
-        SWARM_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help, print_agent_help,
-        print_agent_packet_help, print_agent_receipt_help, print_agent_review_summary_help,
-        print_agent_start_help, print_agent_status_help, print_agent_verify_help,
-        print_assistant_loop_help, print_baseline_help, print_calibrate_help, print_check_help,
-        print_context_help, print_coverage_grip_help, print_doctor_help,
-        print_evidence_health_help, print_explain_help, print_first_action_help, print_gate_help,
-        print_help, print_init_help, print_lsp_help, print_outcome_help, print_pilot_help,
-        print_policy_help, print_pr_comments_help, print_pr_ledger_help, print_pr_review_help,
-        print_reports_help, print_review_comments_help, print_swarm_help, print_swarm_queue_help,
-        print_zero_help,
+        SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help,
+        print_agent_help, print_agent_packet_help, print_agent_receipt_help,
+        print_agent_review_summary_help, print_agent_start_help, print_agent_status_help,
+        print_agent_verify_help, print_assistant_loop_help, print_baseline_help,
+        print_calibrate_help, print_check_help, print_context_help, print_coverage_grip_help,
+        print_doctor_help, print_evidence_health_help, print_explain_help, print_first_action_help,
+        print_gate_help, print_help, print_init_help, print_lsp_help, print_outcome_help,
+        print_pilot_help, print_policy_help, print_pr_comments_help, print_pr_ledger_help,
+        print_pr_review_help, print_reports_help, print_review_comments_help, print_swarm_help,
+        print_swarm_ingest_help, print_swarm_queue_help, print_zero_help,
     };
 
     #[test]
@@ -205,6 +209,7 @@ mod tests {
         assert!(HELP.contains("ripr agent status"));
         assert!(HELP.contains("ripr agent review-summary"));
         assert!(HELP.contains("ripr swarm queue"));
+        assert!(HELP.contains("ripr swarm ingest"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -355,6 +360,9 @@ mod tests {
         assert!(SWARM_QUEUE_HELP.starts_with("Queue GapRecord-backed repair packets"));
         assert!(SWARM_QUEUE_HELP.contains("Usage: ripr swarm queue"));
         assert!(SWARM_QUEUE_HELP.contains("allowed_edit_surface"));
+        assert!(SWARM_INGEST_HELP.starts_with("Classify one external agent result"));
+        assert!(SWARM_INGEST_HELP.contains("Usage: ripr swarm ingest"));
+        assert!(SWARM_INGEST_HELP.contains("edited_forbidden_file"));
         assert!(EXPLAIN_HELP.starts_with("Print why ripr flagged"));
         assert!(EXPLAIN_HELP.contains("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Print the per-change context packet"));
@@ -406,6 +414,7 @@ mod tests {
         print_agent_review_summary_help();
         print_swarm_help();
         print_swarm_queue_help();
+        print_swarm_ingest_help();
         print_check_help();
         print_explain_help();
         print_context_help();

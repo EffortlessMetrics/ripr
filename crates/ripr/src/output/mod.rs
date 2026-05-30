@@ -43,6 +43,7 @@ pub(crate) mod sarif;
 pub mod start_here_state;
 pub(crate) mod suppression_health;
 pub(crate) mod suppressions;
+pub(crate) mod swarm_ingest;
 pub(crate) mod test_oracle_assistant_proof;
 pub(crate) mod value_path;
 pub(crate) mod waiver_aging;

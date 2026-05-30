@@ -9484,6 +9484,75 @@ as a stop-and-refresh signal, not freshness proof. `conflict_group_size > 1`
 means another queued packet targets the same edit surface, so schedulers should
 avoid assigning those packets in parallel.
 
+`ripr swarm ingest --result target/ripr/workflow/agent-result.json` reads one
+external agent result artifact and emits an advisory classification. It does not
+trust an agent success claim, rerun the verify command, write receipts, call
+providers, generate tests, or inspect source code. Missing verify evidence is
+classified as `uncertain`, and edits to packet `forbidden_files` are classified
+as `edited_forbidden_file` before any reported verify or receipt success.
+
+The ingest envelope is:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "swarm-ingest",
+  "scope": "agent_result",
+  "source": "external_agent_result",
+  "status": "advisory",
+  "inputs": {
+    "result": "target/ripr/workflow/agent-result.json"
+  },
+  "classification": {
+    "state": "edited_forbidden_file",
+    "reason": "Agent result reports edits to files forbidden by the packet.",
+    "gap_id": "gap:python:pricing-boundary",
+    "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+  },
+  "evidence": {
+    "agent_status": "completed",
+    "stop_reason": null,
+    "staleness_status": "not_evaluated",
+    "edited_files": ["tests/test_pricing.py", "app/pricing.py"],
+    "allowed_files": ["tests/test_pricing.py"],
+    "forbidden_files": ["app/pricing.py"],
+    "edited_forbidden_files": ["app/pricing.py"],
+    "verify": {
+      "present": true,
+      "status": "passed",
+      "exit_code": 0,
+      "passed": true,
+      "failed": false
+    },
+    "receipt": {
+      "movement": "resolved"
+    }
+  },
+  "safety": {
+    "forbidden_edit_flagged": true,
+    "requires_human_review": true,
+    "trusted_success": false
+  },
+  "next_action": {
+    "kind": "edited_forbidden_file",
+    "summary": "Reject or manually review the attempt before using any test repair."
+  },
+  "must_not_infer": [
+    "do not trust agent-reported success without verify evidence",
+    "do not treat missing verify output as closed",
+    "do not ignore forbidden production-code edits",
+    "do not run providers, generate tests, run mutation testing, or claim runtime proof from ingest"
+  ]
+}
+```
+
+`classification.state` is one of `closed`, `partially_improved`,
+`verify_failed`, `edited_forbidden_file`, `stopped_by_agent`, `stale_packet`,
+or `uncertain`. Closure requires both passing verify evidence and recognized
+receipt movement such as `resolved` or `closed`; passing verify with only
+`improved` movement is `partially_improved`.
+
 ```json
 {
   "schema_version": "0.3",

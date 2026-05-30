@@ -78,8 +78,15 @@ pub(super) fn swarm(args: &[String]) -> Result<(), String> {
             }
             run_swarm_queue(parse_swarm_queue_options(rest)?)
         }
+        "ingest" => {
+            if rest.iter().any(|arg| arg == "--help" || arg == "-h") {
+                help::print_swarm_ingest_help();
+                return Ok(());
+            }
+            run_swarm_ingest(parse_swarm_ingest_options(rest)?)
+        }
         other => Err(format!(
-            "unknown swarm subcommand {other:?}; expected `queue`"
+            "unknown swarm subcommand {other:?}; expected `queue` or `ingest`"
         )),
     }
 }
@@ -201,6 +208,12 @@ struct SwarmQueueOptions {
     top: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SwarmIngestOptions {
+    root: PathBuf,
+    result: PathBuf,
+}
+
 fn parse_swarm_queue_options(args: &[String]) -> Result<SwarmQueueOptions, String> {
     let mut root = PathBuf::from(".");
     let mut gap_ledger = PathBuf::from("target/ripr/reports/gap-decision-ledger.json");
@@ -261,6 +274,50 @@ fn parse_swarm_queue_options(args: &[String]) -> Result<SwarmQueueOptions, Strin
     })
 }
 
+fn parse_swarm_ingest_options(args: &[String]) -> Result<SwarmIngestOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut result = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                let value = expect_value(args, i, "--root")?;
+                if value.trim().is_empty() {
+                    return Err("swarm ingest --root requires a non-empty path".to_string());
+                }
+                root = PathBuf::from(value);
+            }
+            "--result" => {
+                i += 1;
+                let value = expect_value(args, i, "--result")?;
+                if value.trim().is_empty() {
+                    return Err("swarm ingest --result requires a non-empty path".to_string());
+                }
+                result = Some(PathBuf::from(value));
+            }
+            "--format" => {
+                i += 1;
+                let value = expect_value(args, i, "--format")?;
+                if value != "json" {
+                    return Err(format!(
+                        "unknown swarm ingest format {value:?}; expected `json`"
+                    ));
+                }
+            }
+            "--json" => {}
+            other => return Err(format!("unknown swarm ingest argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(SwarmIngestOptions {
+        root,
+        result: result.ok_or_else(|| "swarm ingest requires --result <path>".to_string())?,
+    })
+}
+
 fn run_swarm_queue(options: SwarmQueueOptions) -> Result<(), String> {
     ensure_command_root(&options.root, "swarm queue")?;
     let contents = std::fs::read_to_string(&options.gap_ledger).map_err(|err| {
@@ -285,6 +342,53 @@ fn run_swarm_queue(options: SwarmQueueOptions) -> Result<(), String> {
     )?;
     print!("{rendered}");
     Ok(())
+}
+
+fn run_swarm_ingest(options: SwarmIngestOptions) -> Result<(), String> {
+    ensure_command_root(&options.root, "swarm ingest")?;
+    let result_path = validate_swarm_ingest_result_path(&options.root, &options.result)?;
+    let contents = std::fs::read_to_string(&result_path).map_err(|err| {
+        format!(
+            "read swarm ingest --result {} failed: {err}",
+            options.result.display()
+        )
+    })?;
+    let rendered = output::swarm_ingest::render_swarm_ingest_json(
+        &contents,
+        &output::outcome::display_path(&options.result),
+    )?;
+    print!("{rendered}");
+    Ok(())
+}
+
+fn validate_swarm_ingest_result_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize swarm ingest root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize swarm ingest --result {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "swarm ingest --result {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
 }
 
 fn render_agent_packet_from_gap_ledger(gap_ledger: &Path, gap_id: &str) -> Result<String, String> {
@@ -10360,13 +10464,40 @@ language = "rust"
     }
 
     #[test]
+    fn swarm_ingest_parses_result_and_format() {
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&[
+                "--root",
+                ".",
+                "--result",
+                "target/ripr/workflow/agent-result.json",
+                "--format",
+                "json",
+            ])),
+            Ok(SwarmIngestOptions {
+                root: PathBuf::from("."),
+                result: PathBuf::from("target/ripr/workflow/agent-result.json"),
+            })
+        );
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&["--format", "md"])),
+            Err("unknown swarm ingest format \"md\"; expected `json`".to_string())
+        );
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&[])),
+            Err("swarm ingest requires --result <path>".to_string())
+        );
+    }
+
+    #[test]
     fn swarm_queue_rejects_unknown_subcommands_and_missing_root() {
         assert_eq!(
             swarm(&args(&["unknown"])),
-            Err("unknown swarm subcommand \"unknown\"; expected `queue`".to_string())
+            Err("unknown swarm subcommand \"unknown\"; expected `queue` or `ingest`".to_string())
         );
         assert_eq!(swarm(&args(&[])), Ok(()));
         assert_eq!(swarm(&args(&["queue", "--help"])), Ok(()));
+        assert_eq!(swarm(&args(&["ingest", "--help"])), Ok(()));
         assert_eq!(
             swarm(&args(&[
                 "queue",
@@ -10377,6 +10508,19 @@ language = "rust"
             ])),
             Err(
                 "swarm queue root target/ripr/missing-swarm-queue-root is not a directory"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            swarm(&args(&[
+                "ingest",
+                "--root",
+                "target/ripr/missing-swarm-ingest-root",
+                "--result",
+                "agent-result.json",
+            ])),
+            Err(
+                "swarm ingest root target/ripr/missing-swarm-ingest-root is not a directory"
                     .to_string()
             )
         );

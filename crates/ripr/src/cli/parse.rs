@@ -86,6 +86,20 @@ mod tests {
             parse_args(args(&["ripr", "swarm", "queue", "--language", "python"])),
             Ok(CliCommand::Swarm(args(&["queue", "--language", "python"])))
         );
+        assert_eq!(
+            parse_args(args(&[
+                "ripr",
+                "swarm",
+                "ingest",
+                "--result",
+                "agent-result.json"
+            ])),
+            Ok(CliCommand::Swarm(args(&[
+                "ingest",
+                "--result",
+                "agent-result.json"
+            ])))
+        );
     }
 
     #[test]
