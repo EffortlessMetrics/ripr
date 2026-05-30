@@ -22528,8 +22528,11 @@ fn ripr_swarm_plan_from_actionable_gaps_value(
     };
     RiprSwarmPlanReport {
         status: "advisory".to_string(),
-        runtime_status: lane1_runtime_status_from_report_value(value)
-            .unwrap_or_else(lane1_runtime_status_full),
+        runtime_status: lane1_runtime_status_with_input_path(
+            lane1_runtime_status_from_report_value(value).unwrap_or_else(lane1_runtime_status_full),
+            "actionable_gaps_input",
+            &normalize_path(path),
+        ),
         input_state: "read".to_string(),
         input_path: path.display().to_string(),
         input_limitation: None,
@@ -79436,6 +79439,51 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(reasons, vec!["unbounded_verify_command"]);
     }
 
+    #[test]
+    fn ripr_swarm_plan_preserves_limited_runtime_input_path() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "report": "actionable-gaps",
+            "run_status": "limited_sampled_input",
+            "runtime_status": {
+                "state": "limited_sampled_input",
+                "phase": "repo_exposure_generation",
+                "duration_ms": 79583,
+                "limit_ms": 120000,
+                "input_kind": "repo-exposure-json",
+                "input_path": null,
+                "limitation_category": "lane1_repo_exposure_sampled",
+                "repair_route": "use sampled queue",
+                "downstream_consumable": false
+            },
+            "summary": {
+                "actionable_gaps": 0,
+                "public_projection_eligible_packets": 0
+            },
+            "packets": []
+        });
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&ripr_swarm_plan_json(&report)?).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["run_status"], "limited_sampled_input");
+        assert_eq!(
+            value["runtime_status"]["input_path"],
+            "target/ripr/reports/actionable-gaps.json"
+        );
+        assert_eq!(value["runtime_status"]["phase"], "repo_exposure_generation");
+        assert_eq!(
+            value["runtime_status"]["downstream_consumable"],
+            serde_json::Value::Bool(false)
+        );
+
+        let markdown = ripr_swarm_plan_markdown(&report);
+        assert!(markdown.contains("| Input path | `target/ripr/reports/actionable-gaps.json` |"));
+        Ok(())
+    }
     #[test]
     fn ripr_swarm_plan_blocks_legacy_unbounded_repo_exposure_verify_commands() -> Result<(), String>
     {
