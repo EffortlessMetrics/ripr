@@ -1985,10 +1985,12 @@ fixtures = [
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_related_test_matching",
   "fixtures/typescript_related_test_name_proximity",
+  "fixtures/typescript_probe_facts",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
+  "crates/ripr/src/analysis/probes/mod.rs",
   "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/analysis/language/router.rs",
   "crates/ripr/src/analysis/pipeline.rs",
@@ -2009,6 +2011,7 @@ outputs = [
   "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json",
   "fixtures/typescript_related_test_matching/expected/check.json",
   "fixtures/typescript_related_test_name_proximity/expected/check.json",
+  "fixtures/typescript_probe_facts/expected/check.json",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -2030,6 +2033,13 @@ metrics = [
   "language_adapter_typescript_oracle_snapshot_weak",
   "language_adapter_typescript_oracle_smoke",
   "language_adapter_typescript_related_imported_owner_call",
+  "language_adapter_typescript_probe_predicate",
+  "language_adapter_typescript_probe_return_value",
+  "language_adapter_typescript_probe_error_path",
+  "language_adapter_typescript_probe_field_construction",
+  "language_adapter_typescript_probe_call_side_effect",
+  "language_adapter_typescript_probe_mock_interaction",
+  "language_adapter_typescript_probe_ambiguous_suppressed",
   "language_adapter_typescript_static_limit_mocked_module",
 ]
 

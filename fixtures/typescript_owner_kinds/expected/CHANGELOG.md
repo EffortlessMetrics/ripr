@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+project TypeScript preview probe facts
+
+Command:
+`cargo xtask goldens bless typescript_owner_kinds --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

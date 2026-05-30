@@ -60,14 +60,16 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `snapshot` (rank 4)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == `summary:${status.trim()}``.
+  - local flow reaches returned value: return `summary:${status.trim()}`; (line 9)
   - related test tests/signals.test.ts:24 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)
 
 Weakness
   - Related test reaches `renderSummary` but the strongest extracted oracle is `snapshot`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator return value == `summary:${status.trim()}`: changed TypeScript returned-value at line 9 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == `summary:${status.trim()}``.
 
 WARNING src/signals.ts:13
 
@@ -92,14 +94,16 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == count >= 1`.
+  - local flow reaches returned value: return count >= 1; (line 13)
   - related test tests/signals.test.ts:28 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
   - Related test reaches `isReady` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator return value == count >= 1: changed TypeScript returned-value at line 13 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == count >= 1`.
 
 WARNING src/signals.ts:17
 
@@ -124,14 +128,16 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call sink.record includes status`.
+  - local flow reaches call effect: sink.record(status); (line 17)
   - related test tests/signals.test.ts:32 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)
 
 Weakness
   - Related test reaches `notifyStatus` but the strongest extracted oracle is `mock_expectation`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator call sink.record includes status: changed TypeScript call side effect at line 17 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `call sink.record includes status`.
 
 INFO src/signals.ts:21
 
@@ -157,6 +163,7 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches returned value: return await Promise.resolve(`profile:${id}`); (line 21)
   - related test tests/signals.test.ts:40 loads profile uses strong exact value oracle: expect(...).toBe(...)
 
 Weakness

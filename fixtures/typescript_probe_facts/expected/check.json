@@ -1,0 +1,647 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_probe_facts/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":7,"probes":10,"findings":10,"exposed":0,"weakly_exposed":10,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_ambiguous.ts:4:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_ambiguous.ts:4:typescript_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/ambiguous.ts",
+        "line": 4,
+        "expression": "    const total = applyDiscount(amount, threshold);",
+        "owner": "typescript:src/ambiguous.ts::summarize"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `summarize`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `summarize`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: summarize", "probe_fact: ambiguous_fallback"],
+      "missing": ["Related test reaches `summarize` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "summarize smoke",
+          "file": "tests/ambiguous.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_ambiguous.ts:5:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_ambiguous.ts:5:typescript_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/ambiguous.ts",
+        "line": 5,
+        "expression": "    handlers[name](total);",
+        "owner": "typescript:src/ambiguous.ts::summarize"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `summarize`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `summarize`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: summarize"],
+      "missing": ["Related test reaches `summarize` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "summarize smoke",
+          "file": "tests/ambiguous.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_errors.ts:3:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_errors.ts:3:typescript_preview",
+        "family": "error_path",
+        "delta": "control",
+        "file": "src/errors.ts",
+        "line": 3,
+        "expression": "        throw new RangeError(\"missing token\");",
+        "owner": "typescript:src/errors.ts::parseToken"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `parseToken`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `throws RangeError matching \"missing token\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `parseToken`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `throws RangeError matching \"missing token\"`.", "local flow reaches error variant: throw new RangeError(\"missing token\"); (line 3)", "related test tests/errors.test.ts:1 parseToken smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator throws RangeError matching \"missing token\": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"throw new RangeError(\"missing token\");","line":3}
+      ],
+      "evidence": ["owner: parseToken", "missing_discriminator: throws RangeError matching \"missing token\""],
+      "missing": ["Related test reaches `parseToken` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "throws RangeError matching \"missing token\"",
+            "reason": "changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"error_variant","text":"throw new RangeError(\"missing token\");","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "throws RangeError matching \"missing token\"",
+          "reason": "changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"error_variant","text":"throw new RangeError(\"missing token\");","line":3}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "parseToken smoke",
+          "file": "tests/errors.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `throws RangeError matching \"missing token\"`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `throws RangeError matching \"missing token\"`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_notify.js:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_notify.js:2:typescript_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/notify.js",
+        "line": 2,
+        "expression": "    mockSend(payload);",
+        "owner": "javascript:src/notify.js::notify"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `notify`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `mock interaction mockSend called with payload`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `notify`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `mock interaction mockSend called with payload`.", "local flow reaches call effect: mockSend(payload); (line 2)", "related test tests/notify.test.js:1 notify smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator mock interaction mockSend called with payload: changed TypeScript call side effect at line 2 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"mockSend(payload);","line":2}
+      ],
+      "evidence": ["owner: notify", "missing_discriminator: mock interaction mockSend called with payload"],
+      "missing": ["Related test reaches `notify` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "mock interaction mockSend called with payload",
+            "reason": "changed TypeScript call side effect at line 2 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"call_effect","text":"mockSend(payload);","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "mock interaction mockSend called with payload",
+          "reason": "changed TypeScript call side effect at line 2 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"call_effect","text":"mockSend(payload);","line":2}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "notify smoke",
+          "file": "tests/notify.test.js",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `mock interaction mockSend called with payload`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `mock interaction mockSend called with payload`.",
+      "language": "javascript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_pricing.ts:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:2:typescript_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 2,
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/pricing.ts::discountedTotal"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `discountedTotal`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `discountedTotal`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: discountedTotal", "missing_discriminator: amount == threshold"],
+      "missing": ["Related test reaches `discountedTotal` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+          "flow_sink": null
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "discountedTotal smoke",
+          "file": "tests/pricing.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `amount == threshold`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `amount == threshold`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_pricing.ts:3:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:3:typescript_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/pricing.ts",
+        "line": 3,
+        "expression": "        return amount - discount;",
+        "owner": "typescript:src/pricing.ts::discountedTotal"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `discountedTotal`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `return value == amount - discount`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `discountedTotal`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == amount - discount`.", "local flow reaches returned value: return amount - discount; (line 3)", "related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator return value == amount - discount: changed TypeScript returned-value at line 3 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount - discount;","line":3}
+      ],
+      "evidence": ["owner: discountedTotal", "missing_discriminator: return value == amount - discount"],
+      "missing": ["Related test reaches `discountedTotal` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == amount - discount",
+            "reason": "changed TypeScript returned-value at line 3 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"return_value","text":"return amount - discount;","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == amount - discount",
+          "reason": "changed TypeScript returned-value at line 3 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"return_value","text":"return amount - discount;","line":3}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "discountedTotal smoke",
+          "file": "tests/pricing.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == amount - discount`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == amount - discount`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_profile.ts:4:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_profile.ts:4:typescript_preview",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "src/profile.ts",
+        "line": 4,
+        "expression": "    profile.status = status;",
+        "owner": "typescript:src/profile.ts::updateProfile"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`.", "local flow reaches constructed field: profile.status = status; (line 4)", "related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"profile.status = status;","line":4}
+      ],
+      "evidence": ["owner: updateProfile", "missing_discriminator: profile.status == status"],
+      "missing": ["Related test reaches `updateProfile` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "profile.status == status",
+            "reason": "changed TypeScript field/object value at line 4 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"struct_field","text":"profile.status = status;","line":4}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "profile.status == status",
+          "reason": "changed TypeScript field/object value at line 4 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"struct_field","text":"profile.status = status;","line":4}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "updateProfile smoke",
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `profile.status == status`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `profile.status == status`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_profile.ts:5:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_profile.ts:5:typescript_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/profile.ts",
+        "line": 5,
+        "expression": "    audit.record(status);",
+        "owner": "typescript:src/profile.ts::updateProfile"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`.", "local flow reaches call effect: audit.record(status); (line 5)", "related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"audit.record(status);","line":5}
+      ],
+      "evidence": ["owner: updateProfile", "missing_discriminator: call audit.record includes status"],
+      "missing": ["Related test reaches `updateProfile` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "call audit.record includes status",
+            "reason": "changed TypeScript call side effect at line 5 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"call_effect","text":"audit.record(status);","line":5}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "call audit.record includes status",
+          "reason": "changed TypeScript call side effect at line 5 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"call_effect","text":"audit.record(status);","line":5}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "updateProfile smoke",
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `call audit.record includes status`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `call audit.record includes status`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_view.jsx:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_view.jsx:2:typescript_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/view.jsx",
+        "line": 2,
+        "expression": "    console.log(\"status-ready\");",
+        "owner": "javascript:src/view.jsx::StatusView"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `StatusView`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `log contains \"status-ready\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `StatusView`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `log contains \"status-ready\"`.", "local flow reaches call effect: console.log(\"status-ready\"); (line 2)", "related test tests/view.test.jsx:1 StatusView smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator log contains \"status-ready\": changed TypeScript call side effect at line 2 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"console.log(\"status-ready\");","line":2}
+      ],
+      "evidence": ["owner: StatusView", "missing_discriminator: log contains \"status-ready\""],
+      "missing": ["Related test reaches `StatusView` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "log contains \"status-ready\"",
+            "reason": "changed TypeScript call side effect at line 2 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"call_effect","text":"console.log(\"status-ready\");","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "log contains \"status-ready\"",
+          "reason": "changed TypeScript call side effect at line 2 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"call_effect","text":"console.log(\"status-ready\");","line":2}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "StatusView smoke",
+          "file": "tests/view.test.jsx",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `log contains \"status-ready\"`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `log contains \"status-ready\"`.",
+      "language": "javascript",
+      "language_status": "preview",
+      "owner_kind": "component"
+    },
+    {
+      "id": "probe:src_widget.tsx:4:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_widget.tsx:4:typescript_preview",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "src/widget.tsx",
+        "line": 4,
+        "expression": "    return { status: \"ready\", label, amount };",
+        "owner": "typescript:src/widget.tsx::PriceBadge"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `PriceBadge`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `status == \"ready\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `PriceBadge`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `status == \"ready\"`.", "local flow reaches constructed field: return { status: \"ready\", label, amount }; (line 4)", "related test tests/widget.test.tsx:1 PriceBadge smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator status == \"ready\": changed TypeScript field/object value at line 4 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"return { status: \"ready\", label, amount };","line":4}
+      ],
+      "evidence": ["owner: PriceBadge", "missing_discriminator: status == \"ready\""],
+      "missing": ["Related test reaches `PriceBadge` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "status == \"ready\"",
+            "reason": "changed TypeScript field/object value at line 4 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"struct_field","text":"return { status: \"ready\", label, amount };","line":4}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "status == \"ready\"",
+          "reason": "changed TypeScript field/object value at line 4 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"struct_field","text":"return { status: \"ready\", label, amount };","line":4}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "PriceBadge smoke",
+          "file": "tests/widget.test.tsx",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `status == \"ready\"`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `status == \"ready\"`.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

@@ -21,15 +21,16 @@
 //! Nested `describe(...)` blocks are syntax-walked for test discovery and
 //! bounded name/proximity matching. Heuristic links stay uncertainty-only.
 
-use super::super::{AnalysisOptions, diff::ChangedFile};
+use super::super::{AnalysisOptions, diff::ChangedFile, probes};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
-    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
-    StopReason, SymbolId,
+    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
+    LanguageId as DomainLanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
 };
+use crate::domain::{FlowSinkFact, FlowSinkKind};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
@@ -1436,19 +1437,43 @@ fn collect_related_mock_paths(
     paths
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptProbeShape {
+    family: ProbeFamily,
+    delta: DeltaKind,
+    specific: bool,
+}
+
+impl TypeScriptProbeShape {
+    fn new(family: ProbeFamily, delta: DeltaKind) -> Self {
+        Self {
+            family,
+            delta,
+            specific: true,
+        }
+    }
+
+    fn ambiguous_fallback() -> Self {
+        Self {
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            specific: false,
+        }
+    }
+}
+
 /// Syntax-first probe-family classifier for a changed line of TypeScript
 /// or JavaScript source.
 ///
 /// Inspects the leading non-whitespace tokens of `line_text` and falls
 /// back to substring shape checks for ternary / arrow-bodied expressions.
 /// Matches the families documented in RIPR-SPEC-0027 and pinned by the
-/// `typescript_probe_shapes_*` fixture row of #768.
+/// TypeScript probe-fixture family.
 ///
-/// The adapter operates without a type checker, so this classifier is
-/// intentionally conservative: ambiguous shapes fall through to
-/// `Predicate` / `Control` (the default established by the owner+test
-/// sub-slice in #777) rather than guessing across families.
-fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
+/// The adapter operates without a type checker, so ambiguous shapes keep
+/// the historical `Predicate` / `Control` fallback but are marked
+/// non-specific so later repair guidance does not invent discriminators.
+fn classify_probe_shape_detail(line_text: &str) -> TypeScriptProbeShape {
     let trimmed = line_text.trim_start();
     // Strip a leading `} ` (e.g., `} else if (...)`, `} else {`) so the
     // dedicated-keyword check still fires on close-brace-continuation
@@ -1466,10 +1491,13 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         || leading.starts_with("} catch ")
         || leading.starts_with("catch ")
     {
-        return (ProbeFamily::ErrorPath, DeltaKind::Control);
+        return TypeScriptProbeShape::new(ProbeFamily::ErrorPath, DeltaKind::Control);
+    }
+    if is_object_literal_return_line(leading) {
+        return TypeScriptProbeShape::new(ProbeFamily::FieldConstruction, DeltaKind::Value);
     }
     if leading.starts_with("return ") || leading == "return;" || leading.starts_with("return;") {
-        return (ProbeFamily::ReturnValue, DeltaKind::Value);
+        return TypeScriptProbeShape::new(ProbeFamily::ReturnValue, DeltaKind::Value);
     }
     if leading.starts_with("if (")
         || leading.starts_with("if(")
@@ -1484,7 +1512,7 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         || leading.starts_with("case ")
         || leading.starts_with("default:")
     {
-        return (ProbeFamily::Predicate, DeltaKind::Control);
+        return TypeScriptProbeShape::new(ProbeFamily::Predicate, DeltaKind::Control);
     }
     // Top-level ternary or short-circuit expression that is *not* embedded
     // in a `return` or assignment — treat as a predicate boundary.
@@ -1493,7 +1521,10 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         && !leading.starts_with("let ")
         && !leading.starts_with("var ")
     {
-        return (ProbeFamily::Predicate, DeltaKind::Control);
+        return TypeScriptProbeShape::new(ProbeFamily::Predicate, DeltaKind::Control);
+    }
+    if is_object_literal_field_line(leading) {
+        return TypeScriptProbeShape::new(ProbeFamily::FieldConstruction, DeltaKind::Value);
     }
     // Field / property assignments: `this.x = ...`, `obj.x = ...`, or
     // top-level binding declarations inside a constructor / setter body.
@@ -1513,7 +1544,7 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         let looks_like_declaration =
             lhs.starts_with("const ") || lhs.starts_with("let ") || lhs.starts_with("var ");
         if looks_like_assignment && !looks_like_declaration {
-            return (ProbeFamily::FieldConstruction, DeltaKind::Value);
+            return TypeScriptProbeShape::new(ProbeFamily::FieldConstruction, DeltaKind::Value);
         }
     }
     // Bare call-expression statement (e.g., `tracker.record(event);`,
@@ -1541,13 +1572,427 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         && !call_candidate.starts_with("let ")
         && !call_candidate.starts_with("var ")
     {
-        return (ProbeFamily::SideEffect, DeltaKind::Effect);
+        return TypeScriptProbeShape::new(ProbeFamily::SideEffect, DeltaKind::Effect);
     }
     // Fall through: keep the pre-#768 default. The adapter does not yet
     // recognise this shape, so flagging it as a generic predicate-control
     // change matches the owner+test sub-slice baseline rather than
     // committing to a more specific family the adapter cannot confirm.
-    (ProbeFamily::Predicate, DeltaKind::Control)
+    TypeScriptProbeShape::ambiguous_fallback()
+}
+
+#[cfg(test)]
+fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
+    let detail = classify_probe_shape_detail(line_text);
+    (detail.family, detail.delta)
+}
+
+fn is_object_literal_return_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim_start();
+    trimmed.starts_with("return {") || trimmed.starts_with("return ({")
+}
+
+fn is_object_literal_field_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim();
+    if trimmed.starts_with("case ")
+        || trimmed.starts_with("default:")
+        || trimmed.starts_with("import ")
+        || trimmed.starts_with("export ")
+        || trimmed.ends_with(';')
+        || trimmed.contains("=>")
+    {
+        return false;
+    }
+    let Some((key, rest)) = trimmed.split_once(':') else {
+        return false;
+    };
+    let key = key.trim().trim_matches('"').trim_matches('\'');
+    !key.is_empty()
+        && !rest
+            .trim_end_matches(',')
+            .trim_end_matches('}')
+            .trim()
+            .is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
+}
+
+fn typescript_flow_sink_for(
+    probe_shape: &TypeScriptProbeShape,
+    owner: &TypeScriptOwner,
+    line: usize,
+    line_text: &str,
+) -> Option<FlowSinkFact> {
+    if !probe_shape.specific {
+        return None;
+    }
+    let kind = match probe_shape.family {
+        ProbeFamily::ReturnValue => FlowSinkKind::ReturnValue,
+        ProbeFamily::ErrorPath => FlowSinkKind::ErrorVariant,
+        ProbeFamily::FieldConstruction => FlowSinkKind::StructField,
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            if is_computed_member_call(line_text) {
+                return None;
+            }
+            FlowSinkKind::CallEffect
+        }
+        ProbeFamily::Predicate | ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => {
+            return None;
+        }
+    };
+
+    Some(FlowSinkFact {
+        kind,
+        text: line_text.trim().to_string(),
+        line,
+        owner: Some(owner.symbol_id()),
+    })
+}
+
+fn typescript_missing_discriminators(
+    probe_shape: &TypeScriptProbeShape,
+    line: usize,
+    line_text: &str,
+    flow_sink: Option<&FlowSinkFact>,
+) -> Vec<MissingDiscriminatorFact> {
+    if !probe_shape.specific {
+        return Vec::new();
+    }
+    let Some(value) = typescript_missing_discriminator_value(&probe_shape.family, line_text) else {
+        return Vec::new();
+    };
+
+    vec![MissingDiscriminatorFact {
+        value,
+        reason: typescript_missing_discriminator_reason(&probe_shape.family, line),
+        flow_sink: flow_sink.cloned(),
+    }]
+}
+
+fn typescript_missing_discriminator_reason(probe_family: &ProbeFamily, line: usize) -> String {
+    let shape = match probe_family {
+        ProbeFamily::Predicate => "equality-boundary",
+        ProbeFamily::ReturnValue => "returned-value",
+        ProbeFamily::ErrorPath => "thrown or rejected error",
+        ProbeFamily::FieldConstruction => "field/object value",
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => "call side effect",
+        ProbeFamily::MatchArm => "match-arm",
+        ProbeFamily::StaticUnknown => "static",
+    };
+    format!("changed TypeScript {shape} at line {line} lacks a concrete preview discriminator")
+}
+
+fn typescript_missing_discriminator_value(
+    probe_family: &ProbeFamily,
+    line_text: &str,
+) -> Option<String> {
+    match probe_family {
+        ProbeFamily::Predicate => typescript_boundary_discriminator(line_text),
+        ProbeFamily::ReturnValue => typescript_return_value_discriminator(line_text),
+        ProbeFamily::ErrorPath => typescript_error_path_discriminator(line_text),
+        ProbeFamily::FieldConstruction => typescript_field_value_discriminator(line_text),
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            typescript_call_effect_discriminator(line_text)
+        }
+        ProbeFamily::MatchArm | ProbeFamily::StaticUnknown => None,
+    }
+}
+
+fn typescript_boundary_discriminator(line_text: &str) -> Option<String> {
+    let expression = strip_typescript_control_prefix(line_text);
+    for operator in ["===", "!==", ">=", "<=", "==", "!=", ">", "<"] {
+        if let Some(idx) = expression.find(operator) {
+            let left_raw = expression.get(..idx)?.trim();
+            let right_raw = expression.get(idx + operator.len()..)?.trim();
+            if operand_looks_like_call(left_raw) || operand_looks_like_call(right_raw) {
+                return None;
+            }
+            let left = comparison_operand_before(&expression, idx)?;
+            let right = comparison_operand_after(&expression, idx + operator.len())?;
+            if is_simple_typescript_discriminator_operand(&left)
+                && is_simple_typescript_discriminator_operand(&right)
+            {
+                return Some(format!("{left} == {right}"));
+            }
+        }
+    }
+    None
+}
+
+fn typescript_return_value_discriminator(line_text: &str) -> Option<String> {
+    let expression = line_text
+        .trim()
+        .strip_prefix("return")?
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    if expression.is_empty() || expression == "{" || expression == "({" {
+        None
+    } else {
+        Some(format!("return value == {expression}"))
+    }
+}
+
+fn typescript_error_path_discriminator(line_text: &str) -> Option<String> {
+    let text = line_text.trim().trim_end_matches(';').trim();
+    if text.starts_with("throw ") || text.starts_with("throw(") {
+        let raised = text
+            .strip_prefix("throw ")
+            .or_else(|| text.strip_prefix("throw("))
+            .unwrap_or(text)
+            .trim()
+            .trim_end_matches(')');
+        return typescript_error_value("throws", raised);
+    }
+    if let Some(argument) = promise_reject_argument(text) {
+        return typescript_error_value("rejects", argument);
+    }
+    if text.starts_with("catch ") || text.starts_with("} catch ") {
+        return Some("catch branch executes".to_string());
+    }
+    None
+}
+
+fn promise_reject_argument(text: &str) -> Option<&str> {
+    let marker = "Promise.reject(";
+    let start = text.find(marker)? + marker.len();
+    let tail = text.get(start..)?;
+    let end = tail.rfind(')')?;
+    Some(tail.get(..end)?.trim())
+}
+
+fn typescript_error_value(prefix: &str, expression: &str) -> Option<String> {
+    let raw_error_type = expression
+        .split_once('(')
+        .map(|(ty, _)| ty.trim())
+        .unwrap_or(expression)
+        .trim();
+    let error_type = raw_error_type
+        .strip_prefix("new ")
+        .unwrap_or(raw_error_type);
+    if error_type.is_empty() {
+        return None;
+    }
+    if let Some(message) = first_typescript_string_literal(expression) {
+        Some(format!("{prefix} {error_type} matching {message}"))
+    } else {
+        Some(format!("{prefix} {error_type}"))
+    }
+}
+
+fn typescript_field_value_discriminator(line_text: &str) -> Option<String> {
+    let text = line_text.trim().trim_end_matches(';').trim();
+    if let Some(discriminator) = typescript_return_object_field_discriminator(text) {
+        return Some(discriminator);
+    }
+    if let Some(discriminator) = typescript_object_field_discriminator(text) {
+        return Some(discriminator);
+    }
+    let (lhs, rhs) = split_typescript_assignment(text)?;
+    if lhs.is_empty() || rhs.is_empty() {
+        None
+    } else {
+        Some(format!("{lhs} == {rhs}"))
+    }
+}
+
+fn typescript_return_object_field_discriminator(line_text: &str) -> Option<String> {
+    let expression = line_text
+        .strip_prefix("return ")?
+        .trim()
+        .strip_prefix('(')
+        .unwrap_or_else(|| {
+            line_text
+                .strip_prefix("return ")
+                .unwrap_or(line_text)
+                .trim()
+        })
+        .trim();
+    let body = expression.strip_prefix('{')?;
+    typescript_object_field_discriminator(body)
+}
+
+fn typescript_object_field_discriminator(line_text: &str) -> Option<String> {
+    let body = line_text.trim().trim_end_matches(')').trim_end_matches('}');
+    let (raw_key, rest) = body.split_once(':')?;
+    let key = raw_key.trim().trim_matches('"').trim_matches('\'');
+    let value = rest
+        .split(',')
+        .next()
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('}')
+        .trim();
+    if key.is_empty() || value.is_empty() {
+        None
+    } else {
+        Some(format!("{key} == {value}"))
+    }
+}
+
+fn typescript_call_effect_discriminator(line_text: &str) -> Option<String> {
+    if is_computed_member_call(line_text) {
+        return None;
+    }
+    let (callee, args) = typescript_call_parts(line_text)?;
+    let first_arg = args
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches(')')
+        .trim();
+    if callee.to_ascii_lowercase().contains("mock") || callee.to_ascii_lowercase().contains("spy") {
+        if first_arg.is_empty() {
+            Some(format!("mock interaction {callee} is called"))
+        } else {
+            Some(format!("mock interaction {callee} called with {first_arg}"))
+        }
+    } else if let Some(literal) = first_typescript_string_literal(line_text) {
+        if callee.contains("log") || callee.starts_with("console.") {
+            Some(format!("log contains {literal}"))
+        } else {
+            Some(format!("call {callee} includes {literal}"))
+        }
+    } else if first_arg.is_empty() {
+        Some(format!("call {callee} occurs"))
+    } else {
+        Some(format!("call {callee} includes {first_arg}"))
+    }
+}
+
+fn split_typescript_assignment(text: &str) -> Option<(&str, &str)> {
+    if text.contains("==") || text.contains("!=") || text.contains(">=") || text.contains("<=") {
+        return None;
+    }
+    let (lhs, rhs) = text.split_once(" = ")?;
+    Some((lhs.trim(), rhs.trim().trim_end_matches(';').trim()))
+}
+
+fn strip_typescript_control_prefix(line_text: &str) -> String {
+    let mut text = line_text
+        .trim()
+        .trim_start_matches('}')
+        .trim()
+        .trim_end_matches('{')
+        .trim()
+        .to_string();
+    for prefix in ["if", "else if", "while", "for", "case"] {
+        if let Some(stripped) = text.strip_prefix(prefix) {
+            text = stripped.trim().to_string();
+            break;
+        }
+    }
+    text.trim_start_matches('(')
+        .trim_end_matches(')')
+        .trim()
+        .to_string()
+}
+
+fn comparison_operand_before(expression: &str, operator_start: usize) -> Option<String> {
+    let left = expression.get(..operator_start)?.trim_end();
+    let operand = left
+        .rsplit(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '(' | ')' | '[' | ']' | '{' | '}' | ',' | ':' | '+' | '-' | '*' | '/' | '%'
+                )
+        })
+        .find(|part| !part.is_empty())?;
+    Some(operand.trim().to_string())
+}
+
+fn comparison_operand_after(expression: &str, operator_end: usize) -> Option<String> {
+    let right = expression.get(operator_end..)?.trim_start();
+    let operand = right
+        .split(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '(' | ')' | '[' | ']' | '{' | '}' | ',' | ':' | '+' | '-' | '*' | '/' | '%'
+                )
+        })
+        .find(|part| !part.is_empty())?;
+    Some(operand.trim().to_string())
+}
+
+fn is_simple_typescript_discriminator_operand(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|ch| {
+            ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '"' || ch == '\''
+        })
+}
+
+fn operand_looks_like_call(value: &str) -> bool {
+    value.contains('(') || value.contains(')')
+}
+
+fn typescript_call_parts(line_text: &str) -> Option<(String, String)> {
+    let mut text = line_text
+        .trim()
+        .strip_prefix("await ")
+        .unwrap_or(line_text.trim())
+        .trim();
+    text = text.strip_prefix("void ").unwrap_or(text).trim();
+    let text = text.trim_end_matches(';').trim();
+    let open = text.find('(')?;
+    let close = text.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let callee = text.get(..open)?.trim();
+    if callee.is_empty()
+        || !callee
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch == '.')
+    {
+        return None;
+    }
+    let args = text.get(open + 1..close)?.trim();
+    Some((callee.to_string(), args.to_string()))
+}
+
+fn is_computed_member_call(line_text: &str) -> bool {
+    let text = line_text.trim();
+    text.contains("](") || text.contains("]?.") || text.contains("?.[")
+}
+
+fn first_typescript_string_literal(text: &str) -> Option<String> {
+    let mut start = None;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' || ch == '\'' || ch == '`' {
+            start = Some((idx, ch));
+            break;
+        }
+    }
+    let (start_idx, quote) = start?;
+    escaped = false;
+    for (relative_idx, ch) in text[start_idx + quote.len_utf8()..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            let end_idx = start_idx + quote.len_utf8() + relative_idx + quote.len_utf8();
+            return text.get(start_idx..end_idx).map(str::to_string);
+        }
+    }
+    None
 }
 
 fn classify_change(
@@ -1568,6 +2013,7 @@ fn classify_change(
     let has_oracle_eligible_relation = related_candidates
         .iter()
         .any(|candidate| candidate.relation.uses_oracle());
+    let probe_shape = classify_probe_shape_detail(line_text);
 
     let strongest_strength = related
         .iter()
@@ -1636,24 +2082,45 @@ fn classify_change(
         ));
     }
 
+    let flow_sink = typescript_flow_sink_for(&probe_shape, owner, line, line_text);
+    let missing_discriminators = if matches!(class, ExposureClass::WeaklyExposed)
+        && has_oracle_eligible_relation
+        && mock_paths.is_empty()
+    {
+        typescript_missing_discriminators(&probe_shape, line, line_text, flow_sink.as_ref())
+    } else {
+        Vec::new()
+    };
+
     let id_path: String = file
         .display()
         .to_string()
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
-    let (family, delta) = classify_probe_shape(line_text);
+    let family = probe_shape.family.clone();
+    let delta = probe_shape.delta.clone();
+    let expected_sinks = if probe_shape.specific {
+        probes::expected_sinks(line_text, &family)
+    } else {
+        Vec::new()
+    };
+    let required_oracles = if probe_shape.specific {
+        probes::required_oracles(line_text, &family)
+    } else {
+        Vec::new()
+    };
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:typescript_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: Some(owner.symbol_id()),
-        family,
+        family: family.clone(),
         delta,
         before: None,
         after: Some(line_text.to_string()),
         expression: line_text.to_string(),
-        expected_sinks: Vec::new(),
-        required_oracles: Vec::new(),
+        expected_sinks,
+        required_oracles,
     };
 
     let related_count = related.len();
@@ -1683,6 +2150,11 @@ fn classify_change(
             "Related test uses a `{}` oracle; static evidence suggests the changed behavior is discriminated.",
             strongest_kind.as_str()
         )
+    } else if let Some(discriminator) = missing_discriminators.first() {
+        format!(
+            "TypeScript preview adapter found no strong discriminator; missing proof: `{}`.",
+            discriminator.value
+        )
     } else {
         "TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.".to_string()
     };
@@ -1699,6 +2171,12 @@ fn classify_change(
         _ if !has_oracle_eligible_relation => {
             "TypeScript preview: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.".to_string()
         }
+        _ if let Some(discriminator) = missing_discriminators.first() => {
+            format!(
+                "TypeScript preview: add or strengthen a focused assertion for missing discriminator `{}`.",
+                discriminator.value
+            )
+        }
         _ => {
             "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).".to_string()
         }
@@ -1710,6 +2188,12 @@ fn classify_change(
     };
 
     let mut evidence = vec![format!("owner: {}", owner.name)];
+    if !probe_shape.specific {
+        evidence.push("probe_fact: ambiguous_fallback".to_string());
+    }
+    for discriminator in &missing_discriminators {
+        evidence.push(format!("missing_discriminator: {}", discriminator.value));
+    }
     for candidate in related_candidates
         .iter()
         .filter(|candidate| candidate.relation.is_uncertain())
@@ -1745,8 +2229,11 @@ fn classify_change(
         confidence: confidence_value,
         evidence,
         missing,
-        flow_sinks: Vec::new(),
-        activation: Default::default(),
+        flow_sinks: flow_sink.into_iter().collect(),
+        activation: ActivationEvidence {
+            observed_values: Vec::new(),
+            missing_discriminators,
+        },
         stop_reasons: Vec::new(),
         related_tests: related,
         recommended_next_step: Some(recommended),
@@ -2021,6 +2508,78 @@ mod tests {
             added_lines: Vec::new(),
             removed_lines: Vec::new(),
         }
+    }
+
+    fn test_owner(name: &str, file: &str) -> TypeScriptOwner {
+        TypeScriptOwner {
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 20,
+            owner_kind: OwnerKind::Function,
+        }
+    }
+
+    fn smoke_assertion() -> TypeScriptAssertion {
+        TypeScriptAssertion {
+            matcher: "toBeTruthy".to_string(),
+            argument_count: 0,
+            line: 2,
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Smoke,
+        }
+    }
+
+    fn weak_direct_test_for(owner_name: &str) -> TypeScriptTest {
+        TypeScriptTest {
+            name: format!("{owner_name} smoke"),
+            local_name: format!("{owner_name} smoke"),
+            describe_names: Vec::new(),
+            file: PathBuf::from("tests/lib.test.ts"),
+            line: 1,
+            body_text: format!(
+                "const result = {owner_name}(50, 100);\nexpect(result).toBeTruthy();"
+            ),
+            assertions: vec![smoke_assertion()],
+            mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
+        }
+    }
+
+    fn heuristic_name_test_for(owner_name: &str) -> TypeScriptTest {
+        TypeScriptTest {
+            name: format!("{owner_name} boundary"),
+            local_name: format!("{owner_name} boundary"),
+            describe_names: Vec::new(),
+            file: PathBuf::from("tests/lib.test.ts"),
+            line: 1,
+            body_text: "expect(90).toBe(90);".to_string(),
+            assertions: vec![TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 1,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+            }],
+            mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
+        }
+    }
+
+    fn classify_weak_direct_line(line_text: &str) -> Result<Finding, String> {
+        let owner = test_owner("applyDiscount", "src/lib.ts");
+        let test = weak_direct_test_for("applyDiscount");
+        classify_change(Path::new("src/lib.ts"), 2, line_text, &[owner], &[test])
+            .ok_or_else(|| "expected TypeScript preview finding".to_string())
+    }
+
+    fn missing_discriminator_values(finding: &Finding) -> Vec<String> {
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .map(|fact| fact.value.clone())
+            .collect()
     }
 
     #[test]
@@ -2700,7 +3259,12 @@ test("type only import", () => {
         )
         .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
 
-        assert_eq!(finding.evidence, vec!["owner: betaScore"]);
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry == "owner: betaScore")
+        );
         assert_eq!(finding.related_tests.len(), 1);
         assert_eq!(finding.related_tests[0].name, "beta keeps its threshold");
         assert_eq!(
@@ -3229,6 +3793,193 @@ test("type only import", () => {
             classify_probe_shape("    const total = applyDiscount(amount, threshold);");
         assert_eq!(family, ProbeFamily::Predicate);
         assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_change_emits_predicate_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    if (amount >= threshold) {")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::Predicate);
+        assert!(
+            finding
+                .probe
+                .expected_sinks
+                .contains(&"branch result".to_string())
+        );
+        assert!(
+            finding
+                .probe
+                .required_oracles
+                .contains(&"boundary input".to_string())
+        );
+        assert!(finding.flow_sinks.is_empty());
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["amount == threshold"]
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry == "missing_discriminator: amount == threshold")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_return_value_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    return amount - discount;")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::ReturnValue);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["return value == amount - discount"]
+        );
+        assert_eq!(
+            finding.activation.missing_discriminators[0]
+                .flow_sink
+                .as_ref()
+                .map(|sink| &sink.kind),
+            Some(&FlowSinkKind::ReturnValue)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_error_path_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    throw new RangeError(\"too low\");")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::ErrorPath);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["throws RangeError matching \"too low\""]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_field_construction_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    profile.status = nextStatus;")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::FieldConstruction);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["profile.status == nextStatus"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_object_literal_field_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    return { status: nextStatus, total };")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::FieldConstruction);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["status == nextStatus"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_call_side_effect_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    audit.record(status);")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::SideEffect);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["call audit.record includes status"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_emits_mock_interaction_probe_fact_discriminator() -> Result<(), String> {
+        let finding = classify_weak_direct_line("    mockSend(payload);")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::SideEffect);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["mock interaction mockSend called with payload"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_omits_probe_facts_for_ambiguous_const_expression() -> Result<(), String> {
+        let finding =
+            classify_weak_direct_line("    const total = applyDiscount(amount, threshold);")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::Predicate);
+        assert!(finding.probe.expected_sinks.is_empty());
+        assert!(finding.probe.required_oracles.is_empty());
+        assert!(finding.flow_sinks.is_empty());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry == "probe_fact: ambiguous_fallback")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_omits_probe_facts_for_ambiguous_computed_member_call() -> Result<(), String>
+    {
+        let finding = classify_weak_direct_line("    handlers[name](payload);")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::SideEffect);
+        assert!(finding.flow_sinks.is_empty());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_omits_discriminator_for_call_shaped_predicate_operand() -> Result<(), String>
+    {
+        let finding = classify_weak_direct_line("    if (input.trim() === \"\") {")?;
+
+        assert_eq!(finding.probe.family, ProbeFamily::Predicate);
+        assert!(finding.flow_sinks.is_empty());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_omits_probe_facts_for_heuristic_only_related_test() -> Result<(), String> {
+        let owner = test_owner("applyDiscount", "src/lib.ts");
+        let test = heuristic_name_test_for("applyDiscount");
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    if (amount >= threshold) {",
+            &[owner],
+            &[test],
+        )
+        .ok_or_else(|| "expected heuristic TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("heuristic only"))
+        );
+        Ok(())
     }
 
     #[test]

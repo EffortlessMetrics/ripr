@@ -263,7 +263,7 @@ deferred to later work items.
 
 ## Work Item: analysis/typescript-probe-facts
 
-Status: ready
+Status: done
 Linked proposal: RIPR-PROP-0001
 Linked spec: RIPR-SPEC-0027
 Linked ADR: ADR-0008
@@ -275,6 +275,31 @@ Blocked by: analysis/typescript-related-test-matching
 Emit predicate, return-value, error-path, field/object construction, call
 side-effect, and mock-interaction probes with source spans, owner linkage,
 candidate values only when safe, and explicit confidence.
+
+### Current Delta
+
+TypeScript/JavaScript preview findings now carry probe expectations and
+required-oracle templates for specific line shapes. Weak findings with trusted
+related-test evidence receive flow sinks where syntax supports one and
+missing-discriminator candidates for predicate boundaries, return values,
+thrown/rejected errors, field/object construction, call side effects,
+mock interactions, and log/output text. Ambiguous const expressions and
+computed-member calls keep advisory preview output without invented
+discriminator guidance.
+
+### Proof Commands
+
+```bash
+cargo test -p ripr typescript --lib
+cargo xtask fixtures typescript_probe_facts
+cargo xtask goldens check
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
 
 ## Work Item: analysis/typescript-static-limit-taxonomy
 

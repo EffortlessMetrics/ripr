@@ -28,6 +28,7 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches returned value: return `$${amount.toFixed(3)}`; (line 2)
   - related test tests/owners.test.ts:3 formats price uses strong exact value oracle: expect(...).toBe(...)
 
 Weakness
@@ -60,7 +61,7 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
-  - owner: total
+  - local flow reaches returned value: return this.items.length + 1; (line 7)
 
 Weakness
   - No trusted TypeScript method relation for `total`. Object method calls stay ambiguous in preview until method related-test matching lands.
@@ -92,7 +93,7 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
-  - owner: build
+  - local flow reaches returned value: return new Cart({ tracked: true }); (line 11)
 
 Weakness
   - No trusted TypeScript method relation for `build`. Object method calls stay ambiguous in preview until method related-test matching lands.
@@ -125,6 +126,7 @@ Evidence
   - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - owner: DEFAULT_RATE
+  - probe_fact: ambiguous_fallback
 
 Weakness
   - No trusted TypeScript module-initializer relation for `DEFAULT_RATE`. Identifier-reference observers stay missing context until module-value related-test matching lands.

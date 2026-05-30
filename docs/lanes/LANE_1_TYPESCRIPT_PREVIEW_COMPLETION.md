@@ -1,13 +1,13 @@
 # Lane 1: TypeScript Preview Completion
 
-Status: name/proximity related-test matching landed; probe facts next
+Status: TypeScript preview probe facts landed; static-limit taxonomy next
 
 Date: 2026-05-29
 
-Scope: PR 0 audit only. This tracker records what already exists, what is only
-specified, and what remains missing before TypeScript/JavaScript preview can be
-treated as a trusted evidence-to-repair surface. It does not change analyzer
-behavior, active goals, support tiers, gates, badges, or release authority.
+Scope: living Lane 1 tracker. This tracker records what already exists, what is
+only specified, and what remains missing before TypeScript/JavaScript preview
+can be treated as a trusted evidence-to-repair surface. It does not by itself
+change support tiers, gates, badges, or release authority.
 
 ## Product Boundary
 
@@ -100,8 +100,14 @@ Adapter facts:
   `describe(...)` owner-name proximity, and test-name owner-token proximity as
   explicit uncertain links. Those links do not borrow assertion strength or
   become complete repair guidance.
-- Probe-family classification distinguishes predicate, return value, error
-  path, field construction, and side-effect call line shapes.
+- Probe facts distinguish predicate, return value, error path, field/object
+  construction, side-effect calls, mock interactions, and log/output text
+  through the existing side-effect family.
+- Weak trusted related-test findings now carry expected sink/oracle templates,
+  flow sinks where syntax supports one, and missing-discriminator candidates
+  only when the changed expression shape is specific enough.
+- Ambiguous const-expression and computed-member-call shapes stay advisory and
+  do not invent missing-discriminator guidance.
 - Structured `static_limit_kind = "mocked_module"` is emitted when related
   tests use syntactic `vi.mock(...)` or `jest.mock(...)`.
 
@@ -120,8 +126,10 @@ Projection and proof:
   return-value shape, owner-file matching, broad `toThrow`, awaited rejected
   promise, effect probes, mocked-module static limit, nested `describe`,
   `test.each`, `it.each`, snapshot downgrade, smoke downgrade, mock
-  interaction, async `resolves` evidence, imported owner calls, and
-  heuristic-only name/proximity links.
+  interaction, async `resolves` evidence, imported owner calls,
+  heuristic-only name/proximity links, and probe facts for predicate,
+  return-value, error-path, field/object, side-effect, mock-interaction, and
+  log/output shapes.
 
 ## Missing Slices
 
@@ -159,6 +167,10 @@ Completed after the initial audit:
   `fixtures/typescript_related_test_name_proximity` as uncertain links that
   stay weak/advisory and do not use assertions as proof. Partial owner tokens
   remain non-related.
+- Probe facts are fixture-backed by `fixtures/typescript_probe_facts` for
+  `.ts`, `.tsx`, `.js`, and `.jsx`, including missing-discriminator candidates
+  for specific weak findings and no invented discriminator for ambiguous const
+  expressions or computed-member calls.
 
 1. Fixture harness completion
    - Status: done.
@@ -202,12 +214,14 @@ Completed after the initial audit:
      extracted assertions as proof.
 
 5. Probe facts and discriminator candidates
-   - Current probe classification is line-shape based and does not attach
-     candidate values.
-   - Missing probe quality: safe predicate boundary candidates, object/field
-     construction detail, mock interaction detail, and richer source spans.
-   - Next step: keep ambiguous line shapes out of actionable repair packets
-     until the adapter can name the target shape safely.
+   - Status: done for the PR 7 scope.
+   - Current probe facts attach owner, source span, family, changed expression,
+     expected sinks/oracles, optional flow sink, and safe
+     missing-discriminator candidates.
+   - Predicate, return-value, error-path, field/object construction,
+     side-effect call, mock-interaction, and log/output shapes are covered.
+   - Ambiguous line shapes remain advisory and do not receive discriminator
+     candidates.
 
 6. Static-limit taxonomy
    - Current structured TypeScript static limit is `mocked_module`.
@@ -295,10 +309,14 @@ type-only imports, arbitrary object methods, strings, and comments out of
 related-test evidence. PR 6b adds same-stem file, `describe(...)` name, and
 test-name token proximity as uncertainty-only related-test locations.
 
+PR 7 landed TypeScript preview probe facts without support-tier promotion,
+runtime execution, generated tests, source edits, default gates, badge
+contribution, baseline authority, or RIPR Zero contribution.
+
 The next safe PR is:
 
 ```text
-PR 7: analysis(ts): emit TypeScript preview probe facts
+PR 8: analysis(ts): surface TypeScript preview static limitations
 ```
 
 ## Validation

@@ -27,11 +27,13 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == Math.round(amount * 100) / 100`.
+  - local flow reaches returned value: return Math.round(amount * 100) / 100; (line 2)
   - related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle
 
 Weakness
   - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator return value == Math.round(amount * 100) / 100: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`.

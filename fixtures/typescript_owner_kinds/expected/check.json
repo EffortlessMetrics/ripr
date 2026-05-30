@@ -27,8 +27,9 @@
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `formatPrice`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/owners.test.ts:3 formats price uses strong exact value oracle: expect(...).toBe(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `formatPrice`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return `$${amount.toFixed(3)}`; (line 2)", "related test tests/owners.test.ts:3 formats price uses strong exact value oracle: expect(...).toBe(...)"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return `$${amount.toFixed(3)}`;","line":2}
       ],
       "evidence": ["owner: formatPrice"],
       "missing": ["Related test reaches `formatPrice` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator."],
@@ -82,8 +83,9 @@
         "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
         "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
        },
-      "evidence_path": ["reach no: 0 related test(s) found for owner `total`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence_path": ["reach no: 0 related test(s) found for owner `total`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "local flow reaches returned value: return this.items.length + 1; (line 7)"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return this.items.length + 1;","line":7}
       ],
       "evidence": ["owner: total"],
       "missing": ["No trusted TypeScript method relation for `total`. Object method calls stay ambiguous in preview until method related-test matching lands."],
@@ -129,8 +131,9 @@
         "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
         "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
        },
-      "evidence_path": ["reach no: 0 related test(s) found for owner `build`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence_path": ["reach no: 0 related test(s) found for owner `build`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "local flow reaches returned value: return new Cart({ tracked: true }); (line 11)"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return new Cart({ tracked: true });","line":11}
       ],
       "evidence": ["owner: build"],
       "missing": ["No trusted TypeScript method relation for `build`. Object method calls stay ambiguous in preview until method related-test matching lands."],
@@ -179,7 +182,7 @@
       "evidence_path": ["reach no: 0 related test(s) found for owner `DEFAULT_RATE`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "flow_sinks": [
       ],
-      "evidence": ["owner: DEFAULT_RATE"],
+      "evidence": ["owner: DEFAULT_RATE", "probe_fact: ambiguous_fallback"],
       "missing": ["No trusted TypeScript module-initializer relation for `DEFAULT_RATE`. Identifier-reference observers stay missing context until module-value related-test matching lands."],
       "activation": {
         "observed_values": [

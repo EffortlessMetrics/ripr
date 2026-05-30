@@ -27,14 +27,16 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`.
+  - local flow reaches constructed field: profile.status = status; (line 4)
   - related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle
 
 Weakness
   - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `profile.status == status`.
 
 WARNING src/profile.ts:5
 
@@ -59,11 +61,13 @@ Evidence
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`.
+  - local flow reaches call effect: audit.record(status); (line 5)
   - related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle
 
 Weakness
   - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview: add or strengthen a focused assertion for missing discriminator `call audit.record includes status`.

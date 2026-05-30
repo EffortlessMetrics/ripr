@@ -88,22 +88,33 @@
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `snapshot` (rank 4)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `return value == `summary:${status.trim()}``."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `renderSummary`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `snapshot` (rank 4)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/signals.test.ts:24 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `renderSummary`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `snapshot` (rank 4)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == `summary:${status.trim()}``.", "local flow reaches returned value: return `summary:${status.trim()}`; (line 9)", "related test tests/signals.test.ts:24 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)", "missing discriminator return value == `summary:${status.trim()}`: changed TypeScript returned-value at line 9 lacks a concrete preview discriminator"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return `summary:${status.trim()}`;","line":9}
       ],
-      "evidence": ["owner: renderSummary"],
+      "evidence": ["owner: renderSummary", "missing_discriminator: return value == `summary:${status.trim()}`"],
       "missing": ["Related test reaches `renderSummary` but the strongest extracted oracle is `snapshot`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == `summary:${status.trim()}`",
+            "reason": "changed TypeScript returned-value at line 9 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"return_value","text":"return `summary:${status.trim()}`;","line":9}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == `summary:${status.trim()}`",
+          "reason": "changed TypeScript returned-value at line 9 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"return_value","text":"return `summary:${status.trim()}`;","line":9}
+        }
       ],
       "related_tests": [
         {
@@ -118,8 +129,8 @@
       "stop_reasons": [],
       "oracle_kind": "snapshot",
       "oracle_strength": "medium",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == `summary:${status.trim()}``.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == `summary:${status.trim()}``.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"
@@ -143,22 +154,33 @@
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `return value == count >= 1`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `isReady`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/signals.test.ts:28 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `isReady`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == count >= 1`.", "local flow reaches returned value: return count >= 1; (line 13)", "related test tests/signals.test.ts:28 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator return value == count >= 1: changed TypeScript returned-value at line 13 lacks a concrete preview discriminator"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return count >= 1;","line":13}
       ],
-      "evidence": ["owner: isReady"],
+      "evidence": ["owner: isReady", "missing_discriminator: return value == count >= 1"],
       "missing": ["Related test reaches `isReady` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == count >= 1",
+            "reason": "changed TypeScript returned-value at line 13 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"return_value","text":"return count >= 1;","line":13}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == count >= 1",
+          "reason": "changed TypeScript returned-value at line 13 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"return_value","text":"return count >= 1;","line":13}
+        }
       ],
       "related_tests": [
         {
@@ -173,8 +195,8 @@
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == count >= 1`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `return value == count >= 1`.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"
@@ -198,22 +220,33 @@
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `mock_expectation` (rank 4)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `call sink.record includes status`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `notifyStatus`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/signals.test.ts:32 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `notifyStatus`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call sink.record includes status`.", "local flow reaches call effect: sink.record(status); (line 17)", "related test tests/signals.test.ts:32 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)", "missing discriminator call sink.record includes status: changed TypeScript call side effect at line 17 lacks a concrete preview discriminator"],
       "flow_sinks": [
+        {"kind":"call_effect","text":"sink.record(status);","line":17}
       ],
-      "evidence": ["owner: notifyStatus"],
+      "evidence": ["owner: notifyStatus", "missing_discriminator: call sink.record includes status"],
       "missing": ["Related test reaches `notifyStatus` but the strongest extracted oracle is `mock_expectation`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "call sink.record includes status",
+            "reason": "changed TypeScript call side effect at line 17 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"call_effect","text":"sink.record(status);","line":17}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "call sink.record includes status",
+          "reason": "changed TypeScript call side effect at line 17 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"call_effect","text":"sink.record(status);","line":17}
+        }
       ],
       "related_tests": [
         {
@@ -228,8 +261,8 @@
       "stop_reasons": [],
       "oracle_kind": "mock_expectation",
       "oracle_strength": "medium",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `call sink.record includes status`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `call sink.record includes status`.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"
@@ -255,8 +288,9 @@
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `loadProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/signals.test.ts:40 loads profile uses strong exact value oracle: expect(...).toBe(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `loadProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return await Promise.resolve(`profile:${id}`); (line 21)", "related test tests/signals.test.ts:40 loads profile uses strong exact value oracle: expect(...).toBe(...)"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return await Promise.resolve(`profile:${id}`);","line":21}
       ],
       "evidence": ["owner: loadProfile"],
       "missing": ["Related test reaches `loadProfile` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator."],

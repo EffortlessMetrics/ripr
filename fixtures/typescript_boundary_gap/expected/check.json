@@ -25,22 +25,32 @@
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
        },
-      "evidence_path": ["reach yes: 2 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/discount.test.ts:4 below threshold has no discount uses unknown unknown oracle", "related test tests/discount.test.ts:11 far above threshold discounts uses unknown unknown oracle"],
+      "evidence_path": ["reach yes: 2 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "related test tests/discount.test.ts:4 below threshold has no discount uses unknown unknown oracle", "related test tests/discount.test.ts:11 far above threshold discounts uses unknown unknown oracle", "missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: applyDiscount"],
+      "evidence": ["owner: applyDiscount", "missing_discriminator: amount == threshold"],
       "missing": ["Related test reaches `applyDiscount` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+            "flow_sink": null
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+          "flow_sink": null
+        }
       ],
       "related_tests": [
         {
@@ -63,8 +73,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `amount == threshold`.",
+      "suggested_next_action": "TypeScript preview: add or strengthen a focused assertion for missing discriminator `amount == threshold`.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"
