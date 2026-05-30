@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_property_based_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    if amount >= threshold:",
+        "owner": "python:src/pricing.py::apply_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `property_based_test` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `property_based_test` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `relational_check` (rank 3)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Static limit `property_based_test` prevents a safe Python infection claim.", "propagation unknown: Static limit `property_based_test` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "related test tests/test_pricing.py:6 test_apply_discount_property uses weak relational check oracle: assert apply_discount(amount, threshold) <= amount"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit property_based_test: related test uses generated inputs", "test_framework: pytest (test_apply_discount_property)", "test_fixtures: amount, threshold (test_apply_discount_property)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_property (test_apply_discount_property)", "related_test_relation: syntactic_call (test_apply_discount_property)", "test_oracle: relational_check weak (test_apply_discount_property)", "test_oracle_shape: boundary_assertion (test_apply_discount_property)"],
+      "missing": ["Static limit `property_based_test`: a related Python test uses property-based generated inputs such as `@given(...)`; syntax-first preview evidence cannot prove whether the generated cases include the changed discriminator."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_apply_discount_property",
+          "file": "tests/test_pricing.py",
+          "line": 6,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert apply_discount(amount, threshold) <= amount"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "property_based_test"
+    }
+  ]
+}

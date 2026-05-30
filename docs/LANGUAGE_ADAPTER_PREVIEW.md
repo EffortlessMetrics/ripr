@@ -117,6 +117,7 @@ interpretation guide and integration rules.
 | `decorator_indirection` | A Python decorator may change the callable boundary. |
 | `mocked_module` | A test replaces or mocks the module or symbol under review. |
 | `opaque_custom_assertion_helper` | A Python test uses a custom assertion helper whose body is not inspected. |
+| `property_based_test` | A Python test uses generated inputs, such as Hypothesis `@given(...)`, whose concrete cases are not known statically. |
 | `unsupported_syntax` | The parser or preview adapter found syntax outside the current preview contract. |
 
 A static limit does not automatically erase a useful related test or strong

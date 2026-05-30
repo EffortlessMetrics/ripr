@@ -87,7 +87,8 @@ Additive optional fields:
 - `static_limit_kind`: bounded vocabulary describing why a probe could not
   be classified (`dynamic_dispatch`, `metaprogramming`,
   `missing_import_graph`, `decorator_indirection`, `mocked_module`,
-  `opaque_custom_assertion_helper`, `unsupported_syntax`).
+  `opaque_custom_assertion_helper`, `property_based_test`,
+  `unsupported_syntax`).
 
 Reports gaining these fields:
 
@@ -283,4 +284,5 @@ The contract makes these counts available to later metrics surfaces:
 - `language_adapter_static_limit_metaprogramming`
 - `language_adapter_static_limit_mocked_module`
 - `language_adapter_static_limit_opaque_custom_assertion_helper`
+- `language_adapter_static_limit_property_based_test`
 - `language_adapter_static_limit_unsupported_syntax`

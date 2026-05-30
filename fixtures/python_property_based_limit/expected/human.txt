@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_property_based_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/pricing.py:2
+
+Changed
+  after:      if amount >= threshold:
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/pricing.py::apply_discount
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply_discount`
+  - infection unknown: Static limit `property_based_test` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `property_based_test` prevents a safe Python propagation claim.
+  - observation yes: Strongest extracted Python oracle kind: `relational_check` (rank 3)
+  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - related test tests/test_pricing.py:6 test_apply_discount_property uses weak relational check oracle: assert apply_discount(amount, threshold) <= amount
+
+Weakness
+  - Static limit `property_based_test`: a related Python test uses property-based generated inputs such as `@given(...)`; syntax-first preview evidence cannot prove whether the generated cases include the changed discriminator.
+
+Stop reasons:
+  - static_probe_unknown

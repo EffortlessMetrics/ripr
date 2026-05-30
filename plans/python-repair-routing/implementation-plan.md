@@ -1051,6 +1051,9 @@ Prevent Python support from becoming noisy.
   `opaque_custom_assertion_helper` static limitations so the adapter does not
   route a repair packet when the helper body might already observe the changed
   discriminator.
+- `python_property_based_limit` pins Hypothesis-style property-based tests as
+  `property_based_test` static limitations so the adapter does not infer that
+  generated inputs cover a concrete missing discriminator.
 
 ### Work item: dogfood/python-real-repo-evals
 

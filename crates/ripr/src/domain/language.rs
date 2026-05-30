@@ -118,6 +118,7 @@ pub enum StaticLimitKind {
     DecoratorIndirection,
     MockedModule,
     OpaqueCustomAssertionHelper,
+    PropertyBasedTest,
     UnsupportedSyntax,
 }
 
@@ -132,6 +133,7 @@ impl StaticLimitKind {
             StaticLimitKind::DecoratorIndirection => "decorator_indirection",
             StaticLimitKind::MockedModule => "mocked_module",
             StaticLimitKind::OpaqueCustomAssertionHelper => "opaque_custom_assertion_helper",
+            StaticLimitKind::PropertyBasedTest => "property_based_test",
             StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
         }
     }
@@ -207,6 +209,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::OpaqueCustomAssertionHelper.as_str(),
             "opaque_custom_assertion_helper"
+        );
+        assert_eq!(
+            StaticLimitKind::PropertyBasedTest.as_str(),
+            "property_based_test"
         );
     }
 }

@@ -25,6 +25,7 @@ missing_import_graph
 decorator_indirection
 mocked_module
 opaque_custom_assertion_helper
+property_based_test
 unsupported_syntax
 ```
 
@@ -42,6 +43,7 @@ action.
 | `decorator_indirection` | A Python decorator may change the callable boundary before the body runs. | Treat owner/test evidence as syntax-first. Add a test around the decorated public behavior, not only the undecorated body. |
 | `mocked_module` | A test replaces or mocks a module or symbol involved in the finding. | Read the mock as interaction evidence, not proof of the real dependency behavior. |
 | `opaque_custom_assertion_helper` | A related Python test observes behavior through a custom assertion helper whose body is not inspected. | Keep the finding out of repair queues until a human or analyzer can confirm whether the helper already observes the changed discriminator. |
+| `property_based_test` | A related Python test uses generated inputs, such as Hypothesis `@given(...)`, and syntax alone cannot prove which concrete examples run. | Do not assume the generated cases include the missing discriminator. Keep repair routing blocked unless a separate concrete strong oracle exists. |
 | `unsupported_syntax` | The parser or preview adapter saw syntax outside the current preview contract. | Do not upgrade the finding into a stronger claim. Use the packet as a pointer for manual inspection. |
 
 ## What Static Limits Do Not Mean

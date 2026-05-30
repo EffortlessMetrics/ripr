@@ -2356,6 +2356,14 @@ fn static_limit_for_change(
             missing: "Static limit `mocked_module`: a related Python test uses patch/mock-module syntax; the preview adapter does not resolve runtime substitution semantics.".to_string(),
         });
     }
+    if related_candidates_have_property_based_test_limit(related_candidates) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::PropertyBasedTest,
+            evidence: "static_limit property_based_test: related test uses generated inputs"
+                .to_string(),
+            missing: "Static limit `property_based_test`: a related Python test uses property-based generated inputs such as `@given(...)`; syntax-first preview evidence cannot prove whether the generated cases include the changed discriminator.".to_string(),
+        });
+    }
     if related_candidates_have_opaque_custom_assertion_limit(related_candidates) {
         return Some(PythonStaticLimit {
             kind: StaticLimitKind::OpaqueCustomAssertionHelper,
@@ -2404,6 +2412,41 @@ fn test_has_mocked_module(test: &PythonTest) -> bool {
         || test.body_text.contains("monkeypatch.setattr(")
         || test.body_text.contains("monkeypatch.setitem(")
         || test.body_text.contains("monkeypatch.delattr(")
+}
+
+fn related_candidates_have_property_based_test_limit(
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> bool {
+    let mut has_property_based_test = false;
+    let mut has_known_strong_concrete_oracle = false;
+
+    for candidate in related_candidates
+        .iter()
+        .filter(|candidate| candidate.relation.uses_oracle())
+    {
+        if test_uses_property_based_inputs(candidate.test) {
+            has_property_based_test = true;
+        } else if candidate
+            .test
+            .assertions
+            .iter()
+            .any(|assertion| assertion.oracle_strength.rank() >= OracleStrength::Strong.rank())
+        {
+            has_known_strong_concrete_oracle = true;
+        }
+    }
+
+    has_property_based_test && !has_known_strong_concrete_oracle
+}
+
+fn test_uses_property_based_inputs(test: &PythonTest) -> bool {
+    test.decorators.iter().any(|decorator| {
+        decorator == "given"
+            || decorator.ends_with(".given")
+            || decorator == "hypothesis.given"
+            || decorator == "example"
+            || decorator.ends_with(".example")
+    })
 }
 
 fn related_candidates_have_opaque_custom_assertion_limit(
@@ -4572,6 +4615,22 @@ def test_notifies_callback():
             "from src.service import total\n\ndef test_total(monkeypatch):\n    monkeypatch.setattr(\"src.service.remote_total\", lambda: 1)\n    assert total() == 1\n",
         );
         let monkeypatch_candidates = related_test_candidates(&plain_owner, &monkeypatch_tests);
+        let property_based_tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from hypothesis import given, strategies as st\nfrom src.service import total\n\n@given(st.integers())\ndef test_total_property_based(value):\n    assert total(value) >= 0\n",
+        );
+        let property_based_candidates =
+            related_test_candidates(&plain_owner, &property_based_tests);
+        let property_based_with_exact_tests = {
+            let mut tests = property_based_tests.clone();
+            tests.extend(extract_tests(
+                Path::new("tests/test_service_exact.py"),
+                "from src.service import total\n\ndef test_total_exact():\n    assert total(1) == 1\n",
+            ));
+            tests
+        };
+        let property_based_with_exact_candidates =
+            related_test_candidates(&plain_owner, &property_based_with_exact_tests);
         let opaque_helper_tests = extract_tests(
             Path::new("tests/test_service.py"),
             "from src.service import total\n\ndef test_total_custom_helper():\n    result = total()\n    assert_total_result(result)\n",
@@ -4607,6 +4666,20 @@ def test_notifies_callback():
             static_limit_for_change("    return total()", &plain_owner, &monkeypatch_candidates)
                 .map(|limit| limit.kind),
             Some(StaticLimitKind::MockedModule)
+        );
+        assert_eq!(
+            static_limit_for_change("    return 1", &plain_owner, &property_based_candidates)
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::PropertyBasedTest)
+        );
+        assert_eq!(
+            static_limit_for_change(
+                "    return 1",
+                &plain_owner,
+                &property_based_with_exact_candidates
+            )
+            .map(|limit| limit.kind),
+            None
         );
         assert_eq!(
             static_limit_for_change("    return 1", &plain_owner, &opaque_helper_candidates)
@@ -4693,6 +4766,51 @@ def test_notifies_callback():
                 .missing
                 .iter()
                 .any(|entry| entry.contains("Static limit `dynamic_dispatch`"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_property_based_test_fails_closed() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount, threshold):\n    if amount >= threshold:\n        return amount - 10\n    return amount\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from hypothesis import given, strategies as st\nfrom src.pricing import apply_discount\n\n@given(st.integers(min_value=0), st.integers(min_value=0))\ndef test_apply_discount_property(amount, threshold):\n    assert apply_discount(amount, threshold) <= amount\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    if amount >= threshold:",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::PropertyBasedTest)
+        );
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.canonical_gap.is_none());
+        assert!(finding.recommended_next_step.is_none());
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry.starts_with("static_limit property_based_test:"))
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("Static limit `property_based_test`"))
         );
         Ok(())
     }

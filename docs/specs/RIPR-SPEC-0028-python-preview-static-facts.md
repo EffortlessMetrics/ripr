@@ -163,6 +163,9 @@ values defined in RIPR-SPEC-0026:
 - `opaque_custom_assertion_helper` (e.g., a related test observes the changed
   owner only through an `assert_*(...)` helper body the adapter does not
   inspect)
+- `property_based_test` (e.g., a related test uses Hypothesis `@given(...)`
+  generated inputs whose concrete discriminator coverage is not statically
+  known)
 - `unsupported_syntax`
 
 ## Canonical Gap Identity
@@ -405,4 +408,5 @@ adapter contributes:
 - `language_adapter_python_static_limit_metaprogramming`
 - `language_adapter_python_static_limit_mocked_module`
 - `language_adapter_python_static_limit_opaque_custom_assertion_helper`
+- `language_adapter_python_static_limit_property_based_test`
 - `language_adapter_python_static_limit_unsupported_syntax`
