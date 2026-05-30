@@ -2712,6 +2712,7 @@ enter the swarm-ready queue.
       "allowed_edit_surface": ["tests/pricing.rs"],
       "allowed_edit_surface_count": 1,
       "related_test_or_observer_available": true,
+      "must_not_change": ["production behavior"],
       "must_not_change_count": 1,
       "raw_findings_count": 2,
       "raw_findings_supporting_only": true,

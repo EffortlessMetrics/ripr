@@ -21614,6 +21614,7 @@ struct RiprSwarmPlanPacket {
     verify_command: Option<String>,
     receipt_command_or_path: Option<String>,
     related_test_or_observer_available: bool,
+    must_not_change: Vec<String>,
     must_not_change_count: usize,
     allowed_edit_surface: Vec<String>,
     allowed_edit_surface_count: usize,
@@ -22572,7 +22573,8 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
             audit_structured_raw_evidence_refs_count(audit_array(packet, &["raw_findings"])),
         );
     let static_limitations_count = audit_array(packet, &["static_limitations"]).len();
-    let must_not_change_count = audit_array(packet, &["must_not_change"]).len();
+    let must_not_change = audit_string_array(packet, &["must_not_change"]).unwrap_or_default();
+    let must_not_change_count = must_not_change.len();
     let allowed_edit_surface = ripr_swarm_plan_allowed_edit_surface(packet);
     let allowed_edit_surface_count = allowed_edit_surface.len();
     let public_projection_eligible =
@@ -22738,6 +22740,7 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
         verify_command,
         receipt_command_or_path,
         related_test_or_observer_available,
+        must_not_change,
         must_not_change_count,
         allowed_edit_surface,
         allowed_edit_surface_count,
@@ -23117,6 +23120,7 @@ fn ripr_swarm_plan_packets_json(packets: &[RiprSwarmPlanPacket]) -> Vec<Value> {
                 "verify_command": packet.verify_command,
                 "receipt_command": packet.receipt_command_or_path,
                 "related_test_or_observer_available": packet.related_test_or_observer_available,
+                "must_not_change": packet.must_not_change,
                 "must_not_change_count": packet.must_not_change_count,
                 "allowed_edit_surface": packet.allowed_edit_surface,
                 "allowed_edit_surface_count": packet.allowed_edit_surface_count,
@@ -23452,15 +23456,29 @@ fn ripr_swarm_plan_push_packet_table(
         out.push_str("No packets in this section.\n\n");
         return;
     }
-    out.push_str("| Gap | State | Score | Repair | Verify | Receipt | Blocked reasons |\n");
-    out.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
+    out.push_str(
+        "| Gap | State | Score | Repair | Allowed edit surface | Must not change | Verify | Receipt | Blocked reasons |\n",
+    );
+    out.push_str("| --- | --- | ---: | --- | --- | --- | --- | --- | --- |\n");
     for packet in packets {
+        let allowed_edit_surface = if packet.allowed_edit_surface.is_empty() {
+            "missing".to_string()
+        } else {
+            packet.allowed_edit_surface.join(", ")
+        };
+        let must_not_change = if packet.must_not_change.is_empty() {
+            "missing".to_string()
+        } else {
+            packet.must_not_change.join(", ")
+        };
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | `{}` | {} | {} | {} |\n",
+            "| `{}` | `{}` | {} | `{}` | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(&packet.canonical_gap_id),
             audit_markdown_cell(&packet.swarm_state),
             packet.score,
             audit_markdown_cell(&packet.repair_kind),
+            audit_markdown_cell(&allowed_edit_surface),
+            audit_markdown_cell(&must_not_change),
             audit_markdown_cell(packet.verify_command.as_deref().unwrap_or("missing")),
             audit_markdown_cell(
                 packet
@@ -79839,6 +79857,14 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_ready_packets"][0]["receipt_command"],
             "cargo xtask receipts check"
         );
+        assert_eq!(
+            value["top_ready_packets"][0]["allowed_edit_surface"],
+            serde_json::json!(["tests/pricing.rs"])
+        );
+        assert_eq!(
+            value["top_ready_packets"][0]["must_not_change"],
+            serde_json::json!(["Do not edit production code by default."])
+        );
         assert_eq!(value["top_ready_packets"][0]["swarm_state"], "queued");
         assert_eq!(
             value["static_limitation_backlog"]["top_categories"][0]["category"],
@@ -79892,6 +79918,11 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("analysis/related-test-affinity-owner-call-tracing"));
         assert!(markdown.contains("gap:ready-boundary"));
         assert!(markdown.contains("gap:static-limit"));
+        assert!(markdown.contains(
+            "| Gap | State | Score | Repair | Allowed edit surface | Must not change | Verify | Receipt | Blocked reasons |"
+        ));
+        assert!(markdown.contains("tests/pricing.rs"));
+        assert!(markdown.contains("Do not edit production code by default."));
         assert!(markdown.contains("Do not rank static limitations as repair-ready."));
         assert!(
             markdown.contains(
