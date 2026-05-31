@@ -2509,7 +2509,43 @@ fn contains_python_keyword_assignment_shape(text: &str, keyword: &str) -> bool {
 }
 
 fn is_transparent_owner_decorator(decorator: &str) -> bool {
-    decorator == "staticmethod" || decorator == "classmethod" || decorator == "async_def"
+    decorator == "staticmethod"
+        || decorator == "classmethod"
+        || decorator == "async_def"
+        || is_static_route_decorator(decorator)
+}
+
+fn is_static_route_decorator(decorator: &str) -> bool {
+    let Some((receiver, method)) = decorator.rsplit_once('.') else {
+        return false;
+    };
+    if !matches!(
+        method,
+        "get"
+            | "post"
+            | "put"
+            | "patch"
+            | "delete"
+            | "options"
+            | "head"
+            | "route"
+            | "api_route"
+            | "websocket"
+    ) {
+        return false;
+    }
+
+    let Some(receiver_name) = receiver.rsplit('.').next() else {
+        return false;
+    };
+    matches!(
+        receiver_name,
+        "app" | "api" | "router" | "routes" | "bp" | "blueprint"
+    ) || receiver_name.ends_with("_app")
+        || receiver_name.ends_with("_api")
+        || receiver_name.ends_with("_router")
+        || receiver_name.ends_with("_routes")
+        || receiver_name.ends_with("_bp")
 }
 
 fn test_has_mocked_module(test: &PythonTest) -> bool {

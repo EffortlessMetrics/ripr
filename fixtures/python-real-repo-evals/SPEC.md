@@ -23,12 +23,12 @@ and claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
 normal pytest app repo, one CLI/output-style pytest repo, one API-style
-status-code pytest repo, and one mixed Rust/Python pytest repo before later
-decorated framework-route dogfood can support promotion discussion.
+status-code pytest repo, one mixed Rust/Python pytest repo, and one decorated
+route pytest repo before metrics can support promotion discussion.
 
 ## Must Not
 
 - Do not treat these records as support-tier promotion.
 - Do not claim correctness, mutation adequacy, generated tests, provider calls,
   CI gate eligibility, or arbitrary runtime import execution.
-- Do not hide missing decorated framework-route dogfood.
+- Do not hide unsupported dynamic routing or missing metrics evidence.

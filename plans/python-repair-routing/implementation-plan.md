@@ -901,6 +901,15 @@ Support simple FastAPI/Flask-shaped repair cards.
   client tests can produce framework-shaped repair cards.
 - Dynamic routing remains a named limitation.
 
+#### Progress
+
+- `fixtures/python_api_route_decorator_repair_gap` now proves a simple
+  FastAPI/Flask-shaped `@api.post(...)` route decorator can remain
+  syntax-first route metadata instead of a decorator-indirection limit when a
+  changed `response.status_code` assignment has weak pytest evidence.
+- Arbitrary decorators remain fail-closed through
+  `python_decorator_indirection_limit`.
+
 ### Work item: analysis/python-cli-output-pack-v1
 
 Status: planned
@@ -974,7 +983,7 @@ Prefer strengthening weak related tests over adding redundant tests.
 
 ### Work item: swarm/python-gap-work-queue
 
-Status: in progress
+Status: complete
 
 Blocked by:
 
@@ -1216,11 +1225,15 @@ Prove usefulness outside fixtures.
   `amount >= threshold` predicate-boundary change routes to a repair card
   despite Cargo metadata, the focused pytest verify command passes, and
   `ripr outcome` closes the canonical Python gap.
+- The same corpus now records a decorated route pytest eval where a simple
+  `@api.post(...)` route handler changes `response.status_code`, RIPR emits a
+  field/object repair card with missing discriminator
+  `response.status_code == 422`, the focused pytest verify command passes, and
+  `ripr outcome` closes the canonical Python gap.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.
-- Decorated framework-route outside-fixture evaluation remains the next dogfood
-  slice before metrics or support-tier promotion.
+- Metrics and support-tier review remain the next slices before any promotion.
 
 ### Work item: metrics/python-repair-routing-quality
 
@@ -1228,7 +1241,7 @@ Status: planned
 
 Blocked by:
 
-- `dogfood/python-real-repo-evals`
+- none; dogfood real-repo eval receipts are now fixture-backed.
 
 #### Goal
 

@@ -159,7 +159,10 @@ values defined in RIPR-SPEC-0026:
   adapter cannot resolve syntactically, or the changed line uses dynamic import
   syntax such as `importlib.import_module(...)` / `__import__(...)`)
 - `decorator_indirection` (the decorator changes the call semantics in a
-  way the syntax-first adapter cannot follow)
+  way the syntax-first adapter cannot follow; simple route decorators such as
+  `@app.get(...)`, `@api.post(...)`, or `@router.api_route(...)` may be treated
+  as static route metadata when the changed behavior itself is a supported
+  repair shape)
 - `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
   observed at the related-test call site)
 - `opaque_custom_assertion_helper` (e.g., a related test observes the changed
@@ -368,6 +371,23 @@ Expected static evidence:
 - probe emits `static_limit_kind = "decorator_indirection"`; finding
   stays conservative.
 
+Simple route decorator repair:
+
+```python
+@api.post("/checkout")
+def checkout(coupon_expired):
+    response.status_code = 422
+```
+
+Expected static evidence:
+
+- route decorator is preserved as owner context rather than treated as
+  arbitrary decorator indirection;
+- probe can emit a field/object repair card with missing discriminator
+  `response.status_code == 422`;
+- finding remains `preview` / advisory and does not execute route
+  registration.
+
 ## Test Mapping
 
 Follow-up fixtures and tests cover the owner, test, assertion, related
@@ -426,6 +446,7 @@ adapter contributes:
 - `language_adapter_python_test_placement_verify`
 - `language_adapter_python_repair_card_v1`
 - `language_adapter_python_existing_test_strengthening`
+- `language_adapter_python_route_decorator_repair_card`
 - `language_adapter_python_agent_packet_v1`
 - `language_adapter_python_swarm_queue_stale_packets`
 - `language_adapter_python_gap_receipt_from_check_output`

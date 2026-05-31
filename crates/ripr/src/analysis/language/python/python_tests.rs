@@ -423,6 +423,31 @@ fn oracle_shape_names_are_stable() {
 }
 
 #[test]
+fn route_decorators_are_transparent_but_arbitrary_decorators_limit() {
+    for decorator in [
+        "app.get",
+        "api.post",
+        "router.patch",
+        "checkout_router.delete",
+        "admin_bp.route",
+        "my_app.api_route",
+        "api.websocket",
+    ] {
+        assert!(
+            is_transparent_owner_decorator(decorator),
+            "expected route decorator `{decorator}` to be transparent"
+        );
+    }
+
+    for decorator in ["retry", "retry.with_backoff", "cache.get", "post"] {
+        assert!(
+            !is_transparent_owner_decorator(decorator),
+            "expected non-route decorator `{decorator}` to remain a static limit"
+        );
+    }
+}
+
+#[test]
 fn extract_tests_records_vararg_and_kwarg_pytest_fixtures() -> Result<(), String> {
     let tests = extract_tests(
         Path::new("tests/test_fixtures.py"),

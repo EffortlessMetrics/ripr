@@ -39,7 +39,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "tiny controlled scratch repo only; decorated framework-route dogfood remains outstanding",
+      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending metrics review",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -74,7 +74,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; decorated framework-route dogfood remains outstanding",
+      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending metrics review",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -109,7 +109,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; decorated framework-route dogfood remains outstanding",
+      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending metrics review",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -144,7 +144,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; decorated FastAPI/Flask route dogfood remains outstanding",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending metrics review",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -179,7 +179,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; decorated FastAPI/Flask route dogfood remains outstanding",
+      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending metrics review",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -187,6 +187,41 @@
         "No support-tier promotion"
       ],
       "reason": "The run proves a mixed Rust/Python repo can route a changed Python predicate boundary to a bounded repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt without colliding with Cargo/Rust project metadata."
+    },
+    {
+      "id": "decorated_route_status_pytest_receipt",
+      "repo_shape": "decorated_route_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/decorated-route-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/decorated-route-receipt --base HEAD~1 --format json",
+      "runtime_ms": 605,
+      "top_finding_summary": "Python decorated route status-code repair card for checkout expired coupon response.status_code",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.status_code == 422",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.32s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/decorated-route-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 1116,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending metrics review",
+      "claim_boundary": [
+        "Python remains preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a simple decorated Python route can route a changed status-code assignment to a bounded field/object repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt without treating arbitrary decorators as transparent."
     }
   ]
 }
