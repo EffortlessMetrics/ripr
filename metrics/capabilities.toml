@@ -1602,7 +1602,7 @@ metric = "language_adapter_python_findings_preview, language_adapter_python_cano
 [[capability]]
 id = "python_repair_routing_loop"
 name = "Python repair routing loop"
-status = "alpha"
+status = "usable alpha"
 spec = "RIPR-SPEC-0028"
 evidence = [
   "direct weak Python findings with canonical gaps, concrete missing discriminators, suggested test locations, verify commands, stop conditions, and limits emit python_repair_card output across human, JSON, SARIF, GitHub, pilot, first-pr, and LSP surfaces",

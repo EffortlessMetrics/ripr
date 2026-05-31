@@ -50758,7 +50758,7 @@ fn finish_capabilities_report(violations: &[String]) -> Result<(), String> {
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Update metrics/capabilities.toml with status, spec, next checkpoint, and metric fields.",
-                "Keep capability statuses to planned, alpha, stable, or calibrated.",
+                "Keep capability statuses to planned, alpha, usable alpha, stable, or calibrated.",
                 "Reference only specs that exist in docs/specs.",
                 "Use cargo xtask metrics to regenerate target/ripr/reports/metrics.md and metrics.json.",
             ],
@@ -50803,7 +50803,7 @@ fn validate_capabilities(
             violations.push(format!("{id} is missing a non-empty `name`"));
         }
         match capability.status.as_deref() {
-            Some("planned" | "alpha" | "stable" | "calibrated") => {}
+            Some("planned" | "alpha" | "usable alpha" | "stable" | "calibrated") => {}
             Some(status) => violations.push(format!("{id} has unsupported status `{status}`")),
             None => violations.push(format!("{id} is missing `status`")),
         }
@@ -50837,8 +50837,14 @@ fn validate_capabilities(
                 violations.push(format!("{id} fixture path does not exist: {fixture}"));
             }
         }
-        if capability.status.as_deref() == Some("stable") && capability.fixtures.is_empty() {
-            violations.push(format!("{id} is stable but has no fixture entries"));
+        if matches!(
+            capability.status.as_deref(),
+            Some("usable alpha" | "stable")
+        ) && capability.fixtures.is_empty()
+        {
+            violations.push(format!(
+                "{id} is usable alpha or stable but has no fixture entries"
+            ));
         }
         if capability.status.as_deref() == Some("calibrated")
             && !capability
@@ -53616,7 +53622,7 @@ fn check_readme_state() -> Result<(), String> {
             "docs/CAPABILITY_MATRIX.md does not reference metrics/capabilities.toml".to_string(),
         );
     }
-    for status in ["planned", "alpha", "stable", "calibrated"] {
+    for status in ["planned", "alpha", "usable alpha", "stable", "calibrated"] {
         let marker = format!("`{status}`");
         if !matrix.contains(&marker) {
             violations.push(format!(
@@ -78042,6 +78048,72 @@ linked_spec = "RIPR-SPEC-0001"
                 "{kind} {path}"
             );
         }
+    }
+
+    #[test]
+    fn capabilities_accept_usable_alpha_status_with_fixture() -> Result<(), String> {
+        with_temp_cwd("capabilities-usable-alpha", |root| {
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0028-python.md"),
+                "Status: accepted\n",
+            );
+            write(
+                &root.join("fixtures/python-real-repo-evals/SPEC.md"),
+                "Python real-repo eval fixture\n",
+            );
+            let manifest = r#"
+[[capability]]
+id = "python_repair_routing_loop"
+name = "Python repair routing loop"
+status = "usable alpha"
+spec = "RIPR-SPEC-0028"
+evidence = ["fixture-backed repair routing proof"]
+fixtures = ["fixtures/python-real-repo-evals"]
+next = "analysis/python-cli-output-pack-v1"
+metric = "language_adapter_python_repair_routing_quality_metrics"
+"#;
+
+            let (capabilities, parse_violations) =
+                super::parse_capabilities_manifest_text("metrics/capabilities.toml", manifest);
+            assert!(parse_violations.is_empty(), "{parse_violations:#?}");
+            let mut violations = Vec::new();
+            super::validate_capabilities(&capabilities, &mut violations)?;
+            assert!(violations.is_empty(), "{violations:#?}");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn capabilities_require_fixture_for_usable_alpha_status() -> Result<(), String> {
+        with_temp_cwd("capabilities-usable-alpha-fixture", |root| {
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0028-python.md"),
+                "Status: accepted\n",
+            );
+            let manifest = r#"
+[[capability]]
+id = "python_repair_routing_loop"
+name = "Python repair routing loop"
+status = "usable alpha"
+spec = "RIPR-SPEC-0028"
+evidence = ["fixture-backed repair routing proof"]
+next = "analysis/python-cli-output-pack-v1"
+metric = "language_adapter_python_repair_routing_quality_metrics"
+"#;
+
+            let (capabilities, parse_violations) =
+                super::parse_capabilities_manifest_text("metrics/capabilities.toml", manifest);
+            assert!(parse_violations.is_empty(), "{parse_violations:#?}");
+            let mut violations = Vec::new();
+            super::validate_capabilities(&capabilities, &mut violations)?;
+            assert!(
+                violations.iter().any(|violation| {
+                    violation.contains("usable alpha or stable but has no fixture entries")
+                }),
+                "{violations:#?}"
+            );
+            Ok(())
+        })
     }
 
     #[test]

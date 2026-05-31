@@ -17,6 +17,7 @@ Status values:
 
 - `planned`: designed but not implemented
 - `alpha`: implemented with limited syntax-first evidence
+- `usable alpha`: implemented and dogfooded for bounded advisory use with known limits
 - `stable`: fixture-backed and expected to be reliable within documented scope
 - `calibrated`: compared against real mutation outcomes
 
