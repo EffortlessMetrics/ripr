@@ -4074,7 +4074,7 @@ tests = [
   "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest",
   "xtask::tests::ripr_swarm_attempt_ledger_imports_real_repair_attempts",
   "xtask::tests::ripr_swarm_attempt_ledger_real_corpus_supersedes_unchanged_attempts",
-  "xtask::tests::ripr_swarm_repair_route_quality_samples_failed_attempts_only",
+  "xtask::tests::ripr_swarm_repair_route_quality_samples_attempts_and_classifies_failures",
   "xtask::tests::lane1_static_limitation_backlog_emits_analyzer_packets",
   "xtask::tests::lane1_static_limitation_backlog_splits_same_category_by_repair_route",
   "xtask::tests::lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route",

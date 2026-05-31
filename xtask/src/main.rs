@@ -26252,15 +26252,17 @@ fn ripr_swarm_attempt_ledger_repair_route_quality_grouped(
             "not_attempted" => {}
             _ => row.unknown += 1,
         }
-        if ripr_swarm_repair_route_quality_attempt_is_failure(attempt) {
+        if attempt.outcome != "not_attempted" {
             ripr_swarm_push_limited_unique(&mut row.sample_packet_ids, &attempt.packet_id);
             ripr_swarm_push_limited_unique(
                 &mut row.sample_canonical_gap_ids,
                 &attempt.canonical_gap_id,
             );
-            if let Some(reason) = attempt.missing_receipt_reason.as_deref() {
-                ripr_swarm_push_limited_unique(&mut row.sample_missing_receipt_reasons, reason);
-            }
+        }
+        if ripr_swarm_repair_route_quality_attempt_is_failure(attempt)
+            && let Some(reason) = attempt.missing_receipt_reason.as_deref()
+        {
+            ripr_swarm_push_limited_unique(&mut row.sample_missing_receipt_reasons, reason);
         }
     }
     let mut rows = rows.into_values().collect::<Vec<_>>();
@@ -96124,7 +96126,7 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
-    fn ripr_swarm_repair_route_quality_samples_failed_attempts_only() {
+    fn ripr_swarm_repair_route_quality_samples_attempts_and_classifies_failures() {
         fn attempt(outcome: &str, verify_result: Option<&str>) -> RiprSwarmAttemptLedgerEntry {
             RiprSwarmAttemptLedgerEntry {
                 packet_id: format!("packet-{outcome}"),
@@ -96199,6 +96201,27 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(!ripr_swarm_repair_route_quality_attempt_is_failure(
             &attempt("resolved", Some("pass"))
         ));
+        let rows = crate::ripr_swarm_attempt_ledger_repair_route_quality(&[
+            attempt("not_attempted", None),
+            attempt("evidence_improved", Some("pass")),
+            attempt("resolved", Some("pass")),
+        ]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].attempted, 2);
+        assert_eq!(
+            rows[0].sample_packet_ids,
+            vec![
+                "packet-evidence_improved".to_string(),
+                "packet-resolved".to_string()
+            ]
+        );
+        assert_eq!(
+            rows[0].sample_canonical_gap_ids,
+            vec![
+                "gap:evidence_improved".to_string(),
+                "gap:resolved".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -96277,7 +96300,10 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             historical_repair_route_quality[0].sample_packet_ids,
-            vec!["packet-call-broad-receipt".to_string()]
+            vec![
+                "packet-call-broad-receipt".to_string(),
+                "packet-call-bounded-receipt".to_string()
+            ]
         );
 
         let report = RiprSwarmAttemptLedgerReport {

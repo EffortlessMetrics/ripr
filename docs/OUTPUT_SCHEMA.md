@@ -3359,8 +3359,8 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_failure_count": 0,
       "repair_kind_dominant_failure_reason": null,
       "repair_kind_success_rate": 1.0,
-      "sample_packet_ids": [],
-      "sample_canonical_gap_ids": [],
+      "sample_packet_ids": ["packet-ts-route-001"],
+      "sample_canonical_gap_ids": ["gap:ts-route"],
       "sample_missing_receipt_reasons": []
     }
   ],
@@ -3403,8 +3403,8 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_failure_count": 0,
       "repair_kind_dominant_failure_reason": null,
       "repair_kind_success_rate": 1.0,
-      "sample_packet_ids": [],
-      "sample_canonical_gap_ids": [],
+      "sample_packet_ids": ["packet-ts-route-001"],
+      "sample_canonical_gap_ids": ["gap:ts-route"],
       "sample_missing_receipt_reasons": []
     }
   ],
@@ -3614,9 +3614,10 @@ current routing still comes from latest-attempt `repair_route_quality[]`.
 `top_failing_repair_routes[]` is the subset with unexpected unchanged,
 regressed, no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
-sample packet IDs and canonical gap IDs for failing attempts when available, so
-readiness can route `improve_repair_route_quality` to the derived
-route-quality backlog packet while preserving the concrete failed-attempt
+sample packet IDs and canonical gap IDs for representative attempted rows when
+available, so successful and failing route metrics both remain inspectable.
+`top_failing_repair_routes[]` and `repair_route_quality_backlog[]` still derive
+their routing from failing attempts and preserve the concrete failed-attempt
 sample in the reason text. `repair_route_quality_backlog[]` converts
 top failing repair routes into analyzer/report backlog packets with stable
 packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
