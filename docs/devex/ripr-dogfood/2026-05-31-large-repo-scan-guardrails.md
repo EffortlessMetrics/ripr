@@ -52,14 +52,14 @@ Then run the narrow command once, with the cache limit scoped to that process
 when needed:
 
 ```powershell
-rtk powershell -Command '$env:RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS = "200000"; rtk cargo xtask badge-basis; Remove-Item Env:\RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS'
+rtk powershell -Command '$env:RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS = "200000"; rtk cargo xtask badge-basis; $code = $LASTEXITCODE; Remove-Item Env:\RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS; exit $code'
 ```
 
 If a full exposure dump is explicitly requested for debugging, write it under
 `target/ripr/`, inspect it, and remove it before handing off:
 
 ```powershell
-rtk powershell -Command 'rtk cargo run -p ripr -- check --root . --format repo-exposure-json > target/ripr/reports/repo-exposure.json; Remove-Item -LiteralPath target/ripr/reports/repo-exposure.json'
+rtk powershell -Command 'rtk cargo run -p ripr -- check --root . --format repo-exposure-json > target/ripr/reports/repo-exposure.json; $code = $LASTEXITCODE; Remove-Item -LiteralPath target/ripr/reports/repo-exposure.json -ErrorAction SilentlyContinue; exit $code'
 ```
 
 Ordinary badge and receipt workflows should not need that file.

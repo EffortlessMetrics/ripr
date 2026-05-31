@@ -35,13 +35,14 @@ claim badge movement without receipt movement.
 Use these rules until a bounded canonical exposure summary exists and the lane
 records a fresh downstream-consumable queue:
 
-- Prefer `repo-badge-json`, `rtk cargo xtask badge-basis`, generated receipts, or an
+- Prefer existing generated receipts, committed endpoint snapshots, or an
   explicit `--gap-ledger` for summary counts.
 - Do not use full `repo-exposure-json` for ordinary badge, receipt, top-file, or
   packet-queue paths.
-- Treat no-ledger repo-wide badge refreshes as build-heavy. Run only one such
-  scan at a time, then share the generated receipt or ledger with parallel
-  agents.
+- Treat fresh no-ledger `repo-badge-json` and `rtk cargo xtask badge-basis`
+  refreshes as build-heavy full-refresh exceptions, not ordinary summary
+  paths. Run only one such scan at a time, then share the generated receipt or
+  ledger with parallel agents.
 - Use `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000` only as a scoped opt-in
   for a deliberate large-repo refresh on a machine with enough disk headroom.
 - Keep large temporary JSON under `target/ripr/` when possible, and remove
