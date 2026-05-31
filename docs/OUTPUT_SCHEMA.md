@@ -3362,6 +3362,50 @@ actionable operator evidence instead of only route-quality counts.
       "sample_missing_receipt_reasons": []
     }
   ],
+  "historical_repair_route_quality": [
+    {
+      "language": null,
+      "repair_kind": "add_boundary_assertion",
+      "repair_kind_attempted": 3,
+      "repair_kind_improved": 2,
+      "repair_kind_unchanged": 1,
+      "repair_kind_regressed": 0,
+      "repair_kind_resolved": 0,
+      "repair_kind_attempted_no_receipt": 0,
+      "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
+      "repair_kind_expected_unchanged": 0,
+      "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
+      "repair_kind_success_rate": 0.667,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"],
+      "sample_missing_receipt_reasons": []
+    }
+  ],
+  "historical_language_repair_route_quality": [
+    {
+      "language": "typescript",
+      "repair_kind": "sharpen_static_limitation_route",
+      "repair_kind_attempted": 2,
+      "repair_kind_improved": 2,
+      "repair_kind_unchanged": 0,
+      "repair_kind_regressed": 0,
+      "repair_kind_resolved": 0,
+      "repair_kind_attempted_no_receipt": 0,
+      "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
+      "repair_kind_expected_unchanged": 0,
+      "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 0,
+      "repair_kind_dominant_failure_reason": null,
+      "repair_kind_success_rate": 1.0,
+      "sample_packet_ids": [],
+      "sample_canonical_gap_ids": [],
+      "sample_missing_receipt_reasons": []
+    }
+  ],
   "top_failing_repair_routes": [
     {
       "language": null,
@@ -3379,6 +3423,28 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_failure_count": 1,
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5,
+      "sample_packet_ids": ["packet-boundary-002"],
+      "sample_canonical_gap_ids": ["gap:def"],
+      "sample_missing_receipt_reasons": []
+    }
+  ],
+  "top_historical_failing_repair_routes": [
+    {
+      "language": null,
+      "repair_kind": "add_boundary_assertion",
+      "repair_kind_attempted": 3,
+      "repair_kind_improved": 2,
+      "repair_kind_unchanged": 1,
+      "repair_kind_regressed": 0,
+      "repair_kind_resolved": 0,
+      "repair_kind_attempted_no_receipt": 0,
+      "repair_kind_receipt_present": 0,
+      "repair_kind_missing_verify_result": 0,
+      "repair_kind_expected_unchanged": 0,
+      "repair_kind_unknown": 0,
+      "repair_kind_failure_count": 1,
+      "repair_kind_dominant_failure_reason": "unchanged",
+      "repair_kind_success_rate": 0.667,
       "sample_packet_ids": ["packet-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
@@ -3537,6 +3603,12 @@ Rows include `language = null` because they are repo-level repair-kind rollups.
 grouped by `language` and `repair_kind` for attempts that carry a known language
 field. It lets TypeScript/JavaScript preview route outcomes be measured without
 promoting preview evidence into public repair packets, badge inputs, or gates.
+`historical_repair_route_quality[]` and
+`historical_language_repair_route_quality[]` use the same row shape over the
+durable full attempt history instead of the latest-attempt projection. They keep
+older unchanged, regressed, and no-receipt attempts visible after a later
+follow-up improves or resolves the same canonical gap. They are audit evidence;
+current routing still comes from latest-attempt `repair_route_quality[]`.
 `top_failing_repair_routes[]` is the subset with unexpected unchanged,
 regressed, no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
@@ -3548,6 +3620,10 @@ top failing repair routes into analyzer/report backlog packets with stable
 packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
 rows are not public repair packets, are not swarm-ready work, and do not promote
 or downgrade actionability by themselves.
+`top_historical_failing_repair_routes[]` applies the same failing-route ordering
+to durable history. It is for route-learning audits and must not be used as the
+current next action when the latest-attempt projection has already improved or
+resolved the route.
 When `sample_missing_receipt_reasons[]` shows that no-receipt attempts timed
 out before receipt capture, readiness routes that sample to the bounded
 verify-route `improve_repair_route_quality` action instead of generic

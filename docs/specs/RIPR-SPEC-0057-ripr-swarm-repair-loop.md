@@ -380,6 +380,14 @@ for failing latest attempts when available, and readiness should point
 preserving the first failed-attempt sample in the reason text. Route-quality
 work should start from a concrete failed attempt without re-queuing that failed
 repair packet as swarm-ready work.
+Attempt-ledger reports should also project `historical_repair_route_quality[]`,
+`historical_language_repair_route_quality[]`, and
+`top_historical_failing_repair_routes[]` from durable full attempt history. These
+history rows keep older unchanged, regressed, and no-receipt attempts visible
+after a later follow-up improves or resolves the same canonical gap. They are
+route-learning audit evidence, not current routing state; current readiness
+actions still come from latest-attempt repair-route quality and explicit
+missing-evidence rows.
 Attempt-ledger and readiness reports should also project
 `repair_route_quality_backlog[]` from the top failing repair routes. Each row is
 an analyzer/report improvement packet with a stable `packet_id`,

@@ -22998,6 +22998,8 @@ struct RiprSwarmAttemptLedgerReport {
     latest_attempts: Vec<RiprSwarmAttemptLedgerEntry>,
     repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
     language_repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
+    historical_repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
+    historical_language_repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
     top_missing_evidence_fields: Vec<RiprSwarmMissingEvidenceFieldRow>,
     orphaned_receipts: Vec<Value>,
 }
@@ -25331,6 +25333,9 @@ fn ripr_swarm_attempt_ledger_from_values_with_real_repair_attempts(
     let repair_route_quality = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
     let language_repair_route_quality =
         ripr_swarm_attempt_ledger_language_repair_route_quality(&latest_attempts);
+    let historical_repair_route_quality = ripr_swarm_attempt_ledger_repair_route_quality(&attempts);
+    let historical_language_repair_route_quality =
+        ripr_swarm_attempt_ledger_language_repair_route_quality(&attempts);
     let top_missing_evidence_fields =
         ripr_swarm_attempt_ledger_top_missing_evidence_fields(&latest_attempts);
     let orphaned_receipts = actionable_gap_outcomes
@@ -25366,6 +25371,8 @@ fn ripr_swarm_attempt_ledger_from_values_with_real_repair_attempts(
         latest_attempts,
         repair_route_quality,
         language_repair_route_quality,
+        historical_repair_route_quality,
+        historical_language_repair_route_quality,
         top_missing_evidence_fields,
         orphaned_receipts,
     }
@@ -26524,8 +26531,17 @@ fn ripr_swarm_attempt_ledger_json(report: &RiprSwarmAttemptLedgerReport) -> Resu
         "language_repair_route_quality": ripr_swarm_repair_route_quality_json(
             &report.language_repair_route_quality
         ),
+        "historical_repair_route_quality": ripr_swarm_repair_route_quality_json(
+            &report.historical_repair_route_quality
+        ),
+        "historical_language_repair_route_quality": ripr_swarm_repair_route_quality_json(
+            &report.historical_language_repair_route_quality
+        ),
         "top_failing_repair_routes": ripr_swarm_top_failing_repair_routes_json(
             &report.repair_route_quality
+        ),
+        "top_historical_failing_repair_routes": ripr_swarm_top_failing_repair_routes_json(
+            &report.historical_repair_route_quality
         ),
         "repair_route_quality_backlog": ripr_swarm_repair_route_quality_backlog_json(
             &ripr_swarm_readiness_top_failing_repair_routes(&report.repair_route_quality)
@@ -26719,6 +26735,19 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
     out.push_str("## Repair Route Quality By Language\n\n");
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.language_repair_route_quality);
+    out.push_str("## Historical Repair Route Quality\n\n");
+    out.push_str("Durable history rows preserve older unchanged, regressed, and no-receipt attempts after a later attempt improves or resolves the same canonical gap. They are audit evidence, not current routing state.\n\n");
+    ripr_swarm_push_repair_route_quality_table(&mut out, &report.historical_repair_route_quality);
+    out.push_str("## Historical Repair Route Quality By Language\n\n");
+    ripr_swarm_push_repair_route_quality_table(
+        &mut out,
+        &report.historical_language_repair_route_quality,
+    );
+    out.push_str("## Historical Repair Route Quality Backlog\n\n");
+    ripr_swarm_push_repair_route_quality_backlog_table(
+        &mut out,
+        &ripr_swarm_readiness_top_failing_repair_routes(&report.historical_repair_route_quality),
+    );
     out.push_str("## Repair Route Quality Backlog\n\n");
     ripr_swarm_push_repair_route_quality_backlog_table(
         &mut out,
@@ -26747,6 +26776,7 @@ fn ripr_swarm_attempt_ledger_markdown(report: &RiprSwarmAttemptLedgerReport) -> 
         "- Attempt ledgers preserve existing artifact joins; they do not execute repairs.\n",
     );
     out.push_str("- Repair-route quality is grouped from latest attempts by `repair_kind`; it is an improvement signal, not a ranking gate.\n");
+    out.push_str("- Historical repair-route quality is durable audit evidence; current routing still comes from latest attempts.\n");
     out.push_str("- `not_attempted` means no matching attempt artifact was supplied, not that repair failed.\n");
     out.push_str("- `receipt_present` without movement is not evidence improvement.\n");
     out.push_str("- Orphaned receipts do not create new actionable gaps.\n");
@@ -62791,11 +62821,16 @@ mod tests {
 
     use super::PrActionableInput;
     use super::RiprSwarmAttemptLedgerEntry;
+    use super::RiprSwarmAttemptLedgerReport;
     use super::RiprSwarmCommand;
     use super::RiprSwarmReadinessInput;
     use super::XtaskCommand;
     use super::dispatch;
+    use super::lane1_runtime_status_full;
+    use super::ripr_swarm_attempt_ledger_latest_attempts;
+    use super::ripr_swarm_attempt_ledger_repair_route_quality;
     use super::ripr_swarm_repair_route_quality_attempt_is_failure;
+    use super::ripr_swarm_repair_route_quality_failure_count;
     use super::run::{
         TimedFileOutput, TimedOutput, capture_output, run, run_output, run_output_optional,
         run_output_owned,
@@ -95099,6 +95134,133 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(!ripr_swarm_repair_route_quality_attempt_is_failure(
             &attempt("resolved", Some("pass"))
         ));
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_ledger_projects_historical_route_quality() -> Result<(), String> {
+        fn attempt(
+            packet_id: &str,
+            outcome: &str,
+            receipt_state: &str,
+            verify_result: &str,
+            timestamp: &str,
+            missing_receipt_reason: Option<&str>,
+        ) -> RiprSwarmAttemptLedgerEntry {
+            RiprSwarmAttemptLedgerEntry {
+                packet_id: packet_id.to_string(),
+                canonical_gap_id: "gap:call-a".to_string(),
+                attempt_id: format!("attempt:{packet_id}:{outcome}"),
+                language: None,
+                evidence_class: Some("call_presence".to_string()),
+                source_file: Some("crates/ripr/src/lsp/tests.rs".to_string()),
+                repair_kind: Some("add_call_observer".to_string()),
+                target_test_type: Some("call_observer".to_string()),
+                assertion_shape: Some("serve_stdio observer".to_string()),
+                actor_kind: "codex".to_string(),
+                receipt_path: None,
+                verify_command: "cargo test -p ripr serve_stdio_call_presence_observer".to_string(),
+                verify_result: Some(verify_result.to_string()),
+                receipt_command: Some("cargo xtask dogfood".to_string()),
+                missing_receipt_reason: missing_receipt_reason.map(str::to_string),
+                before_gap_state: Some("actionable".to_string()),
+                after_gap_state: Some("actionable".to_string()),
+                outcome: outcome.to_string(),
+                timestamp: Some(timestamp.to_string()),
+                receipt_state: receipt_state.to_string(),
+                movement_source: Some("real_repair_attempts".to_string()),
+                route_quality_expectation: None,
+                reason: "fixture attempt".to_string(),
+            }
+        }
+
+        let attempts = vec![
+            attempt(
+                "packet-call-broad-receipt",
+                "attempted_no_receipt",
+                "receipt_missing",
+                "not_run",
+                "unix_ms:1",
+                Some("repo exposure verify timed out before receipt capture"),
+            ),
+            attempt(
+                "packet-call-bounded-receipt",
+                "evidence_improved",
+                "receipt_movement_improved",
+                "pass",
+                "unix_ms:2",
+                None,
+            ),
+        ];
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        let repair_route_quality = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
+        let historical_repair_route_quality =
+            ripr_swarm_attempt_ledger_repair_route_quality(&attempts);
+
+        assert_eq!(latest_attempts.len(), 1);
+        assert_eq!(repair_route_quality[0].attempted, 1);
+        assert_eq!(repair_route_quality[0].improved, 1);
+        assert_eq!(
+            ripr_swarm_repair_route_quality_failure_count(&repair_route_quality[0]),
+            0
+        );
+        assert_eq!(historical_repair_route_quality[0].attempted, 2);
+        assert_eq!(historical_repair_route_quality[0].improved, 1);
+        assert_eq!(historical_repair_route_quality[0].attempted_no_receipt, 1);
+        assert_eq!(
+            ripr_swarm_repair_route_quality_failure_count(&historical_repair_route_quality[0]),
+            1
+        );
+        assert_eq!(
+            historical_repair_route_quality[0].sample_packet_ids,
+            vec!["packet-call-broad-receipt".to_string()]
+        );
+
+        let report = RiprSwarmAttemptLedgerReport {
+            status: "advisory".to_string(),
+            runtime_status: lane1_runtime_status_full(),
+            generated_at: "unix_ms:3".to_string(),
+            swarm_plan_path: "target/ripr/reports/swarm-plan.json".to_string(),
+            swarm_plan_state: "read".to_string(),
+            swarm_plan_limitation: None,
+            actionable_gap_outcomes_path: "target/ripr/reports/actionable-gap-outcomes.json"
+                .to_string(),
+            actionable_gap_outcomes_state: "read".to_string(),
+            actionable_gap_outcomes_limitation: None,
+            prior_ledger_path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+            prior_ledger_state: "read".to_string(),
+            prior_ledger_limitation: None,
+            real_repair_attempts_path: "fixtures/real-repair-attempts/corpus.json".to_string(),
+            real_repair_attempts_state: "read".to_string(),
+            real_repair_attempts_limitation: None,
+            attempts,
+            latest_attempts,
+            repair_route_quality,
+            language_repair_route_quality: Vec::new(),
+            historical_repair_route_quality,
+            historical_language_repair_route_quality: Vec::new(),
+            top_missing_evidence_fields: Vec::new(),
+            orphaned_receipts: Vec::new(),
+        };
+        let value: serde_json::Value =
+            serde_json::from_str(&ripr_swarm_attempt_ledger_json(&report)?)
+                .map_err(|err| err.to_string())?;
+
+        assert_eq!(value["top_failing_repair_routes"], serde_json::json!([]));
+        assert_eq!(
+            value["top_historical_failing_repair_routes"][0]["repair_kind"],
+            "add_call_observer"
+        );
+        assert_eq!(
+            value["top_historical_failing_repair_routes"][0]["sample_packet_ids"][0],
+            "packet-call-broad-receipt"
+        );
+        let markdown = ripr_swarm_attempt_ledger_markdown(&report);
+        assert!(markdown.contains("## Historical Repair Route Quality"));
+        assert!(markdown.contains("## Historical Repair Route Quality Backlog"));
+        assert!(markdown.contains("packet-call-broad-receipt"));
+        assert!(markdown.contains("current routing still comes from latest attempts"));
+
+        Ok(())
     }
 
     #[test]
