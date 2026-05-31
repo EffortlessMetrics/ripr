@@ -113,6 +113,43 @@
       "reason": "A real merged readiness PR improved the trust loop by turning an incomplete repair packet into a named blocked route with a concrete remediation field instead of overclaiming actionability."
     },
     {
+      "id": "limitation_backlog_legacy_route_hardening_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#731",
+      "canonical_gap_id": "gap:limitation-backlog-legacy-route-hardening",
+      "packet_id": "limitation:activation-boundary-input-unresolved:local-computed",
+      "repair_kind": "harden_limitation_backlog_routes",
+      "target_test_or_observer_shape": "readiness top_limitation_routes assertions that legacy limitation backlog packets fill standard non-claims, why_not_actionable, unlock_condition, and explicit unknown evidence class values",
+      "verify_command": "cargo test -p xtask ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Hardened readiness projection for older or partial limitation backlog packets so top limitation routes preserve analyzer-route guidance instead of emitting empty or repair-looking rows.",
+      "evidence_movement": "improved: legacy limitation backlog routes now receive standard non-claims, fallback non-actionability text, fallback unlock conditions, and explicit unknown evidence-class values while staying non-actionable.",
+      "operator_note": "This dogfoods negative-capability routing. The improvement makes analyzer backlog safer to inspect, but it deliberately does not create public repair packets or swarm-ready work.",
+      "must_not_change": [
+        "do not mark limitation backlog packets public_projection_eligible",
+        "do not mark limitation backlog packets swarm-ready",
+        "do not emit verify or receipt commands for limitation backlog items",
+        "do not change public badge semantics",
+        "do not change CI gate defaults",
+        "do not add provider calls or mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "xtask/src/main.rs::tests::ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets",
+        "xtask/src/main.rs:ripr_swarm_limitation_route_non_claims",
+        "docs/OUTPUT_SCHEMA.md:top_limitation_routes",
+        "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md",
+        "EffortlessMetrics/ripr-swarm#731"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged limitation-backlog PR made non-actionable analyzer routes operational for legacy inputs without crossing the repair-delegation boundary."
+    },
+    {
       "id": "readiness_top_next_action_resolved",
       "source_ref": "EffortlessMetrics/ripr-swarm#416",
       "canonical_gap_id": "gap:readiness-top-next-action-missing",
