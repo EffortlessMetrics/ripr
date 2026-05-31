@@ -272,6 +272,10 @@ can show:
 - a non-boundary field/object outcome fixture proving a broad object truthiness
   assertion can become an exact field assertion and close the canonical Python
   gap
+- a non-boundary output/log outcome fixture proving a broad output observer can
+  become exact output text evidence and close the canonical Python gap, while
+  containment checks such as `"..." in caplog.text` remain conservative weak
+  evidence
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub

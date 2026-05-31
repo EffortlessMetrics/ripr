@@ -4227,6 +4227,33 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn classify_output_assertion_as_exposed() -> Result<(), String> {
+        let finding = classify_change(
+            Path::new("src/notifications.py"),
+            5,
+            "    logger.warning(\"coupon expired\")",
+            &extract_owners(
+                Path::new("src/notifications.py"),
+                "import logging\n\nlogger = logging.getLogger(__name__)\n\ndef warn_coupon():\n    logger.warning(\"coupon expired\")\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_notifications.py"),
+                "from src.notifications import warn_coupon\n\n\
+                 def test_warn_coupon_exact_output(caplog):\n    warn_coupon()\n    assert caplog.text == \"coupon expired\"\n",
+            ),
+        )
+        .ok_or_else(|| "output/log change should classify".to_string())?;
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(missing_discriminator_values(&finding).is_empty());
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_emits_first_python_repair_class_discriminators() -> Result<(), String> {
         let return_finding = classify_change(
             Path::new("src/priority.py"),

@@ -1081,6 +1081,9 @@ Make Python gap improvement durable.
 - `fixtures/first_successful_pr/python-field-gap` pins field/object receipt
   movement where broad object truthiness strengthens to exact returned-field
   evidence and closes the canonical Python gap.
+- `fixtures/first_successful_pr/python-output-gap` pins output/log receipt
+  movement where broad output smoke strengthens to exact output text evidence
+  and closes the canonical Python gap.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.
