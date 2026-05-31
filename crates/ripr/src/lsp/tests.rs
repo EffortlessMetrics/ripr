@@ -1535,6 +1535,7 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (
                 "Write targeted test: open best related test",
                 OPEN_RELATED_TEST_COMMAND
@@ -1595,28 +1596,48 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         commands[1].2[0]["repair_route"]["related_test"],
         "tests/test_pricing.py::test_discount_boundary"
     );
+    assert_eq!(commands[2].2[0]["label"], "python_repair_card");
     assert_eq!(
-        commands[2].2[0]["uri"],
+        commands[2].2[0]["freshness"],
+        "validated_current_gap_record"
+    );
+    let card = commands[2].2[0]["brief"]
+        .as_str()
+        .ok_or_else(|| "missing Python repair-card text".to_string())?;
+    for needle in [
+        "Python repair card (preview/advisory)",
+        "Freshness: current validated GapRecord diagnostic.",
+        "Changed owner:\n  python:app/pricing.py::calculate_discount",
+        "Current test evidence:",
+        "Missing discriminator:\n  assert price(threshold) == expected",
+        "Verify:\n  ripr agent verify --root . --json",
+        "Receipt:\n  ripr agent receipt --root . --json",
+        "Static preview evidence only",
+    ] {
+        assert!(card.contains(needle), "missing {needle:?} in:\n{card}");
+    }
+    assert_eq!(
+        commands[3].2[0]["uri"],
         file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
     );
-    assert_eq!(commands[2].2[0]["line"], 2);
-    assert_eq!(commands[2].2[0]["test_name"], "test_discount_boundary");
-    assert_eq!(commands[3].2[0]["label"], "gap_verify");
-    assert_eq!(
-        commands[3].2[0]["command"],
-        "ripr agent verify --root . --json"
-    );
-    assert_eq!(commands[4].2[0]["label"], "gap_receipt");
+    assert_eq!(commands[3].2[0]["line"], 2);
+    assert_eq!(commands[3].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[4].2[0]["label"], "gap_verify");
     assert_eq!(
         commands[4].2[0]["command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(commands[5].2[0]["label"], "gap_receipt");
+    assert_eq!(
+        commands[5].2[0]["command"],
         "ripr agent receipt --root . --json"
     );
     assert!(
-        commands[5].2[0]["note"]
+        commands[6].2[0]["note"]
             .as_str()
             .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
         "expected static-limit note, got {:?}",
-        commands[5].2[0]
+        commands[6].2[0]
     );
     Ok(())
 }
@@ -1733,6 +1754,27 @@ fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(
             .any(|(title, _, _)| title == "Copy first repair packet"),
         "pytest verify commands should be safe enough for first repair packets: {commands:?}"
     );
+    let repair_card = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Copy Python repair card" && command == COPY_TARGETED_TEST_BRIEF_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing Python repair-card action: {commands:?}"))?;
+    assert_eq!(repair_card["label"], "python_repair_card");
+    let card = repair_card["brief"]
+        .as_str()
+        .ok_or_else(|| format!("missing repair-card brief: {repair_card:?}"))?;
+    for needle in [
+        "Python repair card (preview/advisory)",
+        "Freshness: current validated GapRecord diagnostic.",
+        "Changed behavior:\n  if amount >= threshold:",
+        "Missing discriminator:\n  amount == threshold",
+        "Suggested assertion:\n  assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "Verify:\n  pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    ] {
+        assert!(card.contains(needle), "missing {needle:?} in:\n{card}");
+    }
     let skeleton = commands
         .iter()
         .find(|(title, command, _)| {
@@ -1891,6 +1933,7 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (
                 "Write targeted test: open best related test",
                 OPEN_RELATED_TEST_COMMAND
@@ -3333,6 +3376,11 @@ fn gap_action_diagnostic() -> tower_lsp_server::ls_types::Diagnostic {
             "repairability": "repairable",
             "static_limit_kind": "missing_import_graph",
             "static_limit_detail": "Imported owner targets were not resolved in preview mode.",
+            "anchor": {
+                "file": "src/pricing.py",
+                "line": 12,
+                "owner": "python:app/pricing.py::calculate_discount"
+            },
             "repair_route": {
                 "route_kind": "AddBoundaryAssertion",
                 "target_file": "tests/test_pricing.py",

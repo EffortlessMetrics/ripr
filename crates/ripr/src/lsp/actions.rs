@@ -284,6 +284,9 @@ fn push_gap_actions(
             target,
         ));
     }
+    if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
+        actions.push(copy_python_repair_card_action(target));
+    }
     if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
         actions.push(copy_python_pytest_skeleton_action(target));
     }
@@ -351,6 +354,7 @@ const AGENT_VERIFY_COMMAND_TITLE: &str = "Verify after test: copy verify command
 const AGENT_RECEIPT_COMMAND_TITLE: &str = "Review result: copy receipt command";
 const COPY_STATIC_LIMIT_NOTE_TITLE: &str = "Inspect gap: copy static-limit note";
 const COPY_FIRST_REPAIR_PACKET_TITLE: &str = "Copy first repair packet";
+const COPY_PYTHON_REPAIR_CARD_TITLE: &str = "Copy Python repair card";
 const COPY_PYTHON_PYTEST_SKELETON_TITLE: &str = "Write Python test: copy pytest skeleton";
 const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
 
@@ -624,6 +628,139 @@ fn first_repair_packet_text(
         "- Do not generate tests, call providers, or run mutation execution from the editor."
             .to_string(),
     );
+    Some(lines.join("\n"))
+}
+
+fn python_repair_card_target(snapshot: &AnalysisSnapshot, data: &Value) -> Option<LSPAny> {
+    if string_at(data, &["language"]) != Some("python") {
+        return None;
+    }
+    let route = data.get("repair_route")?;
+    route.get("route_kind").and_then(non_empty_string)?;
+    for key in ["target_file", "related_test"] {
+        if let Some(path) = route.get(key).and_then(non_empty_string)
+            && !workspace_path_is_safe(snapshot.root.as_path(), path)
+        {
+            return None;
+        }
+    }
+    let verify_command =
+        first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;
+    let receipt_command = first_safe_receipt_command(snapshot.root.as_path(), data);
+    let card = python_repair_card_text(data, route, &verify_command, receipt_command.as_deref())?;
+    let mut target = serde_json::Map::new();
+    target.insert(
+        "label".to_string(),
+        Value::String("python_repair_card".to_string()),
+    );
+    target.insert("brief".to_string(), Value::String(card));
+    target.insert(
+        "freshness".to_string(),
+        Value::String("validated_current_gap_record".to_string()),
+    );
+    copy_optional_string(&mut target, data, "gap_id");
+    copy_optional_string(&mut target, data, "canonical_gap_id");
+    copy_optional_string(&mut target, data, "language");
+    copy_optional_string(&mut target, data, "language_status");
+    copy_optional_string(&mut target, data, "gap_state");
+    copy_optional_value(&mut target, data, "repair_route");
+    target.insert("verify_command".to_string(), Value::String(verify_command));
+    if let Some(command) = receipt_command {
+        target.insert("receipt_command".to_string(), Value::String(command));
+    }
+    Some(Value::Object(target))
+}
+
+fn python_repair_card_text(
+    data: &Value,
+    route: &Value,
+    verify_command: &str,
+    receipt_command: Option<&str>,
+) -> Option<String> {
+    let gap_identity = first_gap_identity(data)?;
+    let changed_owner = string_at(data, &["anchor", "owner"]).unwrap_or(gap_identity);
+    let missing_discriminator = missing_discriminator_for_packet(data, route)?;
+    let route_kind = route.get("route_kind").and_then(non_empty_string)?;
+    let assertion = route
+        .get("assertion_shape")
+        .and_then(non_empty_string)
+        .unwrap_or(missing_discriminator.as_str());
+    let target_file = route.get("target_file").and_then(non_empty_string);
+    let related_test = route.get("related_test").and_then(non_empty_string);
+    let test_name = related_test
+        .map(related_test_name_or_raw)
+        .filter(|name| !name.is_empty());
+    let mut lines = vec![
+        "Python repair card (preview/advisory)".to_string(),
+        String::new(),
+        "Freshness: current validated GapRecord diagnostic.".to_string(),
+        "If the editor status is stale, refresh analysis before assigning repair work.".to_string(),
+        String::new(),
+        "Changed owner:".to_string(),
+        format!("  {changed_owner}"),
+    ];
+    if let Some(changed_behavior) = route.get("changed_behavior").and_then(non_empty_string) {
+        lines.push("Changed behavior:".to_string());
+        lines.push(format!("  {changed_behavior}"));
+    }
+    lines.push("Current test evidence:".to_string());
+    if let Some(related_test) = related_test {
+        lines.push(format!("  Related test target: {related_test}"));
+        lines.push("  Current evidence is weak preview evidence; strengthen it with the missing discriminator.".to_string());
+    } else {
+        lines.push(
+            "  No related test selector is available in this GapRecord; use the suggested file."
+                .to_string(),
+        );
+    }
+    lines.push("Missing discriminator:".to_string());
+    lines.push(format!("  {missing_discriminator}"));
+    lines.push("Recommended repair:".to_string());
+    lines.push(format!("  {route_kind}"));
+    lines.push("Suggested assertion:".to_string());
+    lines.push(format!("  {assertion}"));
+    lines.push("Suggested location:".to_string());
+    match (target_file, test_name) {
+        (Some(file), Some(name)) => {
+            lines.push(format!("  File: {file}"));
+            lines.push(format!("  Test: {name}"));
+        }
+        (Some(file), None) => lines.push(format!("  File: {file}")),
+        (None, Some(name)) => lines.push(format!("  Test: {name}")),
+        (None, None) => {
+            lines.push("  No safe suggested location is available in this GapRecord.".to_string());
+        }
+    }
+    lines.push("Verify:".to_string());
+    lines.push(format!("  {verify_command}"));
+    lines.push("Receipt:".to_string());
+    lines.push(format!(
+        "  {}",
+        receipt_command.unwrap_or(
+            "unavailable in this GapRecord; regenerate the gap ledger from check output"
+        )
+    ));
+    if let Some(items) = route
+        .get("stop_conditions")
+        .and_then(Value::as_array)
+        .filter(|items| !items.is_empty())
+    {
+        lines.push("Stop conditions:".to_string());
+        for item in items {
+            if let Some(text) = item.as_str().map(str::trim).filter(|text| !text.is_empty()) {
+                lines.push(format!("  - {text}"));
+            }
+        }
+    }
+    lines.push("Limits:".to_string());
+    lines.push(
+        "  - Static preview evidence only; no correctness or mutation adequacy claim.".to_string(),
+    );
+    lines.push(
+        "  - Edit only the suggested test surface unless a separate packet says otherwise."
+            .to_string(),
+    );
+    lines.push("  - Do not generate tests, call providers, run imports, or edit production code from this card.".to_string());
     Some(lines.join("\n"))
 }
 
@@ -1005,6 +1142,19 @@ fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
         kind: Some(CodeActionKind::QUICKFIX),
         command: Some(Command {
             title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
+            command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
+            arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn copy_python_repair_card_action(target: LSPAny) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),

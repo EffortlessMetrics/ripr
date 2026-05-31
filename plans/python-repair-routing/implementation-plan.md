@@ -868,6 +868,12 @@ Bring Python repair cards into editor surfaces.
   changed behavior, verify command, stop conditions, and a fail-fast
   `NotImplementedError` placeholder rather than silently generating a passing
   test.
+- Python preview GapRecord diagnostics with a safe verify command now expose a
+  `Copy Python repair card` code action. The copied card is marked as current
+  validated GapRecord evidence and includes the changed owner, changed
+  behavior, current weak test evidence, missing discriminator, suggested
+  assertion/location, verify command, receipt command when available, stop
+  conditions, and preview/advisory limits.
 - GapRecord code actions now fall back from a bare Python test name to
   `repair_route.target_file` when opening the related test file, matching the
   check-output-derived Python repair-card shape.
