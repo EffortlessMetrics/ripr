@@ -3377,6 +3377,7 @@ actionable operator evidence instead of only route-quality counts.
         "not a public repair packet",
         "not swarm-ready work",
         "do not retry this repair kind from this backlog item alone",
+        "do not promote or downgrade actionability from route-quality evidence alone",
         "do not change badge or gate semantics from route-quality evidence alone"
       ]
     }
@@ -3521,7 +3522,8 @@ route-quality backlog packet while preserving the concrete failed-attempt
 sample in the reason text. `repair_route_quality_backlog[]` converts
 top failing repair routes into analyzer/report backlog packets with stable
 packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
-rows are not public repair packets and are not swarm-ready work.
+rows are not public repair packets, are not swarm-ready work, and do not promote
+or downgrade actionability by themselves.
 When `sample_missing_receipt_reasons[]` shows that no-receipt attempts timed
 out before receipt capture, readiness routes that sample to the bounded
 verify-route `improve_repair_route_quality` action instead of generic
@@ -3865,6 +3867,7 @@ limits.
         "not a public repair packet",
         "not swarm-ready work",
         "do not retry this repair kind from this backlog item alone",
+        "do not promote or downgrade actionability from route-quality evidence alone",
         "do not change badge or gate semantics from route-quality evidence alone"
       ]
     }
