@@ -190,7 +190,8 @@ affinity.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity`
   pins the negative guard for generic call argument, field, common method,
   enum-field, and match-arm tokens such as `path`, `description`, `is_empty`,
-  `variant`, and `arm`.
+  `variant`, and `arm`, plus argument/context tokens such as `source`,
+  `current_owner`, and `out` from full call expressions.
 - `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains`
   pins that specific call targets remain eligible for assertion-target
   affinity as medium-confidence relation evidence without satisfying activation
