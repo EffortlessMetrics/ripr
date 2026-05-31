@@ -3712,9 +3712,10 @@ limitations, while `static_limitation_backlog_packets` and
 `static_limitation_backlog_signals` describe the separate analyzer backlog.
 `top_limitation_routes[]` is a readiness-level projection of those analyzer
 routes with sample packet context, sample category/subroute, sample canonical
-gap IDs, sample source locations, and non-claims so operators can inspect the
-backlog without treating it as repair work. It is intentionally separate from
-`repair_route_quality[]`, which is based only on latest repair attempts.
+gap IDs, sample source locations, `why_not_actionable`, unlock conditions, and
+non-claims so operators can inspect the backlog without treating it as repair
+work. It is intentionally separate from `repair_route_quality[]`, which is
+based only on latest repair attempts.
 For older or external backlog packets that omit presentation-only route fields,
 readiness fills standard non-claims, fallback non-actionability text, fallback
 unlock conditions, and explicit `unknown` evidence class values rather than
@@ -3725,7 +3726,10 @@ inspect prior unchanged, no-receipt, regressed, or expected-unchanged outcomes
 without treating those superseded rows as current route-quality failures.
 `top_next_action` is a single-object projection of `next_actions[0]` for
 thin downstream surfaces that need one canonical next route without
-reinterpreting the full advisory queue.
+reinterpreting the full advisory queue. When that action routes static
+limitation backlog, its reason preserves the sample subroute and
+`why_not_actionable` text so thin surfaces can explain why the route is
+analyzer work rather than a repair packet.
 When all required inputs are readable but a non-consumable limited runtime state
 is preserved from one input, readiness emits
 `resolve_limited_runtime_status` before packet or route-quality actions so

@@ -185,13 +185,17 @@ The backlog may include `limitation_backlog_packets[]` for analyzer work. Those
 packets must include limitation category, repair route, signal count, sample
 canonical gap IDs or source samples when available, dominant evidence class, why
 the item is not actionable, the analyzer unlock condition, and non-claims. Packet
-identity is route-grained so one limitation category can produce separate
-analyzer backlog packets for separate repair routes. They remain non-actionable
-and must not be placed in `top_ready_packets`.
+identity is route- and subroute-grained when `limitation_subroute` is available,
+so one limitation category can produce separate analyzer backlog packets for
+separate repair routes or expression-shaped repair queues. They remain
+non-actionable and must not be placed in `top_ready_packets`.
 Readiness may project the leading analyzer backlog routes as
-`top_limitation_routes[]`. That projection is separate from
-`repair_route_quality[]`, which is attempt-outcome evidence; limitation routes
-remain non-actionable until the full public packet contract is satisfied.
+`top_limitation_routes[]`. That projection carries `why_not_actionable`, unlock
+conditions, non-claims, and sample subroutes, and the top next action must
+preserve the same non-actionability reason when routing analyzer work. It is
+separate from `repair_route_quality[]`, which is attempt-outcome evidence;
+limitation routes remain non-actionable until the full public packet contract is
+satisfied.
 When readiness consumes older or external backlog packets that omit
 presentation-only route fields, it must preserve the non-actionable boundary by
 filling standard non-claims, fallback why-not-actionable text, fallback unlock
@@ -697,8 +701,9 @@ Current implementation coverage:
   pins route-grained analyzer backlog packet identity when one limitation
   category has multiple repair routes.
 - `xtask::tests::ripr_swarm_readiness_routes_static_limitation_backlog_when_no_ready_packets`
-  pins readiness `top_limitation_routes[]` and sample packet routing without
-  making limitation backlog packets swarm-ready.
+  pins readiness `top_limitation_routes[]`, why-not-actionable projection,
+  subroute-preserving top action text, and sample packet routing without making
+  limitation backlog packets swarm-ready.
 - `xtask::tests::ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets`
   pins readiness fallback non-claims, non-actionability text, unlock conditions,
   and explicit unknown evidence classes for older limitation backlog packets.

@@ -29052,10 +29052,7 @@ fn ripr_swarm_readiness_next_actions(
             evidence_class: route.dominant_evidence_class.clone(),
             repair_kind: None,
             command: Some("cargo xtask lane1-evidence-audit".to_string()),
-            reason: format!(
-                "No swarm-ready packets are available; top limitation route `{}` has {} signal(s), sample packet `{sample_packet}`; route analyzer work instead of attempting user test repairs",
-                route.repair_route, route.signal_count
-            ),
+            reason: ripr_swarm_readiness_limitation_route_action_reason(route, sample_packet),
         });
     } else if summary.swarm_ready_packets == 0
         && let Some((category, count, repair_route)) =
@@ -29100,6 +29097,24 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     actions
+}
+
+fn ripr_swarm_readiness_limitation_route_action_reason(
+    route: &RiprSwarmLimitationRouteRow,
+    sample_packet: &str,
+) -> String {
+    let mut reason = format!(
+        "No swarm-ready packets are available; top limitation route `{}` has {} signal(s), sample packet `{sample_packet}`",
+        route.repair_route, route.signal_count
+    );
+    if let Some(subroute) = route.sample_limitation_subroute.as_deref() {
+        reason.push_str(&format!(", subroute `{subroute}`"));
+    }
+    if let Some(why_not_actionable) = route.why_not_actionable.as_deref() {
+        reason.push_str(&format!("; why not actionable: {why_not_actionable}"));
+    }
+    reason.push_str("; route analyzer work instead of attempting user test repairs");
+    reason
 }
 
 fn ripr_swarm_readiness_runtime_is_sampled_work_queue(runtime_status: &Lane1RuntimeStatus) -> bool {
@@ -29496,11 +29511,11 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
     out.push_str(
         "Limitation routes are analyzer backlog signals, not swarm-ready repair work.\n\n",
     );
-    out.push_str("| Repair route | Signals | Sample packet | Category | Subroute | Dominant class | Sample sources | Unlock condition | Non-claims |\n");
-    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- | --- |\n");
+    out.push_str("| Repair route | Signals | Sample packet | Category | Subroute | Dominant class | Sample sources | Why not actionable | Unlock condition | Non-claims |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} |\n",
+            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |\n",
             audit_markdown_cell(&row.repair_route),
             row.signal_count,
             audit_markdown_cell(row.sample_packet_id.as_deref().unwrap_or("unknown")),
@@ -29516,6 +29531,11 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
             ),
             audit_markdown_cell(row.dominant_evidence_class.as_deref().unwrap_or("unknown")),
             audit_markdown_cell(&ripr_swarm_limitation_route_sample_sources_markdown(row)),
+            audit_markdown_cell(
+                row.why_not_actionable.as_deref().unwrap_or(
+                    "static evidence is insufficient to provide a bounded repair packet"
+                )
+            ),
             audit_markdown_cell(
                 row.unlock_condition
                     .as_deref()
@@ -90551,7 +90571,7 @@ covered_by = ["cargo xtask check-file-policy"]
                                 "evidence_class": "call_presence",
                                 "line": 42,
                                 "expression": "target.call()",
-                                "limitation_reason": "related tests are affinity-ranked but not tied to direct owner calls"
+                                "limitation_reason": "source sample still lacks direct owner-call proof"
                             }
                         ]
                     }
@@ -90641,6 +90661,18 @@ covered_by = ["cargo xtask check-file-policy"]
                 |reason| reason.contains("analysis/related-test-affinity-owner-call-tracing")
             )
         );
+        assert!(
+            value["top_next_action"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("import_path_affinity_missing_owner_call"))
+        );
+        assert!(
+            value["top_next_action"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains(
+                    "why not actionable: related tests are affinity-ranked but not tied to direct owner calls"
+                ))
+        );
         assert_eq!(
             value["static_limitation_backlog"]["top_categories"][0]["category"],
             "activation_owner_call_absent_affinity_only"
@@ -90679,7 +90711,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["top_limitation_routes"][0]["sample_sources"][0]["limitation_reason"],
-            "related tests are affinity-ranked but not tied to direct owner calls"
+            "source sample still lacks direct owner-call proof"
         );
         assert!(
             value["top_limitation_routes"][0]["non_claims"]
@@ -90710,11 +90742,16 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("## Top Limitation Routes"));
+        assert!(markdown.contains("Why not actionable"));
         assert!(markdown.contains("route_static_limitation_backlog"));
         assert!(markdown.contains("analysis/related-test-affinity-owner-call-tracing"));
         assert!(markdown.contains("src/lib.rs:42"));
         assert!(markdown.contains("gap:affinity-owner-call"));
         assert!(markdown.contains("target.call()"));
+        assert!(
+            markdown
+                .contains("related tests are affinity-ranked but not tied to direct owner calls")
+        );
         assert!(markdown.contains("not a public repair packet"));
         Ok(())
     }
@@ -90875,6 +90912,10 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("not a public repair packet"));
         assert!(markdown.contains("not swarm-ready work"));
+        assert!(
+            markdown
+                .contains("activation inputs cannot yet be mapped to a safe concrete test value")
+        );
         assert!(markdown.contains("src/window.rs:44"));
         Ok(())
     }
