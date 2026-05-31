@@ -25,6 +25,7 @@ use super::rust_index::{
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
     CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamFactCache, WorkspaceState,
+    compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
@@ -279,6 +280,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     config: &RiprConfig,
 ) -> Result<Vec<ClassifiedSeam>, String> {
     let total_started = Instant::now();
+    let store_limit = compact_classified_seam_cache_store_limit()?;
     let cache = RepoSeamFactCache::at_compact_classified(root);
     let state = collect_workspace_state(root, config)?;
     let key = state.cache_key();
@@ -304,13 +306,23 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
 
     let classified = inventory_compact_classified_seams_from_state_with_config(&state, config)?;
     let store_started = Instant::now();
-    let store_status = match cache.store_compact_classified_seams(&key, &classified) {
-        Ok(()) => "ok".to_string(),
-        Err(reason) => {
-            eprintln!("ripr: compact repo seam cache store ignored ({reason})");
-            cache_store_status_label(&reason)
-        }
-    };
+    trace_latency_phase(
+        "compact_cache_store",
+        &format!(
+            "start_classified_{}_limit_{}",
+            classified.len(),
+            store_limit
+        ),
+        Duration::ZERO,
+    );
+    let store_status =
+        match cache.store_compact_classified_seams_with_limit(&key, &classified, store_limit) {
+            Ok(()) => "ok".to_string(),
+            Err(reason) => {
+                eprintln!("ripr: compact repo seam cache store ignored ({reason})");
+                cache_store_status_label(&reason)
+            }
+        };
     trace_latency_phase(
         "compact_cache_store",
         &store_status,
