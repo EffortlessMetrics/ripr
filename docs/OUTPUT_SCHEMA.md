@@ -4571,6 +4571,12 @@ receipts at
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json`,
 and
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md`.
+The non-boundary return-value receipt path is pinned by
+`fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json`,
+`fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json`,
+`fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json`,
+and
+`fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md`.
 
 Field contract:
 

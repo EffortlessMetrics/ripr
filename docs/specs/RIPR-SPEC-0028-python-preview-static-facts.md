@@ -264,6 +264,8 @@ can show:
 - outcome fixtures proving Python canonical gaps can close, remain unchanged,
   reopen, strengthen without closing, and weaken across check-output snapshots
   while preserving static/advisory receipt language
+- a non-boundary return-value outcome fixture proving a weak broad assertion can
+  become an exact return assertion and close the canonical Python gap
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub

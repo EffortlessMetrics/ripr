@@ -712,6 +712,10 @@ outputs = [
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md",
+  "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json",
+  "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
+  "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json",
+  "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json",
@@ -2172,6 +2176,7 @@ fixtures = [
   "fixtures/python_mixed_language_no_cross_route",
   "fixtures/python_disabled",
   "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -4014,6 +4019,7 @@ tests = [
   "xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions",
   "xtask::tests::first_successful_pr_corpus_reports_outcome_receipt_drift",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_return_value_fixture_matches_expected_receipts",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",
@@ -4033,6 +4039,10 @@ fixtures = [
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json",
   "fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md",
+  "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json",
+  "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
+  "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json",
+  "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md",
 ]
 code = [
   "xtask/src/command.rs",

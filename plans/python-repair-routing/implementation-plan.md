@@ -1071,6 +1071,9 @@ Make Python gap improvement durable.
   improve, weaken, or reopen without a Python-only receipt command.
 - Strengthened-but-still-weak rows now stay visible in receipt
   `remaining_weak_or_unknown` output instead of being mistaken for closure.
+- `fixtures/first_successful_pr/python-return-gap` pins a non-boundary
+  return-value receipt where broad pytest evidence strengthens to an exact
+  return assertion and closes the canonical Python gap.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.

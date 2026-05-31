@@ -1969,6 +1969,30 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn targeted_test_outcome_python_return_value_fixture_matches_expected_receipts()
+    -> Result<(), String> {
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: include_str!(
+                "../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json"
+            ),
+            after: include_str!(
+                "../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json"
+            ),
+            before_path: "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
+            expected_gap_movement: "closed",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md"
+            ),
+        })?;
+        Ok(())
+    }
+
     struct PythonPreviewOutcomeFixture<'a> {
         before: &'a str,
         after: &'a str,
