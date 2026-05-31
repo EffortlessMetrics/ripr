@@ -2671,6 +2671,14 @@ otherwise it uses the category fallback route.
         "repair_route": "analysis/local-computed-boundary-operand-resolution"
       }
     ],
+    "top_subroutes": [
+      {
+        "category": "activation_owner_call_absent_call_presence_target_affinity",
+        "subroute": "bare_alias_unsupported",
+        "count": 12,
+        "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+      }
+    ],
     "top_repair_routes": [
       {
         "repair_route": "analysis/local-computed-boundary-operand-resolution",
@@ -2681,6 +2689,7 @@ otherwise it uses the category fallback route.
       {
         "packet_id": "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution",
         "limitation_category": "activation_boundary_input_unresolved",
+        "limitation_subroute": "activation_boundary_input_unresolved",
         "repair_route": "analysis/local-computed-boundary-operand-resolution",
         "signal_count": 297,
         "sample_canonical_gap_ids": ["gap:idx-offset-local"],
@@ -2816,9 +2825,12 @@ repair-ready packet work.
 `static_limitation_backlog.limitation_backlog_packets[]` turns top limitation
 routes into analyzer work packets with sample IDs, source file, optional line,
 expression, limitation reason, dominant evidence class, unlock condition, and
-non-claims. Packet identity is route-grained: the same limitation category can
-emit separate backlog packets for separate analyzer repair routes. These packets
-are not public repair packets and must not enter the swarm-ready queue.
+non-claims. `limitation_subroute` names the more specific analyzer bucket when a
+category is still too broad, such as target-affinity owner-call cases that are
+blocked by unsupported alias or ambiguity shapes. Packet identity is route- and
+subroute-grained: the same limitation category can emit separate backlog packets
+for separate analyzer repair routes or named subroutes. These packets are not
+public repair packets and must not enter the swarm-ready queue.
 
 ```json
 {
@@ -2844,6 +2856,14 @@ are not public repair packets and must not enter the swarm-ready queue.
     "top_categories": [
       {
         "category": "activation_value_unresolved",
+        "count": 141,
+        "repair_route": "analysis/value-resolution-audit-fixes"
+      }
+    ],
+    "top_subroutes": [
+      {
+        "category": "activation_value_unresolved",
+        "subroute": "activation_value_unresolved",
         "count": 141,
         "repair_route": "analysis/value-resolution-audit-fixes"
       }
@@ -3576,9 +3596,9 @@ surfaces can show the leading analyzer repair routes when no packet is safely
 actionable. This field is advisory limitation backlog, not a public actionable
 count and not a CI gate predicate.
 `top_limitation_routes[]` is a readiness-level projection of those analyzer
-routes with sample packet context, sample canonical gap IDs, and sample source
-locations so operators can inspect the backlog without treating it as repair
-work. It is intentionally separate from
+routes with sample packet context, sample category/subroute, sample canonical
+gap IDs, and sample source locations so operators can inspect the backlog
+without treating it as repair work. It is intentionally separate from
 `repair_route_quality[]`, which is based only on latest repair attempts.
 `attempt_history_summary` preserves durable attempt-ledger history before
 readiness collapses to latest attempts for current routing counts. Use it to
@@ -3698,6 +3718,7 @@ limits.
       "signal_count": 141,
       "sample_packet_id": "limitation:activation-value-unresolved:value-resolution-audit-fixes",
       "sample_limitation_category": "activation_value_unresolved",
+      "sample_limitation_subroute": "activation_value_unresolved",
       "sample_canonical_gap_ids": ["gap:value-resolution"],
       "sample_sources": [
         {

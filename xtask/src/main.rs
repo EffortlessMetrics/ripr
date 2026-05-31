@@ -18653,6 +18653,7 @@ struct Lane1EvidenceAuditTopCount {
 struct Lane1StaticLimitationBacklogPacket {
     packet_id: String,
     limitation_category: String,
+    limitation_subroute: String,
     repair_route: String,
     signal_count: usize,
     sample_canonical_gap_ids: Vec<String>,
@@ -18676,6 +18677,7 @@ struct Lane1StaticLimitationBacklogSample {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct Lane1StaticLimitationBacklogPacketBuilder {
     limitation_category: String,
+    limitation_subroute: String,
     signal_count: usize,
     repair_route_counts: BTreeMap<String, usize>,
     evidence_class_counts: BTreeMap<String, usize>,
@@ -20098,11 +20100,18 @@ impl Lane1EvidenceAuditBuilder {
                 .unwrap_or_else(|| static_limitation_category(&stage, &state, &reason).to_string());
             let repair_route = audit_string(limitation, &["repair_route"])
                 .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
+            let subroute = static_limitation_subroute(
+                record,
+                limitation,
+                &category,
+                &repair_route,
+                &evidence_class,
+            );
             audit_increment(&mut self.static_reason_counts, &reason);
             audit_increment(&mut self.static_stage_counts, &stage);
             audit_increment(&mut self.static_category_counts, &category);
             audit_increment(&mut self.static_repair_route_counts, &repair_route);
-            static_limitation_backlog_samples.push((category, repair_route, reason));
+            static_limitation_backlog_samples.push((category, subroute, repair_route, reason));
         }
 
         let unknown_stage_count = audit_unknown_stage_count(record);
@@ -20147,9 +20156,10 @@ impl Lane1EvidenceAuditBuilder {
             );
         }
 
-        for (category, repair_route, reason) in static_limitation_backlog_samples {
+        for (category, subroute, repair_route, reason) in static_limitation_backlog_samples {
             self.ingest_static_limitation_backlog_packet_sample(
                 &category,
+                &subroute,
                 &repair_route,
                 Lane1StaticLimitationBacklogSample {
                     canonical_gap_id: sample_canonical_gap_id.clone(),
@@ -20341,14 +20351,16 @@ impl Lane1EvidenceAuditBuilder {
     fn ingest_static_limitation_backlog_packet_sample(
         &mut self,
         category: &str,
+        subroute: &str,
         repair_route: &str,
         sample: Lane1StaticLimitationBacklogSample,
     ) {
         let entry = self
             .static_limitation_backlog_packet_builders
-            .entry(format!("{category}|{repair_route}"))
+            .entry(format!("{category}|{subroute}|{repair_route}"))
             .or_insert_with(|| Lane1StaticLimitationBacklogPacketBuilder {
                 limitation_category: category.to_string(),
+                limitation_subroute: subroute.to_string(),
                 ..Lane1StaticLimitationBacklogPacketBuilder::default()
             });
         entry.signal_count += 1;
@@ -21648,6 +21660,9 @@ fn lane1_static_limitation_backlog_json(report: &Lane1EvidenceAuditReport) -> Va
     serde_json::json!({
         "source": "lane1-evidence-audit.static_limitations",
         "top_categories": top_categories,
+        "top_subroutes": lane1_static_limitation_backlog_top_subroutes(
+            &report.static_limitation_backlog_packets
+        ),
         "top_repair_routes": audit_top_counts(report.static_limitation_repair_route_counts.clone())
             .iter()
             .map(|row| {
@@ -21697,12 +21712,13 @@ fn lane1_static_limitation_backlog_packet_from_builder(
         .map(|row| row.label.clone())
         .unwrap_or_else(|| "unknown".to_string());
     Lane1StaticLimitationBacklogPacket {
-        packet_id: format!(
-            "limitation:{}:{}",
-            builder.limitation_category,
-            audit_slug(&repair_route)
+        packet_id: static_limitation_backlog_packet_id(
+            &builder.limitation_category,
+            &builder.limitation_subroute,
+            &repair_route,
         ),
         limitation_category: builder.limitation_category.clone(),
+        limitation_subroute: builder.limitation_subroute.clone(),
         repair_route: repair_route.clone(),
         signal_count: builder.signal_count,
         sample_canonical_gap_ids: builder.sample_canonical_gap_ids.into_iter().collect(),
@@ -21719,6 +21735,56 @@ fn lane1_static_limitation_backlog_packet_from_builder(
     }
 }
 
+fn static_limitation_backlog_packet_id(
+    category: &str,
+    subroute: &str,
+    repair_route: &str,
+) -> String {
+    if subroute == category {
+        format!("limitation:{}:{}", category, audit_slug(repair_route))
+    } else {
+        format!(
+            "limitation:{}:{}:{}",
+            category,
+            subroute,
+            audit_slug(repair_route)
+        )
+    }
+}
+
+fn lane1_static_limitation_backlog_top_subroutes(
+    packets: &[Lane1StaticLimitationBacklogPacket],
+) -> Vec<Value> {
+    let mut rows = packets
+        .iter()
+        .map(|packet| {
+            serde_json::json!({
+                "category": packet.limitation_category,
+                "subroute": packet.limitation_subroute,
+                "count": packet.signal_count,
+                "repair_route": packet.repair_route,
+            })
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        audit_usize(right, &["count"])
+            .unwrap_or_default()
+            .cmp(&audit_usize(left, &["count"]).unwrap_or_default())
+            .then_with(|| {
+                audit_non_empty_string(left, &["category"])
+                    .unwrap_or_default()
+                    .cmp(&audit_non_empty_string(right, &["category"]).unwrap_or_default())
+            })
+            .then_with(|| {
+                audit_non_empty_string(left, &["subroute"])
+                    .unwrap_or_default()
+                    .cmp(&audit_non_empty_string(right, &["subroute"]).unwrap_or_default())
+            })
+    });
+    rows.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+    rows
+}
+
 fn lane1_static_limitation_backlog_packets_json(
     packets: &[Lane1StaticLimitationBacklogPacket],
 ) -> Vec<Value> {
@@ -21728,6 +21794,7 @@ fn lane1_static_limitation_backlog_packets_json(
             serde_json::json!({
                 "packet_id": packet.packet_id,
                 "limitation_category": packet.limitation_category,
+                "limitation_subroute": packet.limitation_subroute,
                 "repair_route": packet.repair_route,
                 "signal_count": packet.signal_count,
                 "sample_canonical_gap_ids": packet.sample_canonical_gap_ids,
@@ -21756,6 +21823,70 @@ fn lane1_static_limitation_backlog_sample_json(
         "expression": sample.expression,
         "limitation_reason": sample.limitation_reason,
     })
+}
+
+fn static_limitation_subroute(
+    record: &Value,
+    limitation: &Value,
+    category: &str,
+    _repair_route: &str,
+    evidence_class: &str,
+) -> String {
+    if let Some(explicit) = audit_non_empty_string(limitation, &["limitation_subroute"])
+        .or_else(|| audit_non_empty_string(limitation, &["subroute"]))
+    {
+        return audit_identifier_slug(&explicit);
+    }
+
+    match category {
+        "activation_owner_call_absent_call_presence_target_affinity" => {
+            "call_presence_target_affinity_missing_owner_call".to_string()
+        }
+        "activation_owner_call_absent_assertion_target_affinity" => {
+            let class = audit_identifier_slug(evidence_class);
+            format!("assertion_target_affinity_{class}_missing_owner_call")
+        }
+        "activation_owner_call_absent_affinity_only" => {
+            let relation = audit_dominant_related_test_reason(record)
+                .map(|reason| audit_identifier_slug(&reason))
+                .unwrap_or_else(|| "related_test_affinity".to_string());
+            format!("{relation}_missing_owner_call")
+        }
+        "activation_owner_call_absent_same_file_only" => {
+            "same_file_only_missing_owner_call".to_string()
+        }
+        _ => audit_identifier_slug(category),
+    }
+}
+
+fn audit_identifier_slug(value: &str) -> String {
+    let mut slug = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if !slug.ends_with('_') {
+            slug.push('_');
+        }
+    }
+    let trimmed = slug.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn audit_dominant_related_test_reason(record: &Value) -> Option<String> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for related in audit_array(record, &["related_tests"]) {
+        let Some(reason) = audit_non_empty_string(related, &["relation_reason"]) else {
+            continue;
+        };
+        *counts.entry(reason).or_insert(0) += 1;
+    }
+    audit_top_counts(counts)
+        .first()
+        .map(|row| row.label.clone())
 }
 
 fn static_limitation_why_not_actionable(category: &str) -> &'static str {
@@ -22263,6 +22394,7 @@ struct RiprSwarmLimitationRouteRow {
     signal_count: usize,
     sample_packet_id: Option<String>,
     sample_limitation_category: Option<String>,
+    sample_limitation_subroute: Option<String>,
     sample_canonical_gap_ids: Vec<String>,
     sample_sources: Vec<Lane1StaticLimitationBacklogSample>,
     dominant_evidence_class: Option<String>,
@@ -24189,9 +24321,11 @@ fn ripr_swarm_push_count_rows_markdown(out: &mut String, title: &str, rows: &[Va
 
 fn ripr_swarm_push_static_limitation_backlog_markdown(out: &mut String, backlog: &Value) {
     let top_categories = audit_array(backlog, &["top_categories"]);
+    let top_subroutes = audit_array(backlog, &["top_subroutes"]);
     let top_repair_routes = audit_array(backlog, &["top_repair_routes"]);
     let limitation_backlog_packets = audit_array(backlog, &["limitation_backlog_packets"]);
     if top_categories.is_empty()
+        && top_subroutes.is_empty()
         && top_repair_routes.is_empty()
         && limitation_backlog_packets.is_empty()
     {
@@ -24203,14 +24337,16 @@ fn ripr_swarm_push_static_limitation_backlog_markdown(out: &mut String, backlog:
     if !limitation_backlog_packets.is_empty() {
         out.push_str("### Backlog Packets\n\n");
         out.push_str(
-            "| Packet | Category | Count | Dominant class | Repair route | Unlock condition |\n",
+            "| Packet | Category | Subroute | Count | Dominant class | Repair route | Unlock condition |\n",
         );
-        out.push_str("| --- | --- | ---: | --- | --- | --- |\n");
+        out.push_str("| --- | --- | --- | ---: | --- | --- | --- |\n");
         for packet in limitation_backlog_packets {
             let packet_id = audit_non_empty_string(packet, &["packet_id"])
                 .unwrap_or_else(|| "limitation:unknown".to_string());
             let category = audit_non_empty_string(packet, &["limitation_category"])
                 .unwrap_or_else(|| "unknown".to_string());
+            let subroute = audit_non_empty_string(packet, &["limitation_subroute"])
+                .unwrap_or_else(|| audit_identifier_slug(&category));
             let repair_route = audit_non_empty_string(packet, &["repair_route"])
                 .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
             let dominant_evidence_class =
@@ -24221,13 +24357,35 @@ fn ripr_swarm_push_static_limitation_backlog_markdown(out: &mut String, backlog:
                     "inspect the analyzer route before attempting repairs".to_string()
                 });
             out.push_str(&format!(
-                "| `{}` | `{}` | {} | `{}` | `{}` | {} |\n",
+                "| `{}` | `{}` | `{}` | {} | `{}` | `{}` | {} |\n",
                 audit_markdown_cell(&packet_id),
                 audit_markdown_cell(&category),
+                audit_markdown_cell(&subroute),
                 audit_usize(packet, &["signal_count"]).unwrap_or_default(),
                 audit_markdown_cell(&dominant_evidence_class),
                 audit_markdown_cell(&repair_route),
                 audit_markdown_cell(&unlock_condition)
+            ));
+        }
+        out.push('\n');
+    }
+    if !top_subroutes.is_empty() {
+        out.push_str("### Top Subroutes\n\n");
+        out.push_str("| Category | Subroute | Count | Repair route |\n");
+        out.push_str("| --- | --- | ---: | --- |\n");
+        for row in top_subroutes {
+            let category =
+                audit_non_empty_string(row, &["category"]).unwrap_or_else(|| "unknown".to_string());
+            let subroute = audit_non_empty_string(row, &["subroute"])
+                .unwrap_or_else(|| audit_identifier_slug(&category));
+            let repair_route = audit_non_empty_string(row, &["repair_route"])
+                .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} | `{}` |\n",
+                audit_markdown_cell(&category),
+                audit_markdown_cell(&subroute),
+                audit_usize(row, &["count"]).unwrap_or_default(),
+                audit_markdown_cell(&repair_route)
             ));
         }
         out.push('\n');
@@ -27123,6 +27281,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 signal_count,
                 sample_packet_id: None,
                 sample_limitation_category: None,
+                sample_limitation_subroute: None,
                 sample_canonical_gap_ids: Vec::new(),
                 sample_sources: Vec::new(),
                 dominant_evidence_class: None,
@@ -27150,6 +27309,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 signal_count,
                 sample_packet_id: None,
                 sample_limitation_category: None,
+                sample_limitation_subroute: None,
                 sample_canonical_gap_ids: Vec::new(),
                 sample_sources: Vec::new(),
                 dominant_evidence_class: None,
@@ -27160,6 +27320,12 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
         if row.sample_packet_id.is_none() {
             row.sample_packet_id = audit_non_empty_string(packet, &["packet_id"]);
             row.sample_limitation_category = category;
+            row.sample_limitation_subroute =
+                audit_non_empty_string(packet, &["limitation_subroute"]).or_else(|| {
+                    row.sample_limitation_category
+                        .as_deref()
+                        .map(audit_identifier_slug)
+                });
             row.sample_canonical_gap_ids = ripr_swarm_limitation_route_sample_gap_ids(packet);
             row.sample_sources = ripr_swarm_limitation_route_sample_sources(packet);
             row.dominant_evidence_class =
@@ -27228,6 +27394,7 @@ fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Ve
                 "signal_count": row.signal_count,
                 "sample_packet_id": row.sample_packet_id,
                 "sample_limitation_category": row.sample_limitation_category,
+                "sample_limitation_subroute": row.sample_limitation_subroute,
                 "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
                 "sample_sources": row
                     .sample_sources
@@ -28362,16 +28529,21 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
     out.push_str(
         "Limitation routes are analyzer backlog signals, not swarm-ready repair work.\n\n",
     );
-    out.push_str("| Repair route | Signals | Sample packet | Category | Dominant class | Sample sources | Unlock condition |\n");
-    out.push_str("| --- | ---: | --- | --- | --- | --- | --- |\n");
+    out.push_str("| Repair route | Signals | Sample packet | Category | Subroute | Dominant class | Sample sources | Unlock condition |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | {} | `{}` | `{}` | `{}` | {} | {} |\n",
+            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` | {} | {} |\n",
             audit_markdown_cell(&row.repair_route),
             row.signal_count,
             audit_markdown_cell(row.sample_packet_id.as_deref().unwrap_or("unknown")),
             audit_markdown_cell(
                 row.sample_limitation_category
+                    .as_deref()
+                    .unwrap_or("unknown")
+            ),
+            audit_markdown_cell(
+                row.sample_limitation_subroute
                     .as_deref()
                     .unwrap_or("unknown")
             ),
@@ -82243,6 +82415,161 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_static_limitation_backlog_splits_target_affinity_subroutes() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "bare-alias-target-affinity",
+                  "headline_eligible": true,
+                  "file": "tests/target_affinity.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "bare-alias-target-affinity",
+                    "canonical_gap_id": "gap:bare-alias-target-affinity",
+                    "owner": "target_affinity::render_pipeline",
+                    "location": {"file": "tests/target_affinity.rs", "line": 12},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [
+                      {"test_name": "bare_alias_mentions_target", "file": "tests/target_affinity.rs", "line": 12, "relation_reason": "assertion_target_affinity", "relation_confidence": "medium", "oracle_kind": "exact", "oracle_strength": "strong"}
+                    ],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "bare alias target affinity cannot prove owner call", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "call-presence target affinity is present but the bare alias cannot be resolved",
+                        "category": "activation_owner_call_absent_call_presence_target_affinity",
+                        "limitation_subroute": "bare_alias_unsupported",
+                        "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "tests/target_affinity.rs", "line": 12, "kind": "static_unknown", "probe_kind": "call_presence", "expression": "format_output()"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:bare-alias-target-affinity",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "tests/target_affinity.rs", "line": 12, "kind": "static_unknown", "expression": "format_output()"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "bare alias target affinity cannot prove owner call",
+                      "recommended_repair": "Keep this as analyzer backlog until alias resolution is explicit.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                },
+                {
+                  "seam_id": "ambiguous-import-target-affinity",
+                  "headline_eligible": true,
+                  "file": "tests/target_affinity.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "ambiguous-import-target-affinity",
+                    "canonical_gap_id": "gap:ambiguous-import-target-affinity",
+                    "owner": "target_affinity::render_report",
+                    "location": {"file": "tests/target_affinity.rs", "line": 24},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [
+                      {"test_name": "ambiguous_import_mentions_target", "file": "tests/target_affinity.rs", "line": 24, "relation_reason": "assertion_target_affinity", "relation_confidence": "medium", "oracle_kind": "exact", "oracle_strength": "strong"}
+                    ],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "ambiguous import target affinity cannot prove owner call", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "call-presence target affinity is present but imported owner names are ambiguous",
+                        "category": "activation_owner_call_absent_call_presence_target_affinity",
+                        "limitation_subroute": "ambiguous_imported_owner",
+                        "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "tests/target_affinity.rs", "line": 24, "kind": "static_unknown", "probe_kind": "call_presence", "expression": "format_report()"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:ambiguous-import-target-affinity",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "tests/target_affinity.rs", "line": 24, "kind": "static_unknown", "expression": "format_report()"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "ambiguous import target affinity cannot prove owner call",
+                      "recommended_repair": "Keep this as analyzer backlog until import resolution is explicit.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let actionable_json = lane1_actionable_gap_packets_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&actionable_json).map_err(|err| err.to_string())?;
+        let packets = value["static_limitation_backlog"]["limitation_backlog_packets"]
+            .as_array()
+            .ok_or_else(|| "missing limitation backlog packets".to_string())?;
+
+        assert_eq!(packets.len(), 2);
+        assert!(packets.iter().any(|packet| {
+            packet["limitation_subroute"] == "bare_alias_unsupported"
+                && packet["packet_id"]
+                    == "limitation:activation_owner_call_absent_call_presence_target_affinity:bare_alias_unsupported:analysis-call-presence-target-affinity-owner-call-tracing"
+        }));
+        assert!(packets.iter().any(|packet| {
+            packet["limitation_subroute"] == "ambiguous_imported_owner"
+                && packet["packet_id"]
+                    == "limitation:activation_owner_call_absent_call_presence_target_affinity:ambiguous_imported_owner:analysis-call-presence-target-affinity-owner-call-tracing"
+        }));
+        assert_eq!(
+            value["static_limitation_backlog"]["top_categories"][0]["count"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["static_limitation_backlog"]["top_subroutes"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(value["packets"].as_array().map(Vec::len), Some(0));
+
+        let markdown = lane1_actionable_gap_packets_markdown(&report);
+        assert!(markdown.contains("### Top Subroutes"));
+        assert!(markdown.contains("bare_alias_unsupported"));
+        assert!(markdown.contains("ambiguous_imported_owner"));
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_reports_aligned_supported_class_coverage() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(
             ".",
@@ -86001,6 +86328,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     {
                         "packet_id": "limitation:activation-owner-call-absent-affinity-only:related-test-affinity-owner-call-tracing",
                         "limitation_category": "activation_owner_call_absent_affinity_only",
+                        "limitation_subroute": "import_path_affinity_missing_owner_call",
                         "repair_route": "analysis/related-test-affinity-owner-call-tracing",
                         "signal_count": 1148,
                         "dominant_evidence_class": "call_presence",
@@ -86108,6 +86436,10 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["top_limitation_routes"][0]["sample_packet_id"],
             "limitation:activation-owner-call-absent-affinity-only:related-test-affinity-owner-call-tracing"
+        );
+        assert_eq!(
+            value["top_limitation_routes"][0]["sample_limitation_subroute"],
+            "import_path_affinity_missing_owner_call"
         );
         assert_eq!(
             value["top_limitation_routes"][0]["sample_canonical_gap_ids"][0],
