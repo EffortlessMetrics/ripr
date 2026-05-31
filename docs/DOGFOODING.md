@@ -21,7 +21,10 @@ fast` against checked fixture diffs, writes actual outputs under
 `target/ripr/reports/dogfood.json`. It also checks repo-local finding-alignment
 receipts under `fixtures/finding-alignment-dogfood/` so real RIPR PR examples
 preserve the Lane 1 split between raw findings, canonical evidence items, and
-actionable canonical gaps.
+actionable canonical gaps. Python repair-routing eval receipts live under
+`fixtures/python-real-repo-evals/`; they record curated scratch or real-repo
+repair-card, verify, and outcome evidence without promoting Python beyond its
+preview/advisory boundary.
 
 ## Dogfooding Rules
 

@@ -1167,7 +1167,7 @@ Prevent Python support from becoming noisy.
 
 ### Work item: dogfood/python-real-repo-evals
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -1196,6 +1196,13 @@ Prove usefulness outside fixtures.
   durable repair-attempt corpus, so the first closed Python packet/receipt loop
   is visible in the same advisory dogfood report as other swarm repair
   attempts.
+- `fixtures/python-real-repo-evals/corpus.json` now records a tiny controlled
+  pytest scratch-repo eval where RIPR emits a predicate-boundary repair card,
+  a human-run focused pytest command passes, and `ripr outcome` closes the
+  canonical Python gap while preserving the preview/advisory claim boundary.
+- `cargo xtask dogfood` projects the Python real-repo eval corpus into the
+  dogfood report as receipt-backed eval evidence separate from analyzer
+  fixture goldens.
 - Broader outside-fixture evaluations across normal pytest, API, CLI/tooling,
   and mixed Python repos remain the next dogfood slice before metrics or
   support-tier promotion.

@@ -1,0 +1,52 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_real_repo_eval_corpus",
+  "spec": "RIPR-SPEC-0028",
+  "related_spec": "RIPR-SPEC-0057",
+  "description": "Checked dogfood records for Python repair-routing runs outside analyzer fixture goldens.",
+  "limits": [
+    "static preview evidence only",
+    "advisory dogfood receipts only",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "no CI gate or support-tier promotion"
+  ],
+  "cases": [
+    {
+      "id": "tiny_controlled_pytest_boundary_receipt",
+      "repo_shape": "tiny_controlled_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json",
+      "runtime_ms": 114,
+      "top_finding_summary": "Python predicate-boundary repair card for calculate_discount amount >= threshold",
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "changed_owner": "python:app/pricing.py::calculate_discount",
+      "missing_discriminator": "amount == threshold",
+      "suggested_test_file": "tests/test_pricing.py",
+      "suggested_test_name": "test_calculate_discount_smoke",
+      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.30s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 58,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "tiny controlled scratch repo only; normal pytest app, API, CLI/tooling, and mixed repo dogfood remain outstanding",
+      "claim_boundary": [
+        "Python remains preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves one non-fixture Python PR shape can produce a bounded repair card, pass the verify command, and close the canonical gap through an outcome receipt."
+    }
+  ]
+}

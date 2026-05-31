@@ -2159,6 +2159,7 @@ tests = [
   "crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_repair_card_properties",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
   "xtask::tests::dogfood_real_repair_attempt_receipts_are_checked",
+  "xtask::tests::dogfood_python_real_repo_eval_receipts_are_checked",
 ]
 fixtures = [
   "fixtures/python/basic",
@@ -2212,6 +2213,7 @@ fixtures = [
   "fixtures/first_successful_pr/python-field-gap",
   "fixtures/first_successful_pr/python-output-gap",
   "fixtures/real-repair-attempts",
+  "fixtures/python-real-repo-evals",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -2281,6 +2283,7 @@ metrics = [
   "language_adapter_python_swarm_queue_stale_packets",
   "language_adapter_python_gap_receipt_from_check_output",
   "language_adapter_python_real_repair_attempt_receipt",
+  "language_adapter_python_real_repo_eval_receipt",
   "language_adapter_python_pilot_first_use_path",
   "language_adapter_python_first_pr_start_here_path",
   "language_adapter_python_static_limit_stop_reasons",
@@ -4062,6 +4065,7 @@ tests = [
   "xtask::tests::dogfood_surface_projection_alignment_covers_missing_receipt_route_quality",
   "xtask::tests::dogfood_real_repair_attempt_receipts_are_checked",
   "xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions",
+  "xtask::tests::dogfood_python_real_repo_eval_receipts_are_checked",
   "xtask::tests::first_successful_pr_corpus_reports_outcome_receipt_drift",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_return_value_fixture_matches_expected_receipts",
@@ -4074,6 +4078,7 @@ fixtures = [
   "fixtures/actionable-gap-outcomes-corpus",
   "fixtures/surface-projection-alignment",
   "fixtures/real-repair-attempts",
+  "fixtures/python-real-repo-evals",
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
@@ -4162,6 +4167,7 @@ metrics = [
   "blocked_state_route_examples",
   "top_limitation_routes",
   "real_repair_attempt_receipts",
+  "language_adapter_python_real_repo_eval_receipt",
 ]
 
 [[behavior]]

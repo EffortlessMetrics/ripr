@@ -943,6 +943,71 @@ struct DogfoodRealRepairAttemptRun {
 }
 
 #[derive(Debug)]
+struct DogfoodPythonRealRepoEvalScenario {
+    name: String,
+    repo_shape: String,
+    source_kind: String,
+    source_ref: String,
+    command: String,
+    runtime_ms: usize,
+    top_finding_summary: String,
+    canonical_gap_id: String,
+    repair_card_present: bool,
+    repair_action: String,
+    changed_owner: String,
+    missing_discriminator: String,
+    suggested_test_file: String,
+    suggested_test_name: String,
+    verify_command: String,
+    verify_result: String,
+    verify_summary: String,
+    after_command: String,
+    after_runtime_ms: usize,
+    receipt_command: String,
+    receipt_result: String,
+    gap_movement: String,
+    closed_gaps: usize,
+    usability: String,
+    false_positive_notes: String,
+    limitation_notes: String,
+    claim_boundary: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodPythonRealRepoEvalRun {
+    name: String,
+    repo_shape: String,
+    source_kind: String,
+    source_ref: String,
+    command: String,
+    runtime_ms: usize,
+    top_finding_summary: String,
+    canonical_gap_id: String,
+    repair_card_present: bool,
+    repair_action: String,
+    changed_owner: String,
+    missing_discriminator: String,
+    suggested_test_file: String,
+    suggested_test_name: String,
+    verify_command: String,
+    verify_result: String,
+    verify_summary: String,
+    after_command: String,
+    after_runtime_ms: usize,
+    receipt_command: String,
+    receipt_result: String,
+    gap_movement: String,
+    closed_gaps: usize,
+    usability: String,
+    false_positive_notes: String,
+    limitation_notes: String,
+    claim_boundary: Vec<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
 struct DogfoodTypescriptPreviewRepairLoopScenario {
     name: String,
     source_fixture: String,
@@ -1082,6 +1147,7 @@ struct DogfoodReportInputs<'a> {
     finding_alignment_runs: &'a [DogfoodFindingAlignmentRun],
     surface_projection_alignment_runs: &'a [DogfoodSurfaceProjectionAlignmentRun],
     real_repair_attempt_runs: &'a [DogfoodRealRepairAttemptRun],
+    python_real_repo_eval_runs: &'a [DogfoodPythonRealRepoEvalRun],
     typescript_preview_repair_loop_runs: &'a [DogfoodTypescriptPreviewRepairLoopRun],
     user_surface_projection_runs: &'a [DogfoodUserSurfaceProjectionRun],
     pr_inline_comment_runs: &'a [DogfoodPrInlineCommentRun],
@@ -5445,6 +5511,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
                     | "python"
+                    | "python-real-repo-evals"
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
@@ -7762,6 +7829,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_real_repair_attempt_fixture_corpus(&mut violations)?;
+    validate_python_real_repo_eval_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
@@ -7945,6 +8013,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES: &[&str] = &[
 
 const FINDING_ALIGNMENT_DOGFOOD_CORPUS: &str = "fixtures/finding-alignment-dogfood/corpus.json";
 const REAL_REPAIR_ATTEMPTS_CORPUS: &str = "fixtures/real-repair-attempts/corpus.json";
+const PYTHON_REAL_REPO_EVAL_CORPUS: &str = "fixtures/python-real-repo-evals/corpus.json";
 const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
@@ -8020,6 +8089,9 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
     ),
     ("python_preview_boundary_gap_test_only_closed", "resolved"),
 ];
+
+const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] =
+    &[("tiny_controlled_pytest_boundary_receipt", "closed")];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typescript_boundary_predicate_proof", "proof_improved"),
@@ -9065,6 +9137,85 @@ fn validate_real_repair_attempt_fixture_corpus_at(
         violations.push(
             "real repair attempt corpus must include at least one attempted_no_receipt attempt"
                 .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_python_real_repo_eval_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/python-real-repo-evals");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "Python real-repo eval fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    validate_python_real_repo_eval_fixture_corpus_at(
+        Path::new(PYTHON_REAL_REPO_EVAL_CORPUS),
+        violations,
+    )
+}
+
+fn validate_python_real_repo_eval_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "Python real-repo eval corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let scenarios = dogfood_python_real_repo_eval_scenarios_at(path);
+    let mut seen = BTreeMap::new();
+    let mut closed_cases = 0usize;
+    for scenario in &scenarios {
+        if seen
+            .insert(scenario.name.clone(), scenario.gap_movement.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "Python real-repo eval case {} is duplicated",
+                scenario.name
+            ));
+        }
+        if scenario.gap_movement == "closed" {
+            closed_cases += 1;
+        }
+        let run = dogfood_python_real_repo_eval_run(scenario);
+        for error in run.errors {
+            violations.push(format!(
+                "Python real-repo eval case {}: {error}",
+                scenario.name
+            ));
+        }
+    }
+
+    for (case_id, gap_movement) in PYTHON_REAL_REPO_EVAL_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == gap_movement => {}
+            Some(actual) => violations.push(format!(
+                "Python real-repo eval case {case_id} must have gap_movement {gap_movement}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "Python real-repo eval corpus is missing case {case_id}"
+            )),
+        }
+    }
+    if scenarios.is_empty() {
+        violations.push("Python real-repo eval corpus must record at least one case".to_string());
+    }
+    if closed_cases == 0 {
+        violations.push(
+            "Python real-repo eval corpus must include at least one closed gap receipt".to_string(),
         );
     }
 
@@ -40248,6 +40399,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_real_repair_attempt_run(&scenario))
         .collect::<Vec<_>>();
+    let python_real_repo_eval_runs = dogfood_python_real_repo_eval_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_python_real_repo_eval_run(&scenario))
+        .collect::<Vec<_>>();
     let typescript_preview_repair_loop_runs = dogfood_typescript_preview_repair_loop_scenarios()
         .into_iter()
         .map(|scenario| dogfood_typescript_preview_repair_loop_run(&scenario))
@@ -40277,6 +40432,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         finding_alignment_runs: &finding_alignment_runs,
         surface_projection_alignment_runs: &surface_projection_alignment_runs,
         real_repair_attempt_runs: &real_repair_attempt_runs,
+        python_real_repo_eval_runs: &python_real_repo_eval_runs,
         typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
         user_surface_projection_runs: &user_surface_projection_runs,
         pr_inline_comment_runs: &pr_inline_comment_runs,
@@ -43271,6 +43427,289 @@ fn dogfood_real_repair_attempt_conflicting_evidence_movement_tokens(
     .collect()
 }
 
+fn dogfood_python_real_repo_eval_scenarios() -> Vec<DogfoodPythonRealRepoEvalScenario> {
+    dogfood_python_real_repo_eval_scenarios_at(Path::new(PYTHON_REAL_REPO_EVAL_CORPUS))
+}
+
+fn dogfood_python_real_repo_eval_scenarios_at(
+    corpus_path: &Path,
+) -> Vec<DogfoodPythonRealRepoEvalScenario> {
+    let fallback = |reason: String| {
+        vec![DogfoodPythonRealRepoEvalScenario {
+            name: "corpus".to_string(),
+            repo_shape: "unknown".to_string(),
+            source_kind: "unknown".to_string(),
+            source_ref: "unknown".to_string(),
+            command: "unknown".to_string(),
+            runtime_ms: 0,
+            top_finding_summary: "unknown".to_string(),
+            canonical_gap_id: "unknown".to_string(),
+            repair_card_present: false,
+            repair_action: "unknown".to_string(),
+            changed_owner: "unknown".to_string(),
+            missing_discriminator: "unknown".to_string(),
+            suggested_test_file: "unknown".to_string(),
+            suggested_test_name: "unknown".to_string(),
+            verify_command: "unknown".to_string(),
+            verify_result: "unknown".to_string(),
+            verify_summary: "unknown".to_string(),
+            after_command: "unknown".to_string(),
+            after_runtime_ms: 0,
+            receipt_command: "unknown".to_string(),
+            receipt_result: "unknown".to_string(),
+            gap_movement: "unknown".to_string(),
+            closed_gaps: 0,
+            usability: "unknown".to_string(),
+            false_positive_notes: "unknown".to_string(),
+            limitation_notes: "unknown".to_string(),
+            claim_boundary: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback("Python real-repo eval corpus schema_version must be 0.1".to_string());
+    }
+    if json_string_field(&corpus, "kind").as_deref() != Some("python_real_repo_eval_corpus") {
+        return fallback(
+            "Python real-repo eval corpus kind must be python_real_repo_eval_corpus".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0028") {
+        return fallback("Python real-repo eval corpus spec must be RIPR-SPEC-0028".to_string());
+    }
+    if json_string_field(&corpus, "related_spec").as_deref() != Some("RIPR-SPEC-0057") {
+        return fallback(
+            "Python real-repo eval corpus related_spec must be RIPR-SPEC-0057".to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("Python real-repo eval corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| DogfoodPythonRealRepoEvalScenario {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            repo_shape: json_string_field(case, "repo_shape")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_kind: json_string_field(case, "source_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_ref: json_string_field(case, "source_ref")
+                .unwrap_or_else(|| "unknown".to_string()),
+            command: json_string_field(case, "command").unwrap_or_else(|| "unknown".to_string()),
+            runtime_ms: json_usize_field(case, "runtime_ms").unwrap_or_default(),
+            top_finding_summary: json_string_field(case, "top_finding_summary")
+                .unwrap_or_else(|| "unknown".to_string()),
+            canonical_gap_id: json_string_field(case, "canonical_gap_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_card_present: json_bool_field(case, "repair_card_present").unwrap_or(false),
+            repair_action: json_string_field(case, "repair_action")
+                .unwrap_or_else(|| "unknown".to_string()),
+            changed_owner: json_string_field(case, "changed_owner")
+                .unwrap_or_else(|| "unknown".to_string()),
+            missing_discriminator: json_string_field(case, "missing_discriminator")
+                .unwrap_or_else(|| "unknown".to_string()),
+            suggested_test_file: json_string_field(case, "suggested_test_file")
+                .unwrap_or_else(|| "unknown".to_string()),
+            suggested_test_name: json_string_field(case, "suggested_test_name")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_command: json_string_field(case, "verify_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_result: json_string_field(case, "verify_result")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_summary: json_string_field(case, "verify_summary")
+                .unwrap_or_else(|| "unknown".to_string()),
+            after_command: json_string_field(case, "after_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            after_runtime_ms: json_usize_field(case, "after_runtime_ms").unwrap_or_default(),
+            receipt_command: json_string_field(case, "receipt_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_result: json_string_field(case, "receipt_result")
+                .unwrap_or_else(|| "unknown".to_string()),
+            gap_movement: json_string_field(case, "gap_movement")
+                .unwrap_or_else(|| "unknown".to_string()),
+            closed_gaps: json_usize_field(case, "closed_gaps").unwrap_or_default(),
+            usability: json_string_field(case, "usability")
+                .unwrap_or_else(|| "unknown".to_string()),
+            false_positive_notes: json_string_field(case, "false_positive_notes")
+                .unwrap_or_else(|| "unknown".to_string()),
+            limitation_notes: json_string_field(case, "limitation_notes")
+                .unwrap_or_else(|| "unknown".to_string()),
+            claim_boundary: json_string_array_field(case, "claim_boundary"),
+            reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                "Python real-repo eval case did not document a reason".to_string()
+            }),
+        })
+        .collect()
+}
+
+fn dogfood_python_real_repo_eval_run(
+    scenario: &DogfoodPythonRealRepoEvalScenario,
+) -> DogfoodPythonRealRepoEvalRun {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &scenario.name),
+        ("repo_shape", &scenario.repo_shape),
+        ("source_kind", &scenario.source_kind),
+        ("source_ref", &scenario.source_ref),
+        ("command", &scenario.command),
+        ("top_finding_summary", &scenario.top_finding_summary),
+        ("canonical_gap_id", &scenario.canonical_gap_id),
+        ("repair_action", &scenario.repair_action),
+        ("changed_owner", &scenario.changed_owner),
+        ("missing_discriminator", &scenario.missing_discriminator),
+        ("suggested_test_file", &scenario.suggested_test_file),
+        ("suggested_test_name", &scenario.suggested_test_name),
+        ("verify_command", &scenario.verify_command),
+        ("verify_result", &scenario.verify_result),
+        ("verify_summary", &scenario.verify_summary),
+        ("after_command", &scenario.after_command),
+        ("receipt_command", &scenario.receipt_command),
+        ("receipt_result", &scenario.receipt_result),
+        ("gap_movement", &scenario.gap_movement),
+        ("usability", &scenario.usability),
+        ("false_positive_notes", &scenario.false_positive_notes),
+        ("limitation_notes", &scenario.limitation_notes),
+        ("reason", &scenario.reason),
+    ] {
+        if value.trim().is_empty() || value == "unknown" {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+    if !matches!(
+        scenario.source_kind.as_str(),
+        "scratch_repo" | "external_repo" | "local_repo"
+    ) {
+        errors.push(format!(
+            "source_kind must be scratch_repo, external_repo, or local_repo, got {}",
+            scenario.source_kind
+        ));
+    }
+    if scenario.runtime_ms == 0 {
+        errors.push("runtime_ms must be greater than zero".to_string());
+    }
+    if scenario.after_runtime_ms == 0 {
+        errors.push("after_runtime_ms must be greater than zero".to_string());
+    }
+    if !scenario.canonical_gap_id.starts_with("gap:python:") {
+        errors.push(format!(
+            "canonical_gap_id must use gap:python: identity, got {}",
+            scenario.canonical_gap_id
+        ));
+    }
+    if !scenario.changed_owner.starts_with("python:") {
+        errors.push(format!(
+            "changed_owner must use python: identity, got {}",
+            scenario.changed_owner
+        ));
+    }
+    if !scenario.repair_card_present {
+        errors.push("repair_card_present must be true for recorded eval cases".to_string());
+    }
+    if !scenario.verify_command.starts_with("pytest ")
+        && !scenario.verify_command.starts_with("python -m unittest ")
+    {
+        errors.push(format!(
+            "verify_command must be a pytest or unittest command, got {}",
+            scenario.verify_command
+        ));
+    }
+    if !matches!(
+        scenario.verify_result.as_str(),
+        "pass" | "fail" | "not_run" | "not_applicable"
+    ) {
+        errors.push(format!(
+            "verify_result must be pass, fail, not_run, or not_applicable, got {}",
+            scenario.verify_result
+        ));
+    }
+    if !matches!(
+        scenario.receipt_result.as_str(),
+        "pass" | "fail" | "not_run" | "not_applicable"
+    ) {
+        errors.push(format!(
+            "receipt_result must be pass, fail, not_run, or not_applicable, got {}",
+            scenario.receipt_result
+        ));
+    }
+    if !matches!(
+        scenario.gap_movement.as_str(),
+        "opened" | "closed" | "improved" | "unchanged" | "regressed" | "no_receipt"
+    ) {
+        errors.push(format!(
+            "gap_movement must be opened, closed, improved, unchanged, regressed, or no_receipt, got {}",
+            scenario.gap_movement
+        ));
+    }
+    if scenario.gap_movement == "closed" {
+        if scenario.closed_gaps == 0 {
+            errors.push("closed gap movement must record closed_gaps > 0".to_string());
+        }
+        if scenario.verify_result != "pass" {
+            errors.push("closed gap movement requires verify_result=pass".to_string());
+        }
+        if scenario.receipt_result != "pass" {
+            errors.push("closed gap movement requires receipt_result=pass".to_string());
+        }
+    }
+    if scenario.receipt_command == scenario.verify_command {
+        errors.push("receipt_command must stay distinct from verify_command".to_string());
+    }
+    if scenario.claim_boundary.is_empty() {
+        errors.push("claim_boundary must keep preview boundary denials visible".to_string());
+    }
+    for required in [
+        "preview",
+        "No arbitrary imports or tests were run by RIPR",
+        "No support-tier promotion",
+    ] {
+        if !scenario.claim_boundary.iter().any(|claim| {
+            claim
+                .to_ascii_lowercase()
+                .contains(&required.to_ascii_lowercase())
+        }) {
+            errors.push(format!("claim_boundary must include {required}"));
+        }
+    }
+
+    DogfoodPythonRealRepoEvalRun {
+        name: scenario.name.clone(),
+        repo_shape: scenario.repo_shape.clone(),
+        source_kind: scenario.source_kind.clone(),
+        source_ref: scenario.source_ref.clone(),
+        command: scenario.command.clone(),
+        runtime_ms: scenario.runtime_ms,
+        top_finding_summary: scenario.top_finding_summary.clone(),
+        canonical_gap_id: scenario.canonical_gap_id.clone(),
+        repair_card_present: scenario.repair_card_present,
+        repair_action: scenario.repair_action.clone(),
+        changed_owner: scenario.changed_owner.clone(),
+        missing_discriminator: scenario.missing_discriminator.clone(),
+        suggested_test_file: scenario.suggested_test_file.clone(),
+        suggested_test_name: scenario.suggested_test_name.clone(),
+        verify_command: scenario.verify_command.clone(),
+        verify_result: scenario.verify_result.clone(),
+        verify_summary: scenario.verify_summary.clone(),
+        after_command: scenario.after_command.clone(),
+        after_runtime_ms: scenario.after_runtime_ms,
+        receipt_command: scenario.receipt_command.clone(),
+        receipt_result: scenario.receipt_result.clone(),
+        gap_movement: scenario.gap_movement.clone(),
+        closed_gaps: scenario.closed_gaps,
+        usability: scenario.usability.clone(),
+        false_positive_notes: scenario.false_positive_notes.clone(),
+        limitation_notes: scenario.limitation_notes.clone(),
+        claim_boundary: scenario.claim_boundary.clone(),
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
 fn dogfood_typescript_preview_repair_loop_scenarios()
 -> Vec<DogfoodTypescriptPreviewRepairLoopScenario> {
     dogfood_typescript_preview_repair_loop_scenarios_at(Path::new(
@@ -45065,6 +45504,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -45100,6 +45540,9 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
             .iter()
             .any(|run| !run.errors.is_empty())
         || real_repair_attempt_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || python_real_repo_eval_runs
             .iter()
             .any(|run| !run.errors.is_empty())
         || typescript_preview_repair_loop_runs
@@ -45154,6 +45597,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -46359,6 +46803,119 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         }
     }
 
+    let python_real_repo_eval_total = python_real_repo_eval_runs.len();
+    let python_real_repo_eval_closed = python_real_repo_eval_runs
+        .iter()
+        .filter(|run| run.gap_movement == "closed")
+        .count();
+    let python_real_repo_eval_usable = python_real_repo_eval_runs
+        .iter()
+        .filter(|run| run.usability == "usable")
+        .count();
+    body.push_str("## Python Real-Repo Eval Receipts\n\n");
+    body.push_str("These receipts record Python repair-routing runs outside analyzer fixture goldens. They are advisory dogfood evidence for the repair card -> verify -> receipt loop, not support-tier promotion or runtime adequacy proof.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Receipt input: `fixtures/python-real-repo-evals/corpus.json`\n");
+    body.push_str(&format!(
+        "- Cases: {}; closed gaps: {}; usable recommendations: {}\n\n",
+        python_real_repo_eval_total, python_real_repo_eval_closed, python_real_repo_eval_usable
+    ));
+    body.push_str(
+        "| Case | Repo shape | Source | Gap ID | Verify | Receipt | Movement | Usability |\n",
+    );
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    for run in python_real_repo_eval_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.repo_shape),
+            markdown_cell(&run.source_kind),
+            markdown_cell(&run.canonical_gap_id),
+            markdown_cell(&run.verify_result),
+            markdown_cell(&run.receipt_result),
+            markdown_cell(&run.gap_movement),
+            markdown_cell(&run.usability)
+        ));
+    }
+    body.push('\n');
+    for run in python_real_repo_eval_runs {
+        body.push_str(&format!("### Python Real-Repo Eval `{}`\n\n", run.name));
+        body.push_str(&format!(
+            "- Source: `{}` / `{}`\n",
+            markdown_cell(&run.source_kind),
+            markdown_cell(&run.source_ref)
+        ));
+        body.push_str(&format!(
+            "- Command: `{}` ({} ms)\n",
+            markdown_cell(&run.command),
+            run.runtime_ms
+        ));
+        body.push_str(&format!(
+            "- Top finding: {}\n",
+            markdown_cell(&run.top_finding_summary)
+        ));
+        body.push_str(&format!(
+            "- Changed owner: `{}`\n",
+            markdown_cell(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "- Missing discriminator: `{}`\n",
+            markdown_cell(&run.missing_discriminator)
+        ));
+        body.push_str(&format!(
+            "- Suggested test: `{}` / `{}`\n",
+            markdown_cell(&run.suggested_test_file),
+            markdown_cell(&run.suggested_test_name)
+        ));
+        body.push_str(&format!(
+            "- Repair card present: {}; action: `{}`\n",
+            run.repair_card_present,
+            markdown_cell(&run.repair_action)
+        ));
+        body.push_str(&format!(
+            "- Verify command: `{}` ({}) - {}\n",
+            markdown_cell(&run.verify_command),
+            markdown_cell(&run.verify_result),
+            markdown_cell(&run.verify_summary)
+        ));
+        body.push_str(&format!(
+            "- After command: `{}` ({} ms)\n",
+            markdown_cell(&run.after_command),
+            run.after_runtime_ms
+        ));
+        body.push_str(&format!(
+            "- Receipt command: `{}` ({})\n",
+            markdown_cell(&run.receipt_command),
+            markdown_cell(&run.receipt_result)
+        ));
+        body.push_str(&format!(
+            "- Gap movement: `{}`; closed gaps: {}\n",
+            markdown_cell(&run.gap_movement),
+            run.closed_gaps
+        ));
+        body.push_str(&format!(
+            "- False-positive notes: {}\n",
+            markdown_cell(&run.false_positive_notes)
+        ));
+        body.push_str(&format!(
+            "- Limitation notes: {}\n",
+            markdown_cell(&run.limitation_notes)
+        ));
+        body.push_str(&format!(
+            "- Claim boundary: `{}`\n",
+            markdown_cell(&run.claim_boundary.join("; "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Receipt validation: pass\n\n");
+        } else {
+            body.push_str(&format!(
+                "- Receipt validation: fail - `{}`\n\n",
+                markdown_cell(&run.errors.join("; "))
+            ));
+        }
+    }
+
     body.push_str("## User Surface Projection Alignment Receipts\n\n");
     body.push_str("These receipts validate that badge, LSP, PR comment, and CI projection examples consume canonical repair state for full runs and canonical runtime state for limited runs instead of independently interpreting raw findings. They keep all four surfaces advisory by default and require limited/stale state visibility.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -46644,6 +47201,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
+    let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -47893,6 +48451,143 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
             "        \"missing_receipt_reason\": {},\n",
             json_optional_string(run.missing_receipt_reason.as_deref())
         ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"python_real_repo_evals\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/python-real-repo-evals\",\n");
+    body.push_str("    \"summary\": {\n");
+    body.push_str(&format!(
+        "      \"cases\": {},\n",
+        python_real_repo_eval_runs.len()
+    ));
+    body.push_str(&format!(
+        "      \"closed\": {},\n",
+        python_real_repo_eval_runs
+            .iter()
+            .filter(|run| run.gap_movement == "closed")
+            .count()
+    ));
+    body.push_str(&format!(
+        "      \"usable\": {}\n",
+        python_real_repo_eval_runs
+            .iter()
+            .filter(|run| run.usability == "usable")
+            .count()
+    ));
+    body.push_str("    },\n    \"cases\": [\n");
+    for (index, run) in python_real_repo_eval_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"repo_shape\": \"{}\",\n",
+            json_escape(&run.repo_shape)
+        ));
+        body.push_str(&format!(
+            "        \"source_kind\": \"{}\",\n",
+            json_escape(&run.source_kind)
+        ));
+        body.push_str(&format!(
+            "        \"source_ref\": \"{}\",\n",
+            json_escape(&run.source_ref)
+        ));
+        body.push_str(&format!(
+            "        \"command\": \"{}\",\n",
+            json_escape(&run.command)
+        ));
+        body.push_str(&format!("        \"runtime_ms\": {},\n", run.runtime_ms));
+        body.push_str(&format!(
+            "        \"top_finding_summary\": \"{}\",\n",
+            json_escape(&run.top_finding_summary)
+        ));
+        body.push_str(&format!(
+            "        \"canonical_gap_id\": \"{}\",\n",
+            json_escape(&run.canonical_gap_id)
+        ));
+        body.push_str(&format!(
+            "        \"repair_card_present\": {},\n",
+            run.repair_card_present
+        ));
+        body.push_str(&format!(
+            "        \"repair_action\": \"{}\",\n",
+            json_escape(&run.repair_action)
+        ));
+        body.push_str(&format!(
+            "        \"changed_owner\": \"{}\",\n",
+            json_escape(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "        \"missing_discriminator\": \"{}\",\n",
+            json_escape(&run.missing_discriminator)
+        ));
+        body.push_str(&format!(
+            "        \"suggested_test_file\": \"{}\",\n",
+            json_escape(&run.suggested_test_file)
+        ));
+        body.push_str(&format!(
+            "        \"suggested_test_name\": \"{}\",\n",
+            json_escape(&run.suggested_test_name)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": \"{}\",\n",
+            json_escape(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "        \"verify_result\": \"{}\",\n",
+            json_escape(&run.verify_result)
+        ));
+        body.push_str(&format!(
+            "        \"verify_summary\": \"{}\",\n",
+            json_escape(&run.verify_summary)
+        ));
+        body.push_str(&format!(
+            "        \"after_command\": \"{}\",\n",
+            json_escape(&run.after_command)
+        ));
+        body.push_str(&format!(
+            "        \"after_runtime_ms\": {},\n",
+            run.after_runtime_ms
+        ));
+        body.push_str(&format!(
+            "        \"receipt_command\": \"{}\",\n",
+            json_escape(&run.receipt_command)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_result\": \"{}\",\n",
+            json_escape(&run.receipt_result)
+        ));
+        body.push_str(&format!(
+            "        \"gap_movement\": \"{}\",\n",
+            json_escape(&run.gap_movement)
+        ));
+        body.push_str(&format!("        \"closed_gaps\": {},\n", run.closed_gaps));
+        body.push_str(&format!(
+            "        \"usability\": \"{}\",\n",
+            json_escape(&run.usability)
+        ));
+        body.push_str(&format!(
+            "        \"false_positive_notes\": \"{}\",\n",
+            json_escape(&run.false_positive_notes)
+        ));
+        body.push_str(&format!(
+            "        \"limitation_notes\": \"{}\",\n",
+            json_escape(&run.limitation_notes)
+        ));
+        body.push_str("        \"claim_boundary\": [");
+        write_json_string_array(&mut body, &run.claim_boundary);
+        body.push_str("],\n");
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
             json_escape(&run.reason)
@@ -60732,8 +61427,8 @@ mod tests {
         DogfoodFindingAlignmentScenario, DogfoodFirstActionRun, DogfoodFirstPrRun,
         DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodRealRepairAttemptScenario, DogfoodReportInputs, DogfoodReportPacketIndexRun,
-        DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
+        DogfoodPythonRealRepoEvalScenario, DogfoodRealRepairAttemptScenario, DogfoodReportInputs,
+        DogfoodReportPacketIndexRun, DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
         DogfoodTypescriptPreviewRepairLoopScenario, DogfoodUserSurfaceProjectionScenario,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
@@ -60742,15 +61437,15 @@ mod tests {
         GENERATED_CI_FIRST_PR_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
         GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
         Lane1EvidenceAuditRepoExposureGeneration, Lane1EvidenceAuditRepoExposureOutcome,
-        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
-        PrTriageFinding, PrTriagePullRequest, REAL_REPAIR_ATTEMPTS_CORPUS,
-        REAL_REPAIR_ATTEMPTS_REQUIRED_CASES, REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS,
-        REPO_BADGE_ARTIFACT_TIMEOUT_ENV, ReceiptRecord, RepoBadgeArtifactOptions,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact,
-        RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
+        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
+        PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
+        REAL_REPAIR_ATTEMPTS_CORPUS, REAL_REPAIR_ATTEMPTS_REQUIRED_CASES,
+        REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV, ReceiptRecord,
+        RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
         WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
         actionable_gap_outcomes_markdown, actionable_gap_outcomes_report_from_values,
@@ -60779,6 +61474,7 @@ mod tests {
         dogfood_language_preview_run, dogfood_language_preview_scenarios,
         dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
         dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_python_real_repo_eval_run, dogfood_python_real_repo_eval_scenarios,
         dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
@@ -68959,6 +69655,47 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "real merged repair-loop PR improved route-quality evidence".to_string(),
             errors: Vec::new(),
         };
+        let python_real_repo_eval_run = super::DogfoodPythonRealRepoEvalRun {
+            name: "tiny_controlled_pytest_boundary_receipt".to_string(),
+            repo_shape: "tiny_controlled_pytest".to_string(),
+            source_kind: "scratch_repo".to_string(),
+            source_ref: "target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt"
+                .to_string(),
+            command: "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json".to_string(),
+            runtime_ms: 114,
+            top_finding_summary:
+                "Python predicate-boundary repair card for calculate_discount amount >= threshold"
+                    .to_string(),
+            canonical_gap_id:
+                "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                    .to_string(),
+            repair_card_present: true,
+            repair_action: "strengthen_existing_test".to_string(),
+            changed_owner: "python:app/pricing.py::calculate_discount".to_string(),
+            missing_discriminator: "amount == threshold".to_string(),
+            suggested_test_file: "tests/test_pricing.py".to_string(),
+            suggested_test_name: "test_calculate_discount_smoke".to_string(),
+            verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
+                .to_string(),
+            verify_result: "pass".to_string(),
+            verify_summary: "1 passed in 0.30s".to_string(),
+            after_command: "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json".to_string(),
+            after_runtime_ms: 58,
+            receipt_command: "ripr outcome --before before-check.json --after after-check.json --format json".to_string(),
+            receipt_result: "pass".to_string(),
+            gap_movement: "closed".to_string(),
+            closed_gaps: 1,
+            usability: "usable".to_string(),
+            false_positive_notes: "none observed".to_string(),
+            limitation_notes: "normal pytest app, API, CLI/tooling, and mixed repo dogfood remain outstanding".to_string(),
+            claim_boundary: vec![
+                "Python remains preview/advisory".to_string(),
+                "No arbitrary imports or tests were run by RIPR".to_string(),
+                "No support-tier promotion".to_string(),
+            ],
+            reason: "sample Python real-repo eval receipt".to_string(),
+            errors: Vec::new(),
+        };
         let typescript_preview_repair_loop_run = super::DogfoodTypescriptPreviewRepairLoopRun {
             name: "typescript_boundary_predicate_proof".to_string(),
             source_fixture: "fixtures/typescript_boundary_gap".to_string(),
@@ -69084,6 +69821,7 @@ fn exact_owner_call_has_external_expected_value() {
         let finding_alignment_runs = [finding_alignment_run];
         let surface_projection_alignment_runs = [surface_projection_alignment_run];
         let real_repair_attempt_runs = [real_repair_attempt_run];
+        let python_real_repo_eval_runs = [python_real_repo_eval_run];
         let typescript_preview_repair_loop_runs = [typescript_preview_repair_loop_run];
         let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
@@ -69110,6 +69848,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            python_real_repo_eval_runs: &python_real_repo_eval_runs,
             typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &markdown_pr_inline_comment_runs,
@@ -69131,6 +69870,7 @@ fn exact_owner_call_has_external_expected_value() {
             finding_alignment_runs: &finding_alignment_runs,
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
+            python_real_repo_eval_runs: &python_real_repo_eval_runs,
             typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &empty_pr_inline_comment_runs,
@@ -69151,6 +69891,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Finding Alignment Receipts"));
         assert!(markdown.contains("Surface Projection Alignment Receipts"));
         assert!(markdown.contains("Real Repair Attempt Receipts"));
+        assert!(markdown.contains("Python Real-Repo Eval Receipts"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
@@ -69174,8 +69915,10 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"finding_alignment\""));
         assert!(json.contains("\"surface_projection_alignment\""));
         assert!(json.contains("\"real_repair_attempts\""));
+        assert!(json.contains("\"python_real_repo_evals\""));
         assert!(json.contains("\"typescript_preview_repair_loop\""));
         assert!(json.contains("\"repair_route_quality_metrics_improved\""));
+        assert!(json.contains("\"tiny_controlled_pytest_boundary_receipt\""));
         assert!(json.contains("\"typescript_boundary_predicate_proof\""));
         assert!(json.contains("\"user_surface_projection_alignment\""));
         assert!(json.contains("\"badge_actionable_count_from_canonical_state\""));
@@ -69346,6 +70089,37 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(
             real_attempt_case.get("outcome").and_then(Value::as_str),
             Some("evidence_improved")
+        );
+        let python_evals = value
+            .get("python_real_repo_evals")
+            .ok_or_else(|| "python_real_repo_evals section missing".to_string())?;
+        assert_eq!(
+            python_evals.get("receipt_dir").and_then(Value::as_str),
+            Some("fixtures/python-real-repo-evals")
+        );
+        let python_eval_summary = python_evals
+            .get("summary")
+            .ok_or_else(|| "python_real_repo_evals summary missing".to_string())?;
+        assert_eq!(
+            python_eval_summary.get("closed").and_then(Value::as_u64),
+            Some(1)
+        );
+        let python_eval_cases = python_evals
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "python_real_repo_evals cases missing".to_string())?;
+        assert_eq!(python_eval_cases.len(), 1);
+        assert_eq!(
+            python_eval_cases[0]
+                .get("gap_movement")
+                .and_then(Value::as_str),
+            Some("closed")
+        );
+        assert_eq!(
+            python_eval_cases[0]
+                .get("missing_discriminator")
+                .and_then(Value::as_str),
+            Some("amount == threshold")
         );
         let typescript_preview_repair_loop = value
             .get("typescript_preview_repair_loop")
@@ -70038,6 +70812,118 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(missing_report.contains(
             "evidence_movement for attempted_no_receipt must not claim conflicting movement tokens: evidence_improved"
         ));
+    }
+
+    #[test]
+    fn dogfood_python_real_repo_eval_receipts_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_python_real_repo_eval_scenarios();
+            for required in PYTHON_REAL_REPO_EVAL_REQUIRED_CASES {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0 && scenario.gap_movement == required.1
+                    }),
+                    "{} Python real-repo eval receipt should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.repo_shape == "tiny_controlled_pytest"),
+                "Python real-repo eval receipts should include the tiny controlled pytest case"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.gap_movement == "closed"),
+                "Python real-repo eval receipts should include a closed gap"
+            );
+
+            for scenario in scenarios {
+                let run = dogfood_python_real_repo_eval_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} Python real-repo eval receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    fn valid_python_real_repo_eval_scenario() -> DogfoodPythonRealRepoEvalScenario {
+        DogfoodPythonRealRepoEvalScenario {
+            name: "tiny_controlled_pytest_boundary_receipt".to_string(),
+            repo_shape: "tiny_controlled_pytest".to_string(),
+            source_kind: "scratch_repo".to_string(),
+            source_ref: "target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt"
+                .to_string(),
+            command: "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json".to_string(),
+            runtime_ms: 114,
+            top_finding_summary:
+                "Python predicate-boundary repair card for calculate_discount amount >= threshold"
+                    .to_string(),
+            canonical_gap_id:
+                "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                    .to_string(),
+            repair_card_present: true,
+            repair_action: "strengthen_existing_test".to_string(),
+            changed_owner: "python:app/pricing.py::calculate_discount".to_string(),
+            missing_discriminator: "amount == threshold".to_string(),
+            suggested_test_file: "tests/test_pricing.py".to_string(),
+            suggested_test_name: "test_calculate_discount_smoke".to_string(),
+            verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
+                .to_string(),
+            verify_result: "pass".to_string(),
+            verify_summary: "1 passed in 0.30s".to_string(),
+            after_command: "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json".to_string(),
+            after_runtime_ms: 58,
+            receipt_command:
+                "ripr outcome --before before-check.json --after after-check.json --format json"
+                    .to_string(),
+            receipt_result: "pass".to_string(),
+            gap_movement: "closed".to_string(),
+            closed_gaps: 1,
+            usability: "usable".to_string(),
+            false_positive_notes: "none observed".to_string(),
+            limitation_notes:
+                "normal pytest app, API, CLI/tooling, and mixed repo dogfood remain outstanding"
+                    .to_string(),
+            claim_boundary: vec![
+                "Python remains preview/advisory".to_string(),
+                "No arbitrary imports or tests were run by RIPR".to_string(),
+                "No support-tier promotion".to_string(),
+            ],
+            reason: "tiny controlled repo proved one Python repair card closes with receipt"
+                .to_string(),
+        }
+    }
+
+    #[test]
+    fn dogfood_python_real_repo_eval_rejects_overclaiming() {
+        let mut scenario = valid_python_real_repo_eval_scenario();
+        scenario.canonical_gap_id = "gap:rust:src/lib.rs:predicate_boundary".to_string();
+        scenario.changed_owner = "app/pricing.py::calculate_discount".to_string();
+        scenario.repair_card_present = false;
+        scenario.gap_movement = "closed".to_string();
+        scenario.closed_gaps = 0;
+        scenario.verify_result = "not_run".to_string();
+        scenario.claim_boundary.clear();
+
+        let report = dogfood_python_real_repo_eval_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("canonical_gap_id must use gap:python"));
+        assert!(report.contains("changed_owner must use python: identity"));
+        assert!(report.contains("repair_card_present must be true"));
+        assert!(report.contains("closed gap movement must record closed_gaps > 0"));
+        assert!(report.contains("closed gap movement requires verify_result=pass"));
+        assert!(report.contains("claim_boundary must keep preview boundary denials visible"));
     }
 
     #[test]
