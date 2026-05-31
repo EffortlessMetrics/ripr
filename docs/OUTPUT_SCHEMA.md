@@ -2715,6 +2715,7 @@ otherwise it uses the category fallback route.
           "not a public repair packet",
           "not swarm-ready work",
           "do not edit tests from this backlog item alone",
+          "do not invent exact candidate values",
           "do not invent exact boundary candidate values"
         ]
       }
@@ -3742,7 +3743,8 @@ limits.
       "non_claims": [
         "not a public repair packet",
         "not swarm-ready work",
-        "do not edit tests from this backlog item alone"
+        "do not edit tests from this backlog item alone",
+        "do not invent exact candidate values"
       ]
     }
   ],

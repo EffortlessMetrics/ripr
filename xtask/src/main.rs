@@ -22148,6 +22148,7 @@ fn static_limitation_backlog_packet_non_claims(category: &str) -> Vec<String> {
         "not a public repair packet".to_string(),
         "not swarm-ready work".to_string(),
         "do not edit tests from this backlog item alone".to_string(),
+        "do not invent exact candidate values".to_string(),
     ];
     if category == "activation_boundary_input_unresolved" {
         claims.push("do not invent exact boundary candidate values".to_string());
@@ -83705,6 +83706,11 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert!(packet["unlock_condition"].as_str().is_some_and(|unlock| {
             unlock.contains("analysis/local-computed-boundary-operand-resolution")
+        }));
+        assert!(packet["non_claims"].as_array().is_some_and(|claims| {
+            claims
+                .iter()
+                .any(|claim| claim == "do not invent exact candidate values")
         }));
         assert!(packet["non_claims"].as_array().is_some_and(|claims| {
             claims
