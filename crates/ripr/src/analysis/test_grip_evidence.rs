@@ -45,6 +45,7 @@ pub(crate) struct TestGripEvidence {
 const COMPACT_RELATED_TEST_LIMIT: usize = 12;
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 const EVIDENCE_PROGRESS_CHUNK: usize = 500;
+const HELPER_OWNER_CALL_GRAPH_MAX_HOPS: usize = 2;
 
 /// Per-related-test grip facts attached to a `TestGripEvidence`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -334,7 +335,45 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
             .or_default()
             .insert(function.name.clone(), owner_calls);
     }
+    extend_helper_owner_calls_through_bounded_graph(&mut helpers);
     helpers
+}
+
+fn extend_helper_owner_calls_through_bounded_graph(helpers: &mut HelperOwnerCallsByFile) {
+    for _ in 1..HELPER_OWNER_CALL_GRAPH_MAX_HOPS {
+        let snapshot = helpers.clone();
+        let mut changed = false;
+        for (file, file_helpers) in helpers.iter_mut() {
+            if rust_index::is_test_file(file) {
+                continue;
+            }
+            let Some(snapshot_helpers) = snapshot.get(file) else {
+                continue;
+            };
+            for helper_name in file_helpers.keys().cloned().collect::<Vec<_>>() {
+                let Some(owner_calls) = file_helpers.get(&helper_name).cloned() else {
+                    continue;
+                };
+                let mut expanded_owner_calls = owner_calls.clone();
+                for owner_call in owner_calls {
+                    let Some(transitive_owner_calls) = snapshot_helpers.get(&owner_call) else {
+                        continue;
+                    };
+                    for transitive_owner_call in transitive_owner_calls {
+                        if transitive_owner_call != &helper_name
+                            && expanded_owner_calls.insert(transitive_owner_call.clone())
+                        {
+                            changed = true;
+                        }
+                    }
+                }
+                file_helpers.insert(helper_name, expanded_owner_calls);
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }
 
 fn unambiguous_test_helper_owner_calls_by_name(
@@ -2519,7 +2558,7 @@ fn activate_evidence(
             )
         } else if helper_value_insensitive_owner_call {
             format!(
-                "Observed one-hop helper owner call for value-insensitive seam `{}`",
+                "Observed helper owner call for value-insensitive seam `{}`",
                 seam.expression()
                     .lines()
                     .next()
@@ -4479,13 +4518,13 @@ mod tests {
             evidence
                 .activate
                 .summary
-                .contains("one-hop helper owner call for value-insensitive seam"),
+                .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the helper owner-call route: {}",
             evidence.activate.summary
         );
         assert!(
             evidence.missing_discriminators.is_empty(),
-            "one-hop helper owner calls must not create boundary debt"
+            "helper owner calls must not create boundary debt"
         );
         Ok(())
     }
@@ -4723,7 +4762,7 @@ fn status_wrapper_observes_device_target() {
             evidence
                 .activate
                 .summary
-                .contains("one-hop helper owner call for value-insensitive seam"),
+                .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the target-affinity owner-call route: {}",
             evidence.activate.summary
         );
@@ -5657,7 +5696,7 @@ mod tests {
             evidence
                 .activate
                 .summary
-                .contains("one-hop helper owner call for value-insensitive seam"),
+                .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the wrapper owner-call route: {}",
             evidence.activate.summary
         );
@@ -5723,7 +5762,7 @@ fn helper_exercises_pipeline() {
             evidence
                 .activate
                 .summary
-                .contains("one-hop helper owner call for value-insensitive seam"),
+                .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the test-local helper owner-call route: {}",
             evidence.activate.summary
         );
@@ -5845,6 +5884,143 @@ fn production_wrapper_exercises_pipeline() {
         assert!(
             evidence.observed_values.is_empty(),
             "production wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_integration_test_calls_two_hop_production_wrapper_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn build_pipeline(input: &str) -> String {
+    render_pipeline(input)
+}
+
+pub fn exercise_pipeline(input: &str) -> String {
+    build_pipeline(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::exercise_pipeline;
+
+#[test]
+fn production_wrapper_chain_exercises_pipeline() {
+    let format_output = exercise_pipeline("alpha");
+    assert_eq!(format_output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected bounded production wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "bounded production wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("helper owner call for value-insensitive seam"),
+            "activation summary should explain the bounded helper owner-call route: {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_two_hop_production_wrapper_reaches_multiple_owners_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/loop_commands.rs");
+        let prod_src = r#"
+pub fn quote_arg(value: &str) -> String {
+    value.replace(' ', "\\ ")
+}
+
+pub fn normalize_arg(value: &str) -> String {
+    value.trim().to_string()
+}
+
+pub fn quote_root(root: &str) -> String {
+    quote_arg(root)
+}
+
+pub fn format_command(root: &str, packet: &str) -> String {
+    let root_arg = quote_root(root);
+    let packet_arg = normalize_arg(packet);
+    format!("ripr start --root {root_arg} --packet {packet_arg}")
+}
+"#;
+        let tests = PathBuf::from("tests/loop_commands_tests.rs");
+        let tests_src = r#"
+use loop_commands::format_command;
+
+#[test]
+fn command_formats_dynamic_args() {
+    let command = format_command("tmp root", "gap 1");
+    assert_eq!(
+        command,
+        "ripr start --root tmp\\ root --packet gap 1"
+    );
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/loop_commands.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::quote_arg")
+                    && s.expression().contains("replace")
+            })
+            .ok_or_else(|| "expected quote_arg call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "mixed-owner production graph must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "mixed-owner production graph must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
@@ -7477,7 +7653,7 @@ fn pipeline_from_support_helper() {
             evidence
                 .activate
                 .summary
-                .contains("one-hop helper owner call for value-insensitive seam"),
+                .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the unique support helper owner-call route: {}",
             evidence.activate.summary
         );
@@ -8910,7 +9086,7 @@ mod tests {
     }
 
     #[test]
-    fn given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown()
+    fn given_call_presence_when_test_calls_two_hop_production_wrapper_then_activation_is_yes()
     -> Result<(), String> {
         let source = PathBuf::from("src/pipeline.rs");
         let source_src = r#"
@@ -8956,14 +9132,14 @@ mod tests {
 
         assert_eq!(evidence.reach.state, StageState::Yes);
         assert!(
-            !evidence
+            evidence
                 .related_tests
                 .iter()
                 .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
-            "two-hop wrapper must not get one-hop helper-owner relation: {:?}",
+            "two-hop production wrapper should get helper-owner relation: {:?}",
             evidence.related_tests
         );
-        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert_eq!(evidence.activate.state, StageState::Yes);
         assert!(
             evidence.observed_values.is_empty(),
             "two-hop wrapper must not invent observed values: {:?}",
