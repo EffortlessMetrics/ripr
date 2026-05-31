@@ -1200,12 +1200,16 @@ Prove usefulness outside fixtures.
   pytest scratch-repo eval where RIPR emits a predicate-boundary repair card,
   a human-run focused pytest command passes, and `ripr outcome` closes the
   canonical Python gap while preserving the preview/advisory claim boundary.
+- The same corpus now records a normal pyproject-based pytest app eval where
+  a `free_shipping_offer` threshold-boundary change routes to a
+  strengthen-existing-test repair card, the focused pytest verify command
+  passes, and `ripr outcome` closes the canonical Python gap.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.
-- Broader outside-fixture evaluations across normal pytest, API, CLI/tooling,
-  and mixed Python repos remain the next dogfood slice before metrics or
-  support-tier promotion.
+- Broader outside-fixture evaluations across API, CLI/tooling, and mixed
+  Python repos remain the next dogfood slice before metrics or support-tier
+  promotion.
 
 ### Work item: metrics/python-repair-routing-quality
 

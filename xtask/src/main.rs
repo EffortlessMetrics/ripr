@@ -8090,8 +8090,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
     ("python_preview_boundary_gap_test_only_closed", "resolved"),
 ];
 
-const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] =
-    &[("tiny_controlled_pytest_boundary_receipt", "closed")];
+const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
+    ("tiny_controlled_pytest_boundary_receipt", "closed"),
+    ("normal_pytest_app_boundary_receipt", "closed"),
+];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typescript_boundary_predicate_proof", "proof_improved"),

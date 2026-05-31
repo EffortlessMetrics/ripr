@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added a normal pytest app case to the Python real-repo eval corpus. RIPR
+  emits a strengthen-existing-test boundary repair card, the focused pytest
+  verify command passes, and `ripr outcome` records the Python canonical gap
+  closed. Python remains preview/advisory; API, CLI/tooling, and mixed-repo
+  dogfood remain outstanding before promotion.
 - Added a Python real-repo eval corpus with a tiny controlled pytest scratch
   repo receipt: RIPR emits the predicate-boundary repair card, a human-run
   focused pytest command passes, and `ripr outcome` closes the canonical Python
