@@ -8139,6 +8139,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "same_file_test_local_helper_owner_call_route_improved",
+        "evidence_improved",
+    ),
+    (
         "call_presence_imported_module_wrapper_route_improved",
         "evidence_improved",
     ),
