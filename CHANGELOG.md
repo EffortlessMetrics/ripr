@@ -9,22 +9,28 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added an API-style status-code pytest case to the Python real-repo eval
+  corpus. RIPR emits a field/object repair card for a changed
+  `response.status_code` behavior, the focused pytest verify command passes,
+  and `ripr outcome` records the canonical Python gap closed. Python remains
+  preview/advisory; mixed-repo and decorated framework-route dogfood remain
+  outstanding before promotion.
 - Added a CLI/output-style pytest case to the Python real-repo eval corpus.
   RIPR emits an output/call-effect repair card for a changed `print(...)`
   behavior, the focused `capsys` pytest verify command passes, and
   `ripr outcome` records the canonical Python gap closed. Python remains
-  preview/advisory; API and mixed-repo dogfood remain outstanding before
-  promotion.
+  preview/advisory; mixed-repo and decorated framework-route dogfood remain
+  outstanding before promotion.
 - Added a normal pytest app case to the Python real-repo eval corpus. RIPR
   emits a strengthen-existing-test boundary repair card, the focused pytest
   verify command passes, and `ripr outcome` records the Python canonical gap
-  closed. Python remains preview/advisory; API and mixed-repo dogfood remain
-  outstanding before promotion.
+  closed. Python remains preview/advisory; mixed-repo and decorated
+  framework-route dogfood remain outstanding before promotion.
 - Added a Python real-repo eval corpus with a tiny controlled pytest scratch
   repo receipt: RIPR emits the predicate-boundary repair card, a human-run
   focused pytest command passes, and `ripr outcome` closes the canonical Python
-  gap. This is still preview/advisory evidence; normal pytest app, CLI/output,
-  API, and mixed-repo dogfood remain outstanding before promotion.
+  gap. This is still preview/advisory evidence; mixed-repo and decorated
+  framework-route dogfood remain outstanding before promotion.
 - Added a repo-local Python repair-routing dogfood receipt row for a
   test-only packet that strengthens the preview pricing test, forbids the
   production Python source file, passes the focused pytest verify command, and

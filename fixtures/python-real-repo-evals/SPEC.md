@@ -22,12 +22,13 @@ result, gap movement, usability notes, false-positive notes, limitation notes,
 and claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
-normal pytest app repo, and one CLI/output-style pytest repo before later API or
-mixed-repo dogfood can support promotion discussion.
+normal pytest app repo, one CLI/output-style pytest repo, and one API-style
+status-code pytest repo before later mixed-repo dogfood can support promotion
+discussion.
 
 ## Must Not
 
 - Do not treat these records as support-tier promotion.
 - Do not claim correctness, mutation adequacy, generated tests, provider calls,
   CI gate eligibility, or arbitrary runtime import execution.
-- Do not hide missing API or mixed-repo dogfood.
+- Do not hide missing mixed-repo or decorated framework-route dogfood.
