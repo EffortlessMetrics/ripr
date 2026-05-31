@@ -94,6 +94,10 @@ claims.
    - bounded literal/object/count mock payload evidence may name the callee and
      expected value, but still stays advisory until verify command, receipt
      command, evidence refs, and edit boundaries exist;
+   - literal `toThrow(...)`, `rejects.toThrow(...)`, and safe
+     `rejects.toMatchObject(...)` payload evidence may count as exact
+     error-variant evidence, but still does not emit repair packets without
+     strict actionability fields;
    - broad error evidence stays weak until error payload or variant support can
      name a bounded repair route.
 2. Audit false-actionable candidates:

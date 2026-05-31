@@ -114,9 +114,12 @@ Assertions / oracles the adapter must recognise:
 
 - `expect(actual).toBe(expected)` and `.toEqual` / `.toStrictEqual` →
   exact-value oracle
-- `expect(...).toThrow(...)` → error-path oracle
-- `expect(...).resolves.toBe(...)` and `.rejects.toThrow(...)` →
-  async-aware exact/error oracle
+- bare `expect(...).toThrow()` / `.rejects.toThrow()` → broad
+  error-path oracle
+- literal `expect(...).toThrow("...")` / `.rejects.toThrow("...")`
+  and safe `.rejects.toMatchObject({ ... })` payloads → exact
+  error-variant oracle
+- `expect(...).resolves.toBe(...)` → async-aware exact-value oracle
 - `expect(mockFn).toHaveBeenCalledWith(...)` and `toHaveBeenCalledTimes`
   → side-effect/call oracle
 - `expect(...).toMatchSnapshot()` and `.toMatchInlineSnapshot()` →

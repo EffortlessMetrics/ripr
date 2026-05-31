@@ -20,9 +20,10 @@ enabled = ["rust", "typescript"]
 ```
 
 Related Jest-style tests reference both changed owners and use syntactic
-`expect(...).toThrow(...)` assertions. That matcher is intentionally broad
-error evidence in the preview adapter; runtime promise semantics and
-payload inspection are not part of this fixture.
+`await expect(...).rejects.toThrow(...)` assertions. The bare matcher is
+intentionally broad error evidence in the preview adapter; a literal payload
+matcher is exact error-payload evidence while still remaining preview/advisory
+and non-actionable without the full repair-packet contract.
 
 ## When
 
@@ -49,7 +50,8 @@ The TypeScript preview adapter:
   `probe.family = error_path` with `probe.delta = control`,
 - preserves preview metadata with `language = "typescript"` and
   `language_status = "preview"`,
-- keeps the `toThrow(...)` oracle broad and weak.
+- keeps bare `rejects.toThrow()` broad and weak,
+- classifies literal `rejects.toThrow("...")` as exact error-variant evidence.
 
 ## Must Not
 

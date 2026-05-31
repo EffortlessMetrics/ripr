@@ -71,7 +71,7 @@
       "authority_boundary": "preview_advisory_only",
       "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
       "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
-      "future_support": "error payload support must distinguish broad error reachability from exact thrown or rejected payload evidence",
+      "future_support": "complete error-path repair-card support may use exact payload evidence, but bare broad checks remain weak evidence",
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "broad error evidence does not establish missing discriminator",
       "raw_evidence_refs": [
@@ -89,7 +89,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "Broad thrown/rejected error evidence reaches the owner but does not prove the changed error payload."
+      "reason": "Broad thrown/rejected error evidence reaches the owner but does not prove the changed error payload; exact payload support is separate and fixture-pinned."
     },
     {
       "id": "snapshot_only_weak_oracle",

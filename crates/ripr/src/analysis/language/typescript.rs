@@ -183,6 +183,7 @@ struct TypeScriptAssertion {
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
     mock_payload: Option<TypeScriptMockPayload>,
+    error_payload: Option<TypeScriptErrorPayload>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -215,6 +216,35 @@ impl TypeScriptMockPayload {
 enum TypeScriptMockPayloadKind {
     CalledWith,
     CalledTimes,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptErrorPayload {
+    expected: String,
+    kind: TypeScriptErrorPayloadKind,
+}
+
+impl TypeScriptErrorPayload {
+    fn oracle_text(&self) -> String {
+        match self.kind {
+            TypeScriptErrorPayloadKind::ThrowsLiteral => {
+                format!("expect(...).toThrow({})", self.expected)
+            }
+            TypeScriptErrorPayloadKind::RejectsThrowLiteral => {
+                format!("await expect(...).rejects.toThrow({})", self.expected)
+            }
+            TypeScriptErrorPayloadKind::RejectsMatchObject => {
+                format!("await expect(...).rejects.toMatchObject({})", self.expected)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TypeScriptErrorPayloadKind {
+    ThrowsLiteral,
+    RejectsThrowLiteral,
+    RejectsMatchObject,
 }
 
 fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) {
@@ -1112,10 +1142,16 @@ fn expect_assertion_from_expression(
     // Inner shape is either `expect(...)` directly or an
     // `expect(...).resolves` / `.rejects` chain.
     let inner = &outer_member.object;
+    let async_modifier = expect_assertion_chain_modifier(inner);
     let expect_call = expect_call_from_assertion_inner(inner)?;
 
-    let (oracle_kind, oracle_strength) = oracle_for_matcher(matcher);
     let mock_payload = mock_payload_from_assertion(matcher, expect_call, outer_call, source);
+    let error_payload = error_payload_from_assertion(matcher, async_modifier, outer_call, source);
+    let (oracle_kind, oracle_strength) = if error_payload.is_some() {
+        (OracleKind::ExactErrorVariant, OracleStrength::Strong)
+    } else {
+        oracle_for_matcher(matcher)
+    };
     Some(TypeScriptAssertion {
         matcher: matcher.to_string(),
         argument_count: outer_call.arguments.len(),
@@ -1123,7 +1159,18 @@ fn expect_assertion_from_expression(
         oracle_kind,
         oracle_strength,
         mock_payload,
+        error_payload,
     })
+}
+
+fn expect_assertion_chain_modifier<'a>(inner: &'a Expression<'a>) -> Option<&'a str> {
+    match inner {
+        Expression::StaticMemberExpression(inner_member) => {
+            Some(inner_member.property.name.as_str())
+                .filter(|modifier| *modifier == "resolves" || *modifier == "rejects")
+        }
+        _ => None,
+    }
 }
 
 fn expect_call_from_assertion_inner<'a>(
@@ -1182,6 +1229,53 @@ fn mock_payload_from_assertion(
                 expected,
                 kind: TypeScriptMockPayloadKind::CalledTimes,
             })
+        }
+        _ => None,
+    }
+}
+
+fn error_payload_from_assertion(
+    matcher: &str,
+    async_modifier: Option<&str>,
+    matcher_call: &oxc_ast::ast::CallExpression<'_>,
+    source: &str,
+) -> Option<TypeScriptErrorPayload> {
+    match (async_modifier, matcher) {
+        (None, "toThrow" | "toThrowError") if matcher_call.arguments.len() == 1 => {
+            let expected =
+                safe_error_literal_payload_text(matcher_call.arguments.first()?, source)?;
+            Some(TypeScriptErrorPayload {
+                expected,
+                kind: TypeScriptErrorPayloadKind::ThrowsLiteral,
+            })
+        }
+        (Some("rejects"), "toThrow" | "toThrowError") if matcher_call.arguments.len() == 1 => {
+            let expected =
+                safe_error_literal_payload_text(matcher_call.arguments.first()?, source)?;
+            Some(TypeScriptErrorPayload {
+                expected,
+                kind: TypeScriptErrorPayloadKind::RejectsThrowLiteral,
+            })
+        }
+        (Some("rejects"), "toMatchObject") if matcher_call.arguments.len() == 1 => {
+            let expected = safe_error_object_payload_text(matcher_call.arguments.first()?, source)?;
+            Some(TypeScriptErrorPayload {
+                expected,
+                kind: TypeScriptErrorPayloadKind::RejectsMatchObject,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn safe_error_literal_payload_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    matches!(arg, Argument::StringLiteral(_)).then(|| source_text_for_argument(arg, source))?
+}
+
+fn safe_error_object_payload_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    match arg {
+        Argument::ObjectExpression(object) if safe_mock_expected_object(object) => {
+            source_text_for_argument(arg, source)
         }
         _ => None,
     }
@@ -1654,6 +1748,9 @@ fn similarity_key_contains(haystack: &str, needle: &str) -> bool {
 fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     if let Some(mock_payload) = &assertion.mock_payload {
         return mock_payload.oracle_text();
+    }
+    if let Some(error_payload) = &assertion.error_payload {
+        return error_payload.oracle_text();
     }
     if matches!(assertion.matcher.as_str(), "toThrow" | "toThrowError")
         && assertion.argument_count == 0
@@ -3225,6 +3322,7 @@ mod tests {
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
             mock_payload: None,
+            error_payload: None,
         }
     }
 
@@ -3261,6 +3359,7 @@ mod tests {
                 oracle_kind: OracleKind::MockExpectation,
                 oracle_strength: OracleStrength::Medium,
                 mock_payload: None,
+                error_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -3289,6 +3388,7 @@ mod tests {
                 oracle_kind,
                 oracle_strength,
                 mock_payload: None,
+                error_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -3310,6 +3410,7 @@ mod tests {
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 mock_payload: None,
+                error_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -4678,7 +4779,7 @@ test("type only import", () => {
     }
 
     #[test]
-    fn extract_tests_keeps_payload_tothrow_broad_until_payload_is_inspected() {
+    fn extract_tests_maps_literal_tothrow_to_exact_error_variant_oracle() {
         let tests = extract_tests(
             Path::new("tests/lib.test.ts"),
             r#"test("throws", () => {
@@ -4690,8 +4791,120 @@ test("type only import", () => {
         assert_eq!(tests[0].assertions.len(), 1);
         assert_eq!(tests[0].assertions[0].matcher, "toThrow");
         assert_eq!(tests[0].assertions[0].argument_count, 1);
+        assert_eq!(
+            tests[0].assertions[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        assert_eq!(
+            tests[0].assertions[0]
+                .error_payload
+                .as_ref()
+                .map(TypeScriptErrorPayload::oracle_text)
+                .as_deref(),
+            Some("expect(...).toThrow(\"empty user\")")
+        );
+    }
+
+    #[test]
+    fn extract_tests_keeps_dynamic_tothrow_payload_broad() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("throws", () => {
+    expect(() => parseUser("")).toThrow(message);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+        assert_eq!(tests[0].assertions[0].argument_count, 1);
         assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::BroadError);
         assert_eq!(tests[0].assertions[0].oracle_strength, OracleStrength::Weak);
+        assert!(tests[0].assertions[0].error_payload.is_none());
+    }
+
+    #[test]
+    fn extract_tests_maps_rejects_tothrow_literal_to_exact_error_variant_oracle() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("rejects", async () => {
+    await expect(loadProfile("")).rejects.toThrow("missing id");
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+        assert_eq!(
+            tests[0].assertions[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        assert_eq!(
+            tests[0].assertions[0]
+                .error_payload
+                .as_ref()
+                .map(TypeScriptErrorPayload::oracle_text)
+                .as_deref(),
+            Some("await expect(...).rejects.toThrow(\"missing id\")")
+        );
+    }
+
+    #[test]
+    fn extract_tests_maps_rejects_match_object_literal_to_exact_error_variant_oracle() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("rejects", async () => {
+    await expect(loadProfile("")).rejects.toMatchObject({ code: "E_AUTH" });
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toMatchObject");
+        assert_eq!(
+            tests[0].assertions[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        assert_eq!(
+            tests[0].assertions[0]
+                .error_payload
+                .as_ref()
+                .map(TypeScriptErrorPayload::oracle_text)
+                .as_deref(),
+            Some("await expect(...).rejects.toMatchObject({ code: \"E_AUTH\" })")
+        );
+    }
+
+    #[test]
+    fn extract_tests_keeps_dynamic_rejects_match_object_unbounded() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("rejects", async () => {
+    await expect(loadProfile("")).rejects.toMatchObject({ code });
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toMatchObject");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::Unknown);
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Unknown
+        );
+        assert!(tests[0].assertions[0].error_payload.is_none());
     }
 
     #[test]
@@ -4755,6 +4968,7 @@ test("type only import", () => {
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 mock_payload: None,
+                error_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
