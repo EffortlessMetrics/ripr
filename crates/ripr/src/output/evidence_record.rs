@@ -1039,7 +1039,7 @@ fn static_limitation_category_for_entry(
             "activation_owner_call_absent_call_presence_target_affinity"
         } else if owner_call_absence_has_assertion_target_affinity(entry) {
             "activation_owner_call_absent_assertion_target_affinity"
-        } else if owner_call_absence_is_same_file_only(entry) {
+        } else if owner_call_absence_is_same_file_primary(entry) {
             "activation_owner_call_absent_same_file_only"
         } else if owner_call_absence_is_affinity_only(entry) {
             "activation_owner_call_absent_affinity_only"
@@ -1107,13 +1107,21 @@ fn owner_call_absence_is_affinity_only(entry: &ClassifiedSeam) -> bool {
         })
 }
 
-fn owner_call_absence_is_same_file_only(entry: &ClassifiedSeam) -> bool {
+fn owner_call_absence_is_same_file_primary(entry: &ClassifiedSeam) -> bool {
     !entry.evidence.related_tests.is_empty()
+        && !entry.evidence.related_tests.iter().any(|test| {
+            matches!(
+                test.relation_reason,
+                RelationReason::DirectOwnerCall
+                    | RelationReason::HelperOwnerCall
+                    | RelationReason::AssertionTargetAffinity
+            )
+        })
         && entry
             .evidence
             .related_tests
-            .iter()
-            .all(|test| test.relation_reason == RelationReason::SameTestFile)
+            .first()
+            .is_some_and(|test| test.relation_reason == RelationReason::SameTestFile)
 }
 
 fn stage_json(stage: &EvidenceRecordStage) -> Value {
@@ -1800,6 +1808,46 @@ mod tests {
         assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
         assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
         assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_same_file_only"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/same-file-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/same-file-owner-call-tracing"
+        );
+    }
+
+    #[test]
+    fn evidence_record_routes_same_file_primary_owner_call_absence_limitation() {
+        let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "No direct owner call observed for value-insensitive seam `return false`",
+        );
+        entry.evidence.related_tests[0].relation_reason = RelationReason::SameTestFile;
+        entry.evidence.related_tests[0].relation_confidence = RelationConfidence::Medium;
+        entry.evidence.related_tests.push(RelatedTestGrip {
+            test_name: "pricing_module_smoke".to_string(),
+            file: PathBuf::from("tests/pricing/integration.rs"),
+            line: 44,
+            oracle_kind: OracleKind::BroadError,
+            oracle_strength: OracleStrength::Weak,
+            evidence_summary: "module proximity".to_string(),
+            relation_reason: RelationReason::SameModule,
+            relation_confidence: RelationConfidence::Medium,
+        });
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
         assert_eq!(
             json["static_limitations"][0]["category"],
             "activation_owner_call_absent_same_file_only"

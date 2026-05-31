@@ -1949,7 +1949,8 @@ Field contract:
   `activation_owner_call_absent_affinity_only` routed to
   `analysis/related-test-affinity-owner-call-tracing`, or
   `activation_owner_call_absent_same_file_only` routed to
-  `analysis/same-file-owner-call-tracing`.
+  `analysis/same-file-owner-call-tracing` when same-file context is the
+  primary non-owner-call relation.
   Call-presence target-affinity and related-test-affinity backlog packets may
   further split `limitation_subroute` by expression shape, such as method-chain,
   associated-call, or function-call missing-owner-call routes, so analyzer work

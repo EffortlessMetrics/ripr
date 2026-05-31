@@ -250,7 +250,8 @@ assertion-target affinity should become
 `analysis/assertion-target-affinity-owner-call-tracing`, other affinity-based
 related tests should become `activation_owner_call_absent_affinity_only` routed
 to `analysis/related-test-affinity-owner-call-tracing`, and same-file-only
-context should become `activation_owner_call_absent_same_file_only` routed to
+or same-file-primary context should become
+`activation_owner_call_absent_same_file_only` routed to
 `analysis/same-file-owner-call-tracing`, instead of generic owner-call absence
 triage.
 Within call-presence target-token affinity and related-test affinity, backlog
