@@ -94,7 +94,7 @@
         "changed_behavior": "call_or_output_effect changed at src/commands.py:5: `click.echo(\"shipment queued\")`",
         "current_test_evidence": "tests/test_commands.py:4 test_ship_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert captured.out",
         "missing_discriminator": "output contains \"shipment queued\"",
-        "recommended_test_shape": "Strengthen the existing pytest output/log/call-effect assertion for `output contains \"shipment queued\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest CLI output assertion for `output contains \"shipment queued\"`.",
         "suggested_assertion": "Assert the CLI output satisfies `output contains \"shipment queued\"`.",
         "suggested_location": {
           "test_file": "tests/test_commands.py",

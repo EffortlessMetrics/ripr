@@ -190,9 +190,24 @@ fn recommended_test_shape(
         ProbeFamily::FieldConstruction => {
             format!("{verb} {framework} field/object assertion for `{missing_discriminator}`.")
         }
-        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => format!(
-            "{verb} {framework} output/log/call-effect assertion for `{missing_discriminator}`."
-        ),
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            if missing_discriminator.starts_with("exit_code == ") {
+                return format!(
+                    "{verb} {framework} CLI exit-code assertion for `{missing_discriminator}`."
+                );
+            }
+            if missing_discriminator.starts_with("stdout contains ")
+                || missing_discriminator.starts_with("stderr contains ")
+                || missing_discriminator.starts_with("output contains ")
+            {
+                return format!(
+                    "{verb} {framework} CLI output assertion for `{missing_discriminator}`."
+                );
+            }
+            format!(
+                "{verb} {framework} output/log/call-effect assertion for `{missing_discriminator}`."
+            )
+        }
         _ => format!("{verb} {framework} focused assertion for `{missing_discriminator}`."),
     }
 }
@@ -308,7 +323,10 @@ fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_exception_discriminator, pytest_exception_assertion};
+    use super::{
+        parse_exception_discriminator, pytest_exception_assertion, recommended_test_shape,
+    };
+    use crate::domain::ProbeFamily;
 
     #[test]
     fn exception_assertion_uses_matching_message_when_available() {
@@ -321,5 +339,27 @@ mod tests {
     #[test]
     fn exception_discriminator_parse_rejects_non_exception_text() {
         assert!(parse_exception_discriminator("amount == threshold").is_none());
+    }
+
+    #[test]
+    fn side_effect_test_shape_specializes_cli_exit_and_output_cards() {
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::SideEffect,
+                "exit_code == 2",
+                "pytest tests/test_cli.py::test_cli_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest CLI exit-code assertion for `exit_code == 2`."
+        );
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::SideEffect,
+                "output contains \"shipment queued\"",
+                "pytest tests/test_cli.py::test_cli_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest CLI output assertion for `output contains \"shipment queued\"`."
+        );
     }
 }

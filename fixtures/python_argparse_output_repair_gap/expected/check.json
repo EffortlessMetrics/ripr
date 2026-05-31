@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_argparse_output_repair_gap/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_commands.py:8:python_preview",
+      "canonical_gap_id": "gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued",
+        "language": "python",
+        "file": "src/commands.py",
+        "owner": "main",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "print_shipment_queued"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_commands.py:8:python_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/commands.py",
+        "line": 8,
+        "expression": "    print(\"shipment queued\")",
+        "owner": "python:src/commands.py::main"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `main`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python call or output effect can alter observable side effects: `print(\"shipment queued\")`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `output contains \"shipment queued\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `main`", "infection yes: Changed Python call or output effect can alter observable side effects: `print(\"shipment queued\")`", "propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `output contains \"shipment queued\"`.", "local flow reaches call effect: print(\"shipment queued\") (line 8)", "related test tests/test_commands.py:4 test_main_smoke uses smoke smoke only oracle: assert captured.out", "missing discriminator output contains \"shipment queued\": changed Python output/log/call effect at line 8 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"print(\"shipment queued\")","line":8}
+      ],
+      "evidence": ["owner: main", "owner_kind: function", "missing_discriminator: output contains \"shipment queued\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_commands.py", "suggested_test_name: test_main_smoke", "suggested_test_node_id: tests/test_commands.py::test_main_smoke", "suggested_verify_command: pytest tests/test_commands.py::test_main_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_main_smoke)", "test_fixtures: capsys (test_main_smoke)", "test_verify_command: pytest tests/test_commands.py::test_main_smoke (test_main_smoke)", "related_test_relation: syntactic_call (test_main_smoke)", "test_oracle: smoke_only smoke (test_main_smoke)", "test_oracle_shape: broad_smoke_assertion (test_main_smoke)"],
+      "missing": ["Related Python test reaches `main` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed output/log/call effect."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "output contains \"shipment queued\"",
+            "reason": "changed Python output/log/call effect at line 8 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"call_effect","text":"print(\"shipment queued\")","line":8}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "output contains \"shipment queued\"",
+          "reason": "changed Python output/log/call effect at line 8 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"call_effect","text":"print(\"shipment queued\")","line":8}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_main_smoke",
+          "file": "tests/test_commands.py",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert captured.out"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_commands.py",
+        "suggested_test_name": "test_main_smoke",
+        "suggested_test_node_id": "tests/test_commands.py::test_main_smoke",
+        "verify_command": "pytest tests/test_commands.py::test_main_smoke",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "main",
+        "changed_behavior": "call_or_output_effect changed at src/commands.py:8: `print(\"shipment queued\")`",
+        "current_test_evidence": "tests/test_commands.py:4 test_main_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert captured.out",
+        "missing_discriminator": "output contains \"shipment queued\"",
+        "recommended_test_shape": "Strengthen the existing pytest CLI output assertion for `output contains \"shipment queued\"`.",
+        "suggested_assertion": "Assert the CLI output satisfies `output contains \"shipment queued\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_commands.py",
+          "test_name": "test_main_smoke",
+          "pytest_node_id": "tests/test_commands.py::test_main_smoke"
+         },
+        "verify": {
+          "command": "pytest tests/test_commands.py::test_main_smoke",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains \"shipment queued\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains \"shipment queued\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

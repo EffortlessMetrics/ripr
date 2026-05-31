@@ -41,7 +41,7 @@ Evidence
   - local flow reaches returned value: return value.trim(); (line 7)
 
 Weakness
-  - No trusted TypeScript method relation for `save`. Object method calls stay ambiguous in preview until method related-test matching lands.
+  - No trusted TypeScript method receiver relation for `save`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, prototype aliases, and dynamic property access stay ambiguous in preview.
   - Static limit `decorator_indirection`: owner `save` uses TypeScript decorators; syntax-first preview evidence does not resolve decorator-modified call behavior. Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.
 
 Next step

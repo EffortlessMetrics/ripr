@@ -912,7 +912,7 @@ Support simple FastAPI/Flask-shaped repair cards.
 
 ### Work item: analysis/python-cli-output-pack-v1
 
-Status: in_progress
+Status: done
 
 Blocked by:
 
@@ -934,14 +934,17 @@ Support Python CLI/output repair cards.
   `@click.command()` owner with changed `click.echo(...)` output routes to a
   bounded pytest repair card with `output contains ...`, a suggested existing
   test, and a focused verify command.
+- `fixtures/python_argparse_output_repair_gap` now proves an argparse-shaped
+  command can route a changed static `print(...)` output to a bounded pytest
+  CLI output repair card without importing argparse or executing tests.
 - Unit coverage pins Typer `app.command` transparency only when a `typer`
   import is present, keeps custom `app.command` decorators fail-closed, and
   recognizes `click.echo`, `typer.echo`, `sys.stdout.write`,
   `sys.stderr.write`, and simple literal `sys.exit` / `SystemExit` exit-code
   discriminators.
-- Remaining v1 work: argparse command-shape fixtures and richer
-  exit-code-specific repair-card copy beyond the shared output/call-effect
-  route.
+- Python repair-card copy now specializes output/call-effect side effects into
+  CLI output or CLI exit-code assertion guidance when the missing discriminator
+  is output text or a literal exit code.
 
 ### Work item: analysis/python-parametrized-boundaries
 

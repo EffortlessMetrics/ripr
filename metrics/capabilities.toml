@@ -1541,6 +1541,7 @@ evidence = [
   "fixtures/python-real-repo-evals/corpus.json:api_status_pytest_receipt records an API-style status-code pytest repair card, human-run focused pytest verify pass, and closed Python field/object outcome receipt",
   "fixtures/python-real-repo-evals/corpus.json:mixed_rust_python_pytest_receipt records a mixed Rust/Python pytest repo repair card, human-run focused pytest verify pass, and closed Python predicate-boundary outcome receipt",
   "fixtures/python_api_route_decorator_repair_gap pins simple route decorators such as @api.post(...) as static route metadata that can produce a field/object repair card while arbitrary decorators remain static limits",
+  "fixtures/python_argparse_output_repair_gap pins an argparse-shaped command whose changed print output routes to a bounded pytest CLI output repair card without importing argparse or executing tests",
   "fixtures/python-real-repo-evals/corpus.json:decorated_route_status_pytest_receipt records a decorated route pytest repair card, human-run focused status-code pytest verify pass, and closed Python field/object outcome receipt",
   "static-limit fixtures cover dynamic_dispatch, dynamic import through missing_import_graph, decorator_indirection, mocked_module with patch and monkeypatch syntax, opaque_custom_assertion_helper, property_based_test, unresolved_pytest_fixture, missing_import_graph, metaprogramming including metaclass declarations, and unsupported_syntax",
   "python_generated_file_excluded pins detectable generated Python diffs such as *_pb2.py as zero-finding, zero-repair-card inputs so generated-code edits stay out of preview repair routing",
@@ -1569,6 +1570,7 @@ fixtures = [
   "fixtures/python_test_placement_verify",
   "fixtures/python_api_route_decorator_repair_gap",
   "fixtures/python_cli_output_repair_gap",
+  "fixtures/python_argparse_output_repair_gap",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
   "fixtures/python_owner_file_match",
@@ -1608,6 +1610,7 @@ status = "usable alpha"
 spec = "RIPR-SPEC-0028"
 evidence = [
   "direct weak Python findings with canonical gaps, concrete missing discriminators, suggested test locations, verify commands, stop conditions, and limits emit python_repair_card output across human, JSON, SARIF, GitHub, pilot, first-pr, and LSP surfaces",
+  "Python CLI output repair cards specialize generic side-effect copy into CLI output or CLI exit-code assertion guidance when the missing discriminator is output text or a literal exit code",
   "reports gap-ledger --check-output derives Python GapRecords from actionable python_repair_card findings and synthesizes receipt commands for before/after check-output snapshots",
   "ripr agent packet --gap-ledger and ripr swarm queue --language python export bounded Python test-repair packets with allowed files, forbidden production files, conflict groups, verify commands, receipt commands/status, and stop conditions while excluding static limits and no-action records",
   "ripr swarm ingest --result classifies Python repair attempts without trusting them blindly, flags forbidden production-code edits, treats missing verify evidence as uncertain, and attaches before/after movement when available",
