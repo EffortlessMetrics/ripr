@@ -22342,10 +22342,14 @@ fn lane1_static_limitation_backlog_packet_from_builder(
             .to_string(),
         unlock_condition: static_limitation_unlock_condition(
             &builder.limitation_category,
+            &builder.limitation_subroute,
             &repair_route,
         )
         .to_string(),
-        non_claims: static_limitation_backlog_packet_non_claims(&builder.limitation_category),
+        non_claims: static_limitation_backlog_packet_non_claims(
+            &builder.limitation_category,
+            Some(&builder.limitation_subroute),
+        ),
     }
 }
 
@@ -22588,7 +22592,19 @@ fn static_limitation_why_not_actionable(category: &str) -> &'static str {
     }
 }
 
-fn static_limitation_unlock_condition(category: &str, repair_route: &str) -> String {
+fn static_limitation_unlock_condition(
+    category: &str,
+    subroute: &str,
+    repair_route: &str,
+) -> String {
+    if category == "activation_owner_call_absent_affinity_only"
+        && subroute.starts_with("same_test_file_call_presence_")
+    {
+        return format!(
+            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is proven"
+        );
+    }
+
     match category {
         "activation_boundary_input_unresolved" => {
             format!(
@@ -22614,7 +22630,10 @@ fn static_limitation_unlock_condition(category: &str, repair_route: &str) -> Str
     }
 }
 
-fn static_limitation_backlog_packet_non_claims(category: &str) -> Vec<String> {
+fn static_limitation_backlog_packet_non_claims(
+    category: &str,
+    subroute: Option<&str>,
+) -> Vec<String> {
     let mut claims = vec![
         "not a public repair packet".to_string(),
         "not swarm-ready work".to_string(),
@@ -22630,6 +22649,11 @@ fn static_limitation_backlog_packet_non_claims(category: &str) -> Vec<String> {
     if category == "activation_owner_call_absent_call_presence_target_affinity" {
         claims
             .push("do not treat call-target assertion affinity as activation evidence".to_string());
+    }
+    if category == "activation_owner_call_absent_affinity_only"
+        && subroute.is_some_and(|subroute| subroute.starts_with("same_test_file_call_presence_"))
+    {
+        claims.push("do not treat same-file affinity as owner-call evidence".to_string());
     }
     claims
 }
@@ -28163,9 +28187,13 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 });
             row.unlock_condition =
                 audit_non_empty_string(packet, &["unlock_condition"]).or_else(|| {
-                    category_for_defaults
-                        .as_deref()
-                        .map(|category| static_limitation_unlock_condition(category, &repair_route))
+                    let subroute_for_defaults = row.sample_limitation_subroute.clone();
+                    category_for_defaults.as_deref().map(|category| {
+                        let subroute = subroute_for_defaults
+                            .clone()
+                            .unwrap_or_else(|| audit_identifier_slug(category));
+                        static_limitation_unlock_condition(category, &subroute, &repair_route)
+                    })
                 });
             row.non_claims =
                 ripr_swarm_limitation_route_non_claims(packet, category_for_defaults.as_deref());
@@ -28225,9 +28253,10 @@ fn ripr_swarm_limitation_route_sample_sources(
 
 fn ripr_swarm_limitation_route_non_claims(packet: &Value, category: Option<&str>) -> Vec<String> {
     let mut claims = audit_string_array(packet, &["non_claims"]).unwrap_or_default();
+    let subroute = audit_non_empty_string(packet, &["limitation_subroute"]);
     let required_claims = category
-        .map(static_limitation_backlog_packet_non_claims)
-        .unwrap_or_else(|| static_limitation_backlog_packet_non_claims("unknown"));
+        .map(|category| static_limitation_backlog_packet_non_claims(category, subroute.as_deref()))
+        .unwrap_or_else(|| static_limitation_backlog_packet_non_claims("unknown", None));
     for claim in required_claims {
         if !claims.iter().any(|existing| existing == &claim) {
             claims.push(claim);
@@ -85884,6 +85913,49 @@ covered_by = ["cargo xtask check-file-policy"]
                 "call_presence"
             ),
             "same_test_file_missing_owner_call"
+        );
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_specializes_same_file_affinity_unlock_condition() {
+        let unlock = crate::static_limitation_unlock_condition(
+            "activation_owner_call_absent_affinity_only",
+            "same_test_file_call_presence_function_call_missing_owner_call",
+            "analysis/related-test-affinity-owner-call-tracing",
+        );
+
+        assert!(unlock.contains("bounded production call graph"));
+        assert!(unlock.contains("keep the limitation non-actionable"));
+        assert!(unlock.contains("direct or helper owner call is proven"));
+
+        let generic_unlock = crate::static_limitation_unlock_condition(
+            "activation_owner_call_absent_affinity_only",
+            "import_path_affinity_missing_owner_call",
+            "analysis/related-test-affinity-owner-call-tracing",
+        );
+        assert!(
+            generic_unlock.contains("related tests can be tied to direct or helper owner calls")
+        );
+        assert!(!generic_unlock.contains("bounded production call graph"));
+
+        let same_file_claims = crate::static_limitation_backlog_packet_non_claims(
+            "activation_owner_call_absent_affinity_only",
+            Some("same_test_file_call_presence_function_call_missing_owner_call"),
+        );
+        assert!(
+            same_file_claims
+                .iter()
+                .any(|claim| claim == "do not treat same-file affinity as owner-call evidence")
+        );
+
+        let generic_claims = crate::static_limitation_backlog_packet_non_claims(
+            "activation_owner_call_absent_affinity_only",
+            Some("import_path_affinity_missing_owner_call"),
+        );
+        assert!(
+            !generic_claims
+                .iter()
+                .any(|claim| claim == "do not treat same-file affinity as owner-call evidence")
         );
     }
 
