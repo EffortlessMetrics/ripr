@@ -22009,10 +22009,7 @@ fn static_limitation_subroute(
             format!("assertion_target_affinity_{class}_missing_owner_call")
         }
         "activation_owner_call_absent_affinity_only" => {
-            let relation = audit_dominant_related_test_reason(record)
-                .map(|reason| audit_identifier_slug(&reason))
-                .unwrap_or_else(|| "related_test_affinity".to_string());
-            format!("{relation}_missing_owner_call")
+            related_test_affinity_subroute(record, evidence_class)
         }
         "activation_owner_call_absent_same_file_only" => {
             "same_file_only_missing_owner_call".to_string()
@@ -22033,6 +22030,27 @@ fn call_presence_target_affinity_subroute(record: &Value) -> String {
         "call_presence_target_affinity_function_call_missing_owner_call".to_string()
     } else {
         "call_presence_target_affinity_missing_owner_call".to_string()
+    }
+}
+
+fn related_test_affinity_subroute(record: &Value, evidence_class: &str) -> String {
+    let relation = audit_dominant_related_test_reason(record)
+        .map(|reason| audit_identifier_slug(&reason))
+        .unwrap_or_else(|| "related_test_affinity".to_string());
+    if audit_identifier_slug(evidence_class) != "call_presence" {
+        return format!("{relation}_missing_owner_call");
+    }
+    let Some(expression) = audit_static_limitation_example_expression(record) else {
+        return format!("{relation}_missing_owner_call");
+    };
+    if call_presence_expression_is_method_chain(&expression) {
+        format!("{relation}_call_presence_method_chain_missing_owner_call")
+    } else if call_presence_expression_is_associated_call(&expression) {
+        format!("{relation}_call_presence_associated_call_missing_owner_call")
+    } else if expression.contains('(') {
+        format!("{relation}_call_presence_function_call_missing_owner_call")
+    } else {
+        format!("{relation}_missing_owner_call")
     }
 }
 
@@ -84117,6 +84135,88 @@ covered_by = ["cargo xtask check-file-policy"]
                 "call_presence"
             ),
             "call_presence_target_affinity_missing_owner_call"
+        );
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_splits_related_test_affinity_call_presence_by_expression_shape()
+     {
+        let limitation = serde_json::json!({});
+        fn affinity_record(reason: &str, expression: Option<&str>) -> Value {
+            let mut record = serde_json::json!({
+                "related_tests": [
+                    {
+                        "relation_reason": reason
+                    }
+                ]
+            });
+            if let Some(expression) = expression {
+                record["raw_findings"] = serde_json::json!([
+                    {
+                        "expression": expression
+                    }
+                ]);
+            }
+            record
+        }
+
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &affinity_record(
+                    "same_test_file",
+                    Some(
+                        "entry\n        .evidence\n        .missing_discriminators\n        .iter()"
+                    ),
+                ),
+                &limitation,
+                "activation_owner_call_absent_affinity_only",
+                "analysis/related-test-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_test_file_call_presence_method_chain_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &affinity_record("same_test_file", Some("u64::from(*byte)")),
+                &limitation,
+                "activation_owner_call_absent_affinity_only",
+                "analysis/related-test-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_test_file_call_presence_associated_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &affinity_record(
+                    "same_test_file",
+                    Some("missing_evidence(context.probe, &class)"),
+                ),
+                &limitation,
+                "activation_owner_call_absent_affinity_only",
+                "analysis/related-test-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_test_file_call_presence_function_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &affinity_record("owner_named_test", Some("Vec::new()")),
+                &limitation,
+                "activation_owner_call_absent_affinity_only",
+                "analysis/related-test-affinity-owner-call-tracing",
+                "return_value"
+            ),
+            "owner_named_test_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &affinity_record("same_test_file", None),
+                &limitation,
+                "activation_owner_call_absent_affinity_only",
+                "analysis/related-test-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_test_file_missing_owner_call"
         );
     }
 
