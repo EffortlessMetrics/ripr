@@ -192,6 +192,11 @@ Readiness may project the leading analyzer backlog routes as
 `top_limitation_routes[]`. That projection is separate from
 `repair_route_quality[]`, which is attempt-outcome evidence; limitation routes
 remain non-actionable until the full public packet contract is satisfied.
+When readiness consumes older or external backlog packets that omit
+presentation-only route fields, it must preserve the non-actionable boundary by
+filling standard non-claims, fallback why-not-actionable text, fallback unlock
+conditions, and explicit `unknown` evidence class values instead of making those
+routes repair-ready.
 
 ## Required Packet Fields
 
@@ -686,6 +691,9 @@ Current implementation coverage:
 - `xtask::tests::ripr_swarm_readiness_routes_static_limitation_backlog_when_no_ready_packets`
   pins readiness `top_limitation_routes[]` and sample packet routing without
   making limitation backlog packets swarm-ready.
+- `xtask::tests::ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets`
+  pins readiness fallback non-claims, non-actionability text, unlock conditions,
+  and explicit unknown evidence classes for older limitation backlog packets.
 - `xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions`
   pins that real repair attempt receipts cannot record contradictory movement
   claims or claim evidence movement without a receipt.

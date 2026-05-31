@@ -3637,6 +3637,10 @@ routes with sample packet context, sample category/subroute, sample canonical
 gap IDs, sample source locations, and non-claims so operators can inspect the
 backlog without treating it as repair work. It is intentionally separate from
 `repair_route_quality[]`, which is based only on latest repair attempts.
+For older or external backlog packets that omit presentation-only route fields,
+readiness fills standard non-claims, fallback non-actionability text, fallback
+unlock conditions, and explicit `unknown` evidence class values rather than
+dropping the route or making it look repair-ready.
 `attempt_history_summary` preserves durable attempt-ledger history before
 readiness collapses to latest attempts for current routing counts. Use it to
 inspect prior unchanged, no-receipt, regressed, or expected-unchanged outcomes

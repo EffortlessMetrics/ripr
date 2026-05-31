@@ -28070,7 +28070,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
         let row = rows
             .entry(repair_route.clone())
             .or_insert_with(|| RiprSwarmLimitationRouteRow {
-                repair_route,
+                repair_route: repair_route.clone(),
                 signal_count,
                 sample_packet_id: None,
                 sample_limitation_category: None,
@@ -28084,6 +28084,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
             });
         row.signal_count = row.signal_count.max(signal_count);
         if row.sample_packet_id.is_none() {
+            let category_for_defaults = category.clone();
             row.sample_packet_id = audit_non_empty_string(packet, &["packet_id"]);
             row.sample_limitation_category = category;
             row.sample_limitation_subroute =
@@ -28095,10 +28096,23 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
             row.sample_canonical_gap_ids = ripr_swarm_limitation_route_sample_gap_ids(packet);
             row.sample_sources = ripr_swarm_limitation_route_sample_sources(packet);
             row.dominant_evidence_class =
-                audit_non_empty_string(packet, &["dominant_evidence_class"]);
-            row.why_not_actionable = audit_non_empty_string(packet, &["why_not_actionable"]);
-            row.unlock_condition = audit_non_empty_string(packet, &["unlock_condition"]);
-            row.non_claims = audit_string_array(packet, &["non_claims"]).unwrap_or_default();
+                audit_non_empty_string(packet, &["dominant_evidence_class"])
+                    .or_else(|| Some("unknown".to_string()));
+            row.why_not_actionable = audit_non_empty_string(packet, &["why_not_actionable"])
+                .or_else(|| {
+                    category_for_defaults
+                        .as_deref()
+                        .map(static_limitation_why_not_actionable)
+                        .map(str::to_string)
+                });
+            row.unlock_condition =
+                audit_non_empty_string(packet, &["unlock_condition"]).or_else(|| {
+                    category_for_defaults
+                        .as_deref()
+                        .map(|category| static_limitation_unlock_condition(category, &repair_route))
+                });
+            row.non_claims =
+                ripr_swarm_limitation_route_non_claims(packet, category_for_defaults.as_deref());
         }
     }
     let mut rows = rows.into_values().collect::<Vec<_>>();
@@ -28151,6 +28165,19 @@ fn ripr_swarm_limitation_route_sample_sources(
         })
         .take(3)
         .collect()
+}
+
+fn ripr_swarm_limitation_route_non_claims(packet: &Value, category: Option<&str>) -> Vec<String> {
+    let mut claims = audit_string_array(packet, &["non_claims"]).unwrap_or_default();
+    let required_claims = category
+        .map(static_limitation_backlog_packet_non_claims)
+        .unwrap_or_else(|| static_limitation_backlog_packet_non_claims("unknown"));
+    for claim in required_claims {
+        if !claims.iter().any(|existing| existing == &claim) {
+            claims.push(claim);
+        }
+    }
+    claims
 }
 
 fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Vec<Value> {
@@ -89407,6 +89434,166 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("gap:affinity-owner-call"));
         assert!(markdown.contains("target.call()"));
         assert!(markdown.contains("not a public repair packet"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 0,
+                "static_limitation_packets": 0
+            },
+            "source_summary": {
+                "actionable_gaps": 0,
+                "public_projection_eligible_packets": 0
+            },
+            "static_limitation_backlog": {
+                "source": "lane1-evidence-audit.static_limitations",
+                "top_repair_routes": [
+                    {
+                        "repair_route": "analysis/local-computed-boundary-operand-resolution",
+                        "count": 297
+                    }
+                ],
+                "limitation_backlog_packets": [
+                    {
+                        "packet_id": "limitation:activation-boundary-input-unresolved:local-computed",
+                        "limitation_category": "activation_boundary_input_unresolved",
+                        "repair_route": "analysis/local-computed-boundary-operand-resolution",
+                        "signal_count": 297,
+                        "sample_canonical_gap_ids": [
+                            "gap:idx-offset-local"
+                        ],
+                        "sample_sources": [
+                            {
+                                "canonical_gap_id": "gap:idx-offset-local",
+                                "source_file": "src/window.rs",
+                                "line": 44,
+                                "expression": "idx >= offset",
+                                "limitation_reason": "local/computed operand cannot be mapped to a safe test input"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "canonical_gaps_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            },
+            "attempts": []
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
+            .map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["top_limitation_routes"][0]["dominant_evidence_class"],
+            "unknown"
+        );
+        assert_eq!(
+            value["top_limitation_routes"][0]["why_not_actionable"],
+            "activation inputs cannot yet be mapped to a safe concrete test value"
+        );
+        assert_eq!(
+            value["top_limitation_routes"][0]["unlock_condition"],
+            "implement `analysis/local-computed-boundary-operand-resolution` so local, iterator, or computed operands can be resolved before candidate values are recommended"
+        );
+        assert_eq!(
+            value["top_limitation_routes"][0]["sample_sources"][0]["evidence_class"],
+            "unknown"
+        );
+        assert!(
+            value["top_limitation_routes"][0]["non_claims"]
+                .as_array()
+                .is_some_and(|claims| claims
+                    .iter()
+                    .any(|claim| claim == "not a public repair packet"))
+        );
+        assert!(
+            value["top_limitation_routes"][0]["non_claims"]
+                .as_array()
+                .is_some_and(|claims| claims.iter().any(|claim| claim == "not swarm-ready work"))
+        );
+        assert!(
+            value["top_limitation_routes"][0]["non_claims"]
+                .as_array()
+                .is_some_and(|claims| claims
+                    .iter()
+                    .any(|claim| claim == "do not edit tests from this backlog item alone"))
+        );
+        assert!(
+            value["top_limitation_routes"][0]["non_claims"]
+                .as_array()
+                .is_some_and(|claims| claims
+                    .iter()
+                    .any(|claim| claim == "do not invent exact boundary candidate values"))
+        );
+        assert!(
+            value["top_limitation_routes"][0]
+                .get("public_projection_eligible")
+                .is_none()
+        );
+        assert!(
+            value["top_limitation_routes"][0]
+                .get("swarm_ready")
+                .is_none()
+        );
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("not a public repair packet"));
+        assert!(markdown.contains("not swarm-ready work"));
+        assert!(markdown.contains("src/window.rs:44"));
         Ok(())
     }
 

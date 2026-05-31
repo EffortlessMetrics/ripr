@@ -4069,6 +4069,7 @@ tests = [
   "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts",
   "xtask::tests::ripr_swarm_readiness_recomputes_summary_from_attempts_when_summary_is_stale",
   "xtask::tests::ripr_swarm_readiness_audits_blocked_state_routes",
+  "xtask::tests::ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets",
   "xtask::tests::ripr_swarm_readiness_prioritizes_sampled_static_limitation_backlog",
   "xtask::tests::dogfood_surface_projection_alignment_receipts_are_checked",
   "xtask::tests::dogfood_surface_projection_alignment_covers_route_quality_non_success",
