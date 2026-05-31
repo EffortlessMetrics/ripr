@@ -27,7 +27,7 @@ claim badge movement without receipt movement.
 | Fresh no-ledger repo badge recompute | `cargo xtask badge-basis` timed out after 90 seconds while generating `repo-badge-json`; no public badge endpoint was refreshed. |
 | Latest sampled packet report | `target/ripr/reports/actionable-gaps.json` is `limited_sampled_input`, `repo-exposure-json:limit_5000_of_46406`, and `downstream_consumable: false`; it emitted zero repair packets and must not be treated as the full repo queue. |
 | 2026-05-29 issue snapshot | The filing note recorded about `120,408` raw active seams, `135,812` total seams, and about `2,722` canonical actionable gaps. Treat those as issue-snapshot context until a fresh bounded canonical report supersedes them. |
-| RIPR+ badge input | `target/ripr/reports/test-efficiency.json` is a generated local artifact when the repo command runs; #590/#592 still own making that path deterministic for ordinary badge generation. |
+| RIPR+ badge input | `cargo xtask test-efficiency-report` writes `target/ripr/reports/test-efficiency.json`, and the repo badge endpoint path runs that producer before repo `ripr+` badge rendering. #590/#592 are now closeout/docs issues; no-ledger endpoint refresh is still blocked by the #588/#593 scan timeout. |
 
 ## Current Queue Classification
 
@@ -53,7 +53,7 @@ reviewable.
 | ---: | --- | --- | --- |
 | 1 | #591 | `docs(ripr): publish canonical burndown baseline and first packet map` | Establish this map and prevent broad repairs against the old raw seam count. |
 | 2 | #587 | `fix(badges): make badge-plus missing test-efficiency input actionable` | Stop silent or impossible `ripr+ unavailable` behavior when the auxiliary input is missing. |
-| 3 | #590, #592 | `feat(xtask): generate test-efficiency report before ripr+ badges` | Make `target/ripr/reports/test-efficiency.json` deterministic for ordinary local badge generation. |
+| 3 | #590, #592 | `docs(ripr): close test-efficiency badge path tracking` | Record that the local producer and badge wiring already exist; leave large-repo no-ledger refresh to #588/#593. |
 | 4 | #588, #593 | `perf(cache): make compact repo seam cache limit configurable` | Remove the 100k seam cache ceiling as a repeated full-scan blocker for large repos. |
 | 5 | #593 | `docs(ripr): add large-repo scan guardrails` | Keep agents and CI from repeating expensive repo scans or treating sampled reports as full-repo proof. |
 | 6 | #589 | `feat(output): add bounded repo exposure summary output` | Provide bounded summary data instead of multi-GB `repo-exposure-json` output for ordinary workflows. |

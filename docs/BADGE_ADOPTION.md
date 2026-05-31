@@ -90,6 +90,8 @@ cargo xtask test-efficiency-report
 
 That command is appropriate for this repository, but external repositories
 should not be required to copy or vendor repo-private `xtask` internals.
+In this repository, `cargo xtask badges` and `cargo xtask badges --check`
+run this producer before rendering repo `ripr+` badge artifacts.
 
 ### Productization target
 
@@ -172,6 +174,10 @@ downstream mechanism. In this repository that source is
 `cargo xtask test-efficiency-report`; external repositories should not copy that
 private wrapper. Do not run the `ripr+` commands below until the JSON file
 exists and is part of the downstream repo's badge refresh contract.
+
+For the local checked-in badge endpoints, prefer `cargo xtask badges` or
+`cargo xtask badges --check`; those wrappers regenerate the test-efficiency
+report before requesting repo `ripr+` badge formats.
 
 ```bash
 jq -e '.schema_version' target/ripr/reports/test-efficiency.json
