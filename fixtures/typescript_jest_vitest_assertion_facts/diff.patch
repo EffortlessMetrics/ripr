@@ -2,7 +2,7 @@ diff --git a/src/signals.ts b/src/signals.ts
 index 0000000..1111111 100644
 --- a/src/signals.ts
 +++ b/src/signals.ts
-@@ -1,22 +1,22 @@
+@@ -1,25 +1,26 @@
  export function applyDiscount(amount: number, threshold: number): number {
 -  if (amount > threshold) {
 +  if (amount >= threshold) {
@@ -26,6 +26,11 @@ index 0000000..1111111 100644
 +  sink.record(status);
  }
  
+ export function notifyLiteral(sink: { record(value: string): void }): void {
+-  sink.record("pending");
++  sink.record("ready");
+ }
++
  export async function loadProfile(id: string): Promise<string> {
 -  return await Promise.resolve("profile");
 +  return await Promise.resolve(`profile:${id}`);

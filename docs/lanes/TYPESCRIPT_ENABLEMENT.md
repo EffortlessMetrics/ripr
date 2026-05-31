@@ -90,9 +90,10 @@ claims.
 1. Sharpen weak-oracle preview guidance:
    - snapshots advise exact-value assertions alongside snapshots;
    - smoke-only truthiness advises exact-value assertions;
-   - mock interaction stays advisory until mock payload support can name the
-     callee, expected arguments, verify command, receipt command, and edit
-     boundaries;
+   - mock interaction without safe payload proof stays advisory;
+   - bounded literal/object/count mock payload evidence may name the callee and
+     expected value, but still stays advisory until verify command, receipt
+     command, evidence refs, and edit boundaries exist;
    - broad error evidence stays weak until error payload or variant support can
      name a bounded repair route.
 2. Audit false-actionable candidates:
@@ -104,8 +105,8 @@ claims.
    - method receiver ambiguity;
    - module initializer ambiguity;
    - mocked module, decorator, and dynamic-dispatch limits.
-3. Add narrow mock payload support only when syntax can safely name the target
-   interaction.
+3. Expand narrow mock payload support only when syntax can safely name the
+   target interaction.
 4. Distinguish broad error checks from exact error payload or rejected-promise
    evidence.
 5. Add bounded method receiver relation support for direct receiver calls only.

@@ -2009,6 +2009,9 @@ name = "TypeScript preview static facts"
 spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/typescript.rs",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::extract_tests_records_safe_mock_payload_shapes",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::extract_tests_keeps_ambiguous_mock_payload_shapes_unbounded",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::typescript_preview_mock_payload_guidance_names_literal_payload_without_repair_packet",
   "crates/ripr/src/output/preview_actionability.rs::tests::parses_typescript_preview_actionability_strings",
   "crates/ripr/src/output/json/mod.rs::tests::finding_json_projects_typescript_preview_actionability",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_preview_actionability_without_raw_string_spam",

@@ -17,6 +17,10 @@ export function notifyStatus(status: string, sink: { record(value: string): void
   sink.record(status);
 }
 
+export function notifyLiteral(sink: { record(value: string): void }): void {
+  sink.record("ready");
+}
+
 export async function loadProfile(id: string): Promise<string> {
   return await Promise.resolve(`profile:${id}`);
 }

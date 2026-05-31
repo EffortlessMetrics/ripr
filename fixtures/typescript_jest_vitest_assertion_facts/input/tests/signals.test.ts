@@ -3,6 +3,7 @@ import {
   applyDiscount,
   isReady,
   loadProfile,
+  notifyLiteral,
   notifyStatus,
   renderSummary,
 } from "../src/signals";
@@ -35,6 +36,12 @@ it.each([
   const sink = { record: vi.fn() };
   notifyStatus(status, sink);
   expect(sink.record).toHaveBeenCalledWith(status);
+});
+
+it("records literal status", () => {
+  const sink = { record: vi.fn() };
+  notifyLiteral(sink);
+  expect(sink.record).toHaveBeenCalledWith("ready");
 });
 
 test("loads profile", async () => {

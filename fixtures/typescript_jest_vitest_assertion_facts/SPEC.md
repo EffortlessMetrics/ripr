@@ -14,8 +14,8 @@ enabled = ["rust", "typescript"]
 
 The related Vitest/Jest-style tests cover nested `describe(...)`,
 `test.each(...)`, `it.each(...)`, exact-value assertions, async
-`resolves`, mock interaction assertions, snapshot assertions, and smoke-only
-truthiness assertions.
+`resolves`, mock interaction assertions, bounded mock payload assertions,
+snapshot assertions, and smoke-only truthiness assertions.
 
 ## When
 
@@ -40,6 +40,8 @@ The TypeScript preview adapter:
 - discovers array-form `test.each(...)` and `it.each(...)` calls;
 - maps `toStrictEqual`, `toBe`, and `resolves.toBe` to exact-value oracles;
 - maps `toHaveBeenCalledWith` to a mock-interaction oracle;
+- names literal mock payload evidence when the callee and expected argument are
+  syntax-bounded;
 - keeps snapshot and smoke-only assertions weak instead of treating them as
   strong discriminators;
 - preserves `language = "typescript"`, `language_status = "preview"`, and

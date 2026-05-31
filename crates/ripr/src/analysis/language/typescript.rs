@@ -26,13 +26,13 @@ use crate::domain::{
 use crate::domain::{FlowSinkFact, FlowSinkKind};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
+    Argument, ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
     ExportDefaultDeclarationKind, Expression, Function, ImportDeclarationSpecifier,
-    ImportOrExportKind, MethodDefinition, ModuleExportName, PropertyKey, Statement,
-    VariableDeclaration, VariableDeclarator,
+    ImportOrExportKind, MethodDefinition, ModuleExportName, ObjectPropertyKind, PropertyKey,
+    Statement, VariableDeclaration, VariableDeclarator,
 };
 use oxc_parser::Parser;
-use oxc_span::SourceType;
+use oxc_span::{GetSpan, SourceType};
 use std::path::{Path, PathBuf};
 
 /// TypeScript / JavaScript preview adapter.
@@ -182,6 +182,39 @@ struct TypeScriptAssertion {
     line: usize,
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
+    mock_payload: Option<TypeScriptMockPayload>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptMockPayload {
+    target: String,
+    expected: String,
+    kind: TypeScriptMockPayloadKind,
+}
+
+impl TypeScriptMockPayload {
+    fn oracle_text(&self) -> String {
+        match self.kind {
+            TypeScriptMockPayloadKind::CalledWith => {
+                format!(
+                    "expect({}).toHaveBeenCalledWith({})",
+                    self.target, self.expected
+                )
+            }
+            TypeScriptMockPayloadKind::CalledTimes => {
+                format!(
+                    "expect({}).toHaveBeenCalledTimes({})",
+                    self.target, self.expected
+                )
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TypeScriptMockPayloadKind {
+    CalledWith,
+    CalledTimes,
 }
 
 fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) {
@@ -215,6 +248,7 @@ fn weak_oracle_missing_summary(
     owner_name: &str,
     oracle_kind: &OracleKind,
     probe_family: &ProbeFamily,
+    mock_payload_oracle: Option<&str>,
 ) -> String {
     match oracle_kind {
         OracleKind::Snapshot => format!(
@@ -223,9 +257,16 @@ fn weak_oracle_missing_summary(
         OracleKind::SmokeOnly => format!(
             "Related test reaches `{owner_name}` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet."
         ),
-        OracleKind::MockExpectation if matches!(probe_family, ProbeFamily::SideEffect) => format!(
-            "Related test reaches `{owner_name}` with a mock interaction oracle, but TypeScript preview does not yet establish the changed call payload; keep the item advisory until mock-shape actionability can name the callee, expected arguments, verify command, receipt command, and edit boundaries."
-        ),
+        OracleKind::MockExpectation if matches!(probe_family, ProbeFamily::SideEffect) => {
+            mock_payload_oracle.map_or_else(
+                || format!(
+                    "Related test reaches `{owner_name}` with a mock interaction oracle, but TypeScript preview does not yet establish the changed call payload; keep the item advisory until mock-shape actionability can name the callee, expected arguments, verify command, receipt command, and edit boundaries."
+                ),
+                |oracle| format!(
+                    "Related test reaches `{owner_name}` with bounded mock payload evidence `{oracle}`; keep the item advisory until mock-shape actionability can name verify command, receipt command, evidence refs, and edit boundaries."
+                ),
+            )
+        }
         OracleKind::BroadError => format!(
             "Related test reaches `{owner_name}` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet."
         ),
@@ -236,7 +277,11 @@ fn weak_oracle_missing_summary(
     }
 }
 
-fn weak_oracle_recommendation(oracle_kind: &OracleKind, discriminator: &str) -> String {
+fn weak_oracle_recommendation(
+    oracle_kind: &OracleKind,
+    discriminator: &str,
+    mock_payload_oracle: Option<&str>,
+) -> String {
     match oracle_kind {
         OracleKind::Snapshot => format!(
             "TypeScript preview advisory: add an exact-value assertion alongside the snapshot for missing discriminator `{discriminator}`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available."
@@ -244,8 +289,13 @@ fn weak_oracle_recommendation(oracle_kind: &OracleKind, discriminator: &str) -> 
         OracleKind::SmokeOnly => format!(
             "TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `{discriminator}`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available."
         ),
-        OracleKind::MockExpectation => format!(
-            "TypeScript preview advisory: related mock interaction evidence is present, but mock payloads are not yet a safe discriminator for `{discriminator}`; no actionable repair packet is emitted until mock-shape support can name verify, receipt, evidence refs, and edit boundaries."
+        OracleKind::MockExpectation => mock_payload_oracle.map_or_else(
+                || format!(
+                    "TypeScript preview advisory: related mock interaction evidence is present, but mock payloads are not yet a safe discriminator for `{discriminator}`; no actionable repair packet is emitted until mock-shape support can name verify, receipt, evidence refs, and edit boundaries."
+                ),
+                |oracle| format!(
+                    "TypeScript preview advisory: related mock payload evidence `{oracle}` is syntax-bounded for `{discriminator}`, but no actionable repair packet is emitted until verify, receipt, evidence refs, and edit boundaries are available."
+                ),
         ),
         OracleKind::BroadError => format!(
             "TypeScript preview advisory: broad error evidence does not establish missing discriminator `{discriminator}`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields."
@@ -1062,13 +1112,27 @@ fn expect_assertion_from_expression(
     // Inner shape is either `expect(...)` directly or an
     // `expect(...).resolves` / `.rejects` chain.
     let inner = &outer_member.object;
-    let inner_is_expect_call = match inner {
+    let expect_call = expect_call_from_assertion_inner(inner)?;
+
+    let (oracle_kind, oracle_strength) = oracle_for_matcher(matcher);
+    let mock_payload = mock_payload_from_assertion(matcher, expect_call, outer_call, source);
+    Some(TypeScriptAssertion {
+        matcher: matcher.to_string(),
+        argument_count: outer_call.arguments.len(),
+        line: line_for_offset(source, outer_call.span.start as usize),
+        oracle_kind,
+        oracle_strength,
+        mock_payload,
+    })
+}
+
+fn expect_call_from_assertion_inner<'a>(
+    inner: &'a Expression<'a>,
+) -> Option<&'a oxc_ast::ast::CallExpression<'a>> {
+    match inner {
         // Direct: expect(...).matcher(...)
-        Expression::CallExpression(inner_call) => {
-            matches!(
-                &inner_call.callee,
-                Expression::Identifier(ident) if ident.name.as_str() == "expect"
-            )
+        Expression::CallExpression(inner_call) if call_expression_is_expect(inner_call) => {
+            Some(inner_call)
         }
         // Async chain: expect(...).resolves.matcher(...) etc.
         Expression::StaticMemberExpression(inner_member) => {
@@ -1076,26 +1140,135 @@ fn expect_assertion_from_expression(
             if modifier != "resolves" && modifier != "rejects" {
                 return None;
             }
-            matches!(
-                &inner_member.object,
-                Expression::CallExpression(inner_call)
-                    if matches!(&inner_call.callee, Expression::Identifier(ident) if ident.name.as_str() == "expect")
-            )
+            match &inner_member.object {
+                Expression::CallExpression(inner_call) if call_expression_is_expect(inner_call) => {
+                    Some(inner_call)
+                }
+                _ => None,
+            }
         }
-        _ => false,
-    };
-    if !inner_is_expect_call {
-        return None;
+        _ => None,
     }
+}
 
-    let (oracle_kind, oracle_strength) = oracle_for_matcher(matcher);
-    Some(TypeScriptAssertion {
-        matcher: matcher.to_string(),
-        argument_count: outer_call.arguments.len(),
-        line: line_for_offset(source, outer_call.span.start as usize),
-        oracle_kind,
-        oracle_strength,
+fn call_expression_is_expect(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    matches!(
+        &call.callee,
+        Expression::Identifier(ident) if ident.name.as_str() == "expect"
+    )
+}
+
+fn mock_payload_from_assertion(
+    matcher: &str,
+    expect_call: &oxc_ast::ast::CallExpression<'_>,
+    matcher_call: &oxc_ast::ast::CallExpression<'_>,
+    source: &str,
+) -> Option<TypeScriptMockPayload> {
+    let target = safe_mock_target_text(expect_call.arguments.first()?, source)?;
+    match matcher {
+        "toHaveBeenCalledWith" if matcher_call.arguments.len() == 1 => {
+            let expected =
+                safe_mock_expected_argument_text(matcher_call.arguments.first()?, source)?;
+            Some(TypeScriptMockPayload {
+                target,
+                expected,
+                kind: TypeScriptMockPayloadKind::CalledWith,
+            })
+        }
+        "toHaveBeenCalledTimes" if matcher_call.arguments.len() == 1 => {
+            let expected = safe_mock_call_count_text(matcher_call.arguments.first()?, source)?;
+            Some(TypeScriptMockPayload {
+                target,
+                expected,
+                kind: TypeScriptMockPayloadKind::CalledTimes,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn safe_mock_target_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    let text = source_text_for_argument(arg, source)?;
+    is_safe_javascript_member_path(&text).then_some(text)
+}
+
+fn safe_mock_expected_argument_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    safe_mock_expected_argument(arg).then(|| source_text_for_argument(arg, source))?
+}
+
+fn safe_mock_call_count_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    matches!(arg, Argument::NumericLiteral(_)).then(|| source_text_for_argument(arg, source))?
+}
+
+fn source_text_for_argument(arg: &Argument<'_>, source: &str) -> Option<String> {
+    let span = arg.span();
+    Some(
+        source
+            .get(span.start as usize..span.end as usize)?
+            .trim()
+            .to_string(),
+    )
+}
+
+fn safe_mock_expected_argument(arg: &Argument<'_>) -> bool {
+    match arg {
+        Argument::StringLiteral(_)
+        | Argument::NumericLiteral(_)
+        | Argument::BooleanLiteral(_)
+        | Argument::NullLiteral(_) => true,
+        Argument::ObjectExpression(object) => safe_mock_expected_object(object),
+        _ => false,
+    }
+}
+
+fn safe_mock_expected_object(object: &oxc_ast::ast::ObjectExpression<'_>) -> bool {
+    object.properties.iter().all(|property| match property {
+        ObjectPropertyKind::ObjectProperty(property) => {
+            !property.computed
+                && !property.shorthand
+                && safe_mock_expected_object_key(&property.key)
+                && safe_mock_expected_object_value(&property.value)
+        }
+        ObjectPropertyKind::SpreadProperty(_) => false,
     })
+}
+
+fn safe_mock_expected_object_key(key: &PropertyKey<'_>) -> bool {
+    matches!(
+        key,
+        PropertyKey::StaticIdentifier(_)
+            | PropertyKey::StringLiteral(_)
+            | PropertyKey::NumericLiteral(_)
+    )
+}
+
+fn safe_mock_expected_object_value(value: &Expression<'_>) -> bool {
+    matches!(
+        value,
+        Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+    )
+}
+
+fn is_safe_javascript_member_path(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && !text.starts_with('.')
+        && !text.ends_with('.')
+        && text
+            .split('.')
+            .all(|segment| is_safe_javascript_identifier(segment.trim()))
+}
+
+fn is_safe_javascript_identifier(text: &str) -> bool {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first == '$' || first.is_ascii_alphabetic())
+        && chars.all(is_javascript_identifier_char)
 }
 
 fn related_test_candidates<'a>(
@@ -1479,6 +1652,9 @@ fn similarity_key_contains(haystack: &str, needle: &str) -> bool {
 }
 
 fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
+    if let Some(mock_payload) = &assertion.mock_payload {
+        return mock_payload.oracle_text();
+    }
     if matches!(assertion.matcher.as_str(), "toThrow" | "toThrowError")
         && assertion.argument_count == 0
     {
@@ -1494,6 +1670,16 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
     assertions
         .iter()
         .max_by_key(|assertion| assertion.oracle_strength.rank())
+}
+
+fn related_mock_payload_oracle(related: &[RelatedTest]) -> Option<String> {
+    related.iter().find_map(|test| {
+        (test.oracle_kind == OracleKind::MockExpectation)
+            .then_some(test.oracle.as_deref())
+            .flatten()
+            .filter(|oracle| !oracle.contains("..."))
+            .map(str::to_string)
+    })
 }
 
 /// Collect the deduplicated set of module paths that any related test
@@ -2490,6 +2676,7 @@ fn classify_change(
         .max_by_key(|test| test.oracle_strength.rank())
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
+    let mock_payload_oracle = related_mock_payload_oracle(&related);
 
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if related.is_empty()
     {
@@ -2533,6 +2720,7 @@ fn classify_change(
                 &owner.name,
                 &strongest_kind,
                 &probe_shape.family,
+                mock_payload_oracle.as_deref(),
             )],
         )
     };
@@ -2644,7 +2832,11 @@ fn classify_change(
             "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.".to_string()
         }
         _ if let Some(discriminator) = missing_discriminators.first() => {
-            weak_oracle_recommendation(&strongest_kind, &discriminator.value)
+            weak_oracle_recommendation(
+                &strongest_kind,
+                &discriminator.value,
+                mock_payload_oracle.as_deref(),
+            )
         }
         _ => {
             "TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.".to_string()
@@ -2663,6 +2855,9 @@ fn classify_change(
     }
     for discriminator in &missing_discriminators {
         evidence.push(format!("missing_discriminator: {}", discriminator.value));
+    }
+    if let Some(oracle) = &mock_payload_oracle {
+        evidence.push(format!("mock_payload_evidence: {oracle}"));
     }
     if let Some(limit) = &static_limit {
         evidence.extend(limit.evidence.iter().cloned());
@@ -3029,6 +3224,7 @@ mod tests {
             line: 2,
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
+            mock_payload: None,
         }
     }
 
@@ -3064,6 +3260,7 @@ mod tests {
                 line: 3,
                 oracle_kind: OracleKind::MockExpectation,
                 oracle_strength: OracleStrength::Medium,
+                mock_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -3091,6 +3288,7 @@ mod tests {
                 line: 2,
                 oracle_kind,
                 oracle_strength,
+                mock_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -3111,6 +3309,7 @@ mod tests {
                 line: 1,
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
@@ -4005,6 +4204,69 @@ test("type only import", () => {
     }
 
     #[test]
+    fn typescript_preview_mock_payload_guidance_names_literal_payload_without_repair_packet()
+    -> Result<(), String> {
+        let owner = test_owner("notifyReady", "src/lib.ts");
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("records ready status", () => {
+    const sink = { record: vi.fn() };
+    notifyReady(sink);
+    expect(sink.record).toHaveBeenCalledWith("ready");
+});
+"#,
+        );
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    sink.record(\"ready\");",
+            &[owner],
+            &tests,
+        )
+        .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(
+            finding.related_tests[0].oracle_kind,
+            OracleKind::MockExpectation
+        );
+        assert_eq!(
+            finding.related_tests[0].oracle.as_deref(),
+            Some("expect(sink.record).toHaveBeenCalledWith(\"ready\")")
+        );
+        assert!(finding.canonical_gap.is_none());
+        assert_evidence_contains(&finding, "gap_state: advisory");
+        assert_evidence_contains(
+            &finding,
+            "mock_payload_evidence: expect(sink.record).toHaveBeenCalledWith(\"ready\")",
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|line| line.contains("bounded mock payload evidence")
+                    && line.contains("expect(sink.record).toHaveBeenCalledWith(\"ready\")")),
+            "expected bounded mock-payload guidance, got {:?}",
+            finding.missing
+        );
+        let recommended = finding
+            .recommended_next_step
+            .as_deref()
+            .ok_or_else(|| "expected recommended next step".to_string())?;
+        assert!(
+            recommended.contains("related mock payload evidence")
+                && recommended.contains("syntax-bounded")
+                && recommended.contains("no actionable repair packet is emitted"),
+            "expected advisory mock-payload recommendation, got {recommended:?}"
+        );
+        assert!(
+            !recommended.contains("exact-value assertion"),
+            "mock payload preview guidance should not ask for an exact-value assertion: {recommended:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_labels_javascript_sources_separately() -> Result<(), String> {
         let owner = TypeScriptOwner {
             name: "applyDiscount".to_string(),
@@ -4193,6 +4455,65 @@ test("type only import", () => {
         assert_eq!(
             tests[0].assertions[0].oracle_kind,
             OracleKind::MockExpectation
+        );
+    }
+
+    #[test]
+    fn extract_tests_records_safe_mock_payload_shapes() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("mock payloads", () => {
+    const sink = { record: vi.fn() };
+    expect(sink.record).toHaveBeenCalledWith("ready");
+    expect(sink.record).toHaveBeenCalledWith({ status: "ok" });
+    expect(sink.record).toHaveBeenCalledTimes(1);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        let payloads: Vec<Option<String>> = tests[0]
+            .assertions
+            .iter()
+            .map(|assertion| {
+                assertion
+                    .mock_payload
+                    .as_ref()
+                    .map(TypeScriptMockPayload::oracle_text)
+            })
+            .collect();
+        assert_eq!(
+            payloads,
+            vec![
+                Some("expect(sink.record).toHaveBeenCalledWith(\"ready\")".to_string()),
+                Some("expect(sink.record).toHaveBeenCalledWith({ status: \"ok\" })".to_string()),
+                Some("expect(sink.record).toHaveBeenCalledTimes(1)".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_tests_keeps_ambiguous_mock_payload_shapes_unbounded() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("mock payloads", () => {
+    expect(sink.record).toHaveBeenCalledWith(status);
+    expect(sink.record).toHaveBeenCalledWith({ status });
+    expect(sink.record).toHaveBeenCalledWith(...args);
+    expect(sink.record).toHaveBeenCalledWith("ready", "extra");
+    expect(sink[method]).toHaveBeenCalledWith("ready");
+    expect(getSink()).toHaveBeenCalledTimes(1);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 6);
+        assert!(
+            tests[0]
+                .assertions
+                .iter()
+                .all(|assertion| assertion.mock_payload.is_none()),
+            "ambiguous mock payloads must stay unbounded: {:?}",
+            tests[0].assertions
         );
     }
 
@@ -4433,6 +4754,7 @@ test("type only import", () => {
                 line: 2,
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
             }],
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),

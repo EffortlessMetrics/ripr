@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/typescript_jest_vitest_assertion_facts/input
 
-Summary: 5 probe(s), 2 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 6 probe(s), 2 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
 
 INFO src/signals.ts:2
 
@@ -38,8 +38,8 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - related test tests/signals.test.ts:12 pricing discounts pins threshold uses strong exact value oracle: expect(...).toStrictEqual(...)
-  - related test tests/signals.test.ts:18 discount table %# uses strong exact value oracle: expect(...).toBe(...)
+  - related test tests/signals.test.ts:13 pricing discounts pins threshold uses strong exact value oracle: expect(...).toStrictEqual(...)
+  - related test tests/signals.test.ts:19 discount table %# uses strong exact value oracle: expect(...).toBe(...)
 
 Weakness
   - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
@@ -83,7 +83,7 @@ Evidence
   - observation weak: Strongest extracted oracle kind: `snapshot` (rank 4)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == `summary:${status.trim()}``.
   - local flow reaches returned value: return `summary:${status.trim()}`; (line 9)
-  - related test tests/signals.test.ts:24 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)
+  - related test tests/signals.test.ts:25 renders summary snapshot uses medium snapshot oracle: expect(...).toMatchSnapshot(...)
 
 Weakness
   - Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before routing a repair packet.
@@ -128,7 +128,7 @@ Evidence
   - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == count >= 1`.
   - local flow reaches returned value: return count >= 1; (line 13)
-  - related test tests/signals.test.ts:28 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+  - related test tests/signals.test.ts:29 smoke readiness uses smoke smoke only oracle: expect(...).toBeTruthy(...)
 
 Weakness
   - Related test reaches `isReady` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
@@ -173,7 +173,7 @@ Evidence
   - observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call sink.record includes status`.
   - local flow reaches call effect: sink.record(status); (line 17)
-  - related test tests/signals.test.ts:32 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)
+  - related test tests/signals.test.ts:33 records status %s uses medium mock expectation oracle: expect(...).toHaveBeenCalledWith(...)
 
 Weakness
   - Related test reaches `notifyStatus` with a mock interaction oracle, but TypeScript preview does not yet establish the changed call payload; keep the item advisory until mock-shape actionability can name the callee, expected arguments, verify command, receipt command, and edit boundaries.
@@ -182,7 +182,52 @@ Weakness
 Next step
   TypeScript preview advisory: related mock interaction evidence is present, but mock payloads are not yet a safe discriminator for `call sink.record includes status`; no actionable repair packet is emitted until mock-shape support can name verify, receipt, evidence refs, and edit boundaries.
 
-INFO src/signals.ts:21
+WARNING src/signals.ts:21
+
+Changed
+  after:    sink.record("ready");
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  typescript:src/signals.ts::notifyLiteral
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/signals.ts:21 (typescript_preview_probe) source=probe:src_signals.ts:21:typescript_preview owner=notifyLiteral
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `notifyLiteral`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `mock_expectation` (rank 4)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call sink.record includes "ready"`.
+  - local flow reaches call effect: sink.record("ready"); (line 21)
+  - related test tests/signals.test.ts:41 records literal status uses medium mock expectation oracle: expect(sink.record).toHaveBeenCalledWith("ready")
+
+Weakness
+  - Related test reaches `notifyLiteral` with bounded mock payload evidence `expect(sink.record).toHaveBeenCalledWith("ready")`; keep the item advisory until mock-shape actionability can name verify command, receipt command, evidence refs, and edit boundaries.
+  - missing discriminator call sink.record includes "ready": changed TypeScript call side effect at line 21 lacks a concrete preview discriminator
+
+Next step
+  TypeScript preview advisory: related mock payload evidence `expect(sink.record).toHaveBeenCalledWith("ready")` is syntax-bounded for `call sink.record includes "ready"`, but no actionable repair packet is emitted until verify, receipt, evidence refs, and edit boundaries are available.
+
+INFO src/signals.ts:25
 
 Changed
   after:    return await Promise.resolve(`profile:${id}`);
@@ -205,7 +250,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/signals.ts:21 (typescript_preview_probe) source=probe:src_signals.ts:21:typescript_preview owner=loadProfile
+  raw evidence: src/signals.ts:25 (typescript_preview_probe) source=probe:src_signals.ts:25:typescript_preview owner=loadProfile
 
 Static exposure
   exposed (info, confidence 0.60)
@@ -216,8 +261,8 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return await Promise.resolve(`profile:${id}`); (line 21)
-  - related test tests/signals.test.ts:40 loads profile uses strong exact value oracle: expect(...).toBe(...)
+  - local flow reaches returned value: return await Promise.resolve(`profile:${id}`); (line 25)
+  - related test tests/signals.test.ts:47 loads profile uses strong exact value oracle: expect(...).toBe(...)
 
 Weakness
   - Related test reaches `loadProfile` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
