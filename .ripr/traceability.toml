@@ -2152,9 +2152,12 @@ name = "Python preview static facts"
 spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/analysis/language/python.rs::tests::classify_click_output_change_as_repairable_cli_gap",
   "crates/ripr/src/analysis/language/python.rs::tests::classify_exception_match_assertion_as_exposed",
   "crates/ripr/src/analysis/language/python.rs::tests::classify_field_assertion_as_exposed",
   "crates/ripr/src/analysis/language/python.rs::tests::classify_output_assertion_as_exposed",
+  "crates/ripr/src/analysis/language/python/python_tests.rs::cli_decorators_are_transparent_only_for_static_cli_shapes",
+  "crates/ripr/src/analysis/language/python/python_tests.rs::cli_output_discriminators_cover_echo_streams_and_exit_codes",
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
   "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
   "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
@@ -2197,6 +2200,7 @@ fixtures = [
   "fixtures/python_ranking_noise_control",
   "fixtures/python_test_placement_verify",
   "fixtures/python_api_route_decorator_repair_gap",
+  "fixtures/python_cli_output_repair_gap",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
   "fixtures/python_owner_file_match",

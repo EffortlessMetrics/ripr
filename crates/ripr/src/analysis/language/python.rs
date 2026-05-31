@@ -77,6 +77,7 @@ struct PythonOwner {
     owner_kind: Option<OwnerKind>,
     decorators: Vec<String>,
     imports: Vec<PythonImport>,
+    cli_receiver_names: Vec<String>,
 }
 
 impl PythonOwner {
@@ -1357,6 +1358,7 @@ fn owner_from_function(
         owner_kind: Some(owner_kind),
         decorators,
         imports: context.imports.to_vec(),
+        cli_receiver_names: collect_static_cli_receiver_names(context.source, context.imports),
     }
 }
 
@@ -1379,6 +1381,7 @@ fn owner_from_class(
         owner_kind: None,
         decorators: decorator_names(decorators),
         imports: context.imports.to_vec(),
+        cli_receiver_names: collect_static_cli_receiver_names(context.source, context.imports),
     }
 }
 
@@ -1397,6 +1400,7 @@ fn module_owner(
         owner_kind: Some(OwnerKind::ModuleFunction),
         decorators: Vec::new(),
         imports: imports.to_vec(),
+        cli_receiver_names: collect_static_cli_receiver_names(source, imports),
     }
 }
 
@@ -2363,7 +2367,7 @@ fn static_limit_for_change(
     if let Some(decorator) = owner
         .decorators
         .iter()
-        .find(|decorator| !is_transparent_owner_decorator(decorator))
+        .find(|decorator| !is_transparent_owner_decorator_for_owner(decorator, owner))
     {
         return Some(PythonStaticLimit {
             kind: StaticLimitKind::DecoratorIndirection,
@@ -2513,6 +2517,16 @@ fn is_transparent_owner_decorator(decorator: &str) -> bool {
         || decorator == "classmethod"
         || decorator == "async_def"
         || is_static_route_decorator(decorator)
+        || is_static_cli_decorator(decorator)
+}
+
+fn is_transparent_owner_decorator_for_owner(decorator: &str, owner: &PythonOwner) -> bool {
+    is_transparent_owner_decorator(decorator)
+        || is_static_cli_decorator_with_import_context(
+            decorator,
+            &owner.imports,
+            &owner.cli_receiver_names,
+        )
 }
 
 fn is_static_route_decorator(decorator: &str) -> bool {
@@ -2546,6 +2560,72 @@ fn is_static_route_decorator(decorator: &str) -> bool {
         || receiver_name.ends_with("_router")
         || receiver_name.ends_with("_routes")
         || receiver_name.ends_with("_bp")
+}
+
+fn is_static_cli_decorator(decorator: &str) -> bool {
+    matches!(
+        decorator,
+        "click.command"
+            | "click.group"
+            | "click.option"
+            | "click.argument"
+            | "typer.command"
+            | "typer.callback"
+    )
+}
+
+fn is_static_cli_decorator_with_import_context(
+    decorator: &str,
+    imports: &[PythonImport],
+    cli_receiver_names: &[String],
+) -> bool {
+    if is_static_cli_decorator(decorator) {
+        return true;
+    }
+    let Some((receiver, method)) = decorator.rsplit_once('.') else {
+        return false;
+    };
+    if !matches!(method, "command" | "callback") || !imports.iter().any(has_typer_import) {
+        return false;
+    }
+    let receiver_name = receiver.rsplit('.').next().unwrap_or(receiver);
+    cli_receiver_names
+        .iter()
+        .any(|candidate| candidate == receiver_name)
+}
+
+fn has_typer_import(import: &PythonImport) -> bool {
+    import.imported == "typer" && import.alias == "typer"
+}
+
+fn collect_static_cli_receiver_names(source: &str, imports: &[PythonImport]) -> Vec<String> {
+    if !imports.iter().any(has_typer_import) {
+        return Vec::new();
+    }
+    let mut receivers: Vec<String> = source
+        .lines()
+        .filter_map(|line| {
+            let text = line.trim();
+            let (lhs, rhs) = split_python_assignment(text)?;
+            if !is_simple_python_identifier(lhs) || !contains_python_call_shape(rhs, "typer.Typer")
+            {
+                return None;
+            }
+            Some(lhs.to_string())
+        })
+        .collect();
+    receivers.sort();
+    receivers.dedup();
+    receivers
+}
+
+fn is_simple_python_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn test_has_mocked_module(test: &PythonTest) -> bool {
@@ -2689,6 +2769,7 @@ fn related_candidates_have_opaque_custom_assertion_limit(
 fn line_uses_imported_symbol(text: &str, imports: &[PythonImport]) -> bool {
     imports.iter().any(|import| {
         !is_known_mock_constructor_import(import)
+            && !line_uses_known_static_cli_symbol(text, import)
             && (text.contains(&format!("{}(", import.alias))
                 || text.contains(&format!("{}.", import.alias)))
     })
@@ -2699,8 +2780,25 @@ fn is_known_mock_constructor_import(import: &PythonImport) -> bool {
         || matches!(import.alias.as_str(), "Mock" | "MagicMock")
 }
 
+fn line_uses_known_static_cli_symbol(text: &str, import: &PythonImport) -> bool {
+    let alias = import.alias.as_str();
+    match import.imported.as_str() {
+        "click" if alias == "click" => contains_python_call_shape(text, "click.echo"),
+        "typer" if alias == "typer" => contains_python_call_shape(text, "typer.echo"),
+        "sys" if alias == "sys" => {
+            contains_python_call_shape(text, "sys.exit")
+                || contains_python_call_shape(text, "sys.stdout.write")
+                || contains_python_call_shape(text, "sys.stderr.write")
+        }
+        _ => false,
+    }
+}
+
 fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
     let trimmed = line_text.trim_start();
+    if is_python_cli_exit_line(trimmed) {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
+    }
     if (trimmed.contains(" if ") && trimmed.contains(" else "))
         || trimmed.starts_with("if ")
         || trimmed.starts_with("elif ")
@@ -2763,6 +2861,10 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
 
 fn contains_mock_initializer(text: &str) -> bool {
     text.contains("Mock(") || text.contains("MagicMock(")
+}
+
+fn is_python_cli_exit_line(text: &str) -> bool {
+    python_exit_code_discriminator(text).is_some()
 }
 
 fn looks_like_call_expression(text: &str) -> bool {
@@ -3129,14 +3231,105 @@ fn python_return_dict_field_discriminator(line_text: &str) -> Option<String> {
 
 fn python_output_or_call_discriminator(line_text: &str) -> Option<String> {
     let text = line_text.trim();
+    if let Some(exit_code) = python_exit_code_discriminator(text) {
+        return Some(format!("exit_code == {exit_code}"));
+    }
     let literal = first_python_string_literal(text)?;
-    if text.starts_with("print(") {
+    if python_stdout_output_call(text) {
+        Some(format!("stdout contains {literal}"))
+    } else if python_stderr_output_call(text) {
+        Some(format!("stderr contains {literal}"))
+    } else if python_cli_output_call(text) || text.starts_with("print(") {
         Some(format!("output contains {literal}"))
     } else if text.contains("logger.") || text.contains("logging.") {
         Some(format!("log contains {literal}"))
     } else {
         Some(format!("call includes {literal}"))
     }
+}
+
+fn python_cli_output_call(text: &str) -> bool {
+    contains_python_call_shape(text, "click.echo") || contains_python_call_shape(text, "typer.echo")
+}
+
+fn python_stdout_output_call(text: &str) -> bool {
+    contains_python_call_shape(text, "sys.stdout.write")
+}
+
+fn python_stderr_output_call(text: &str) -> bool {
+    contains_python_call_shape(text, "sys.stderr.write")
+}
+
+fn python_exit_code_discriminator(text: &str) -> Option<String> {
+    let text = text.trim();
+    if let Some(argument) = first_python_call_argument(text, "sys.exit") {
+        return normalize_python_exit_code(argument);
+    }
+    if let Some(rest) = text.strip_prefix("raise SystemExit") {
+        let rest = rest.trim_start();
+        if let Some(argument) = first_parenthesized_argument(rest) {
+            return normalize_python_exit_code(argument);
+        }
+    }
+    None
+}
+
+fn first_python_call_argument<'a>(text: &'a str, callee: &str) -> Option<&'a str> {
+    let idx = text.find(callee)?;
+    if !python_callee_start_has_boundary(text, idx)
+        || python_prefix_hides_code(line_prefix_before(text, idx))
+    {
+        return None;
+    }
+    first_parenthesized_argument(text.get(idx + callee.len()..)?.trim_start())
+}
+
+fn first_parenthesized_argument(text: &str) -> Option<&str> {
+    let body = text.strip_prefix('(')?;
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    for (idx, ch) in body.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+            continue;
+        }
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' if depth == 0 => {
+                let argument = body[..idx].split(',').next()?.trim();
+                return (!argument.is_empty()).then_some(argument);
+            }
+            ')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn normalize_python_exit_code(argument: &str) -> Option<String> {
+    let value = argument.trim();
+    if value == "None" {
+        return Some("0".to_string());
+    }
+    if value.chars().all(|ch| ch.is_ascii_digit()) {
+        return Some(value.to_string());
+    }
+    None
 }
 
 fn split_python_assignment(text: &str) -> Option<(&str, &str)> {
@@ -4364,6 +4557,37 @@ def test_notifies_callback():
         assert_eq!(
             finding.related_tests[0].oracle_strength,
             OracleStrength::Strong
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_click_output_change_as_repairable_cli_gap() -> Result<(), String> {
+        let finding = classify_change(
+            Path::new("src/commands.py"),
+            5,
+            "    click.echo(\"shipment queued\")",
+            &extract_owners(
+                Path::new("src/commands.py"),
+                "import click\n\n@click.command()\ndef ship():\n    click.echo(\"shipment queued\")\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_commands.py"),
+                "from src.commands import ship\n\n\
+                 def test_ship_smoke(capsys):\n    ship()\n    captured = capsys.readouterr()\n    assert captured.out\n",
+            ),
+        )
+        .ok_or_else(|| "click output change should classify".to_string())?;
+
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.static_limit_kind, None);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["output contains \"shipment queued\""]
+        );
+        assert_eq!(
+            evidence_value(&finding, "suggested_verify_command: "),
+            Some("pytest tests/test_commands.py::test_ship_smoke")
         );
         Ok(())
     }

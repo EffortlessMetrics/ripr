@@ -218,6 +218,15 @@ fn suggested_assertion(
             format!("Assert the returned object or field satisfies `{missing_discriminator}`.")
         }
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            if missing_discriminator.starts_with("exit_code == ") {
+                return format!("Assert the CLI exit code satisfies `{missing_discriminator}`.");
+            }
+            if missing_discriminator.starts_with("stdout contains ")
+                || missing_discriminator.starts_with("stderr contains ")
+                || missing_discriminator.starts_with("output contains ")
+            {
+                return format!("Assert the CLI output satisfies `{missing_discriminator}`.");
+            }
             format!(
                 "Assert the changed output, log text, or call effect for `{missing_discriminator}`."
             )

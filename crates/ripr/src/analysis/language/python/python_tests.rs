@@ -448,6 +448,81 @@ fn route_decorators_are_transparent_but_arbitrary_decorators_limit() {
 }
 
 #[test]
+fn cli_decorators_are_transparent_only_for_static_cli_shapes() -> Result<(), String> {
+    for decorator in [
+        "click.command",
+        "click.group",
+        "click.option",
+        "click.argument",
+        "typer.command",
+        "typer.callback",
+    ] {
+        assert!(
+            is_transparent_owner_decorator(decorator),
+            "expected CLI decorator `{decorator}` to be transparent"
+        );
+    }
+
+    let typer_owners = extract_owners(
+        Path::new("src/commands.py"),
+        "import typer\n\napp = typer.Typer()\n\n@app.command()\ndef ship():\n    print(\"sent\")\n",
+    );
+    let typer_owner = typer_owners
+        .iter()
+        .find(|owner| owner.name == "ship")
+        .ok_or_else(|| "expected Typer command owner".to_string())?;
+    assert!(
+        is_transparent_owner_decorator_for_owner("app.command", typer_owner),
+        "Typer app.command should be transparent when a typer import is present"
+    );
+    assert_eq!(typer_owner.cli_receiver_names, vec!["app".to_string()]);
+
+    let custom_owners = extract_owners(
+        Path::new("src/custom.py"),
+        "import typer\n\napp = object()\n\n@app.command()\ndef ship():\n    print(\"sent\")\n",
+    );
+    let custom_owner = custom_owners
+        .iter()
+        .find(|owner| owner.name == "ship")
+        .ok_or_else(|| "expected custom command owner".to_string())?;
+    assert!(
+        !is_transparent_owner_decorator_for_owner("app.command", custom_owner),
+        "custom app.command should remain a decorator-indirection limit"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn cli_output_discriminators_cover_echo_streams_and_exit_codes() {
+    assert_eq!(
+        python_output_or_call_discriminator("click.echo(\"shipment queued\")").as_deref(),
+        Some("output contains \"shipment queued\"")
+    );
+    assert_eq!(
+        python_output_or_call_discriminator("typer.echo(\"shipment queued\")").as_deref(),
+        Some("output contains \"shipment queued\"")
+    );
+    assert_eq!(
+        python_output_or_call_discriminator("sys.stdout.write(\"shipment queued\")").as_deref(),
+        Some("stdout contains \"shipment queued\"")
+    );
+    assert_eq!(
+        python_output_or_call_discriminator("sys.stderr.write(\"shipment failed\")").as_deref(),
+        Some("stderr contains \"shipment failed\"")
+    );
+    assert_eq!(
+        python_output_or_call_discriminator("sys.exit(2)").as_deref(),
+        Some("exit_code == 2")
+    );
+    assert_eq!(
+        python_output_or_call_discriminator("raise SystemExit(2)").as_deref(),
+        Some("exit_code == 2")
+    );
+    assert_eq!(python_output_or_call_discriminator("sys.exit(code)"), None);
+}
+
+#[test]
 fn extract_tests_records_vararg_and_kwarg_pytest_fixtures() -> Result<(), String> {
     let tests = extract_tests(
         Path::new("tests/test_fixtures.py"),
@@ -716,6 +791,7 @@ fn body_calls_owner_filters_comments_and_string_mentions() {
         owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
     };
 
     let comment_only = "    # apply_discount(100)\n    other()\n";
@@ -969,6 +1045,7 @@ fn imported_module_matches_owner_compares_last_segment_to_owner_stem() {
         owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
     };
     let dotted = PythonImport {
         imported: "src.pricing".to_string(),
@@ -998,6 +1075,7 @@ fn same_stem_related_handles_missing_stems() {
         owner_kind: Some(OwnerKind::Function),
         decorators: Vec::new(),
         imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
     };
     let test = PythonTest {
         name: "test_x".to_string(),

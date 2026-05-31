@@ -1568,6 +1568,7 @@ fixtures = [
   "fixtures/python_ranking_noise_control",
   "fixtures/python_test_placement_verify",
   "fixtures/python_api_route_decorator_repair_gap",
+  "fixtures/python_cli_output_repair_gap",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
   "fixtures/python_owner_file_match",
