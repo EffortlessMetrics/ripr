@@ -17714,7 +17714,8 @@ fn repo_seam_inventory_command_args_for_root(format: &str, root: &str) -> Vec<St
 /// RIPR-SPEC-0005. Same CLI shell-out pattern as
 /// `repo_seam_inventory`, but routes through the
 /// `repo-exposure-json|md` formats which compute test-grip evidence
-/// and `SeamGripClass` per seam.
+/// and `SeamGripClass` per seam. This is the full evidence-heavy path;
+/// ordinary local metrics should use `repo_exposure_summary_report_impl`.
 pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args("repo-exposure-json");
     let json_output = run_output_owned("cargo", &json_args)?;
@@ -17723,6 +17724,14 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     let md_args = repo_seam_inventory_command_args("repo-exposure-md");
     let md_output = run_output_owned("cargo", &md_args)?;
     write_report("repo-exposure.md", &md_output)
+}
+
+/// Run the bounded repo exposure summary report and write
+/// `target/ripr/reports/repo-exposure-summary.json`.
+pub(crate) fn repo_exposure_summary_report_impl() -> Result<(), String> {
+    let json_args = repo_seam_inventory_command_args("repo-exposure-summary-json");
+    let json_output = run_output_owned("cargo", &json_args)?;
+    write_report("repo-exposure-summary.json", &json_output)
 }
 
 /// Run the Lane 1 evidence health report and write

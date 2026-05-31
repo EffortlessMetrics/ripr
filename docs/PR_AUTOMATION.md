@@ -50,6 +50,7 @@ cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask repo-exposure-summary-report
 cargo xtask doctor
 cargo xtask specs next
 cargo xtask check-allow-attributes
@@ -160,6 +161,12 @@ generated badge endpoint diffs in ordinary PRs, and `check-generated-clean`,
 which rejects generated target/sample build residue. Before writing the final
 report index, it also refreshes the deterministic suggested-fixes patch under
 `target/ripr/reports/`.
+
+`repo-exposure-summary-report` is the ordinary repo-local summary route. It
+writes `target/ripr/reports/repo-exposure-summary.json` from
+`repo-exposure-summary-json` and avoids the per-seam evidence payloads carried
+by full `repo-exposure-json`. Use `repo-exposure-report` only when an operator
+explicitly needs the full classified seam inventory for deep inspection.
 
 `fixtures` validates fixture contract shape, runs `ripr check` for fixture
 directories when they exist, writes actual outputs under

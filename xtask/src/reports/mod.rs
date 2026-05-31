@@ -44,7 +44,8 @@ pub(crate) use release::release_readiness;
 pub(crate) use repo::{
     actionable_gap_outcomes_report, agent_seam_packets_report, evidence_health_report,
     evidence_quality_scorecard_report, evidence_quality_trend_report, lane1_evidence_audit_report,
-    repo_exposure_latency_report, repo_exposure_report, repo_seam_inventory,
+    repo_exposure_latency_report, repo_exposure_report, repo_exposure_summary_report,
+    repo_seam_inventory,
 };
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;

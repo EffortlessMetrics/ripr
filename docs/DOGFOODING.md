@@ -28,7 +28,9 @@ actionable canonical gaps.
 - Prefer sample diffs and fixtures over broad repository scans.
 - Treat repo-wide RIPR refreshes as build-heavy on this repo. Use
   `repo-badge-json`, generated receipts, or an explicit gap ledger for ordinary
-  summary counts, and run only one no-ledger repo scan at a time.
+  summary counts. Use `cargo xtask repo-exposure-summary-report` when local
+  planning needs bounded repo exposure counts, and run only one no-ledger repo
+  scan at a time.
 - Do not use full `repo-exposure-json` as the normal badge, receipt, top-file,
   or packet-queue input. Full exposure dumps require explicit operator intent
   and cleanup after inspection.

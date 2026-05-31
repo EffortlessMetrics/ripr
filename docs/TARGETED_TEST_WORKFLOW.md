@@ -110,14 +110,18 @@ cargo run -p ripr -- check --root . --mode ready --format repo-exposure-md > tar
 cargo run -p ripr -- check --root . --mode ready --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json
 ```
 
-For normal repo-local dogfooding, the wrapper commands write the same report
-families under `target/ripr/reports/`:
+For normal repo-local dogfooding, the wrapper commands write bounded summary
+and packet artifacts under `target/ripr/reports/`:
 
 ```bash
-cargo xtask repo-exposure-report
+cargo xtask repo-exposure-summary-report
 cargo xtask agent-seam-packets .
 cargo xtask operator-cockpit
 ```
+
+Use `cargo xtask repo-exposure-report` only for explicit full evidence
+inspection. It writes full `repo-exposure.{json,md}` artifacts and is not the
+ordinary local badge, receipt, or packet-queue route on this repo.
 
 `operator-cockpit` reads the artifacts that already exist under
 `target/ripr/reports/`, `target/ripr/pilot/`, and `target/ripr/agent/`, then
@@ -139,8 +143,9 @@ The checked example corpus index lives in
 
 ## 2. Pick One Seam
 
-Open `target/ripr/workflow/before.repo-exposure.md` or
-`target/ripr/reports/repo-exposure.md`.
+Open `target/ripr/workflow/before.repo-exposure.md` for a targeted before
+snapshot, or use `target/ripr/reports/repo-exposure-summary.json` for bounded
+repo planning counts.
 
 Pick one headline seam with a class such as:
 

@@ -25,6 +25,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RiprPlus(args) => super::reports::ripr_plus(&args),
         XtaskCommand::RepoSeamInventory => super::reports::repo_seam_inventory(),
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
+        XtaskCommand::RepoExposureSummaryReport => super::reports::repo_exposure_summary_report(),
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
         XtaskCommand::PrBody(args) => super::pr_body(&args),

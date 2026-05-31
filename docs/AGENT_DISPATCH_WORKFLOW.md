@@ -113,19 +113,23 @@ Two entry points:
   ```
   Surfaces seams touched by the diff and their grip evidence. Fast
   enough for draft-PR feedback.
-- **Repo scope** (full inventory):
+- **Repo scope** (bounded planning):
   ```bash
-  cargo xtask repo-exposure-report
+  cargo xtask repo-exposure-summary-report
   cargo xtask agent-seam-packets .
   ```
-  Walks every production Rust file, classifies every behavioral seam,
-  and writes `target/ripr/reports/repo-exposure.{json,md}` plus
+  Walks every production Rust file for bounded planning counts and writes
+  `target/ripr/reports/repo-exposure-summary.json` plus
   `target/ripr/reports/agent-seam-packets.json`.
 
 The repo-scope report is multi-second on large workspaces today.
 `cache/repo-seam-facts-v1` will make it cheap enough to run on every
 keystroke; until then, treat it as a checkpoint pass, not a
 hot-path command.
+
+Use `cargo xtask repo-exposure-report` only for explicit full evidence
+inspection. It writes evidence-heavy `repo-exposure.{json,md}` artifacts and is
+not the default local planning or badge route.
 
 If you want the before/after receipt, preserve the before JSON before
 editing tests:
@@ -140,7 +144,8 @@ cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > t
 Open `target/ripr/reports/repo-exposure.md`. The summary table shows
 counts per `SeamGripClass`. The Top gaps section lists the
 headline-eligible seams sorted by file and line, capped at 50 entries.
-For the full set use `repo-exposure.json`.
+For bounded planning data use `repo-exposure-summary.json`. Use
+`repo-exposure.json` only when full per-seam evidence is intentionally needed.
 
 For diff-scope output, the same evidence is in the JSON output of
 `ripr check`.

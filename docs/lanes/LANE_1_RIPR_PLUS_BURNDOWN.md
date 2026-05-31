@@ -32,11 +32,13 @@ claim badge movement without receipt movement.
 
 ## Large-Repo Scan Guardrails
 
-Use these rules until a bounded canonical exposure summary exists and the lane
-records a fresh downstream-consumable queue:
+Use these rules until the lane records a fresh downstream-consumable queue:
 
 - Prefer existing generated receipts, committed endpoint snapshots, or an
   explicit `--gap-ledger` for summary counts.
+- Use `cargo xtask repo-exposure-summary-report` when local planning needs a
+  bounded repo exposure summary. It writes
+  `target/ripr/reports/repo-exposure-summary.json`.
 - Do not use full `repo-exposure-json` for ordinary badge, receipt, top-file, or
   packet-queue paths.
 - Treat fresh no-ledger `repo-badge-json` and `rtk cargo xtask badge-basis`
