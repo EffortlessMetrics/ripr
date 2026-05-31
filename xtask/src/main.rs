@@ -28484,7 +28484,10 @@ fn ripr_swarm_readiness_next_actions(
     let mut actions = Vec::new();
     let runtime_not_downstream_consumable =
         runtime_status.state != "full" && !runtime_status.downstream_consumable;
+    let defer_sampled_runtime_action = runtime_not_downstream_consumable
+        && ripr_swarm_readiness_runtime_is_sampled_work_queue(runtime_status);
     if runtime_not_downstream_consumable
+        && !defer_sampled_runtime_action
         && swarm_plan_input.state == "read"
         && actionable_gap_outcomes_input.state == "read"
         && attempt_ledger_input.state == "read"
@@ -28903,6 +28906,13 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
+    if defer_sampled_runtime_action
+        && swarm_plan_input.state == "read"
+        && actionable_gap_outcomes_input.state == "read"
+        && attempt_ledger_input.state == "read"
+    {
+        actions.push(ripr_swarm_readiness_limited_runtime_action(runtime_status));
+    }
     if let Some(plan) = sources.swarm_plan {
         if let Some(action) = ripr_swarm_readiness_operator_judgment_action(plan) {
             actions.push(action);
@@ -28923,6 +28933,14 @@ fn ripr_swarm_readiness_next_actions(
         });
     }
     actions
+}
+
+fn ripr_swarm_readiness_runtime_is_sampled_work_queue(runtime_status: &Lane1RuntimeStatus) -> bool {
+    runtime_status.state == "limited_sampled_input"
+        && runtime_status
+            .limitation_category
+            .as_deref()
+            .is_some_and(|category| category == "lane1_repo_exposure_sampled")
 }
 
 fn ripr_swarm_static_limitation_backlog_top_category(
@@ -89385,6 +89403,161 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("gap:affinity-owner-call"));
         assert!(markdown.contains("target.call()"));
         assert!(markdown.contains("not a public repair packet"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_prioritizes_sampled_static_limitation_backlog() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "limited_sampled_input",
+            "runtime_status": {
+                "state": "limited_sampled_input",
+                "limitation_category": "lane1_repo_exposure_sampled",
+                "repair_route": "use the sampled work queue for the next analyzer narrowing slice",
+                "downstream_consumable": false
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 0,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 0,
+                "high_confidence_packets": 0
+            },
+            "source_summary": {
+                "actionable_gaps": 0,
+                "public_projection_eligible_packets": 0
+            },
+            "static_limitation_backlog": {
+                "source": "lane1-evidence-audit.static_limitations",
+                "top_categories": [
+                    {
+                        "category": "activation_owner_call_absent_affinity_only",
+                        "count": 333,
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing"
+                    }
+                ],
+                "top_repair_routes": [
+                    {
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                        "count": 333
+                    }
+                ],
+                "limitation_backlog_packets": [
+                    {
+                        "packet_id": "limitation:activation_owner_call_absent_affinity_only:same_test_file_call_presence_function_call_missing_owner_call:analysis-related-test-affinity-owner-call-tracing",
+                        "limitation_category": "activation_owner_call_absent_affinity_only",
+                        "limitation_subroute": "same_test_file_call_presence_function_call_missing_owner_call",
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                        "signal_count": 333,
+                        "dominant_evidence_class": "call_presence",
+                        "why_not_actionable": "related-test affinity is not enough to prove the owner is exercised",
+                        "unlock_condition": "implement related-test owner-call tracing before repair packets are emitted",
+                        "non_claims": [
+                            "not a public repair packet",
+                            "not swarm-ready work",
+                            "do not edit tests from this backlog item alone"
+                        ],
+                        "sample_canonical_gap_ids": [
+                            "gap:sampled-affinity-owner-call"
+                        ],
+                        "sample_sources": [
+                            {
+                                "canonical_gap_id": "gap:sampled-affinity-owner-call",
+                                "source_file": "src/lib.rs",
+                                "evidence_class": "call_presence",
+                                "line": 42,
+                                "expression": "target.call()",
+                                "limitation_reason": "related-test affinity is not enough to prove the owner is exercised"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "canonical_gaps_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            },
+            "attempts": []
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
+            .map_err(|err| err.to_string())?;
+        assert_eq!(value["status"], "blocked");
+        assert_eq!(value["readiness_state"], "limited");
+        assert_eq!(value["run_status"], "limited_sampled_input");
+        assert_eq!(
+            value["runtime_status"]["limitation_category"],
+            "lane1_repo_exposure_sampled"
+        );
+        assert_eq!(value["runtime_status"]["downstream_consumable"], false);
+        assert_eq!(
+            value["top_next_action"]["kind"],
+            "route_static_limitation_backlog"
+        );
+        assert_eq!(
+            value["top_next_action"]["packet_id"],
+            "limitation:activation_owner_call_absent_affinity_only:same_test_file_call_presence_function_call_missing_owner_call:analysis-related-test-affinity-owner-call-tracing"
+        );
+        assert_eq!(
+            value["top_next_action"]["canonical_gap_id"],
+            "gap:sampled-affinity-owner-call"
+        );
+        assert_eq!(
+            value["next_actions"][1]["kind"],
+            "resolve_limited_runtime_status"
+        );
+        assert!(
+            value["next_actions"][1]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("limited_sampled_input"))
+        );
         Ok(())
     }
 

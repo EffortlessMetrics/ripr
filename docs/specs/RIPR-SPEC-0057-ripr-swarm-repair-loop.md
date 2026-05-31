@@ -472,7 +472,11 @@ resulting command is `cargo test -p <package> <test-filter>`.
 Readiness must also expose `top_next_action` as a stable projection of
 `next_actions[0]`. Downstream surfaces may show that object directly, but they
 must not treat it as an independent ranking source or reinterpret raw findings
-to produce their own top action.
+to produce their own top action. A `limited_sampled_input` repo-exposure run may
+still put the sampled static-limitation/analyzer backlog first when all
+coordination inputs are readable and no swarm-ready packet exists; the
+`resolve_limited_runtime_status` action must remain visible in `next_actions`
+and the report must keep the run marked limited.
 
 Dogfood receipts must include at least one surface-projection alignment case
 that starts from a single canonical repair packet and receipt-backed attempt,
