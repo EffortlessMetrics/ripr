@@ -164,6 +164,10 @@ mod tests {
             Ok(OutputFormat::AgentSeamPacketsJson)
         );
         assert_eq!(
+            parse_format("repo-exposure-summary-json"),
+            Ok(OutputFormat::RepoExposureSummaryJson)
+        );
+        assert_eq!(
             parse_format("xml"),
             Err("unknown format \"xml\"".to_string())
         );

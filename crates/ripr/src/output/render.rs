@@ -61,6 +61,16 @@ pub(crate) fn render_check_with_config(
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(repo_exposure::render_repo_exposure_json(&classified))
         }
+        OutputFormat::RepoExposureSummaryJson => {
+            let classified =
+                analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
+            Ok(repo_exposure::render_repo_exposure_summary_json(
+                &classified,
+                &output.root,
+                output.base.as_deref(),
+                output.mode.as_str(),
+            ))
+        }
         OutputFormat::RepoExposureMd => {
             let classified =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
@@ -293,6 +303,14 @@ mod tests {
 
         assert!(exposure_json.contains("\"schema_version\": \"0.3\""));
         assert!(exposure_json.contains("over_threshold"));
+        let exposure_summary = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureSummaryJson,
+            &RiprConfig::default(),
+        )?;
+        assert!(exposure_summary.contains("\"format\": \"repo-exposure-summary-json\""));
+        assert!(exposure_summary.contains("\"basis\": \"canonical_actionable_gap\""));
+        assert!(!exposure_summary.contains("\"evidence_record\""));
         assert!(exposure_md.contains("over_threshold"));
         assert!(sarif.contains("\"version\": \"2.1.0\""));
         assert!(sarif.contains("ripr.seam."));
@@ -518,6 +536,21 @@ mod tests {
         let result = render_check_with_config(
             &output,
             &OutputFormat::RepoExposureJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_exposure_summary_json_surfaces_missing_workspace_as_error()
+    -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureSummaryJson,
             &RiprConfig::default(),
         );
 

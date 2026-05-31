@@ -82,7 +82,8 @@ Options:
                            badge-plus-json, badge-plus-shields, repo-badge-json,
                            repo-badge-shields, repo-badge-plus-json,
                            repo-badge-plus-shields, repo-seams-json,
-                           repo-seams-md, repo-exposure-json, repo-exposure-md,
+                           repo-seams-md, repo-exposure-json,
+                           repo-exposure-summary-json, repo-exposure-md,
                            repo-sarif, agent-seam-packets-json. Defaults to human.
                            badge-plus-* and repo-badge-plus-* formats read
                            target/ripr/reports/test-efficiency.json when present;

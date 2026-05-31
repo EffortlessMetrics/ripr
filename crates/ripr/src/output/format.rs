@@ -57,6 +57,10 @@ pub enum OutputFormat {
     /// of the seam inventory. Schema in `docs/OUTPUT_SCHEMA.md` under
     /// `repo-exposure.json`.
     RepoExposureJson,
+    /// Bounded repo exposure summary rendered as JSON. Emits aggregate
+    /// canonical actionable gap counts, reason breakdowns, and a capped
+    /// top-file summary without per-seam evidence payloads.
+    RepoExposureSummaryJson,
     /// Repo exposure report rendered as Markdown for human review.
     RepoExposureMd,
     /// SARIF 2.1.0 report for repo-scoped classified seam evidence.
@@ -151,6 +155,11 @@ const FORMAT_SPECS: &[OutputFormatSpec] = &[
     OutputFormatSpec {
         format: OutputFormat::RepoExposureJson,
         cli_names: &["repo-exposure-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoExposureSummaryJson,
+        cli_names: &["repo-exposure-summary-json"],
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {

@@ -225,6 +225,7 @@ mod tests {
     fn check_help_mentions_repo_badge_formats_and_examples() {
         assert!(CHECK_HELP.contains("repo-badge-plus-shields"));
         assert!(CHECK_HELP.contains("repo-exposure-json"));
+        assert!(CHECK_HELP.contains("repo-exposure-summary-json"));
         assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
         assert!(CHECK_HELP.contains("needs test-efficiency"));

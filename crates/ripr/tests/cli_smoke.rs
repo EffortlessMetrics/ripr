@@ -2867,6 +2867,36 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
 }
 
 #[test]
+fn check_repo_exposure_summary_json_emits_bounded_summary() -> Result<(), String> {
+    let workspace = make_temp_workspace_with_production_seam()?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--format",
+        "repo-exposure-summary-json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""format": "repo-exposure-summary-json""#));
+    assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
+    assert!(stdout.contains(r#""raw_seams""#));
+    assert!(stdout.contains(r#""unsuppressed_exposure_gaps""#));
+    assert!(stdout.contains(r#""reason_breakdown""#));
+    assert!(stdout.contains(r#""top_files""#));
+    assert!(!stdout.contains(r#""seams": ["#));
+    assert!(!stdout.contains(r#""evidence_record""#));
+    assert!(!stdout.contains(r#""related_tests""#));
+    assert!(!stdout.contains(r#""observed_values""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn check_repo_badge_plus_shields_keeps_four_fields() -> Result<(), String> {
     let workspace =
         make_temp_workspace_with_production_seam_and_report(fixture_test_efficiency_report())?;

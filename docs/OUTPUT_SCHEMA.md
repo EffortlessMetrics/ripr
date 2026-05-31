@@ -1093,6 +1093,158 @@ inventory introduced by `analysis/repo-ripr-classification-v1`. The artifact
 lands at `target/ripr/reports/repo-exposure.json` when generated via
 `cargo xtask repo-exposure-report`.
 
+The full `repo-exposure-json` artifact is evidence-heavy by design: each seam
+can carry related tests, observed values, missing discriminator records, and the
+Lane 1 `evidence_record` projection. Large repositories should use
+`repo-exposure-summary-json` for ordinary metrics, badge, planning, or CI
+summary workflows, and reserve the full artifact for explicit deep inspection.
+
+### Repo Exposure Summary JSON
+
+`ripr check --root . --format repo-exposure-summary-json` emits a bounded
+aggregate view over the same classified seam inventory. It does not include the
+full `seams[]` array, per-seam `evidence_record`, `related_tests`,
+`observed_values`, or `missing_discriminators` payloads.
+
+```json
+{
+  "schema_version": "0.1",
+  "format": "repo-exposure-summary-json",
+  "tool": "ripr",
+  "ripr_version": "0.7.0",
+  "scope": "repo",
+  "basis": "canonical_actionable_gap",
+  "metadata": {
+    "root": ".",
+    "base": "origin/main",
+    "head": "HEAD",
+    "mode": "draft"
+  },
+  "metrics": {
+    "raw_seams": 135812,
+    "headline_eligible_seams": 120408,
+    "canonical_gap_records": 2722,
+    "raw_actionable_seam_records": 46406,
+    "unsuppressed_exposure_gaps": 2722,
+    "suppressed_exposure_gaps": 0,
+    "grip_class": {
+      "strongly_gripped": 15404,
+      "weakly_gripped": 1800,
+      "ungripped": 0,
+      "reachable_unrevealed": 2,
+      "activation_unknown": 118606,
+      "propagation_unknown": 0,
+      "observation_unknown": 0,
+      "discrimination_unknown": 0,
+      "opaque": 0,
+      "intentional": 0,
+      "suppressed": 0
+    }
+  },
+  "reason_breakdown": {
+    "actionability": {
+      "add_focused_test": 200,
+      "extend_related_test": 2100,
+      "upgrade_assertion": 422
+    },
+    "gap_state": {
+      "actionable": 46406,
+      "already_observed": 15404,
+      "static_limitation": 0
+    },
+    "seam_kind": {
+      "predicate_boundary": 1200,
+      "return_value": 900,
+      "field_construction": 622
+    },
+    "grip_class": {
+      "strongly_gripped": 15404,
+      "weakly_gripped": 1800,
+      "ungripped": 0,
+      "reachable_unrevealed": 2,
+      "activation_unknown": 118606,
+      "propagation_unknown": 0,
+      "observation_unknown": 0,
+      "discrimination_unknown": 0,
+      "opaque": 0,
+      "intentional": 0,
+      "suppressed": 0
+    }
+  },
+  "limits": {
+    "top_files_limit": 25,
+    "top_files_total": 130,
+    "top_files_truncated": true
+  },
+  "top_files": [
+    {
+      "file": "src/pricing.rs",
+      "raw_seams": 480,
+      "headline_eligible_seams": 220,
+      "canonical_gap_records": 30,
+      "unsuppressed_exposure_gaps": 30,
+      "suppressed_exposure_gaps": 0,
+      "reason_breakdown": {
+        "actionability": {
+          "extend_related_test": 20,
+          "upgrade_assertion": 10
+        },
+        "grip_class": {
+          "strongly_gripped": 260,
+          "weakly_gripped": 20,
+          "activation_unknown": 200
+        }
+      }
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"` for the bounded summary shape.
+- `format` - always `"repo-exposure-summary-json"`.
+- `scope` - always `"repo"`.
+- `basis` - always `"canonical_actionable_gap"`; the headline metric is the
+  unique canonical actionable gap count, not raw seam inventory.
+- `metadata.root`, `metadata.base`, `metadata.head`, and `metadata.mode` -
+  command context for the analyzed root. `head` records the selected head ref
+  as `HEAD`; this format does not resolve a commit hash.
+- `metrics.raw_seams` - number of classified seam records inspected.
+- `metrics.headline_eligible_seams` - raw seam records whose `grip_class` is
+  headline-eligible.
+- `metrics.canonical_gap_records` - unique canonical gap identities assigned to
+  headline-eligible seam records.
+- `metrics.raw_actionable_seam_records` - raw seam records whose canonical item
+  is actionable and carries a repair route, verify command, and receipt command.
+- `metrics.unsuppressed_exposure_gaps` - unique actionable canonical gap count.
+  This is the summary counterpart of the public repo badge basis.
+- `metrics.suppressed_exposure_gaps` - raw seam records classified as
+  `suppressed`.
+- `metrics.grip_class` - all 11 `SeamGripClass` count buckets.
+- `reason_breakdown.actionability` - unique actionable canonical gap counts by
+  canonical item actionability, such as `add_focused_test`,
+  `extend_related_test`, and `upgrade_assertion`.
+- `reason_breakdown.gap_state` - raw canonical item counts by state, such as
+  `actionable`, `already_observed`, `internal_only`, `static_limitation`, and
+  `unknown`.
+- `reason_breakdown.seam_kind` - unique actionable canonical gap counts by seam
+  kind.
+- `reason_breakdown.grip_class` - same all-bucket class counts as
+  `metrics.grip_class`, repeated for consumers that read breakdowns only.
+- `limits.top_files_limit` - maximum number of `top_files[]` rows returned.
+  The current limit is 25.
+- `limits.top_files_total` and `limits.top_files_truncated` - total file rows
+  before truncation and whether the emitted list is capped.
+- `top_files[]` - bounded file summaries sorted by actionable canonical gap
+  count, then headline-eligible raw seams, raw seams, and file path. File-level
+  `unsuppressed_exposure_gaps` counts unique actionable canonical gap IDs within
+  that file.
+
+The summary format is additive. It does not replace `repo-exposure-json`, which
+remains the full per-seam evidence artifact for deep debugging and downstream
+consumers that require complete evidence records.
+
 ```json
 {
   "schema_version": "0.3",
