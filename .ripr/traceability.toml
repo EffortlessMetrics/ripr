@@ -2178,6 +2178,7 @@ fixtures = [
   "fixtures/python_error_path_shape",
   "fixtures/python_field_assignment_shape",
   "fixtures/python_dict_field_repair_gap",
+  "fixtures/python_same_line_duplicate_collapse",
   "fixtures/python_ranking_noise_control",
   "fixtures/python_test_placement_verify",
   "fixtures/python_call_argument_shape",

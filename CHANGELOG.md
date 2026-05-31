@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added a Python repair-routing noise-control fixture that pins same-line
+  returned-dict return, field, and string-literal signals as one user-facing
+  canonical field/object repair gap. The Python false-positive corpus is now
+  marked complete in the lane plan, leaving real-repo dogfood receipts as the
+  next promotion blocker.
 - Closed Actionable Surface Translation: badge-adjacent copy, PR evidence,
   editor status, swarm dry-run packets, and outcome/trend reports now lead with
   the same actionable canonical gap, repair route, verify/receipt, and

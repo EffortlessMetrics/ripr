@@ -1094,7 +1094,7 @@ Make Python gap improvement durable.
 
 ### Work item: fixtures/python-false-positive-corpus
 
-Status: in progress
+Status: done
 
 Blocked by:
 
@@ -1113,12 +1113,15 @@ Prevent Python support from becoming noisy.
 - Unsupported cases produce named limitations and do not enter the repair
   queue.
 
-#### Progress
+#### Delivered
 
 - Check-output-derived Python static-limit findings now become report-only
   `StaticLimitation` GapRecords with `repairability = "analyzer_limitation"`.
   The swarm queue excludes those records instead of turning preview limitations
   into agent repair packets.
+- `python_decorator_indirection_limit` pins decorated owners as
+  `decorator_indirection` static limitations, so decorator-modified call
+  semantics are named instead of treated as hidden analyzer truth.
 - `python_opaque_custom_helper_limit` pins custom assertion helpers as
   `opaque_custom_assertion_helper` static limitations so the adapter does not
   route a repair packet when the helper body might already observe the changed
@@ -1147,6 +1150,20 @@ Prevent Python support from becoming noisy.
 - `python_metaclass_limit` pins `class ...(metaclass=...)` declarations as
   `metaprogramming` static limitations, so class-level magic is named and kept
   out of repair cards, canonical gaps, and swarm packets.
+- `python_async_owner` pins async owner and async pytest-style test discovery
+  without executing an event loop or treating async syntax as runtime proof.
+- `python_broad_boolean_assertion` and `python_boundary_gap` pin broad-smoke
+  and reach-only evidence as weak repair-routing inputs: they can become
+  strengthen-existing-test cards only when a concrete missing discriminator,
+  suggested test target, verify command, stop conditions, and advisory limits
+  are available.
+- `python_same_line_duplicate_collapse` pins a returned dict line containing
+  return, field, and string literal signals as one user-facing canonical repair
+  gap with `canonical_gap_group_size = 1`, preventing same-line raw-signal
+  noise from inflating Python repair work.
+- Unsupported cases produce named limitations and are excluded from swarm
+  queues, while supported weak direct evidence remains repairable only when it
+  can carry a bounded repair card and verify command.
 
 ### Work item: dogfood/python-real-repo-evals
 
