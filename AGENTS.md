@@ -145,6 +145,13 @@ generated residue, and broad untracked scope before PR work proceeds.
 See `docs/PR_AUTOMATION.md` for the shape/check/guide model, current automation
 entrypoint, and repo-ops report packets.
 
+Large-repo RIPR scans are build-heavy in this repo. Prefer `repo-badge-json`,
+generated receipts, or an explicit gap ledger for ordinary summary counts; do
+not use full `repo-exposure-json` for normal badge, receipt, top-file, or packet
+queue paths. Run at most one no-ledger repo-wide RIPR scan at a time, scope
+`RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` only to intentional full refreshes, and
+clean up ad-hoc large JSON outputs after inspection.
+
 Useful runtime checks:
 
 ```bash

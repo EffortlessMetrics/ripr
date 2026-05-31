@@ -26,6 +26,14 @@ actionable canonical gaps.
 ## Dogfooding Rules
 
 - Prefer sample diffs and fixtures over broad repository scans.
+- Treat repo-wide RIPR refreshes as build-heavy on this repo. Use
+  `repo-badge-json`, generated receipts, or an explicit gap ledger for ordinary
+  summary counts, and run only one no-ledger repo scan at a time.
+- Do not use full `repo-exposure-json` as the normal badge, receipt, top-file,
+  or packet-queue input. Full exposure dumps require explicit operator intent
+  and cleanup after inspection.
+- Raise `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` only for the command that needs
+  a large-repo cache write, after checking disk headroom.
 - When `ripr` finds a real gap in its own code, add a fixture or regression
   test before changing the analyzer.
 - Do not use `ripr` findings as blocking CI until the SARIF policy and

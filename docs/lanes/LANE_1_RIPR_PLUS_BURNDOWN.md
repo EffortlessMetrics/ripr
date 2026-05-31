@@ -28,6 +28,27 @@ claim badge movement without receipt movement.
 | Latest sampled packet report | `target/ripr/reports/actionable-gaps.json` is `limited_sampled_input`, `repo-exposure-json:limit_5000_of_46406`, and `downstream_consumable: false`; it emitted zero repair packets and must not be treated as the full repo queue. |
 | 2026-05-29 issue snapshot | The filing note recorded about `120,408` raw active seams, `135,812` total seams, and about `2,722` canonical actionable gaps. Treat those as issue-snapshot context until a fresh bounded canonical report supersedes them. |
 | RIPR+ badge input | `cargo xtask test-efficiency-report` writes `target/ripr/reports/test-efficiency.json`, and the repo badge endpoint path runs that producer before repo `ripr+` badge rendering. #590/#592 are now closeout/docs issues; no-ledger endpoint refresh is still blocked by the #588/#593 scan timeout. |
+| Compact cache limit | #588 is closed by PR #689. `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` can raise the compact repo seam cache store limit for an intentional full refresh, but that opt-in does not remove the #593 need to avoid duplicate build-heavy scans. |
+
+## Large-Repo Scan Guardrails
+
+Use these rules until a bounded canonical exposure summary exists and the lane
+records a fresh downstream-consumable queue:
+
+- Prefer `repo-badge-json`, `rtk cargo xtask badge-basis`, generated receipts, or an
+  explicit `--gap-ledger` for summary counts.
+- Do not use full `repo-exposure-json` for ordinary badge, receipt, top-file, or
+  packet-queue paths.
+- Treat no-ledger repo-wide badge refreshes as build-heavy. Run only one such
+  scan at a time, then share the generated receipt or ledger with parallel
+  agents.
+- Use `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000` only as a scoped opt-in
+  for a deliberate large-repo refresh on a machine with enough disk headroom.
+- Keep large temporary JSON under `target/ripr/` when possible, and remove
+  ad-hoc files such as `repo-exposure*.json` or `exposure.json` after
+  inspection.
+- Record whether a report is full repo, sampled, fixture-ledger, or stale
+  issue-snapshot data before using it to rank packet work.
 
 ## Current Queue Classification
 
@@ -84,15 +105,22 @@ supersede it instead of forcing it through.
 ## Commands Recorded For This Map
 
 ```bash
-cargo xtask badge-basis
+rtk cargo xtask badge-basis
 ```
 
 Result: failed after the default 90 second `repo-badge-json` generation timeout.
 This confirms #593 is still a practical blocker for fresh full-repo badge-basis
 audits on this machine.
 
+For an intentional full refresh after #588/#689, scope the cache override to the
+single command and check disk headroom first:
+
 ```bash
-git diff --check
+RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 rtk cargo xtask badge-basis
+```
+
+```bash
+rtk git diff --check
 ```
 
 Run this before the PR is opened.
