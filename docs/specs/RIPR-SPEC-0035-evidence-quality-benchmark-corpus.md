@@ -278,8 +278,10 @@ affinity.
 - `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown`
   pins that wrapper names cannot activate `call_presence` when the wrapper body
   skips the owner.
-- `test_grip_evidence::tests::given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown`
-  pins that two-hop wrappers remain outside the one-hop activation contract.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_is_yes`
+  pins the bounded test-local helper graph sub-shape: a test-local helper can
+  route through one same-file helper before the owner for value-insensitive
+  `call_presence` activation, without inventing synthetic observed values.
 
 ## Implementation Mapping
 

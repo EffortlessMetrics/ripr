@@ -344,9 +344,6 @@ fn extend_helper_owner_calls_through_bounded_graph(helpers: &mut HelperOwnerCall
         let snapshot = helpers.clone();
         let mut changed = false;
         for (file, file_helpers) in helpers.iter_mut() {
-            if rust_index::is_test_file(file) {
-                continue;
-            }
             let Some(snapshot_helpers) = snapshot.get(file) else {
                 continue;
             };
@@ -8962,7 +8959,7 @@ fn helper_exercises_pipeline() {
     }
 
     #[test]
-    fn given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_stays_unknown()
+    fn given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_is_yes()
     -> Result<(), String> {
         let prod = PathBuf::from("src/pipeline.rs");
         let prod_src = r#"
@@ -9007,14 +9004,22 @@ fn outer_helper_reaches_pipeline_indirectly() {
 
         assert_eq!(evidence.reach.state, StageState::Yes);
         assert!(
-            !evidence
+            evidence
                 .related_tests
                 .iter()
                 .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
-            "test-local two-hop helper must not get one-hop helper-owner relation: {:?}",
+            "test-local two-hop helper should get bounded helper-owner relation: {:?}",
             evidence.related_tests
         );
-        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("helper owner call for value-insensitive seam"),
+            "activation summary should explain the bounded helper owner-call route: {}",
+            evidence.activate.summary
+        );
         assert!(
             evidence.observed_values.is_empty(),
             "test-local two-hop helper must not invent observed values: {:?}",

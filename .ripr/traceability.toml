@@ -252,7 +252,7 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_generic_helper_name_mentions_owner_then_activation_stays_unknown",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown",
-  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_is_yes",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_owner_call_with_opaque_args_reaches_return_seam_then_activation_is_yes",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_let_binding_values_when_owner_call_uses_identifiers_then_observed_values_are_resolved",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_same_file_const_when_owner_call_uses_identifier_then_observed_value_is_resolved",
@@ -2704,7 +2704,7 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_generic_helper_name_mentions_owner_then_activation_stays_unknown",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown",
-  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_two_hop_wrapper_then_activation_stays_unknown",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_is_yes",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
 ]
 fixtures = [
