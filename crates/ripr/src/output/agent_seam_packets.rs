@@ -3179,6 +3179,87 @@ mod tests {
     }
 
     #[test]
+    fn gap_record_queue_marks_stale_receipt_states_python_packets_stale() -> Result<(), String> {
+        for (state, reason_fragment) in [
+            (RECEIPT_STALE, "receipt state is stale"),
+            (RECEIPT_GAP_MISMATCH, "different gap"),
+        ] {
+            let ledger = r#"{"records":[{
+              "gap_id":"gap:python:pricing-boundary",
+              "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+              "kind":"MissingBoundaryAssertion",
+              "language":"python",
+              "language_status":"preview",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.py","line":7,"owner":"calculate_discount"},
+              "repair_route":{
+                "route_kind":"StrengthenExistingTest",
+                "target_file":"tests/test_pricing.py",
+                "related_test":"test_calculate_discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+                "changed_behavior":"if amount >= threshold:"
+              },
+              "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json",
+              "receipt":{"state":"__RECEIPT_STATE__","movement":"unchanged","path":"target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json"},
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
+            }]}"#
+            .replace("__RECEIPT_STATE__", state);
+            let records = crate::output::gap_decision_ledger::parse_gap_records_json(&ledger)?;
+
+            let json = render_agent_gap_record_queue_json(
+                ".",
+                "target/ripr/reports/gap-decision-ledger.json",
+                &records,
+                "python",
+                10,
+            )?;
+            let value = serde_json::from_str::<serde_json::Value>(&json)
+                .map_err(|err| format!("queue JSON should parse: {err}"))?;
+            assert_eq!(
+                value
+                    .get("summary")
+                    .and_then(|summary| summary.get("stale_total"))
+                    .and_then(serde_json::Value::as_u64),
+                Some(1),
+                "state {state} should count as stale: {json}"
+            );
+            let packet = value
+                .get("packets")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|packets| packets.first())
+                .ok_or_else(|| format!("missing packet in: {json}"))?;
+            assert_eq!(
+                packet
+                    .get("queue_state")
+                    .and_then(serde_json::Value::as_str),
+                Some("blocked_stale"),
+                "state {state} should block assignment: {json}"
+            );
+            assert_eq!(
+                packet
+                    .get("staleness_status")
+                    .and_then(serde_json::Value::as_str),
+                Some("stale"),
+                "state {state} should be stale: {json}"
+            );
+            assert!(
+                packet
+                    .get("staleness_reason")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|reason| reason.contains(reason_fragment)),
+                "state {state} should explain the stale reason with {reason_fragment:?}: {json}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn gap_record_queue_wrong_root_blocks_packets() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
