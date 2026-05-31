@@ -1144,6 +1144,9 @@ Prevent Python support from becoming noisy.
   `importlib.import_module(...)` as `missing_import_graph` static limitations,
   so exact-looking related tests stay visible but do not become repair cards,
   canonical gaps, or swarm packets.
+- `python_metaclass_limit` pins `class ...(metaclass=...)` declarations as
+  `metaprogramming` static limitations, so class-level magic is named and kept
+  out of repair cards, canonical gaps, and swarm packets.
 
 ### Work item: dogfood/python-real-repo-evals
 

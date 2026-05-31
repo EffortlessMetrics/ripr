@@ -1621,6 +1621,23 @@ fn contains_dynamic_import_detects_runtime_import_calls() {
 }
 
 #[test]
+fn contains_metaprogramming_detects_metaclass_declarations() {
+    assert!(contains_metaprogramming(
+        "class InvoiceRecord(metaclass=AuditMeta):"
+    ));
+    assert!(contains_metaprogramming(
+        "class InvoiceRecord(metaclass = AuditMeta):"
+    ));
+    assert!(!contains_metaprogramming(
+        "note = \"class InvoiceRecord(metaclass=AuditMeta):\""
+    ));
+    assert!(!contains_metaprogramming(
+        "class InvoiceRecord:  # metaclass=AuditMeta"
+    ));
+    assert!(!contains_metaprogramming("record.metaclass = AuditMeta"));
+}
+
+#[test]
 fn looks_like_call_expression_rejects_text_without_parens() {
     assert!(!looks_like_call_expression(""));
     assert!(!looks_like_call_expression("name"));

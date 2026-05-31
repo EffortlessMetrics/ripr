@@ -2486,7 +2486,26 @@ fn python_prefix_hides_code(prefix: &str) -> bool {
 }
 
 fn contains_metaprogramming(text: &str) -> bool {
-    text.contains("__getattr__") || text.contains("type(") || text.contains("setattr(")
+    text.contains("__getattr__")
+        || text.contains("type(")
+        || text.contains("setattr(")
+        || contains_metaclass_declaration(text)
+}
+
+fn contains_metaclass_declaration(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with("class ") {
+        return false;
+    }
+    contains_python_keyword_assignment_shape(text, "metaclass")
+}
+
+fn contains_python_keyword_assignment_shape(text: &str, keyword: &str) -> bool {
+    text.match_indices(keyword).any(|(idx, _)| {
+        python_callee_start_has_boundary(text, idx)
+            && text[idx + keyword.len()..].trim_start().starts_with('=')
+            && !python_prefix_hides_code(line_prefix_before(text, idx))
+    })
 }
 
 fn is_transparent_owner_decorator(decorator: &str) -> bool {

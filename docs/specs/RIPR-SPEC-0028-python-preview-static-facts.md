@@ -153,7 +153,8 @@ When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 
 - `dynamic_dispatch` (e.g., `getattr(obj, name)(...)` or mapping lookups such as `dict[key]` followed by invocation)
-- `metaprogramming` (e.g., metaclass usage, `__getattr__` indirection)
+- `metaprogramming` (e.g., `class ...(metaclass=...)`, `type(...)`,
+  or `__getattr__` indirection)
 - `missing_import_graph` (the symbol is imported from a module the
   adapter cannot resolve syntactically, or the changed line uses dynamic import
   syntax such as `importlib.import_module(...)` / `__import__(...)`)

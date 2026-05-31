@@ -1,0 +1,9 @@
+diff --git a/src/models.py b/src/models.py
+index 0000000..1111111 100644
+--- a/src/models.py
++++ b/src/models.py
+@@ -5,3 +5,3 @@ class AuditMeta(type):
+ 
+-class InvoiceRecord:
++class InvoiceRecord(metaclass=AuditMeta):
+     status = "paid"
