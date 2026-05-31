@@ -1286,7 +1286,7 @@ spec = "RIPR-SPEC-0009"
 evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr outcome",
   "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id, preferring seams[].evidence_record stage/value/discriminator/oracle/related-test movement when present and falling back to legacy fields",
-  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, keeps strengthened-but-still-weak rows visible in remaining weak/unknown receipt output, fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview closed, unchanged, opened, strengthened, and weakened receipts, fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.{json,md} pins non-boundary return-value closure, and fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.{json,md} pins exception-path closure",
+  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, keeps strengthened-but-still-weak rows visible in remaining weak/unknown receipt output, fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview closed, unchanged, opened, strengthened, and weakened receipts, fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.{json,md} pins non-boundary return-value closure, fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.{json,md} pins exception-path closure, and fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.{json,md} pins field/object closure",
   "ripr outcome prints Markdown by default and supports --format json plus --out",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
@@ -1297,7 +1297,8 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/first_successful_pr/python-preview-gap",
   "fixtures/first_successful_pr/python-return-gap",
-  "fixtures/first_successful_pr/python-exception-gap"
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap"
 ]
 next = "campaign/editor-agent-integration-closeout"
 metric = "targeted_test_outcome_available, language_adapter_python_gap_receipt_from_check_output"
@@ -1518,6 +1519,7 @@ evidence = [
   "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, inputs/reports/no-path-check.json, and expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview before/after outcome receipts where the canonical gap closes, stays unchanged, opens, strengthens, or weakens",
   "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python return-value gap closure from broad to exact oracle evidence",
   "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python exception-path gap closure from broad exception evidence to exact message evidence",
+  "fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python field/object gap closure from broad object truthiness to exact field evidence",
   "fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json and expected/swarm-ingest/closed.json pin ripr swarm ingest classification for a Python preview test-only agent attempt with passing verify evidence and resolved receipt movement",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module with patch and monkeypatch syntax, opaque_custom_assertion_helper, property_based_test, unresolved_pytest_fixture, missing_import_graph, metaprogramming, and unsupported_syntax",
   "python_generated_file_excluded pins detectable generated Python diffs such as *_pb2.py as zero-finding, zero-repair-card inputs so generated-code edits stay out of preview repair routing",
@@ -1562,7 +1564,10 @@ fixtures = [
   "fixtures/python_missing_import_graph_limit",
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit",
-  "fixtures/first_successful_pr/python-preview-gap"
+  "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap"
 ]
 next = "cli/python-first-use-path"
 metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_existing_test_strengthening, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_pilot_first_use_path, language_adapter_python_pr_summary_repair_card_projection, language_adapter_python_lsp_agent_packet_action, language_adapter_python_lsp_repair_card_action, language_adapter_python_lsp_pytest_skeleton_action, language_adapter_python_first_pr_start_here_path, language_adapter_python_first_pr_check_output_bridge, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states, language_adapter_python_generated_file_exclusion, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_mocked_module, language_adapter_python_static_limit_opaque_custom_assertion_helper, language_adapter_python_static_limit_property_based_test, language_adapter_python_static_limit_unresolved_pytest_fixture, language_adapter_python_static_limit_*"

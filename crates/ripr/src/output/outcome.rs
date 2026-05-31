@@ -2056,6 +2056,30 @@ mod tests {
     }
 
     #[test]
+    fn targeted_test_outcome_python_field_fixture_matches_expected_receipts() -> Result<(), String>
+    {
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: include_str!(
+                "../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json"
+            ),
+            after: include_str!(
+                "../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/after-check.json"
+            ),
+            before_path: "fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/python-field-gap/inputs/reports/after-check.json",
+            expected_gap_movement: "closed",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.md"
+            ),
+        })?;
+        Ok(())
+    }
+
+    #[test]
     fn targeted_test_outcome_prefers_evidence_record_movement() -> Result<(), String> {
         let before = r#"{
   "schema_version": "0.3",

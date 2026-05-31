@@ -22,3 +22,8 @@ Python GapRecord from the gap decision ledger can become a `preview_limited`
 promoting Python beyond advisory preview status. Its outcome receipt fixtures
 also show the same canonical Python gap closing, staying unchanged, and opening
 from check-output before/after snapshots.
+
+The `python-return-gap`, `python-exception-gap`, and `python-field-gap` cases
+extend that receipt proof beyond predicate boundaries: broad return,
+exception, and field/object evidence can become exact evidence and close the
+same canonical Python gap while preserving preview/advisory language.

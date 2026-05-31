@@ -1078,6 +1078,9 @@ Make Python gap improvement durable.
   receipt movement where broad exception evidence strengthens to exact
   `pytest.raises(..., match=...)` message evidence and closes the canonical
   Python gap.
+- `fixtures/first_successful_pr/python-field-gap` pins field/object receipt
+  movement where broad object truthiness strengthens to exact returned-field
+  evidence and closes the canonical Python gap.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.

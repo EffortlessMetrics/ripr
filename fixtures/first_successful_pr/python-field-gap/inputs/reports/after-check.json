@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-field-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 1,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:src_invoice.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.78,
+      "canonical_gap_id": "gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id",
+      "canonical_gap": {
+        "id": "gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id",
+        "language": "python",
+        "file": "src/invoice.py",
+        "owner": "invoice_payload",
+        "behavior_kind": "field_value",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "return_status_paid_id_invoice_id"
+      },
+      "probe": {
+        "id": "probe:src_invoice.py:2:python_preview",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "src/invoice.py",
+        "line": 2,
+        "expression": "    return {\"status\": \"paid\", \"id\": invoice_id}",
+        "owner": "python:src/invoice.py::invoice_payload"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "1 related Python test(s) found for owner `invoice_payload`"
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python field or attribute construction can alter object state: `return {\"status\": \"paid\", \"id\": invoice_id}`"
+        },
+        "propagate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved."
+        },
+        "observe": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Strongest extracted Python oracle kind: `exact_value` (rank 5)"
+        },
+        "discriminate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."
+        }
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {
+          "name": "test_invoice_payload_status",
+          "file": "tests/test_invoice.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert payload[\"status\"] == \"paid\""
+        }
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

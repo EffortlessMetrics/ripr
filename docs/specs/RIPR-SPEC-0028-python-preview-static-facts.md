@@ -269,6 +269,9 @@ can show:
   become an exact return assertion and close the canonical Python gap
 - a non-boundary exception-path outcome fixture proving a weak broad exception
   observer can become exact message evidence and close the canonical Python gap
+- a non-boundary field/object outcome fixture proving a broad object truthiness
+  assertion can become an exact field assertion and close the canonical Python
+  gap
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub

@@ -4200,6 +4200,33 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn classify_field_assertion_as_exposed() -> Result<(), String> {
+        let finding = classify_change(
+            Path::new("src/invoice.py"),
+            2,
+            "    return {\"status\": \"paid\", \"id\": invoice_id}",
+            &extract_owners(
+                Path::new("src/invoice.py"),
+                "def invoice_payload(invoice_id):\n    return {\"status\": \"paid\", \"id\": invoice_id}\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_invoice.py"),
+                "from src.invoice import invoice_payload\n\n\
+                 def test_invoice_payload_status():\n    payload = invoice_payload(\"inv-123\")\n    assert payload[\"status\"] == \"paid\"\n",
+            ),
+        )
+        .ok_or_else(|| "field-value change should classify".to_string())?;
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(missing_discriminator_values(&finding).is_empty());
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_emits_first_python_repair_class_discriminators() -> Result<(), String> {
         let return_finding = classify_change(
             Path::new("src/priority.py"),
