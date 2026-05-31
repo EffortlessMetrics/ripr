@@ -9,22 +9,28 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added a CLI/output-style pytest case to the Python real-repo eval corpus.
+  RIPR emits an output/call-effect repair card for a changed `print(...)`
+  behavior, the focused `capsys` pytest verify command passes, and
+  `ripr outcome` records the canonical Python gap closed. Python remains
+  preview/advisory; API and mixed-repo dogfood remain outstanding before
+  promotion.
 - Added a normal pytest app case to the Python real-repo eval corpus. RIPR
   emits a strengthen-existing-test boundary repair card, the focused pytest
   verify command passes, and `ripr outcome` records the Python canonical gap
-  closed. Python remains preview/advisory; API, CLI/tooling, and mixed-repo
-  dogfood remain outstanding before promotion.
+  closed. Python remains preview/advisory; API and mixed-repo dogfood remain
+  outstanding before promotion.
 - Added a Python real-repo eval corpus with a tiny controlled pytest scratch
   repo receipt: RIPR emits the predicate-boundary repair card, a human-run
   focused pytest command passes, and `ripr outcome` closes the canonical Python
-  gap. This is still preview/advisory evidence; normal pytest app, API,
-  CLI/tooling, and mixed-repo dogfood remain outstanding before promotion.
+  gap. This is still preview/advisory evidence; normal pytest app, CLI/output,
+  API, and mixed-repo dogfood remain outstanding before promotion.
 - Added a repo-local Python repair-routing dogfood receipt row for a
   test-only packet that strengthens the preview pricing test, forbids the
   production Python source file, passes the focused pytest verify command, and
   closes the predicate-boundary canonical gap through `ripr outcome`. Python
-  remains preview/advisory, and broader normal-pytest/API/CLI/mixed dogfood is
-  still the next promotion blocker.
+  remains preview/advisory, and broader real-repo dogfood remains the promotion
+  blocker.
 - Added a Python repair-routing noise-control fixture that pins same-line
   returned-dict return, field, and string-literal signals as one user-facing
   canonical field/object repair gap. The Python false-positive corpus is now

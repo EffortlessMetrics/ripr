@@ -8093,6 +8093,7 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
 const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("tiny_controlled_pytest_boundary_receipt", "closed"),
     ("normal_pytest_app_boundary_receipt", "closed"),
+    ("cli_output_pytest_receipt", "closed"),
 ];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[

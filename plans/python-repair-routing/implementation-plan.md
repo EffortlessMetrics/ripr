@@ -1204,12 +1204,15 @@ Prove usefulness outside fixtures.
   a `free_shipping_offer` threshold-boundary change routes to a
   strengthen-existing-test repair card, the focused pytest verify command
   passes, and `ripr outcome` closes the canonical Python gap.
+- The same corpus now records a CLI/output-style pytest eval where a changed
+  `print(...)` side effect routes to a strengthen-existing-test repair card,
+  the focused `capsys` pytest verify command passes, and `ripr outcome` closes
+  the canonical Python output/call-effect gap.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.
-- Broader outside-fixture evaluations across API, CLI/tooling, and mixed
-  Python repos remain the next dogfood slice before metrics or support-tier
-  promotion.
+- Broader outside-fixture evaluations across API and mixed Python repos remain
+  the next dogfood slice before metrics or support-tier promotion.
 
 ### Work item: metrics/python-repair-routing-quality
 

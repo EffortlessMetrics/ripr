@@ -21,13 +21,13 @@ gap ID, missing discriminator, suggested test target, verify result, receipt
 result, gap movement, usability notes, false-positive notes, limitation notes,
 and claim boundaries.
 
-The checked corpus must include at least one tiny controlled Python repo and
-one normal pytest app repo before later API, CLI/tooling, or mixed-repo dogfood
-can support promotion discussion.
+The checked corpus must include at least one tiny controlled Python repo, one
+normal pytest app repo, and one CLI/output-style pytest repo before later API or
+mixed-repo dogfood can support promotion discussion.
 
 ## Must Not
 
 - Do not treat these records as support-tier promotion.
 - Do not claim correctness, mutation adequacy, generated tests, provider calls,
   CI gate eligibility, or arbitrary runtime import execution.
-- Do not hide missing API, CLI/tooling, or mixed-repo dogfood.
+- Do not hide missing API or mixed-repo dogfood.
