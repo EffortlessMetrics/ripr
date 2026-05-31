@@ -111,8 +111,16 @@ impl<'a> CompactGripContext<'a> {
             target_affinity_production_owner_calls_by_package(index);
         let target_affinity_production_owner_calls_by_module_path =
             target_affinity_production_owner_calls_by_module_path(index);
+        let module_import_aliases_by_file = module_import_aliases_by_file(index);
         let function_names_by_file = local_function_names_by_file(index);
         let test_scoped_function_names_by_file = test_scoped_function_names_by_file(index);
+        let helper_owner_lookup = HelperOwnerCallLookup {
+            helpers: &helper_owner_calls_by_file,
+            unique_helpers: &unambiguous_test_helper_owner_calls_by_name,
+            qualified_helpers: &helper_owner_calls_by_module_path,
+            production_helpers: &production_helper_owner_calls_by_package,
+            local_function_names_by_file: &function_names_by_file,
+        };
         let tests = index
             .tests
             .iter()
@@ -135,19 +143,18 @@ impl<'a> CompactGripContext<'a> {
                     .lines()
                     .map(strip_comments_and_strings)
                     .collect::<Vec<_>>();
+                let module_import_aliases = module_import_aliases_by_file.get(&test.file);
                 let helper_owner_call_names = helper_owner_call_names_for_test(
                     test,
                     &call_names,
-                    &helper_owner_calls_by_file,
-                    &unambiguous_test_helper_owner_calls_by_name,
-                    &helper_owner_calls_by_module_path,
-                    &production_helper_owner_calls_by_package,
-                    &function_names_by_file,
+                    &helper_owner_lookup,
+                    module_import_aliases,
                 );
                 let mut target_affinity_owner_call_names =
                     helper_owner_call_names_from_qualified_calls(
                         &test.calls,
                         &target_affinity_production_owner_calls_by_module_path,
+                        module_import_aliases,
                     );
                 target_affinity_owner_call_names.extend(
                     helper_owner_call_names_from_production_helpers(
@@ -271,7 +278,23 @@ type HelperOwnerCallsByName = BTreeMap<String, BTreeSet<String>>;
 type HelperOwnerCallsByModulePath = BTreeMap<String, BTreeMap<String, BTreeSet<String>>>;
 type HelperOwnerCallsByPackage = BTreeMap<String, HelperOwnerCallsByName>;
 type ModuleImportAliasesByFile = BTreeMap<PathBuf, BTreeMap<String, String>>;
+type DirectFunctionImportAliasesByFile = BTreeMap<PathBuf, BTreeMap<String, ImportedFunctionAlias>>;
+type ProductionOwnerNamesByPackage = BTreeMap<String, BTreeSet<String>>;
 type OwnerNamesByModulePath = BTreeMap<String, BTreeSet<String>>;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ImportedFunctionAlias {
+    module_path: String,
+    name: String,
+}
+
+struct HelperOwnerCallLookup<'a> {
+    helpers: &'a HelperOwnerCallsByFile,
+    unique_helpers: &'a HelperOwnerCallsByName,
+    qualified_helpers: &'a HelperOwnerCallsByModulePath,
+    production_helpers: &'a HelperOwnerCallsByPackage,
+    local_function_names_by_file: &'a BTreeMap<PathBuf, BTreeSet<String>>,
+}
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
@@ -383,6 +406,9 @@ fn target_affinity_production_owner_calls_by_package(
 ) -> HelperOwnerCallsByPackage {
     let function_names_by_file = local_function_names_by_file(index);
     let imported_module_aliases_by_file = module_import_aliases_by_file(index);
+    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
+    let unambiguous_production_owner_names_by_package =
+        unambiguous_production_owner_names_by_package(index);
     let owner_names_by_module_path = production_owner_names_by_module_path(index);
     let mut by_package: BTreeMap<String, BTreeMap<String, Vec<BTreeSet<String>>>> = BTreeMap::new();
     for function in index
@@ -400,6 +426,8 @@ fn target_affinity_production_owner_calls_by_package(
             function,
             local_function_names,
             imported_module_aliases_by_file.get(&function.file),
+            direct_function_import_aliases_by_file.get(&function.file),
+            unambiguous_production_owner_names_by_package.get(&package),
             &owner_names_by_module_path,
         );
         if owner_calls.is_empty() {
@@ -431,6 +459,9 @@ fn target_affinity_production_owner_calls_by_module_path(
 ) -> HelperOwnerCallsByModulePath {
     let function_names_by_file = local_function_names_by_file(index);
     let imported_module_aliases_by_file = module_import_aliases_by_file(index);
+    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
+    let unambiguous_production_owner_names_by_package =
+        unambiguous_production_owner_names_by_package(index);
     let owner_names_by_module_path = production_owner_names_by_module_path(index);
     let mut by_module_path: HelperOwnerCallsByModulePath = BTreeMap::new();
     for function in index
@@ -441,6 +472,9 @@ fn target_affinity_production_owner_calls_by_module_path(
         let Some(module_path) = module_path_for(&function.file) else {
             continue;
         };
+        let Some(package) = package_scope(&function.file) else {
+            continue;
+        };
         let Some(local_function_names) = function_names_by_file.get(&function.file) else {
             continue;
         };
@@ -448,6 +482,8 @@ fn target_affinity_production_owner_calls_by_module_path(
             function,
             local_function_names,
             imported_module_aliases_by_file.get(&function.file),
+            direct_function_import_aliases_by_file.get(&function.file),
+            unambiguous_production_owner_names_by_package.get(&package),
             &owner_names_by_module_path,
         );
         if owner_calls.is_empty() {
@@ -465,6 +501,8 @@ fn target_affinity_direct_owner_calls_for_function(
     function: &FunctionSummary,
     local_function_names: &BTreeSet<String>,
     imported_module_aliases: Option<&BTreeMap<String, String>>,
+    direct_function_import_aliases: Option<&BTreeMap<String, ImportedFunctionAlias>>,
+    unambiguous_production_owner_names: Option<&BTreeSet<String>>,
     owner_names_by_module_path: &OwnerNamesByModulePath,
 ) -> BTreeSet<String> {
     let mut owner_calls = function
@@ -481,7 +519,42 @@ fn target_affinity_direct_owner_calls_for_function(
         imported_module_aliases,
         owner_names_by_module_path,
     ));
+    owner_calls.extend(direct_imported_owner_calls_for_function(
+        function,
+        direct_function_import_aliases,
+        unambiguous_production_owner_names,
+        owner_names_by_module_path,
+    ));
     owner_calls
+}
+
+fn direct_imported_owner_calls_for_function(
+    function: &FunctionSummary,
+    direct_function_import_aliases: Option<&BTreeMap<String, ImportedFunctionAlias>>,
+    unambiguous_production_owner_names: Option<&BTreeSet<String>>,
+    owner_names_by_module_path: &OwnerNamesByModulePath,
+) -> BTreeSet<String> {
+    let Some(direct_function_import_aliases) = direct_function_import_aliases else {
+        return BTreeSet::new();
+    };
+    let Some(unambiguous_production_owner_names) = unambiguous_production_owner_names else {
+        return BTreeSet::new();
+    };
+    function
+        .calls
+        .iter()
+        .filter(|call| call.name != function.name)
+        .filter(|call| call_text_contains_named_call(&call.text, &call.name))
+        .filter_map(|call| direct_function_import_aliases.get(&call.name))
+        .filter(|imported| unambiguous_production_owner_names.contains(&imported.name))
+        .filter(|imported| {
+            owner_names_by_module_path
+                .get(&imported.module_path)
+                .is_some_and(|owner_names| owner_names.contains(&imported.name))
+        })
+        .filter(|imported| owner_token_is_specific_enough(&imported.name.to_ascii_lowercase()))
+        .map(|imported| imported.name.clone())
+        .collect()
 }
 
 fn qualified_external_owner_calls_for_function(
@@ -553,6 +626,17 @@ fn module_import_aliases_by_file(index: &RustIndex) -> ModuleImportAliasesByFile
         .collect()
 }
 
+fn direct_function_import_aliases_by_file(index: &RustIndex) -> DirectFunctionImportAliasesByFile {
+    index
+        .files
+        .iter()
+        .filter_map(|(file, facts)| {
+            let aliases = direct_function_import_aliases(&facts.source);
+            (!aliases.is_empty()).then_some((file.clone(), aliases))
+        })
+        .collect()
+}
+
 fn module_import_aliases(source: &str) -> BTreeMap<String, String> {
     let mut aliases = BTreeMap::new();
     for line in source.lines() {
@@ -561,6 +645,18 @@ fn module_import_aliases(source: &str) -> BTreeMap<String, String> {
             continue;
         };
         collect_module_import_aliases_from_use(import.trim(), &mut aliases);
+    }
+    aliases
+}
+
+fn direct_function_import_aliases(source: &str) -> BTreeMap<String, ImportedFunctionAlias> {
+    let mut aliases = BTreeMap::new();
+    for line in source.lines() {
+        let line = strip_comments_and_strings(line);
+        let Some(import) = line.trim().strip_prefix("use ") else {
+            continue;
+        };
+        collect_direct_function_import_aliases_from_use(import.trim(), &mut aliases);
     }
     aliases
 }
@@ -603,16 +699,96 @@ fn collect_module_import_aliases_from_use(import: &str, aliases: &mut BTreeMap<S
     }
 }
 
+fn collect_direct_function_import_aliases_from_use(
+    import: &str,
+    aliases: &mut BTreeMap<String, ImportedFunctionAlias>,
+) {
+    let import = import.trim_end_matches(';').trim();
+    if let Some((base, rest)) = import.split_once("::{") {
+        let Some(module_path) = normalize_module_import_path(base) else {
+            return;
+        };
+        let Some(body) = rest.strip_suffix('}') else {
+            return;
+        };
+        for item in body.split(',').map(str::trim) {
+            collect_direct_function_import_alias(item, &module_path, aliases);
+        }
+        return;
+    }
+    let Some((module_path, item)) = import.rsplit_once("::") else {
+        return;
+    };
+    let Some(module_path) = normalize_module_import_path(module_path) else {
+        return;
+    };
+    collect_direct_function_import_alias(item.trim(), &module_path, aliases);
+}
+
+fn collect_direct_function_import_alias(
+    item: &str,
+    module_path: &str,
+    aliases: &mut BTreeMap<String, ImportedFunctionAlias>,
+) {
+    if item.is_empty() || item == "self" || item == "*" {
+        return;
+    }
+    if item.starts_with("self as ") {
+        return;
+    }
+    let (name, alias) = match item.split_once(" as ") {
+        Some((name, alias)) => (name.trim(), Some(alias.trim())),
+        None => (item.trim(), None),
+    };
+    if name.is_empty() || name == "self" || name == "*" {
+        return;
+    }
+    let alias = alias.filter(|alias| !alias.is_empty()).unwrap_or(name);
+    aliases.insert(
+        alias.to_string(),
+        ImportedFunctionAlias {
+            module_path: module_path.to_string(),
+            name: name.to_string(),
+        },
+    );
+}
+
 fn normalize_module_import_path(path: &str) -> Option<String> {
-    let path = path
-        .trim()
-        .strip_prefix("crate::")
-        .unwrap_or(path.trim())
-        .trim();
+    let path = path.trim().strip_prefix("crate::")?.trim();
     if path.is_empty() || path.starts_with("super::") || path.starts_with("self::") {
         return None;
     }
     Some(path.to_string())
+}
+
+fn unambiguous_production_owner_names_by_package(
+    index: &RustIndex,
+) -> ProductionOwnerNamesByPackage {
+    let mut counts_by_package: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+    for function in index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && !rust_index::is_test_file(&function.file))
+    {
+        let Some(package) = package_scope(&function.file) else {
+            continue;
+        };
+        *counts_by_package
+            .entry(package)
+            .or_default()
+            .entry(function.name.clone())
+            .or_default() += 1;
+    }
+    counts_by_package
+        .into_iter()
+        .filter_map(|(package, counts)| {
+            let names = counts
+                .into_iter()
+                .filter_map(|(name, count)| (count == 1).then_some(name))
+                .collect::<BTreeSet<_>>();
+            (!names.is_empty()).then_some((package, names))
+        })
+        .collect()
 }
 
 fn local_function_names_by_file(index: &RustIndex) -> BTreeMap<PathBuf, BTreeSet<String>> {
@@ -828,34 +1004,34 @@ fn common_helper_owner_calls(
 fn helper_owner_call_names_for_test(
     test: &TestSummary,
     call_names: &BTreeSet<String>,
-    helpers: &HelperOwnerCallsByFile,
-    unique_helpers: &HelperOwnerCallsByName,
-    qualified_helpers: &HelperOwnerCallsByModulePath,
-    production_helpers: &HelperOwnerCallsByPackage,
-    local_function_names_by_file: &BTreeMap<PathBuf, BTreeSet<String>>,
+    lookup: &HelperOwnerCallLookup<'_>,
+    module_import_aliases: Option<&BTreeMap<String, String>>,
 ) -> BTreeSet<String> {
-    let mut owner_names =
-        helper_owner_call_names_from_qualified_calls(&test.calls, qualified_helpers);
-    let local_function_names = local_function_names_by_file.get(&test.file);
-    if let Some(file_helpers) = helpers.get(&test.file) {
+    let mut owner_names = helper_owner_call_names_from_qualified_calls(
+        &test.calls,
+        lookup.qualified_helpers,
+        module_import_aliases,
+    );
+    let local_function_names = lookup.local_function_names_by_file.get(&test.file);
+    if let Some(file_helpers) = lookup.helpers.get(&test.file) {
         for helper_name in call_names {
             if let Some(helper_owner_names) = file_helpers.get(helper_name) {
                 owner_names.extend(helper_owner_names.iter().cloned());
             }
-            if let Some(helper_owner_names) = unique_helpers.get(helper_name) {
+            if let Some(helper_owner_names) = lookup.unique_helpers.get(helper_name) {
                 owner_names.extend(helper_owner_names.iter().cloned());
             }
         }
     } else {
         owner_names.extend(helper_owner_call_names_from_unique_helpers(
             call_names,
-            unique_helpers,
+            lookup.unique_helpers,
         ));
     }
     owner_names.extend(helper_owner_call_names_from_production_helpers(
         test,
         call_names,
-        production_helpers,
+        lookup.production_helpers,
         local_function_names,
     ));
     owner_names
@@ -864,6 +1040,7 @@ fn helper_owner_call_names_for_test(
 fn helper_owner_call_names_from_qualified_calls(
     calls: &[CallFact],
     qualified_helpers: &HelperOwnerCallsByModulePath,
+    module_import_aliases: Option<&BTreeMap<String, String>>,
 ) -> BTreeSet<String> {
     let mut owner_names = BTreeSet::new();
     for call in calls {
@@ -872,12 +1049,33 @@ fn helper_owner_call_names_from_qualified_calls(
             let Some(helper_owner_names) = helpers.get(&call.name) else {
                 continue;
             };
-            if code_contains_qualified_helper_call(&cleaned, module_path, &call.name) {
+            if code_contains_qualified_helper_call(&cleaned, module_path, &call.name)
+                || code_contains_aliased_module_helper_call(
+                    &cleaned,
+                    module_path,
+                    &call.name,
+                    module_import_aliases,
+                )
+            {
                 owner_names.extend(helper_owner_names.iter().cloned());
             }
         }
     }
     owner_names
+}
+
+fn code_contains_aliased_module_helper_call(
+    code: &str,
+    module_path: &str,
+    helper_name: &str,
+    module_import_aliases: Option<&BTreeMap<String, String>>,
+) -> bool {
+    module_import_aliases.is_some_and(|aliases| {
+        aliases.iter().any(|(alias, imported_module_path)| {
+            imported_module_path == module_path
+                && code_contains_qualified_helper_call(code, alias, helper_name)
+        })
+    })
 }
 
 fn code_contains_qualified_helper_call(code: &str, module_path: &str, helper_name: &str) -> bool {
@@ -5694,6 +5892,157 @@ fn qualified_wrapper_observes_pipeline_call_target() {
     }
 
     #[test]
+    fn given_call_presence_when_aliased_module_wrapper_has_target_affinity_then_activation_is_yes()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/contract_tests.rs");
+        let tests_src = r#"
+use crate::pipeline as pipe;
+
+#[test]
+fn aliased_wrapper_observes_pipeline_call_target() {
+    let format_output = pipe::exercise_pipeline();
+    assert_eq!(format_output, "alpha");
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected aliased module target-affinity wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "aliased target-affinity wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_bare_aliased_module_wrapper_has_target_affinity_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/contract_tests.rs");
+        let tests_src = r#"
+use pipeline as pipe;
+
+#[test]
+fn bare_aliased_wrapper_observes_pipeline_call_target() {
+    let format_output = pipe::exercise_pipeline();
+    assert_eq!(format_output, "alpha");
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "bare module alias must not prove a local wrapper owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "bare aliased wrapper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_call_presence_when_imported_module_wrapper_has_target_affinity_then_activation_is_yes()
     -> Result<(), String> {
         let loop_commands = PathBuf::from("src/agent/loop_commands.rs");
@@ -5771,6 +6120,228 @@ fn pilot_paths_preserve_shell_arg_route() {
     }
 
     #[test]
+    fn given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes()
+    -> Result<(), String> {
+        let classify = PathBuf::from("src/analysis/classify.rs");
+        let classify_src = r#"
+pub fn reach_evidence(input: &str) -> String {
+    format_marker(input)
+}
+
+pub fn reveal_evidence(input: &str) -> String {
+    reveal_marker(input)
+}
+
+fn format_marker(input: &str) -> String {
+    input.to_string()
+}
+
+fn reveal_marker(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let evidence = PathBuf::from("src/analysis/classifier/evidence.rs");
+        let evidence_src = r#"
+use crate::analysis::classify::{reach_evidence as reach, reveal_evidence};
+
+pub fn gather(input: &str) -> String {
+    let reach = reach(input);
+    let reveal = reveal_evidence(input);
+    format!("format_marker={reach};reveal_marker={reveal}")
+}
+"#;
+        let tests = PathBuf::from("tests/classifier_evidence_tests.rs");
+        let tests_src = r#"
+use analysis::classifier::evidence::gather;
+
+#[test]
+fn direct_imported_wrapper_observes_format_marker_target() {
+    let rendered = gather("alpha");
+    assert!(rendered.contains("format_marker"));
+}
+"#;
+        let index = index_from_files(&[
+            (classify, classify_src),
+            (evidence, evidence_src),
+            (tests, tests_src),
+        ])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/analysis/classify.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::reach_evidence")
+                    && s.expression().contains("format_marker")
+            })
+            .ok_or_else(|| "expected reach_evidence call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected direct imported target-affinity wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "direct imported target-affinity wrapper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_external_direct_import_matches_local_owner_name_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let classify = PathBuf::from("src/analysis/classify.rs");
+        let classify_src = r#"
+pub fn reach_evidence(input: &str) -> String {
+    format_marker(input)
+}
+
+fn format_marker(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let evidence = PathBuf::from("src/analysis/classifier/evidence.rs");
+        let evidence_src = r#"
+use external_crate::{reach_evidence as reach};
+
+pub fn gather(input: &str) -> String {
+    let reach = reach(input);
+    format!("format_marker={reach}")
+}
+"#;
+        let tests = PathBuf::from("tests/classifier_evidence_tests.rs");
+        let tests_src = r#"
+use analysis::classifier::evidence::gather;
+
+#[test]
+fn external_direct_import_mentions_format_marker_target() {
+    let rendered = gather("alpha");
+    assert!(rendered.contains("format_marker"));
+}
+"#;
+        let index = index_from_files(&[
+            (classify, classify_src),
+            (evidence, evidence_src),
+            (tests, tests_src),
+        ])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/analysis/classify.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::reach_evidence")
+                    && s.expression().contains("format_marker")
+            })
+            .ok_or_else(|| "expected reach_evidence call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "external direct import must not prove a local owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "external direct import activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_ambiguous_direct_import_owner_name_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let classify = PathBuf::from("src/analysis/classify.rs");
+        let classify_src = r#"
+pub fn reach_evidence(input: &str) -> String {
+    format_marker(input)
+}
+
+fn format_marker(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let alternate = PathBuf::from("src/analysis/alternate.rs");
+        let alternate_src = r#"
+pub fn reach_evidence(input: &str) -> String {
+    alternate_marker(input)
+}
+
+fn alternate_marker(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let evidence = PathBuf::from("src/analysis/classifier/evidence.rs");
+        let evidence_src = r#"
+use crate::analysis::classify::reach_evidence as reach;
+
+pub fn gather(input: &str) -> String {
+    let reach = reach(input);
+    format!("format_marker={reach}")
+}
+"#;
+        let tests = PathBuf::from("tests/classifier_evidence_tests.rs");
+        let tests_src = r#"
+use analysis::classifier::evidence::gather;
+
+#[test]
+fn ambiguous_direct_import_mentions_format_marker_target() {
+    let rendered = gather("alpha");
+    assert!(rendered.contains("format_marker"));
+}
+"#;
+        let index = index_from_files(&[
+            (classify, classify_src),
+            (alternate, alternate_src),
+            (evidence, evidence_src),
+            (tests, tests_src),
+        ])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/analysis/classify.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::reach_evidence")
+                    && s.expression().contains("format_marker")
+            })
+            .ok_or_else(|| "expected reach_evidence call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "ambiguous direct import owner name must not prove wrapper owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "ambiguous direct import activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_call_presence_when_module_qualified_wrapper_asserts_other_target_then_activation_stays_unknown()
     -> Result<(), String> {
         let pipeline = PathBuf::from("src/pipeline.rs");
@@ -5838,6 +6409,157 @@ fn qualified_wrapper_observes_report_call_target() {
         assert!(
             evidence.observed_values.is_empty(),
             "other-target qualified wrapper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_aliased_module_wrapper_asserts_other_target_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let pipeline = PathBuf::from("src/pipeline.rs");
+        let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let report = PathBuf::from("src/report.rs");
+        let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/contract_tests.rs");
+        let tests_src = r#"
+use crate::pipeline as pipe;
+
+#[test]
+fn aliased_wrapper_observes_report_call_target() {
+    let rendered = pipe::exercise_pipeline();
+    assert!(rendered.contains("format_report"));
+}
+"#;
+        let index = index_from_files(&[
+            (pipeline, pipeline_src),
+            (report, report_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "aliased other target token must not prove wrapper owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "aliased other-target wrapper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_direct_imported_wrapper_asserts_other_target_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let classify = PathBuf::from("src/analysis/classify.rs");
+        let classify_src = r#"
+pub fn reach_evidence(input: &str) -> String {
+    format_marker(input)
+}
+
+pub fn reveal_evidence(input: &str) -> String {
+    reveal_marker(input)
+}
+
+fn format_marker(input: &str) -> String {
+    input.to_string()
+}
+
+fn reveal_marker(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let evidence = PathBuf::from("src/analysis/classifier/evidence.rs");
+        let evidence_src = r#"
+use crate::analysis::classify::{reach_evidence as reach, reveal_evidence};
+
+pub fn gather(input: &str) -> String {
+    let reach = reach(input);
+    let reveal = reveal_evidence(input);
+    format!("format_marker={reach};reveal_marker={reveal}")
+}
+"#;
+        let tests = PathBuf::from("tests/classifier_evidence_tests.rs");
+        let tests_src = r#"
+use analysis::classifier::evidence::gather;
+
+#[test]
+fn direct_imported_wrapper_observes_reveal_marker_target() {
+    let rendered = gather("alpha");
+    assert!(rendered.contains("reveal_marker"));
+}
+"#;
+        let index = index_from_files(&[
+            (classify, classify_src),
+            (evidence, evidence_src),
+            (tests, tests_src),
+        ])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/analysis/classify.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::reach_evidence")
+                    && s.expression().contains("format_marker")
+            })
+            .ok_or_else(|| "expected reach_evidence call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "direct imported other target token must not prove wrapper owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "direct imported other-target wrapper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())

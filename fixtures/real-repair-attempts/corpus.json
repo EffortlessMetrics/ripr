@@ -414,6 +414,47 @@
       "reason": "A real analyzer slice reduced the highest-volume sampled call-presence target-affinity limitation while preserving the non-actionable boundary for the remaining backlog."
     },
     {
+      "id": "call_presence_direct_import_wrapper_route_improved",
+      "source_ref": "local:direct-import-target-affinity-wrapper-2026-05-30",
+      "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
+      "packet_id": "limitation:activation_owner_call_absent_call_presence_target_affinity:analysis-call-presence-target-affinity-owner-call-tracing",
+      "repair_kind": "trace_call_presence_target_affinity_owner_call",
+      "target_test_or_observer_shape": "fixture-backed production wrapper that calls an unambiguous crate-local directly imported owner while assertions mention the call-presence target token",
+      "verify_command": "cargo test -p ripr given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes --lib",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask lane1-evidence-audit",
+      "receipt_path": "target/ripr/reports/lane1-evidence-audit.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught target-affinity owner-call tracing to recognize production wrappers that call crate-local directly imported owner functions, including import aliases, while preserving target-token, external-import, and ambiguity guards.",
+      "evidence_movement": "The sampled call-presence target-affinity limitation route moved from 762 to 750 signals, and the assertion-target affinity owner-call route moved from 684 to 663 signals.",
+      "operator_note": "This is an analyzer-routing improvement only. The route remains a static-limitation backlog because remaining target-affinity cases still lack safe owner-call tracing.",
+      "must_not_change": [
+        "do not treat assertion target text alone as activation",
+        "do not treat external or bare imports as local owner-call evidence",
+        "do not resolve ambiguous imported owner names",
+        "do not follow multi-hop wrappers",
+        "do not invent observed values for call-presence arguments",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_external_direct_import_matches_local_owner_name_then_activation_stays_unknown",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_ambiguous_direct_import_owner_name_then_activation_stays_unknown",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_imported_wrapper_asserts_other_target_then_activation_stays_unknown",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_aliased_module_wrapper_has_target_affinity_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_bare_aliased_module_wrapper_has_target_affinity_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_direct_import_target_affinity_wrapper_activation_values_not_required",
+        "target/ripr/reports/lane1-evidence-audit.json:activation_owner_call_absent_call_presence_target_affinity"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real analyzer slice reduced the highest-volume sampled call-presence target-affinity limitation while preserving the non-actionable boundary for the remaining backlog."
+    },
+    {
       "id": "assertion_target_affinity_limitation_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#504",
       "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",

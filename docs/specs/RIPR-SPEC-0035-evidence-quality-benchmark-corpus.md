@@ -231,6 +231,20 @@ affinity.
   `call_presence` target-affinity activation, but only when the related
   assertion mentions the matching call target and no activation values are
   invented.
+- `test_grip_evidence::tests::given_call_presence_when_aliased_module_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_bare_aliased_module_wrapper_has_target_affinity_then_activation_stays_unknown`
+  pin the module-alias form of the qualified-wrapper exception: only a
+  crate-local module alias such as `use crate::module as alias` can resolve
+  `alias::wrapper(...)`; bare or external aliases stay limited even when the
+  assertion mentions the matching call target.
+- `test_grip_evidence::tests::given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_external_direct_import_matches_local_owner_name_then_activation_stays_unknown`
+  pin directly imported owner calls inside production wrappers: an explicit
+  crate-local `use crate::module::{owner as alias}` can establish a
+  wrapper-to-owner call only when the import path resolves to an indexed module,
+  the imported owner name is unambiguous, and the assertion mentions the
+  matching call target. External imports and ambiguous imported owner names stay
+  limited.
 - `test_grip_evidence::tests::given_call_presence_when_unit_test_calls_same_file_target_affinity_wrapper_then_activation_is_yes`
   and `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_target_affinity_wrapper_then_activation_stays_unknown`
   pin the same-source-file unit-test exception: a call that resolves to a
