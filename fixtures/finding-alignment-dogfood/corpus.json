@@ -348,6 +348,32 @@
         "Do not claim mutation, runtime, badge, LSP, or CI gate authority from this analyzer backlog refinement."
       ],
       "reason": "A top sampled limitation backlog route should drive a more precise analyzer work queue without crossing the actionability trust boundary."
+    },
+    {
+      "id": "limitation_backlog_nonclaims_candidate_values",
+      "source_pr": "EffortlessMetrics/ripr-swarm#716",
+      "canonical_gap_id": "gap:idx-offset-local",
+      "evidence_class": "predicate_boundary",
+      "raw_findings_total": 1,
+      "canonical_items_total": 1,
+      "raw_finding_summary": "An unresolved local/computed boundary operand remains a named limitation with explicit non-claims against invented candidate values.",
+      "gap_state": "static_limitation",
+      "actionability": "static_limitation",
+      "user_outcome": "static_limitation",
+      "repair_kind": "analyzer_backlog",
+      "target_test_type": "limitation_backlog_contract",
+      "verify_command": "cargo test -p xtask static_limitation_backlog -- --test-threads=1",
+      "static_limitation_category": "activation_boundary_input_unresolved",
+      "static_limitation_repair_route": "analysis/local-computed-boundary-operand-resolution",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Improve local/computed boundary operand resolution before emitting any candidate-value repair packet.",
+      "before_after_context": "Before swarm #716, generated limitation backlog packets denied public repair and swarm-ready status but only boundary-specific packets denied exact boundary candidate values; after #716, every generated limitation backlog packet includes `do not invent exact candidate values` while boundary packets keep the more specific boundary-value denial.",
+      "must_not_claim": [
+        "Do not treat this limitation backlog item as user test debt.",
+        "Do not invent exact candidate values from static limitation samples.",
+        "Do not change badge, LSP, PR, CI, runtime, or mutation authority from this non-claim hardening."
+      ],
+      "reason": "A limitation backlog packet should provide analyzer direction while explicitly denying speculative candidate values until the analyzer can safely unlock actionability."
     }
   ]
 }
