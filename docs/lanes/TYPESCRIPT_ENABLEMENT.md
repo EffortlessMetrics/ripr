@@ -118,7 +118,13 @@ claims.
    - factories, dependency injection, mocked classes, prototype aliases, and
      dynamic property access stay advisory or unsupported.
 6. Improve module initializer guidance while keeping dynamic initialization
-   limited.
+   limited:
+   - direct named-import and namespace `expect(...)` observers for exported
+     module initializers are fixture-backed advisory evidence;
+   - relational and broad observers stay non-actionable until target-shape,
+     verify, receipt, evidence-ref, and edit-boundary fields are available;
+   - helper-derived values, shadowed aliases, and dynamic initialization remain
+     advisory or limited.
 7. Emit TypeScript preview repair-card fields consistently through existing
    advisory surfaces.
 8. Record real TypeScript/JavaScript dogfood receipts with at least one
@@ -138,7 +144,7 @@ must not become actionable packets without stricter proof. It pins:
 - snapshot-only and smoke-only weak oracles;
 - heuristic related-test links and owner-name-only test titles;
 - method receiver repair-packet gaps, remaining receiver ambiguity, and
-  module-initializer ambiguity;
+  module-initializer missing target shape;
 - mocked module, decorator-indirection, and dynamic-dispatch static limits.
 
 Each row points at an existing checked TypeScript-family fixture finding,

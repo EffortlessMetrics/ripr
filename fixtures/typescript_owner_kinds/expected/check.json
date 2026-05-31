@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/typescript_owner_kinds/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":2,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":1,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
       "id": "probe:src_owners.ts:2:typescript_preview",
@@ -256,7 +256,7 @@
     },
     {
       "id": "probe:src_owners.ts:15:typescript_preview",
-      "classification": "no_static_path",
+      "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
@@ -269,17 +269,17 @@
         "owner": "typescript:src/owners.ts::DEFAULT_RATE"
        },
       "ripr": {
-        "reach": {"state":"no","confidence":"low","summary":"0 related test(s) found for owner `DEFAULT_RATE`"},
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `DEFAULT_RATE`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
-        "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `relational_check` (rank 3)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
        },
-      "evidence_path": ["reach no: 0 related test(s) found for owner `DEFAULT_RATE`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `DEFAULT_RATE`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `relational_check` (rank 3)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/owners.test.ts:16 rate is visible uses weak relational check oracle: expect(...).toBeGreaterThan(...)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: DEFAULT_RATE", "probe_fact: ambiguous_fallback", "gap_state: advisory", "actionability_category: missing_context", "why_not_actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route", "repair_route: add trusted related-test matching for this owner shape before emitting a repair packet", "missing_actionability_fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:15:typescript_preview;owner=DEFAULT_RATE"],
-      "missing": ["No trusted TypeScript module-initializer relation for `DEFAULT_RATE`. Identifier-reference observers stay missing context until module-value related-test matching lands.", "TypeScript preview actionability `advisory` / `missing_context`: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route. Repair route: add trusted related-test matching for this owner shape before emitting a repair packet"],
+      "evidence": ["owner: DEFAULT_RATE", "probe_fact: ambiguous_fallback", "gap_state: advisory", "actionability_category: missing_target_shape", "why_not_actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape", "repair_route: add probe-specific discriminator extraction for this expression before repair packet projection", "missing_actionability_fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:15:typescript_preview;owner=DEFAULT_RATE"],
+      "missing": ["Related test reaches `DEFAULT_RATE` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `missing_target_shape`: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape. Repair route: add probe-specific discriminator extraction for this expression before repair packet projection"],
       "activation": {
         "observed_values": [
         ],
@@ -291,14 +291,22 @@
       "missing_discriminators": [
       ],
       "related_tests": [
+        {
+          "name": "rate is visible",
+          "file": "tests/owners.test.ts",
+          "line": 16,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "expect(...).toBeGreaterThan(...)"
+        }
       ],
       "preview_actionability": {
-        "actionability_category": "missing_context",
+        "actionability_category": "missing_target_shape",
         "authority_boundary": "preview_advisory_only",
-        "evidence_needed_to_promote": "trusted related test or observer, target shape, verify command, receipt command, and edit boundaries",
+        "evidence_needed_to_promote": "safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries",
         "gap_state": "advisory",
         "missing_actionability_fields": [
-          "related_test_or_observer",
+          "repair_kind",
           "target_test_shape",
           "verify_command",
           "receipt_command",
@@ -317,14 +325,14 @@
           }
         ],
         "repair_packet_ready": false,
-        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
-        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
+        "repair_route": "add probe-specific discriminator extraction for this expression before repair packet projection",
+        "why_not_actionable": "TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape"
       },
       "stop_reasons": [],
-      "oracle_kind": "unknown",
-      "oracle_strength": "none",
-      "recommended_next_step": "TypeScript preview advisory: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.",
-      "suggested_next_action": "TypeScript preview advisory: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.",
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "TypeScript preview advisory: related module-initializer observer reaches `DEFAULT_RATE` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.",
+      "suggested_next_action": "TypeScript preview advisory: related module-initializer observer reaches `DEFAULT_RATE` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "module_function"

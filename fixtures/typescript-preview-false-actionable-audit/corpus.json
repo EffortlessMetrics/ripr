@@ -282,20 +282,20 @@
       "source_finding_id": "probe:src_owners.ts:15:typescript_preview",
       "language": "typescript",
       "language_status": "preview",
-      "risk_class": "module initializer ambiguity",
+      "risk_class": "module initializer missing target shape",
       "evidence_kind": "module_initializer",
-      "oracle_kind": "unknown",
+      "oracle_kind": "relational_check",
       "gap_state": "advisory",
-      "actionability_category": "missing_context",
+      "actionability_category": "missing_target_shape",
       "static_limit_kind": null,
       "disposition": "candidate_future_support",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
-      "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route",
-      "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
-      "future_support": "module initializer support must distinguish exported const/object/config observers from dynamic initialization",
+      "why_not_actionable": "TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape",
+      "repair_route": "add probe-specific discriminator extraction for this expression before repair packet projection",
+      "future_support": "module initializer support must distinguish exact exported value observers from relational/broad observers and dynamic initialization before repair-card projection",
       "must_remain_non_actionable": true,
-      "required_evidence_fragment": "module initializer relation is missing context",
+      "required_evidence_fragment": "related module-initializer observer reaches",
       "raw_evidence_refs": [
         "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:15:typescript_preview"
       ],
@@ -311,7 +311,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "Module initializers can be useful preview owners, but relation and observer proof are not implied by initialization syntax alone."
+      "reason": "Direct module-initializer observers are useful advisory context, but relational checks and missing target shape must not become repair packets."
     },
     {
       "id": "mocked_module_limit",

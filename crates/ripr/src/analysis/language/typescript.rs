@@ -126,6 +126,7 @@ struct TypeScriptParseLimit {
 enum TypeScriptRelationKind {
     DirectOwnerCall,
     ImportedOwnerCall,
+    ModuleValueReference,
     ReceiverOwnerCall,
     SameFileProximity,
     DescribeName,
@@ -137,6 +138,7 @@ impl TypeScriptRelationKind {
         match self {
             Self::DirectOwnerCall => 5,
             Self::ImportedOwnerCall => 4,
+            Self::ModuleValueReference => 4,
             Self::ReceiverOwnerCall => 4,
             Self::SameFileProximity => 3,
             Self::DescribeName => 2,
@@ -147,7 +149,10 @@ impl TypeScriptRelationKind {
     fn uses_oracle(self) -> bool {
         matches!(
             self,
-            Self::DirectOwnerCall | Self::ImportedOwnerCall | Self::ReceiverOwnerCall
+            Self::DirectOwnerCall
+                | Self::ImportedOwnerCall
+                | Self::ModuleValueReference
+                | Self::ReceiverOwnerCall
         )
     }
 
@@ -159,6 +164,7 @@ impl TypeScriptRelationKind {
         match self {
             Self::DirectOwnerCall => "direct_owner_call",
             Self::ImportedOwnerCall => "imported_owner_call",
+            Self::ModuleValueReference => "module_value_reference",
             Self::ReceiverOwnerCall => "receiver_owner_call",
             Self::SameFileProximity => "same_file_proximity",
             Self::DescribeName => "describe_name",
@@ -1443,6 +1449,10 @@ fn owner_call_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
 ) -> Option<TypeScriptRelationKind> {
+    if owner.owner_kind == OwnerKind::ModuleFunction {
+        return module_initializer_observer_relation(test, owner)
+            .then_some(TypeScriptRelationKind::ModuleValueReference);
+    }
     if matches!(owner.owner_kind, OwnerKind::Method | OwnerKind::ClassMethod) {
         return receiver_owner_call_relation(test, owner)
             .then_some(TypeScriptRelationKind::ReceiverOwnerCall);
@@ -1459,6 +1469,29 @@ fn owner_call_relation(
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
     }
     None
+}
+
+fn module_initializer_observer_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    if owner.owner_kind != OwnerKind::ModuleFunction || test_mocks_owner_module(test, owner) {
+        return false;
+    }
+    if normalized_module_path(&test.file) == normalized_module_path(&owner.file)
+        && !local_identifier_declared_in_test_body(&test.body_text, &owner.name)
+        && expect_actual_references_identifier(&test.body_text, &owner.name)
+    {
+        return true;
+    }
+    test.imports_in_file.iter().any(|import| {
+        if !import_source_matches_owner(import, &test.file, owner) {
+            return false;
+        }
+        if import.namespace {
+            return expect_actual_references_member(&test.body_text, &import.local, &owner.name);
+        }
+        import.imported.as_deref() == Some(owner.name.as_str())
+            && !local_identifier_declared_in_test_body(&test.body_text, &import.local)
+            && expect_actual_references_identifier(&test.body_text, &import.local)
+    })
 }
 
 fn receiver_owner_call_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
@@ -1720,6 +1753,78 @@ fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &s
             && !line_prefix_looks_like_comment_or_string(body_text, idx)
             && !inside_block_comment(body_text, idx)
     })
+}
+
+fn expect_actual_references_identifier(body_text: &str, identifier: &str) -> bool {
+    is_safe_javascript_identifier(identifier)
+        && expect_actual_slices(body_text).iter().any(|actual| {
+            actual.trim_start().starts_with(identifier)
+                && actual
+                    .trim_start()
+                    .get(identifier.len()..)
+                    .and_then(|rest| rest.chars().next())
+                    .is_none_or(|ch| !is_javascript_identifier_char(ch))
+        })
+}
+
+fn expect_actual_references_member(
+    body_text: &str,
+    object_name: &str,
+    property_name: &str,
+) -> bool {
+    if !is_safe_javascript_identifier(object_name) || !is_safe_javascript_identifier(property_name)
+    {
+        return false;
+    }
+    let reference = format!("{object_name}.{property_name}");
+    expect_actual_slices(body_text).iter().any(|actual| {
+        actual.trim_start().starts_with(&reference)
+            && actual
+                .trim_start()
+                .get(reference.len()..)
+                .and_then(|rest| rest.chars().next())
+                .is_none_or(|ch| !is_javascript_identifier_char(ch))
+    })
+}
+
+fn expect_actual_slices(body_text: &str) -> Vec<&str> {
+    body_text
+        .match_indices("expect(")
+        .filter_map(|(idx, _)| {
+            if line_prefix_looks_like_comment_or_string(body_text, idx)
+                || inside_block_comment(body_text, idx)
+            {
+                return None;
+            }
+            body_text.get(idx + "expect(".len()..)
+        })
+        .collect()
+}
+
+fn local_identifier_declared_in_test_body(body_text: &str, identifier: &str) -> bool {
+    body_text.lines().any(|line| {
+        let trimmed = line.trim_start();
+        !trimmed.starts_with("//") && declaration_line_declares_identifier(trimmed, identifier)
+    })
+}
+
+fn declaration_line_declares_identifier(line: &str, identifier: &str) -> bool {
+    ["const ", "let ", "var ", "function "]
+        .into_iter()
+        .filter_map(|keyword| line.strip_prefix(keyword))
+        .filter_map(|after| {
+            after
+                .split(|ch: char| {
+                    ch == ':'
+                        || ch == '='
+                        || ch == '('
+                        || ch == ','
+                        || ch == ';'
+                        || ch.is_whitespace()
+                })
+                .find(|part| !part.is_empty())
+        })
+        .any(|declared| declared == identifier)
 }
 
 fn has_member_call_boundary(body_text: &str, idx: usize) -> bool {
@@ -3062,6 +3167,12 @@ fn classify_change(
                 mock_payload_oracle.as_deref(),
             )
         }
+        _ if owner.owner_kind == OwnerKind::ModuleFunction => {
+            format!(
+                "TypeScript preview advisory: related module-initializer observer reaches `{}` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.",
+                owner.name
+            )
+        }
         _ => {
             "TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.".to_string()
         }
@@ -3150,7 +3261,7 @@ fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
             owner.name
         ),
         OwnerKind::ModuleFunction => format!(
-            "No trusted TypeScript module-initializer relation for `{}`. Identifier-reference observers stay missing context until module-value related-test matching lands.",
+            "No trusted TypeScript module-initializer observer for `{}`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but helper-derived values, shadowed aliases, dynamic initialization, and non-expect references stay advisory in preview.",
             owner.name
         ),
         _ => format!(
@@ -3169,7 +3280,7 @@ fn no_static_path_recommendation(owner: &TypeScriptOwner) -> String {
             "TypeScript preview advisory: class-method relation is missing context; keep the finding advisory until class-method related-test matching lands.".to_string()
         }
         OwnerKind::ModuleFunction => {
-            "TypeScript preview advisory: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.".to_string()
+            "TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.".to_string()
         }
         _ => {
             "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.".to_string()
@@ -4013,6 +4124,108 @@ vi.mock("../src/owners");
 test("mocked cart total stays ambiguous", () => {
     const cart = new Cart();
     expect(cart.total()).toBe(1);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_matches_module_initializer_named_import_observer() {
+        let owner = TypeScriptOwner {
+            name: "DEFAULT_RATE".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 15,
+            end_line: 15,
+            owner_kind: OwnerKind::ModuleFunction,
+            class_name: None,
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { DEFAULT_RATE as rate } from "../src/owners";
+
+test("rate value observes initializer", () => {
+    expect(rate).toBe(0.09);
+});
+"#,
+        );
+
+        let candidates = related_test_candidates(&owner, &tests);
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].relation,
+            TypeScriptRelationKind::ModuleValueReference
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "rate value observes initializer");
+        assert_eq!(related[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(related[0].oracle_strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn find_related_tests_matches_module_initializer_namespace_observer() {
+        let owner = TypeScriptOwner {
+            name: "DEFAULT_RATE".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 15,
+            end_line: 15,
+            owner_kind: OwnerKind::ModuleFunction,
+            class_name: None,
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import * as owners from "../src/owners";
+
+test("rate value observes namespace initializer", () => {
+    expect(owners.DEFAULT_RATE).toBe(0.09);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "rate value observes namespace initializer");
+        assert_eq!(related[0].oracle_kind, OracleKind::ExactValue);
+    }
+
+    #[test]
+    fn find_related_tests_keeps_module_initializer_shadow_and_non_expect_references_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "DEFAULT_RATE".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 15,
+            end_line: 15,
+            owner_kind: OwnerKind::ModuleFunction,
+            class_name: None,
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { DEFAULT_RATE } from "../src/owners";
+
+test("shadowed rate stays ambiguous", () => {
+    const DEFAULT_RATE = 0.1;
+    expect(DEFAULT_RATE).toBe(0.1);
+});
+
+test("derived rate stays ambiguous", () => {
+    const actual = DEFAULT_RATE;
+    expect(actual).toBe(0.09);
+});
+
+test("string mention stays ambiguous", () => {
+    expect("DEFAULT_RATE").toBe("DEFAULT_RATE");
 });
 "#,
         );
