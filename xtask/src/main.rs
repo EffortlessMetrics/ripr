@@ -21998,7 +21998,7 @@ fn static_limitation_subroute(
 
     match category {
         "activation_owner_call_absent_call_presence_target_affinity" => {
-            "call_presence_target_affinity_missing_owner_call".to_string()
+            call_presence_target_affinity_subroute(record)
         }
         "activation_owner_call_absent_assertion_target_affinity" => {
             let class = audit_identifier_slug(evidence_class);
@@ -22015,6 +22015,49 @@ fn static_limitation_subroute(
         }
         _ => audit_identifier_slug(category),
     }
+}
+
+fn call_presence_target_affinity_subroute(record: &Value) -> String {
+    let Some(expression) = audit_static_limitation_example_expression(record) else {
+        return "call_presence_target_affinity_missing_owner_call".to_string();
+    };
+    if call_presence_expression_is_method_chain(&expression) {
+        "call_presence_target_affinity_method_chain_missing_owner_call".to_string()
+    } else if call_presence_expression_is_associated_call(&expression) {
+        "call_presence_target_affinity_associated_call_missing_owner_call".to_string()
+    } else if expression.contains('(') {
+        "call_presence_target_affinity_function_call_missing_owner_call".to_string()
+    } else {
+        "call_presence_target_affinity_missing_owner_call".to_string()
+    }
+}
+
+fn audit_static_limitation_example_expression(record: &Value) -> Option<String> {
+    audit_array(record, &["raw_findings"])
+        .first()
+        .and_then(|raw| audit_non_empty_string(raw, &["expression"]))
+        .or_else(|| {
+            audit_array(record, &["canonical_item", "raw_findings"])
+                .first()
+                .and_then(|raw| audit_non_empty_string(raw, &["expression"]))
+        })
+}
+
+fn call_presence_expression_is_method_chain(expression: &str) -> bool {
+    let Some(dot_index) = expression.find('.') else {
+        return false;
+    };
+    expression
+        .find('(')
+        .is_none_or(|paren_index| dot_index < paren_index)
+}
+
+fn call_presence_expression_is_associated_call(expression: &str) -> bool {
+    expression.find("::").is_some_and(|path_index| {
+        expression
+            .find('(')
+            .is_some_and(|paren_index| path_index < paren_index)
+    })
 }
 
 fn audit_identifier_slug(value: &str) -> String {
@@ -83987,6 +84030,74 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("bare_alias_unsupported"));
         assert!(markdown.contains("ambiguous_imported_owner"));
         Ok(())
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_splits_call_presence_target_affinity_by_expression_shape() {
+        let limitation = serde_json::json!({});
+        let method_chain = serde_json::json!({
+            "raw_findings": [
+                {
+                    "expression": "entry\n        .evidence\n        .missing_discriminators\n        .iter()"
+                }
+            ]
+        });
+        let associated_call = serde_json::json!({
+            "raw_findings": [
+                {
+                    "expression": "u64::from(*byte)"
+                }
+            ]
+        });
+        let function_call = serde_json::json!({
+            "raw_findings": [
+                {
+                    "expression": "missing_evidence(context.probe, &class)"
+                }
+            ]
+        });
+        let no_expression = serde_json::json!({});
+
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &method_chain,
+                &limitation,
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "call_presence_target_affinity_method_chain_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &associated_call,
+                &limitation,
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "call_presence_target_affinity_associated_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &function_call,
+                &limitation,
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "call_presence_target_affinity_function_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &no_expression,
+                &limitation,
+                "activation_owner_call_absent_call_presence_target_affinity",
+                "analysis/call-presence-target-affinity-owner-call-tracing",
+                "call_presence"
+            ),
+            "call_presence_target_affinity_missing_owner_call"
+        );
     }
 
     #[test]

@@ -253,6 +253,11 @@ to `analysis/related-test-affinity-owner-call-tracing`, and same-file-only
 context should become `activation_owner_call_absent_same_file_only` routed to
 `analysis/same-file-owner-call-tracing`, instead of generic owner-call absence
 triage.
+Within call-presence target-token affinity, backlog packets may split
+`limitation_subroute` by expression shape, including method-chain,
+associated-call, and function-call missing-owner-call routes. These subroutes
+are analyzer work queues only and must not imply public repair packet
+eligibility.
 
 Given a static-unknown or limitation-shaped canonical item, a limitation is
 named only when it carries a non-generic category and repair route. Generic

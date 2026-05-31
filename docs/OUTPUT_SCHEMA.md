@@ -1934,6 +1934,11 @@ Field contract:
   `analysis/related-test-affinity-owner-call-tracing`, or
   `activation_owner_call_absent_same_file_only` routed to
   `analysis/same-file-owner-call-tracing`.
+  Call-presence target-affinity backlog packets may further split
+  `limitation_subroute` by expression shape, such as method-chain,
+  associated-call, or function-call missing-owner-call routes, so analyzer work
+  can distinguish local method-chain tracing from free-function call tracing
+  without making the item actionable.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.
