@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added Python repair-routing quality metrics to `cargo xtask dogfood`. The
+  report now derives top-1 repair-card usefulness, verify-command validity,
+  concrete-discriminator coverage, suggested test-location coverage,
+  false-actionable and crash rates, receipt closure, and unsupported limitation
+  distribution from the Python real-repo eval corpus while marking top-3
+  precision as not yet measured. Python remains preview/advisory; support-tier
+  promotion still depends on ranked top-3 evidence and review.
 - Added simple Python route-decorator repair routing for FastAPI/Flask-shaped
   handlers such as `@api.post(...)`. RIPR now treats those route decorators as
   static route metadata, still keeps arbitrary decorators fail-closed, and the

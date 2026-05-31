@@ -450,6 +450,8 @@ adapter contributes:
 - `language_adapter_python_agent_packet_v1`
 - `language_adapter_python_swarm_queue_stale_packets`
 - `language_adapter_python_gap_receipt_from_check_output`
+- `language_adapter_python_real_repo_eval_receipt`
+- `language_adapter_python_repair_routing_quality_metrics`
 - `language_adapter_python_pilot_first_use_path`
 - `language_adapter_python_pr_summary_repair_card_projection`
 - `language_adapter_python_lsp_agent_packet_action`

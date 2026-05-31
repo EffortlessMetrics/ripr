@@ -2294,6 +2294,7 @@ metrics = [
   "language_adapter_python_gap_receipt_from_check_output",
   "language_adapter_python_real_repair_attempt_receipt",
   "language_adapter_python_real_repo_eval_receipt",
+  "language_adapter_python_repair_routing_quality_metrics",
   "language_adapter_python_pilot_first_use_path",
   "language_adapter_python_first_pr_start_here_path",
   "language_adapter_python_static_limit_stop_reasons",
@@ -4182,6 +4183,7 @@ metrics = [
   "top_limitation_routes",
   "real_repair_attempt_receipts",
   "language_adapter_python_real_repo_eval_receipt",
+  "language_adapter_python_repair_routing_quality_metrics",
 ]
 
 [[behavior]]

@@ -970,6 +970,7 @@ struct DogfoodPythonRealRepoEvalScenario {
     usability: String,
     false_positive_notes: String,
     limitation_notes: String,
+    unsupported_limitations: Vec<String>,
     claim_boundary: Vec<String>,
     reason: String,
 }
@@ -1002,9 +1003,25 @@ struct DogfoodPythonRealRepoEvalRun {
     usability: String,
     false_positive_notes: String,
     limitation_notes: String,
+    unsupported_limitations: Vec<String>,
     claim_boundary: Vec<String>,
     reason: String,
     errors: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct DogfoodPythonRepairRoutingQualitySummary {
+    cases: usize,
+    top_1_actionable_usable: usize,
+    verify_command_valid: usize,
+    concrete_discriminator: usize,
+    suggested_test_location: usize,
+    false_actionable: usize,
+    crashes: usize,
+    receipt_closed: usize,
+    unsupported_limitation_distribution: Vec<(String, usize)>,
+    gate_status: String,
+    gate_reason: String,
 }
 
 #[derive(Debug)]
@@ -9240,6 +9257,7 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
     let scenarios = dogfood_python_real_repo_eval_scenarios_at(path);
     let mut seen = BTreeMap::new();
     let mut closed_cases = 0usize;
+    let mut runs = Vec::new();
     for scenario in &scenarios {
         if seen
             .insert(scenario.name.clone(), scenario.gap_movement.clone())
@@ -9254,12 +9272,13 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
             closed_cases += 1;
         }
         let run = dogfood_python_real_repo_eval_run(scenario);
-        for error in run.errors {
+        for error in &run.errors {
             violations.push(format!(
                 "Python real-repo eval case {}: {error}",
                 scenario.name
             ));
         }
+        runs.push(run);
     }
 
     for (case_id, gap_movement) in PYTHON_REAL_REPO_EVAL_REQUIRED_CASES {
@@ -9280,6 +9299,13 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
         violations.push(
             "Python real-repo eval corpus must include at least one closed gap receipt".to_string(),
         );
+    }
+    let quality = dogfood_python_repair_routing_quality_summary(&runs);
+    if quality.gate_status != "pass" {
+        violations.push(format!(
+            "Python repair-routing quality gate is {}: {}",
+            quality.gate_status, quality.gate_reason
+        ));
     }
 
     Ok(())
@@ -44134,6 +44160,7 @@ fn dogfood_python_real_repo_eval_scenarios_at(
             usability: "unknown".to_string(),
             false_positive_notes: "unknown".to_string(),
             limitation_notes: "unknown".to_string(),
+            unsupported_limitations: Vec::new(),
             claim_boundary: Vec::new(),
             reason,
         }]
@@ -44212,6 +44239,7 @@ fn dogfood_python_real_repo_eval_scenarios_at(
                 .unwrap_or_else(|| "unknown".to_string()),
             limitation_notes: json_string_field(case, "limitation_notes")
                 .unwrap_or_else(|| "unknown".to_string()),
+            unsupported_limitations: json_string_array_field(case, "unsupported_limitations"),
             claim_boundary: json_string_array_field(case, "claim_boundary"),
             reason: json_string_field(case, "reason").unwrap_or_else(|| {
                 "Python real-repo eval case did not document a reason".to_string()
@@ -44332,6 +44360,27 @@ fn dogfood_python_real_repo_eval_run(
     if scenario.receipt_command == scenario.verify_command {
         errors.push("receipt_command must stay distinct from verify_command".to_string());
     }
+    for limitation in &scenario.unsupported_limitations {
+        if limitation.trim().is_empty() || limitation == "unknown" {
+            errors.push("unsupported_limitations entries must be named limitations".to_string());
+        }
+        if limitation.contains(' ') {
+            errors.push(format!(
+                "unsupported_limitations entries must be stable tokens, got {limitation}"
+            ));
+        }
+    }
+    if scenario
+        .limitation_notes
+        .to_ascii_lowercase()
+        .contains("unsupported")
+        && scenario.unsupported_limitations.is_empty()
+    {
+        errors.push(
+            "limitation_notes mention unsupported behavior but unsupported_limitations is empty"
+                .to_string(),
+        );
+    }
     if scenario.claim_boundary.is_empty() {
         errors.push("claim_boundary must keep preview boundary denials visible".to_string());
     }
@@ -44376,10 +44425,137 @@ fn dogfood_python_real_repo_eval_run(
         usability: scenario.usability.clone(),
         false_positive_notes: scenario.false_positive_notes.clone(),
         limitation_notes: scenario.limitation_notes.clone(),
+        unsupported_limitations: scenario.unsupported_limitations.clone(),
         claim_boundary: scenario.claim_boundary.clone(),
         reason: scenario.reason.clone(),
         errors,
     }
+}
+
+fn dogfood_python_repair_routing_quality_summary(
+    runs: &[DogfoodPythonRealRepoEvalRun],
+) -> DogfoodPythonRepairRoutingQualitySummary {
+    let mut summary = DogfoodPythonRepairRoutingQualitySummary {
+        cases: runs.len(),
+        ..DogfoodPythonRepairRoutingQualitySummary::default()
+    };
+    let mut unsupported_limitations = BTreeMap::<String, usize>::new();
+
+    for run in runs {
+        if dogfood_python_eval_top_1_actionable_usable(run) {
+            summary.top_1_actionable_usable += 1;
+        }
+        if dogfood_python_eval_verify_command_valid(run) {
+            summary.verify_command_valid += 1;
+        }
+        if dogfood_python_eval_has_concrete_discriminator(run) {
+            summary.concrete_discriminator += 1;
+        }
+        if dogfood_python_eval_has_suggested_test_location(run) {
+            summary.suggested_test_location += 1;
+        }
+        if !dogfood_python_eval_false_positive_clean(run) {
+            summary.false_actionable += 1;
+        }
+        if !run.errors.is_empty() {
+            summary.crashes += 1;
+        }
+        if run.gap_movement == "closed" && run.receipt_result == "pass" {
+            summary.receipt_closed += 1;
+        }
+        for limitation in &run.unsupported_limitations {
+            *unsupported_limitations
+                .entry(limitation.clone())
+                .or_default() += 1;
+        }
+    }
+
+    summary.unsupported_limitation_distribution =
+        unsupported_limitations.into_iter().collect::<Vec<_>>();
+
+    let missing_quality = summary.cases == 0
+        || summary.top_1_actionable_usable != summary.cases
+        || summary.verify_command_valid != summary.cases
+        || summary.concrete_discriminator != summary.cases
+        || summary.suggested_test_location != summary.cases
+        || summary.false_actionable > 0
+        || summary.crashes > 0
+        || summary.receipt_closed == 0;
+    if missing_quality {
+        summary.gate_status = "review".to_string();
+        summary.gate_reason =
+            "Python repair-routing dogfood quality is incomplete or noisy".to_string();
+    } else {
+        summary.gate_status = "pass".to_string();
+        summary.gate_reason = "All checked top Python repair cards are usable, verifiable, placed, and receipt-backed without observed false actionability".to_string();
+    }
+
+    summary
+}
+
+fn dogfood_python_eval_top_1_actionable_usable(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    run.repair_card_present
+        && run.usability == "usable"
+        && dogfood_python_eval_false_positive_clean(run)
+}
+
+fn dogfood_python_eval_verify_command_valid(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    (run.verify_command.starts_with("pytest ")
+        || run.verify_command.starts_with("python -m unittest "))
+        && run.verify_result == "pass"
+}
+
+fn dogfood_python_eval_has_concrete_discriminator(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    let discriminator = run.missing_discriminator.trim();
+    !discriminator.is_empty()
+        && discriminator != "unknown"
+        && !discriminator.contains("...")
+        && !discriminator.eq_ignore_ascii_case("uncertain")
+}
+
+fn dogfood_python_eval_has_suggested_test_location(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    let file = run.suggested_test_file.trim();
+    let name = run.suggested_test_name.trim();
+    !file.is_empty()
+        && file != "unknown"
+        && !name.is_empty()
+        && name != "unknown"
+        && (file.starts_with("tests/") || file.ends_with("_test.py") || file.contains("/test_"))
+}
+
+fn dogfood_python_eval_false_positive_clean(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    matches!(
+        run.false_positive_notes
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "none observed" | "none"
+    )
+}
+
+fn dogfood_push_python_quality_ratio_json(
+    body: &mut String,
+    name: &str,
+    count: usize,
+    checked: usize,
+    higher_is_better: bool,
+    reason: &str,
+) {
+    let status = if checked == 0 {
+        "not_measured"
+    } else if (higher_is_better && count == checked) || (!higher_is_better && count == 0) {
+        "pass"
+    } else {
+        "review"
+    };
+    body.push_str(&format!(
+        "      \"{}\": {{ \"status\": \"{}\", \"count\": {}, \"checked\": {}, \"reason\": \"{}\" }},\n",
+        json_escape(name),
+        status,
+        count,
+        checked,
+        json_escape(reason)
+    ));
 }
 
 fn dogfood_typescript_preview_repair_loop_scenarios()
@@ -46553,6 +46729,8 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
     let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
+    let python_repair_quality =
+        dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -46593,6 +46771,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
         || python_real_repo_eval_runs
             .iter()
             .any(|run| !run.errors.is_empty())
+        || python_repair_quality.gate_status != "pass"
         || typescript_preview_repair_loop_runs
             .iter()
             .any(|run| !run.errors.is_empty())
@@ -47860,6 +48039,8 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         .iter()
         .filter(|run| run.usability == "usable")
         .count();
+    let python_repair_quality =
+        dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
     body.push_str("## Python Real-Repo Eval Receipts\n\n");
     body.push_str("These receipts record Python repair-routing runs outside analyzer fixture goldens. They are advisory dogfood evidence for the repair card -> verify -> receipt loop, not support-tier promotion or runtime adequacy proof.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -47886,6 +48067,61 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         ));
     }
     body.push('\n');
+    body.push_str("## Python Repair-Routing Quality Metrics\n\n");
+    body.push_str("These metrics are computed from the checked Python real-repo eval receipts. They measure top repair-card usefulness and closure evidence; they are not support-tier promotion and do not make Python gate eligible.\n\n");
+    body.push_str(&format!(
+        "- Quality gate: `{}` - {}\n",
+        markdown_cell(&python_repair_quality.gate_status),
+        markdown_cell(&python_repair_quality.gate_reason)
+    ));
+    body.push_str("- Top-3 actionable precision: `not_measured` - the current corpus records the top finding only; ranked top-3 capture remains future work.\n\n");
+    body.push_str("| Metric | Passing / Checked |\n");
+    body.push_str("| --- | --- |\n");
+    body.push_str(&format!(
+        "| Top-1 actionable precision | {} / {} |\n",
+        python_repair_quality.top_1_actionable_usable, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Verify-command validity | {} / {} |\n",
+        python_repair_quality.verify_command_valid, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Concrete discriminator rate | {} / {} |\n",
+        python_repair_quality.concrete_discriminator, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Related test-location rate | {} / {} |\n",
+        python_repair_quality.suggested_test_location, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Receipt closure rate | {} / {} |\n",
+        python_repair_quality.receipt_closed, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| False-actionable rate | {} / {} |\n",
+        python_repair_quality.false_actionable, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Crash rate | {} / {} |\n\n",
+        python_repair_quality.crashes, python_repair_quality.cases
+    ));
+    body.push_str("| Unsupported limitation | Cases |\n");
+    body.push_str("| --- | --- |\n");
+    if python_repair_quality
+        .unsupported_limitation_distribution
+        .is_empty()
+    {
+        body.push_str("| none recorded | 0 |\n\n");
+    } else {
+        for (limitation, count) in &python_repair_quality.unsupported_limitation_distribution {
+            body.push_str(&format!(
+                "| `{}` | {} |\n",
+                markdown_cell(limitation),
+                count
+            ));
+        }
+        body.push('\n');
+    }
     for run in python_real_repo_eval_runs {
         body.push_str(&format!("### Python Real-Repo Eval `{}`\n\n", run.name));
         body.push_str(&format!(
@@ -47949,6 +48185,12 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
             "- Limitation notes: {}\n",
             markdown_cell(&run.limitation_notes)
         ));
+        if !run.unsupported_limitations.is_empty() {
+            body.push_str(&format!(
+                "- Unsupported limitations: `{}`\n",
+                markdown_cell(&run.unsupported_limitations.join(", "))
+            ));
+        }
         body.push_str(&format!(
             "- Claim boundary: `{}`\n",
             markdown_cell(&run.claim_boundary.join("; "))
@@ -48250,6 +48492,8 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
     let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
+    let python_repair_quality =
+        dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -49633,6 +49877,9 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
             "        \"limitation_notes\": \"{}\",\n",
             json_escape(&run.limitation_notes)
         ));
+        body.push_str("        \"unsupported_limitations\": [");
+        write_json_string_array(&mut body, &run.unsupported_limitations);
+        body.push_str("],\n");
         body.push_str("        \"claim_boundary\": [");
         write_json_string_array(&mut body, &run.claim_boundary);
         body.push_str("],\n");
@@ -49644,7 +49891,94 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         write_json_string_array(&mut body, &run.errors);
         body.push_str("]\n      }");
     }
-    body.push_str("\n    ]\n  },\n  \"user_surface_projection_alignment\": {\n");
+    body.push_str("\n    ]\n  },\n  \"python_repair_routing_quality\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"input\": \"fixtures/python-real-repo-evals/corpus.json\",\n");
+    body.push_str(&format!(
+        "    \"quality_gate\": {{ \"status\": \"{}\", \"reason\": \"{}\" }},\n",
+        json_escape(&python_repair_quality.gate_status),
+        json_escape(&python_repair_quality.gate_reason)
+    ));
+    body.push_str("    \"summary\": {\n");
+    body.push_str(&format!(
+        "      \"cases\": {},\n",
+        python_repair_quality.cases
+    ));
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "top_1_actionable_precision",
+        python_repair_quality.top_1_actionable_usable,
+        python_repair_quality.cases,
+        true,
+        "top finding is usable, repair-card-backed, and has no observed false actionability",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "verify_command_validity",
+        python_repair_quality.verify_command_valid,
+        python_repair_quality.cases,
+        true,
+        "verify command is pytest or unittest and passed in the recorded eval",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "concrete_discriminator_rate",
+        python_repair_quality.concrete_discriminator,
+        python_repair_quality.cases,
+        true,
+        "missing discriminator is a concrete non-placeholder value",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "related_test_location_rate",
+        python_repair_quality.suggested_test_location,
+        python_repair_quality.cases,
+        true,
+        "suggested test file and test name are present",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "receipt_closure_rate",
+        python_repair_quality.receipt_closed,
+        python_repair_quality.cases,
+        true,
+        "before/after receipt closes the canonical Python gap",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "false_actionable_rate",
+        python_repair_quality.false_actionable,
+        python_repair_quality.cases,
+        false,
+        "recorded eval reports observed false actionability",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "crash_rate",
+        python_repair_quality.crashes,
+        python_repair_quality.cases,
+        false,
+        "eval validation reported parser/reporting crashes or contract errors",
+    );
+    body.push_str(
+        "      \"top_3_actionable_precision\": { \"status\": \"not_measured\", \"reason\": \"the current Python real-repo eval corpus records the top finding only\" }\n",
+    );
+    body.push_str("    },\n    \"unsupported_limitation_distribution\": [");
+    for (index, (limitation, count)) in python_repair_quality
+        .unsupported_limitation_distribution
+        .iter()
+        .enumerate()
+    {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push_str(&format!(
+            "{{ \"kind\": \"{}\", \"cases\": {} }}",
+            json_escape(limitation),
+            count
+        ));
+    }
+    body.push_str("]\n  },\n  \"user_surface_projection_alignment\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
     body.push_str(
         "    \"receipt_dir\": \"fixtures/user-surface-projection-alignment\",\n    \"cases\": [\n",
@@ -62524,7 +62858,8 @@ mod tests {
         dogfood_language_preview_run, dogfood_language_preview_scenarios,
         dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
         dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_python_real_repo_eval_run, dogfood_python_real_repo_eval_scenarios,
+        dogfood_push_python_quality_ratio_json, dogfood_python_real_repo_eval_run,
+        dogfood_python_real_repo_eval_scenarios, dogfood_python_repair_routing_quality_summary,
         dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
@@ -70739,7 +71074,8 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending metrics review".to_string(),
+            limitation_notes: "support-tier promotion remains pending ranked top-3 metrics review".to_string(),
+            unsupported_limitations: Vec::new(),
             claim_boundary: vec![
                 "Python remains preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
@@ -70944,6 +71280,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Surface Projection Alignment Receipts"));
         assert!(markdown.contains("Real Repair Attempt Receipts"));
         assert!(markdown.contains("Python Real-Repo Eval Receipts"));
+        assert!(markdown.contains("Python Repair-Routing Quality Metrics"));
+        assert!(markdown.contains("Top-3 actionable precision: `not_measured`"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
@@ -71172,6 +71510,25 @@ fn exact_owner_call_has_external_expected_value() {
                 .get("missing_discriminator")
                 .and_then(Value::as_str),
             Some("amount == threshold")
+        );
+        let python_quality = value
+            .get("python_repair_routing_quality")
+            .ok_or_else(|| "python_repair_routing_quality section missing".to_string())?;
+        assert_eq!(
+            python_quality["quality_gate"]["status"],
+            serde_json::Value::from("pass")
+        );
+        assert_eq!(
+            python_quality["summary"]["top_1_actionable_precision"]["status"],
+            serde_json::Value::from("pass")
+        );
+        assert_eq!(
+            python_quality["summary"]["top_3_actionable_precision"]["status"],
+            serde_json::Value::from("not_measured")
+        );
+        assert_eq!(
+            python_quality["summary"]["receipt_closure_rate"]["count"],
+            serde_json::Value::from(1)
         );
         let typescript_preview_repair_loop = value
             .get("typescript_preview_repair_loop")
@@ -71893,6 +72250,26 @@ fn exact_owner_call_has_external_expected_value() {
                 "Python real-repo eval receipts should include a closed gap"
             );
 
+            let runs = scenarios
+                .iter()
+                .map(dogfood_python_real_repo_eval_run)
+                .collect::<Vec<_>>();
+            let quality = dogfood_python_repair_routing_quality_summary(&runs);
+            assert_eq!(quality.gate_status, "pass");
+            assert_eq!(quality.top_1_actionable_usable, quality.cases);
+            assert_eq!(quality.verify_command_valid, quality.cases);
+            assert_eq!(quality.concrete_discriminator, quality.cases);
+            assert_eq!(quality.suggested_test_location, quality.cases);
+            assert_eq!(quality.false_actionable, 0);
+            assert_eq!(quality.crashes, 0);
+            assert!(quality.receipt_closed > 0);
+            assert!(
+                quality
+                    .unsupported_limitation_distribution
+                    .iter()
+                    .any(|(kind, count)| kind == "dynamic_route_registration" && *count == 1)
+            );
+
             for scenario in scenarios {
                 let run = dogfood_python_real_repo_eval_run(&scenario);
                 assert!(
@@ -71905,6 +72282,97 @@ fn exact_owner_call_has_external_expected_value() {
 
             Ok(())
         })
+    }
+
+    #[test]
+    fn dogfood_python_repair_routing_quality_flags_noisy_routes() {
+        let empty_quality = dogfood_python_repair_routing_quality_summary(&[]);
+        assert_eq!(empty_quality.gate_status, "review");
+        assert_eq!(empty_quality.cases, 0);
+        assert_eq!(empty_quality.receipt_closed, 0);
+
+        let mut unusable_card = valid_python_real_repo_eval_scenario();
+        unusable_card.usability = "needs_review".to_string();
+
+        let mut bad_verify = valid_python_real_repo_eval_scenario();
+        bad_verify.verify_result = "fail".to_string();
+        bad_verify.gap_movement = "unchanged".to_string();
+        bad_verify.closed_gaps = 0;
+
+        let mut vague_discriminator = valid_python_real_repo_eval_scenario();
+        vague_discriminator.missing_discriminator = "uncertain".to_string();
+
+        let mut missing_location = valid_python_real_repo_eval_scenario();
+        missing_location.suggested_test_file = "src/pricing.py".to_string();
+
+        let mut false_actionable = valid_python_real_repo_eval_scenario();
+        false_actionable.false_positive_notes = "possible false actionability".to_string();
+
+        let mut not_closed = valid_python_real_repo_eval_scenario();
+        not_closed.gap_movement = "unchanged".to_string();
+        not_closed.closed_gaps = 0;
+
+        let mut unsupported = valid_python_real_repo_eval_scenario();
+        unsupported.unsupported_limitations = vec![
+            "decorator_indirection".to_string(),
+            "dynamic_route_registration".to_string(),
+        ];
+
+        let mut crashed =
+            dogfood_python_real_repo_eval_run(&valid_python_real_repo_eval_scenario());
+        crashed
+            .errors
+            .push("simulated parser/report contract error".to_string());
+
+        let runs = vec![
+            dogfood_python_real_repo_eval_run(&unusable_card),
+            dogfood_python_real_repo_eval_run(&bad_verify),
+            dogfood_python_real_repo_eval_run(&vague_discriminator),
+            dogfood_python_real_repo_eval_run(&missing_location),
+            dogfood_python_real_repo_eval_run(&false_actionable),
+            dogfood_python_real_repo_eval_run(&not_closed),
+            dogfood_python_real_repo_eval_run(&unsupported),
+            crashed,
+        ];
+        let quality = dogfood_python_repair_routing_quality_summary(&runs);
+
+        assert_eq!(quality.gate_status, "review");
+        assert_eq!(quality.cases, 8);
+        assert_eq!(quality.top_1_actionable_usable, 6);
+        assert_eq!(quality.verify_command_valid, 7);
+        assert_eq!(quality.concrete_discriminator, 7);
+        assert_eq!(quality.suggested_test_location, 7);
+        assert_eq!(quality.false_actionable, 1);
+        assert_eq!(quality.crashes, 1);
+        assert_eq!(quality.receipt_closed, 6);
+        assert!(
+            quality
+                .unsupported_limitation_distribution
+                .iter()
+                .any(|(kind, count)| kind == "decorator_indirection" && *count == 1)
+        );
+        assert!(
+            quality
+                .unsupported_limitation_distribution
+                .iter()
+                .any(|(kind, count)| kind == "dynamic_route_registration" && *count == 1)
+        );
+    }
+
+    #[test]
+    fn dogfood_python_quality_ratio_json_marks_review_and_not_measured() {
+        let mut body = String::new();
+        dogfood_push_python_quality_ratio_json(&mut body, "empty", 0, 0, true, "no cases");
+        dogfood_push_python_quality_ratio_json(&mut body, "higher_pass", 2, 2, true, "all good");
+        dogfood_push_python_quality_ratio_json(&mut body, "higher_review", 1, 2, true, "missing");
+        dogfood_push_python_quality_ratio_json(&mut body, "lower_pass", 0, 2, false, "none");
+        dogfood_push_python_quality_ratio_json(&mut body, "lower_review", 1, 2, false, "noisy");
+
+        assert!(body.contains("\"empty\": { \"status\": \"not_measured\""));
+        assert!(body.contains("\"higher_pass\": { \"status\": \"pass\""));
+        assert!(body.contains("\"higher_review\": { \"status\": \"review\""));
+        assert!(body.contains("\"lower_pass\": { \"status\": \"pass\""));
+        assert!(body.contains("\"lower_review\": { \"status\": \"review\""));
     }
 
     fn valid_python_real_repo_eval_scenario() -> DogfoodPythonRealRepoEvalScenario {
@@ -71942,7 +72410,8 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending metrics review".to_string(),
+            limitation_notes: "support-tier promotion remains pending ranked top-3 metrics review".to_string(),
+            unsupported_limitations: Vec::new(),
             claim_boundary: vec![
                 "Python remains preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
@@ -71962,6 +72431,7 @@ fn exact_owner_call_has_external_expected_value() {
         scenario.gap_movement = "closed".to_string();
         scenario.closed_gaps = 0;
         scenario.verify_result = "not_run".to_string();
+        scenario.limitation_notes = "dynamic routing remains unsupported".to_string();
         scenario.claim_boundary.clear();
 
         let report = dogfood_python_real_repo_eval_run(&scenario)
@@ -71973,6 +72443,9 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(report.contains("repair_card_present must be true"));
         assert!(report.contains("closed gap movement must record closed_gaps > 0"));
         assert!(report.contains("closed gap movement requires verify_result=pass"));
+        assert!(report.contains(
+            "limitation_notes mention unsupported behavior but unsupported_limitations is empty"
+        ));
         assert!(report.contains("claim_boundary must keep preview boundary denials visible"));
     }
 

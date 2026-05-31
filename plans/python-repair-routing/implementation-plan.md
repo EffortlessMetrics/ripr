@@ -1237,7 +1237,7 @@ Prove usefulness outside fixtures.
 
 ### Work item: metrics/python-repair-routing-quality
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -1254,6 +1254,24 @@ Measure Python quality by repair usefulness, not finding volume.
   related-test-location rate, false-actionable rate, crash rate, unsupported
   limitation distribution, and receipt closure rate.
 - Noisy changes fail quality gates.
+
+#### Progress
+
+- `cargo xtask dogfood` now derives Python repair-routing quality metrics from
+  `fixtures/python-real-repo-evals/corpus.json`: top-1 actionable usefulness,
+  verify-command validity, concrete-discriminator coverage, suggested
+  test-location coverage, false-actionable rate, crash rate, receipt closure
+  rate, and unsupported limitation distribution.
+- The Python eval corpus now records structured unsupported limitation kinds,
+  and the decorated-route eval contributes `dynamic_route_registration` to the
+  limitation distribution while keeping the support-tier boundary explicit.
+- Dogfood exposes top-3 actionable precision as `not_measured` until the eval
+  corpus captures ranked top-3 findings; promotion remains blocked on that
+  missing measurement.
+- Corpus validation fails if the checked top Python repair cards become noisy:
+  unusable top-1 card, invalid verify command, missing concrete discriminator,
+  missing suggested test location, false actionability, crash/contract error, or
+  no closed receipt.
 
 ### Work item: campaign/python-usable-alpha-promotion
 

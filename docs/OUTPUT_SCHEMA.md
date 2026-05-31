@@ -11275,6 +11275,7 @@ fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
 fixtures/finding-alignment-dogfood/corpus.json
 fixtures/surface-projection-alignment/corpus.json
 fixtures/real-repair-attempts/corpus.json
+fixtures/python-real-repo-evals/corpus.json
 fixtures/user-surface-projection-alignment/corpus.json
 ```
 
@@ -11318,6 +11319,15 @@ The checked real repair attempt receipts are read from
 attempts, including improved/resolved movement and unchanged or missing-receipt
 non-success cases, so failed or incomplete attempts remain visible instead of
 being hidden from the repair queue.
+The checked Python real-repo eval receipts are read from
+`fixtures/python-real-repo-evals/` and record the top Python repair card,
+verify command, before/after receipt movement, false-positive notes, and
+unsupported limitation kinds. The report derives
+`python_repair_routing_quality` from those receipts, including top-1
+actionable usefulness, verify-command validity, concrete-discriminator and
+test-location coverage, false-actionable and crash rates, receipt closure rate,
+unsupported limitation distribution, and an explicit `not_measured` state for
+top-3 precision until the corpus captures ranked top-3 findings.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
 and CI projection examples share the same canonical gap, packet or limitation
@@ -11621,6 +11631,87 @@ JSON shape:
         "missing_receipt_reason": null,
         "reason": "A real merged repair-loop PR converted attempt outcomes into route-quality evidence.",
         "errors": []
+      }
+    ]
+  },
+  "python_real_repo_evals": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/python-real-repo-evals",
+    "summary": {
+      "cases": 6,
+      "closed": 6,
+      "usable": 6
+    },
+    "cases": [
+      {
+        "name": "decorated_route_status_pytest_receipt",
+        "repo_shape": "decorated_route_pytest",
+        "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+        "repair_card_present": true,
+        "missing_discriminator": "response.status_code == 422",
+        "suggested_test_file": "tests/test_checkout.py",
+        "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+        "verify_result": "pass",
+        "receipt_result": "pass",
+        "gap_movement": "closed",
+        "unsupported_limitations": ["dynamic_route_registration"],
+        "errors": []
+      }
+    ]
+  },
+  "python_repair_routing_quality": {
+    "default_ci_blocking": false,
+    "input": "fixtures/python-real-repo-evals/corpus.json",
+    "quality_gate": {
+      "status": "pass",
+      "reason": "All checked top Python repair cards are usable, verifiable, placed, and receipt-backed without observed false actionability"
+    },
+    "summary": {
+      "cases": 6,
+      "top_1_actionable_precision": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "verify_command_validity": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "concrete_discriminator_rate": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "related_test_location_rate": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "receipt_closure_rate": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "false_actionable_rate": {
+        "status": "pass",
+        "count": 0,
+        "checked": 6
+      },
+      "crash_rate": {
+        "status": "pass",
+        "count": 0,
+        "checked": 6
+      },
+      "top_3_actionable_precision": {
+        "status": "not_measured",
+        "reason": "the current Python real-repo eval corpus records the top finding only"
+      }
+    },
+    "unsupported_limitation_distribution": [
+      {
+        "kind": "dynamic_route_registration",
+        "cases": 1
       }
     ]
   },

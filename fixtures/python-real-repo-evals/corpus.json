@@ -39,7 +39,8 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending metrics review",
+      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -74,7 +75,8 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending metrics review",
+      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -109,7 +111,8 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending metrics review",
+      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -144,7 +147,8 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending metrics review",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -179,7 +183,8 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending metrics review",
+      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -214,7 +219,10 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending metrics review",
+      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending ranked top-3 metrics review",
+      "unsupported_limitations": [
+        "dynamic_route_registration"
+      ],
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
