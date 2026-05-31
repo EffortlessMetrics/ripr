@@ -10893,7 +10893,7 @@ Validated GapRecord diagnostics use the same code-action surface for
 repair-routing records. Python preview GapRecords accept bounded `pytest ...`
 and `python -m unittest ...` verification commands, expose verify and receipt
 copy actions when those commands are safe, expose `Copy Python repair card` to
-copy a current validated GapRecord repair-card brief through
+copy a current validated GapRecord repair-card brief for safe target-file routes through
 `ripr.copyTargetedTestBrief`, can open `repair_route.target_file` when
 `related_test` is a bare test name, and expose `Write Python test: copy pytest
 skeleton` for pytest-backed repairs. The copied repair card includes the

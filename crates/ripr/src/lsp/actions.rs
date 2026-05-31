@@ -637,12 +637,16 @@ fn python_repair_card_target(snapshot: &AnalysisSnapshot, data: &Value) -> Optio
     }
     let route = data.get("repair_route")?;
     route.get("route_kind").and_then(non_empty_string)?;
-    for key in ["target_file", "related_test"] {
-        if let Some(path) = route.get(key).and_then(non_empty_string)
-            && !workspace_path_is_safe(snapshot.root.as_path(), path)
-        {
-            return None;
-        }
+    let target_file = route.get("target_file").and_then(non_empty_string)?;
+    if !workspace_path_is_safe(snapshot.root.as_path(), target_file)
+        || !path_matches_diagnostic_language(data, target_file)
+    {
+        return None;
+    }
+    if let Some(path) = route.get("related_test").and_then(non_empty_string)
+        && !workspace_path_is_safe(snapshot.root.as_path(), path)
+    {
+        return None;
     }
     let verify_command =
         first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;

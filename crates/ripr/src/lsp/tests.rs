@@ -1894,6 +1894,45 @@ fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), Strin
 }
 
 #[test]
+fn gap_code_actions_suppress_python_repair_card_without_target_file() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-card-no-target")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "expected diagnostic data object".to_string())?;
+    let route = data
+        .get_mut("repair_route")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "expected repair_route object".to_string())?;
+    route.remove("target_file");
+    route.remove("related_test");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .all(|(title, _, _)| title != "Copy Python repair card"),
+        "Python repair card must not surface without a bounded target file: {commands:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), String> {
     let root = unique_lsp_test_root("editor-adoption-gap-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
