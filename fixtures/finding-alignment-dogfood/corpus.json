@@ -322,6 +322,32 @@
         "Do not treat static value-resolution evidence as runtime, mutation, coverage, badge, or gate proof."
       ],
       "reason": "A supported value-resolution sub-shape should be recorded as no-action dogfood evidence when audit proof shows zero movement and remaining unsupported shapes stay named limitations."
+    },
+    {
+      "id": "call_presence_target_affinity_method_chain_backlog_subroute",
+      "source_pr": "EffortlessMetrics/ripr-swarm#710",
+      "canonical_gap_id": "gap:f7af85038d305337",
+      "evidence_class": "call_presence",
+      "raw_findings_total": 1,
+      "canonical_items_total": 1,
+      "raw_finding_summary": "A call-presence method-chain seam with target-token affinity remains a named owner-call limitation, not a repair packet.",
+      "gap_state": "static_limitation",
+      "actionability": "static_limitation",
+      "user_outcome": "static_limitation",
+      "repair_kind": "analyzer_backlog",
+      "target_test_type": "owner_call_tracing_analyzer",
+      "verify_command": "cargo xtask ripr-swarm readiness",
+      "static_limitation_category": "activation_owner_call_absent_call_presence_target_affinity",
+      "static_limitation_repair_route": "analysis/call-presence-target-affinity-owner-call-tracing",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Improve call-presence target-affinity owner-call tracing for method-chain expressions before emitting any public repair packet.",
+      "before_after_context": "Before swarm #710, the sampled top call-presence target-affinity backlog route used the generic call_presence_target_affinity_missing_owner_call subroute; after #710, refreshed readiness reports call_presence_target_affinity_method_chain_missing_owner_call while preserving zero actionable and zero swarm-ready packets.",
+      "must_not_claim": [
+        "Do not treat this raw call-presence finding as user test debt.",
+        "Do not emit a public repair packet from target-token affinity alone.",
+        "Do not claim mutation, runtime, badge, LSP, or CI gate authority from this analyzer backlog refinement."
+      ],
+      "reason": "A top sampled limitation backlog route should drive a more precise analyzer work queue without crossing the actionability trust boundary."
     }
   ]
 }
