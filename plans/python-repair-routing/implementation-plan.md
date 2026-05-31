@@ -1212,12 +1212,15 @@ Prove usefulness outside fixtures.
   changed `response.status_code` assignment routes to a field/object repair
   card, the focused status-code pytest verify command passes, and
   `ripr outcome` closes the canonical Python API status gap.
+- The same corpus now records a mixed Rust/Python pytest eval where a Python
+  `amount >= threshold` predicate-boundary change routes to a repair card
+  despite Cargo metadata, the focused pytest verify command passes, and
+  `ripr outcome` closes the canonical Python gap.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.
-- Broader outside-fixture evaluations across mixed Python repos and decorated
-  framework routes remain the next dogfood slice before metrics or support-tier
-  promotion.
+- Decorated framework-route outside-fixture evaluation remains the next dogfood
+  slice before metrics or support-tier promotion.
 
 ### Work item: metrics/python-repair-routing-quality
 
