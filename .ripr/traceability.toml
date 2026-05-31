@@ -2021,6 +2021,7 @@ tests = [
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
   "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_receipts_are_checked",
   "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_rejects_overclaiming",
+  "xtask/src/main.rs::tests::typescript_preview_false_actionable_audit_cases_are_checked",
 ]
 fixtures = [
   "fixtures/typescript_boundary_gap",
@@ -2042,6 +2043,7 @@ fixtures = [
   "fixtures/typescript_static_limit_taxonomy",
   "fixtures/typescript_strict_actionability",
   "fixtures/typescript-preview-repair-loop",
+  "fixtures/typescript-preview-false-actionable-audit",
   "fixtures/mixed_rust_typescript_preview",
 ]
 code = [
@@ -2088,6 +2090,8 @@ outputs = [
   "fixtures/typescript_strict_actionability/expected/check.json",
   "fixtures/typescript_strict_actionability/expected/human.txt",
   "fixtures/typescript-preview-repair-loop/corpus.json",
+  "fixtures/typescript-preview-false-actionable-audit/corpus.json",
+  "docs/lanes/TYPESCRIPT_ENABLEMENT.md",
   "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -2129,6 +2133,7 @@ metrics = [
   "language_adapter_typescript_lsp_preview_actionability_context",
   "language_adapter_typescript_ci_preview_grouping",
   "language_adapter_typescript_preview_repair_loop_dogfood",
+  "language_adapter_typescript_false_actionable_audit",
   "language_adapter_typescript_route_quality_by_language",
   "language_adapter_javascript_route_quality_by_language",
 ]

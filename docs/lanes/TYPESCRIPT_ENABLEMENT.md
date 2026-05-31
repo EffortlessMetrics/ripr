@@ -119,6 +119,24 @@ claims.
    actionable audit, dogfood, route-quality, and surface proof for a narrow
    promotion packet.
 
+## False-Actionable Audit Packet
+
+[typescript-preview-false-actionable-audit](../../fixtures/typescript-preview-false-actionable-audit/corpus.json)
+is the current audit packet for preview cases that can look repair-shaped but
+must not become actionable packets without stricter proof. It pins:
+
+- mock interaction without payload proof;
+- broad thrown or rejected error evidence without payload proof;
+- snapshot-only and smoke-only weak oracles;
+- heuristic related-test links and owner-name-only test titles;
+- method receiver and module-initializer ambiguity;
+- mocked module, decorator-indirection, and dynamic-dispatch static limits.
+
+Each row points at an existing checked TypeScript-family fixture finding,
+records the current disposition, preserves `repair_packet_ready = false`, and
+names the future support route required before any repair-card or promotion
+claim can be considered.
+
 ## Validation
 
 Use the narrowest relevant checks first. For TypeScript enablement slices,

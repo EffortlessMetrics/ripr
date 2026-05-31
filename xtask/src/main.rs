@@ -1071,6 +1071,32 @@ struct DogfoodTypescriptPreviewRepairLoopRun {
 }
 
 #[derive(Debug)]
+struct TypeScriptPreviewFalseActionableAuditCase {
+    name: String,
+    source_fixture: String,
+    source_finding_id: String,
+    language: String,
+    language_status: String,
+    risk_class: String,
+    evidence_kind: String,
+    oracle_kind: Option<String>,
+    gap_state: String,
+    actionability_category: String,
+    static_limit_kind: Option<String>,
+    disposition: String,
+    repair_packet_ready: bool,
+    authority_boundary: String,
+    why_not_actionable: String,
+    repair_route: String,
+    future_support: String,
+    must_remain_non_actionable: bool,
+    required_evidence_fragment: String,
+    raw_evidence_refs: Vec<String>,
+    non_claims: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
 struct DogfoodUserSurfaceProjectionScenario {
     name: String,
     surface: String,
@@ -5515,6 +5541,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
+                    | "typescript-preview-false-actionable-audit"
                     | "typescript-preview-repair-loop"
                     | "user-surface-projection-alignment"
             )
@@ -7832,6 +7859,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_python_real_repo_eval_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
+    validate_typescript_preview_false_actionable_audit_fixture_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
     validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
@@ -8018,6 +8046,8 @@ const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
     "fixtures/typescript-preview-repair-loop/corpus.json";
+const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS: &str =
+    "fixtures/typescript-preview-false-actionable-audit/corpus.json";
 const USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/user-surface-projection-alignment/corpus.json";
 
@@ -8124,6 +8154,29 @@ const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
         "javascript_already_observed_unchanged",
         "already_observed_unchanged",
     ),
+];
+
+const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES: &[(&str, &str)] = &[
+    (
+        "mock_interaction_without_payload_proof",
+        "candidate_future_support",
+    ),
+    (
+        "broad_throw_or_rejects_without_payload",
+        "candidate_future_support",
+    ),
+    ("snapshot_only_weak_oracle", "safe_advisory"),
+    ("smoke_only_truthiness", "safe_advisory"),
+    ("heuristic_related_test_link", "must_remain_non_actionable"),
+    (
+        "owner_name_in_test_title_only",
+        "must_remain_non_actionable",
+    ),
+    ("method_receiver_ambiguity", "candidate_future_support"),
+    ("module_initializer_ambiguity", "candidate_future_support"),
+    ("mocked_module_limit", "named_static_limitation"),
+    ("decorator_indirection_limit", "named_static_limitation"),
+    ("dynamic_dispatch_limit", "named_static_limitation"),
 ];
 
 const USER_SURFACE_PROJECTION_REQUIRED_SURFACES: &[&str] = &["badge", "lsp", "pr_comment", "ci"];
@@ -9348,6 +9401,84 @@ fn validate_typescript_preview_repair_loop_fixture_corpus_at(
             "TypeScript preview repair-loop corpus must not claim complete repair packets yet"
                 .to_string(),
         );
+    }
+
+    Ok(())
+}
+
+fn validate_typescript_preview_false_actionable_audit_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/typescript-preview-false-actionable-audit");
+    let corpus = root.join("corpus.json");
+    if !corpus.exists() {
+        violations.push(format!(
+            "TypeScript preview false-actionable audit corpus is missing {}",
+            normalize_path(&corpus)
+        ));
+    }
+    validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
+        Path::new(TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS),
+        violations,
+    )
+}
+
+fn validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "TypeScript preview false-actionable audit corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let cases = typescript_preview_false_actionable_audit_cases_at(path);
+    let mut seen = BTreeMap::new();
+    let mut dispositions = BTreeSet::<String>::new();
+    for case in &cases {
+        if seen
+            .insert(case.name.clone(), case.disposition.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "TypeScript preview false-actionable audit case {} is duplicated",
+                case.name
+            ));
+        }
+        dispositions.insert(case.disposition.clone());
+        for error in typescript_preview_false_actionable_audit_case_errors(case) {
+            violations.push(format!(
+                "TypeScript preview false-actionable audit case {}: {error}",
+                case.name
+            ));
+        }
+    }
+
+    for (case_id, disposition) in TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == disposition => {}
+            Some(actual) => violations.push(format!(
+                "TypeScript preview false-actionable audit case {case_id} must have disposition {disposition}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "TypeScript preview false-actionable audit corpus is missing case {case_id}"
+            )),
+        }
+    }
+    for required in [
+        "safe_advisory",
+        "named_static_limitation",
+        "candidate_future_support",
+        "must_remain_non_actionable",
+    ] {
+        if !dispositions.contains(required) {
+            violations.push(format!(
+                "TypeScript preview false-actionable audit corpus must include disposition {required}"
+            ));
+        }
     }
 
     Ok(())
@@ -44284,6 +44415,382 @@ fn typescript_preview_repair_loop_required_non_claims() -> &'static [&'static st
     ]
 }
 
+#[cfg(test)]
+fn typescript_preview_false_actionable_audit_cases()
+-> Vec<TypeScriptPreviewFalseActionableAuditCase> {
+    typescript_preview_false_actionable_audit_cases_at(Path::new(
+        TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS,
+    ))
+}
+
+fn typescript_preview_false_actionable_audit_cases_at(
+    corpus_path: &Path,
+) -> Vec<TypeScriptPreviewFalseActionableAuditCase> {
+    let fallback = |reason: String| {
+        vec![TypeScriptPreviewFalseActionableAuditCase {
+            name: "corpus".to_string(),
+            source_fixture: "unknown".to_string(),
+            source_finding_id: "unknown".to_string(),
+            language: "unknown".to_string(),
+            language_status: "unknown".to_string(),
+            risk_class: "unknown".to_string(),
+            evidence_kind: "unknown".to_string(),
+            oracle_kind: None,
+            gap_state: "unknown".to_string(),
+            actionability_category: "unknown".to_string(),
+            static_limit_kind: None,
+            disposition: "unknown".to_string(),
+            repair_packet_ready: true,
+            authority_boundary: "unknown".to_string(),
+            why_not_actionable: "unknown".to_string(),
+            repair_route: "unknown".to_string(),
+            future_support: "unknown".to_string(),
+            must_remain_non_actionable: false,
+            required_evidence_fragment: "unknown".to_string(),
+            raw_evidence_refs: Vec::new(),
+            non_claims: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback(
+            "TypeScript preview false-actionable audit corpus schema_version must be 0.1"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "kind").as_deref()
+        != Some("typescript_preview_false_actionable_audit_corpus")
+    {
+        return fallback(
+            "TypeScript preview false-actionable audit corpus kind must be typescript_preview_false_actionable_audit_corpus"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0027") {
+        return fallback(
+            "TypeScript preview false-actionable audit corpus spec must be RIPR-SPEC-0027"
+                .to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback(
+            "TypeScript preview false-actionable audit corpus is missing cases array".to_string(),
+        );
+    };
+
+    cases
+        .iter()
+        .map(|case| TypeScriptPreviewFalseActionableAuditCase {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            source_fixture: json_string_field(case, "source_fixture")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_finding_id: json_string_field(case, "source_finding_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            language: json_string_field(case, "language").unwrap_or_else(|| "unknown".to_string()),
+            language_status: json_string_field(case, "language_status")
+                .unwrap_or_else(|| "unknown".to_string()),
+            risk_class: json_string_field(case, "risk_class")
+                .unwrap_or_else(|| "unknown".to_string()),
+            evidence_kind: json_string_field(case, "evidence_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            oracle_kind: json_string_field(case, "oracle_kind"),
+            gap_state: json_string_field(case, "gap_state")
+                .unwrap_or_else(|| "unknown".to_string()),
+            actionability_category: json_string_field(case, "actionability_category")
+                .unwrap_or_else(|| "unknown".to_string()),
+            static_limit_kind: json_string_field(case, "static_limit_kind"),
+            disposition: json_string_field(case, "disposition")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_packet_ready: json_bool_field(case, "repair_packet_ready").unwrap_or(true),
+            authority_boundary: json_string_field(case, "authority_boundary")
+                .unwrap_or_else(|| "unknown".to_string()),
+            why_not_actionable: json_string_field(case, "why_not_actionable")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_route: json_string_field(case, "repair_route")
+                .unwrap_or_else(|| "unknown".to_string()),
+            future_support: json_string_field(case, "future_support")
+                .unwrap_or_else(|| "unknown".to_string()),
+            must_remain_non_actionable: json_bool_field(case, "must_remain_non_actionable")
+                .unwrap_or(false),
+            required_evidence_fragment: json_string_field(case, "required_evidence_fragment")
+                .unwrap_or_else(|| "unknown".to_string()),
+            raw_evidence_refs: json_string_array_field(case, "raw_evidence_refs"),
+            non_claims: json_string_array_field(case, "non_claims"),
+            reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                "TypeScript preview false-actionable audit case did not document a reason"
+                    .to_string()
+            }),
+        })
+        .collect()
+}
+
+fn typescript_preview_false_actionable_audit_case_errors(
+    case: &TypeScriptPreviewFalseActionableAuditCase,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &case.name),
+        ("source_fixture", &case.source_fixture),
+        ("source_finding_id", &case.source_finding_id),
+        ("language", &case.language),
+        ("language_status", &case.language_status),
+        ("risk_class", &case.risk_class),
+        ("evidence_kind", &case.evidence_kind),
+        ("gap_state", &case.gap_state),
+        ("actionability_category", &case.actionability_category),
+        ("disposition", &case.disposition),
+        ("authority_boundary", &case.authority_boundary),
+        ("why_not_actionable", &case.why_not_actionable),
+        ("repair_route", &case.repair_route),
+        ("future_support", &case.future_support),
+        (
+            "required_evidence_fragment",
+            &case.required_evidence_fragment,
+        ),
+        ("reason", &case.reason),
+    ] {
+        if value.trim().is_empty() || value == "unknown" {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+
+    if !matches!(case.language.as_str(), "typescript" | "javascript") {
+        errors.push(format!(
+            "language must be typescript or javascript, got {}",
+            case.language
+        ));
+    }
+    if case.language_status != "preview" {
+        errors.push("language_status must be preview".to_string());
+    }
+    if case.authority_boundary != "preview_advisory_only" {
+        errors.push("authority_boundary must be preview_advisory_only".to_string());
+    }
+    if !typescript_preview_false_actionable_audit_allowed_dispositions()
+        .contains(&case.disposition.as_str())
+    {
+        errors.push(format!(
+            "disposition must be a TypeScript preview false-actionable audit disposition, got {}",
+            case.disposition
+        ));
+    }
+    if case.repair_packet_ready {
+        errors.push("repair_packet_ready must remain false for audit cases".to_string());
+    }
+    if case.gap_state == "actionable" {
+        errors.push("audit cases must not be actionable".to_string());
+    }
+    if !case.must_remain_non_actionable {
+        errors.push("must_remain_non_actionable must be true".to_string());
+    }
+    if case.raw_evidence_refs.is_empty() {
+        errors.push("raw_evidence_refs must keep lineage to preview evidence".to_string());
+    }
+    if case.non_claims.is_empty() {
+        errors.push("non_claims must keep preview boundary denials visible".to_string());
+    }
+    for required in typescript_preview_repair_loop_required_non_claims() {
+        if !case
+            .non_claims
+            .iter()
+            .any(|non_claim| non_claim.contains(required))
+        {
+            errors.push(format!("non_claims must deny {required}"));
+        }
+    }
+    if !case.source_fixture.starts_with("fixtures/")
+        || case.source_fixture.contains("..")
+        || case.source_fixture.contains('\\')
+    {
+        errors.push(format!(
+            "source_fixture must be a normalized fixtures/ path, got {}",
+            case.source_fixture
+        ));
+    }
+    if case.static_limit_kind.is_some() && case.gap_state != "static_limitation" {
+        errors.push("static_limit_kind requires gap_state=static_limitation".to_string());
+    }
+    if case.gap_state == "static_limitation" && case.static_limit_kind.is_none() {
+        errors.push("static_limitation cases must name static_limit_kind".to_string());
+    }
+    if case.disposition == "named_static_limitation" && case.gap_state != "static_limitation" {
+        errors.push(
+            "named_static_limitation disposition requires gap_state=static_limitation".to_string(),
+        );
+    }
+    if case.disposition != "named_static_limitation" && case.gap_state == "static_limitation" {
+        errors.push(
+            "static_limitation gap_state must use named_static_limitation disposition".to_string(),
+        );
+    }
+
+    typescript_preview_false_actionable_audit_check_source_fixture(case, &mut errors);
+    errors
+}
+
+fn typescript_preview_false_actionable_audit_check_source_fixture(
+    case: &TypeScriptPreviewFalseActionableAuditCase,
+    errors: &mut Vec<String>,
+) {
+    if !case.source_fixture.starts_with("fixtures/") || case.source_fixture.contains("..") {
+        return;
+    }
+    let check_path = Path::new(&case.source_fixture)
+        .join("expected")
+        .join("check.json");
+    let report = match read_json_value(&check_path) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(format!(
+                "source fixture check output is unavailable at {}: {err}",
+                normalize_path(&check_path)
+            ));
+            return;
+        }
+    };
+    let finding = report
+        .get("findings")
+        .and_then(Value::as_array)
+        .and_then(|findings| {
+            findings.iter().find(|finding| {
+                json_string_field(finding, "id").as_deref() == Some(case.source_finding_id.as_str())
+            })
+        });
+    let Some(finding) = finding else {
+        errors.push(format!(
+            "source fixture {} does not contain finding {}",
+            normalize_path(&check_path),
+            case.source_finding_id
+        ));
+        return;
+    };
+
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        finding,
+        "language",
+        &case.language,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        finding,
+        "language_status",
+        &case.language_status,
+    );
+    if let Some(expected_oracle) = &case.oracle_kind {
+        dogfood_typescript_preview_repair_loop_expect_string(
+            errors,
+            finding,
+            "oracle_kind",
+            expected_oracle,
+        );
+    }
+    if json_string_field(finding, "static_limit_kind") != case.static_limit_kind {
+        errors.push(format!(
+            "source finding static_limit_kind must be {:?}, got {:?}",
+            case.static_limit_kind,
+            json_string_field(finding, "static_limit_kind")
+        ));
+    }
+    if !case
+        .raw_evidence_refs
+        .iter()
+        .any(|reference| reference.contains(&case.source_finding_id))
+    {
+        errors.push("raw_evidence_refs must include the source finding id".to_string());
+    }
+    if !typescript_preview_false_actionable_finding_contains(
+        finding,
+        &case.required_evidence_fragment,
+    ) {
+        errors.push(format!(
+            "source finding must contain required evidence fragment `{}`",
+            case.required_evidence_fragment
+        ));
+    }
+
+    let Some(actionability) = finding.get("preview_actionability") else {
+        errors.push("source finding is missing preview_actionability".to_string());
+        return;
+    };
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "gap_state",
+        &case.gap_state,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "actionability_category",
+        &case.actionability_category,
+    );
+    dogfood_typescript_preview_repair_loop_expect_string(
+        errors,
+        actionability,
+        "authority_boundary",
+        &case.authority_boundary,
+    );
+    if json_bool_field(actionability, "repair_packet_ready") != Some(case.repair_packet_ready) {
+        errors.push(format!(
+            "source finding repair_packet_ready must be {}, got {:?}",
+            case.repair_packet_ready,
+            json_bool_field(actionability, "repair_packet_ready")
+        ));
+    }
+    if json_string_field(actionability, "why_not_actionable").as_deref()
+        != Some(case.why_not_actionable.as_str())
+    {
+        errors.push("why_not_actionable must match source preview actionability".to_string());
+    }
+    if json_string_field(actionability, "repair_route").as_deref()
+        != Some(case.repair_route.as_str())
+    {
+        errors.push("repair_route must match source preview actionability".to_string());
+    }
+}
+
+fn typescript_preview_false_actionable_finding_contains(finding: &Value, fragment: &str) -> bool {
+    if fragment.trim().is_empty() {
+        return false;
+    }
+    if json_string_field(finding, "recommended_next_step")
+        .as_deref()
+        .is_some_and(|value| value.contains(fragment))
+    {
+        return true;
+    }
+    for field in ["evidence", "missing"] {
+        if finding
+            .get(field)
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|item| item.contains(fragment))
+            })
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn typescript_preview_false_actionable_audit_allowed_dispositions() -> &'static [&'static str] {
+    &[
+        "safe_advisory",
+        "named_static_limitation",
+        "candidate_future_support",
+        "must_remain_non_actionable",
+    ]
+}
+
 fn dogfood_user_surface_projection_scenarios() -> Vec<DogfoodUserSurfaceProjectionScenario> {
     let corpus_path = Path::new(USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS);
     let fallback = |reason: String| {
@@ -61523,7 +62030,8 @@ mod tests {
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
         SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
+        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
+        TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
         WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
         actionable_gap_outcomes_markdown, actionable_gap_outcomes_report_from_values,
@@ -71054,6 +71562,51 @@ fn exact_owner_call_has_external_expected_value() {
                     "{} TypeScript preview repair-loop receipt should validate: {:?}",
                     run.name,
                     run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn typescript_preview_false_actionable_audit_cases_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let cases = super::typescript_preview_false_actionable_audit_cases();
+            for required in TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES {
+                assert!(
+                    cases
+                        .iter()
+                        .any(|case| { case.name == required.0 && case.disposition == required.1 }),
+                    "{} TypeScript preview false-actionable audit case should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            let dispositions = cases
+                .iter()
+                .map(|case| case.disposition.as_str())
+                .collect::<BTreeSet<_>>();
+            for required in [
+                "safe_advisory",
+                "named_static_limitation",
+                "candidate_future_support",
+                "must_remain_non_actionable",
+            ] {
+                assert!(
+                    dispositions.contains(required),
+                    "TypeScript preview false-actionable audit should include {required}"
+                );
+            }
+
+            for case in cases {
+                let errors = super::typescript_preview_false_actionable_audit_case_errors(&case);
+                assert!(
+                    errors.is_empty(),
+                    "{} TypeScript preview false-actionable audit case should validate: {:?}",
+                    case.name,
+                    errors
                 );
             }
 
