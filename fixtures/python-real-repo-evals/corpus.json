@@ -39,8 +39,22 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_pricing.py",
+          "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -75,8 +89,22 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "subtotal == free_shipping_minimum",
+          "suggested_test_file": "tests/test_shipping.py",
+          "verify_command": "pytest tests/test_shipping.py::test_free_shipping_high_value_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -111,8 +139,22 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"priority shipping for {order_id}\"",
+          "suggested_test_file": "tests/test_notify.py",
+          "verify_command": "pytest tests/test_notify.py::test_notify_expedited_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -147,8 +189,22 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.status_code == 422",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -183,8 +239,22 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_pricing.py",
+          "verify_command": "pytest tests/test_pricing.py::test_mixed_repo_discount_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
@@ -219,10 +289,24 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending ranked top-3 metrics review",
+      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending support-tier review",
       "unsupported_limitations": [
         "dynamic_route_registration"
       ],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.status_code == 422",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
         "Python remains preview/advisory",
         "No arbitrary imports or tests were run by RIPR",

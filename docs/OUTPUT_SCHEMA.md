@@ -11399,13 +11399,14 @@ non-success cases, so failed or incomplete attempts remain visible instead of
 being hidden from the repair queue.
 The checked Python real-repo eval receipts are read from
 `fixtures/python-real-repo-evals/` and record the top Python repair card,
-verify command, before/after receipt movement, false-positive notes, and
-unsupported limitation kinds. The report derives
-`python_repair_routing_quality` from those receipts, including top-1
-actionable usefulness, verify-command validity, concrete-discriminator and
+ranked top-3 repair-card findings, verify command, before/after receipt
+movement, false-positive notes, and unsupported limitation kinds. The report
+derives `python_repair_routing_quality` from those receipts, including top-1
+actionable usefulness, top-3 actionable precision over captured ranked
+repair-card findings, verify-command validity, concrete-discriminator and
 test-location coverage, false-actionable and crash rates, receipt closure rate,
-unsupported limitation distribution, and an explicit `not_measured` state for
-top-3 precision until the corpus captures ranked top-3 findings.
+and unsupported limitation distribution. Eval cases with fewer than three
+ranked repair-card findings must include an explicit limit reason.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
 and CI projection examples share the same canonical gap, packet or limitation
@@ -11733,6 +11734,20 @@ JSON shape:
         "receipt_result": "pass",
         "gap_movement": "closed",
         "unsupported_limitations": ["dynamic_route_registration"],
+        "ranked_top_3_findings": [
+          {
+            "rank": 1,
+            "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+            "repair_card_present": true,
+            "usability": "usable",
+            "missing_discriminator": "response.status_code == 422",
+            "suggested_test_file": "tests/test_checkout.py",
+            "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+            "false_positive_notes": "none observed",
+            "reason": "Rank 1 repair card matched the closed Python receipt."
+          }
+        ],
+        "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
         "errors": []
       }
     ]
@@ -11747,6 +11762,11 @@ JSON shape:
     "summary": {
       "cases": 6,
       "top_1_actionable_precision": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
+      },
+      "top_3_actionable_precision": {
         "status": "pass",
         "count": 6,
         "checked": 6
@@ -11781,9 +11801,10 @@ JSON shape:
         "count": 0,
         "checked": 6
       },
-      "top_3_actionable_precision": {
-        "status": "not_measured",
-        "reason": "the current Python real-repo eval corpus records the top finding only"
+      "ranked_top_3_cases_with_capture": {
+        "status": "pass",
+        "count": 6,
+        "checked": 6
       }
     },
     "unsupported_limitation_distribution": [

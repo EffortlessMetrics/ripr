@@ -1259,19 +1259,22 @@ Measure Python quality by repair usefulness, not finding volume.
 
 - `cargo xtask dogfood` now derives Python repair-routing quality metrics from
   `fixtures/python-real-repo-evals/corpus.json`: top-1 actionable usefulness,
+  top-3 actionable precision over captured ranked repair-card findings,
   verify-command validity, concrete-discriminator coverage, suggested
   test-location coverage, false-actionable rate, crash rate, receipt closure
   rate, and unsupported limitation distribution.
 - The Python eval corpus now records structured unsupported limitation kinds,
   and the decorated-route eval contributes `dynamic_route_registration` to the
   limitation distribution while keeping the support-tier boundary explicit.
-- Dogfood exposes top-3 actionable precision as `not_measured` until the eval
-  corpus captures ranked top-3 findings; promotion remains blocked on that
-  missing measurement.
+- The Python eval corpus now records ranked top-3 repair-card findings for each
+  dogfood case. Cases with fewer than three ranked repair cards must explain the
+  capture limit so top-3 precision is measured without hiding sparse output.
 - Corpus validation fails if the checked top Python repair cards become noisy:
   unusable top-1 card, invalid verify command, missing concrete discriminator,
   missing suggested test location, false actionability, crash/contract error, or
-  no closed receipt.
+  no closed receipt. Validation also fails when ranked top-3 finding capture is
+  missing, malformed, or not usable, concrete, placed, verifiable, and
+  false-positive clean.
 
 ### Work item: campaign/python-usable-alpha-promotion
 

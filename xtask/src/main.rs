@@ -942,6 +942,19 @@ struct DogfoodRealRepairAttemptRun {
     errors: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct DogfoodPythonRankedFinding {
+    rank: usize,
+    canonical_gap_id: String,
+    repair_card_present: bool,
+    usability: String,
+    missing_discriminator: String,
+    suggested_test_file: String,
+    verify_command: String,
+    false_positive_notes: String,
+    reason: String,
+}
+
 #[derive(Debug)]
 struct DogfoodPythonRealRepoEvalScenario {
     name: String,
@@ -971,6 +984,8 @@ struct DogfoodPythonRealRepoEvalScenario {
     false_positive_notes: String,
     limitation_notes: String,
     unsupported_limitations: Vec<String>,
+    ranked_top_3_findings: Vec<DogfoodPythonRankedFinding>,
+    ranked_top_3_limit_reason: Option<String>,
     claim_boundary: Vec<String>,
     reason: String,
 }
@@ -1004,6 +1019,8 @@ struct DogfoodPythonRealRepoEvalRun {
     false_positive_notes: String,
     limitation_notes: String,
     unsupported_limitations: Vec<String>,
+    ranked_top_3_findings: Vec<DogfoodPythonRankedFinding>,
+    ranked_top_3_limit_reason: Option<String>,
     claim_boundary: Vec<String>,
     reason: String,
     errors: Vec<String>,
@@ -1019,6 +1036,9 @@ struct DogfoodPythonRepairRoutingQualitySummary {
     false_actionable: usize,
     crashes: usize,
     receipt_closed: usize,
+    top_3_ranked_findings_checked: usize,
+    top_3_actionable_usable: usize,
+    top_3_cases_with_ranked_capture: usize,
     unsupported_limitation_distribution: Vec<(String, usize)>,
     gate_status: String,
     gate_reason: String,
@@ -44219,6 +44239,37 @@ fn dogfood_python_real_repo_eval_scenarios() -> Vec<DogfoodPythonRealRepoEvalSce
     dogfood_python_real_repo_eval_scenarios_at(Path::new(PYTHON_REAL_REPO_EVAL_CORPUS))
 }
 
+fn dogfood_python_ranked_findings(case: &Value) -> Vec<DogfoodPythonRankedFinding> {
+    case.get("ranked_top_3_findings")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| DogfoodPythonRankedFinding {
+                    rank: json_usize_field(item, "rank").unwrap_or_default(),
+                    canonical_gap_id: json_string_field(item, "canonical_gap_id")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    repair_card_present: json_bool_field(item, "repair_card_present")
+                        .unwrap_or(false),
+                    usability: json_string_field(item, "usability")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    missing_discriminator: json_string_field(item, "missing_discriminator")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    suggested_test_file: json_string_field(item, "suggested_test_file")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    verify_command: json_string_field(item, "verify_command")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    false_positive_notes: json_string_field(item, "false_positive_notes")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    reason: json_string_field(item, "reason").unwrap_or_else(|| {
+                        "ranked Python finding did not document a reason".to_string()
+                    }),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn dogfood_python_real_repo_eval_scenarios_at(
     corpus_path: &Path,
 ) -> Vec<DogfoodPythonRealRepoEvalScenario> {
@@ -44251,6 +44302,8 @@ fn dogfood_python_real_repo_eval_scenarios_at(
             false_positive_notes: "unknown".to_string(),
             limitation_notes: "unknown".to_string(),
             unsupported_limitations: Vec::new(),
+            ranked_top_3_findings: Vec::new(),
+            ranked_top_3_limit_reason: None,
             claim_boundary: Vec::new(),
             reason,
         }]
@@ -44330,6 +44383,8 @@ fn dogfood_python_real_repo_eval_scenarios_at(
             limitation_notes: json_string_field(case, "limitation_notes")
                 .unwrap_or_else(|| "unknown".to_string()),
             unsupported_limitations: json_string_array_field(case, "unsupported_limitations"),
+            ranked_top_3_findings: dogfood_python_ranked_findings(case),
+            ranked_top_3_limit_reason: json_string_field(case, "ranked_top_3_limit_reason"),
             claim_boundary: json_string_array_field(case, "claim_boundary"),
             reason: json_string_field(case, "reason").unwrap_or_else(|| {
                 "Python real-repo eval case did not document a reason".to_string()
@@ -44487,6 +44542,7 @@ fn dogfood_python_real_repo_eval_run(
             errors.push(format!("claim_boundary must include {required}"));
         }
     }
+    errors.extend(dogfood_python_ranked_findings_errors(scenario));
 
     DogfoodPythonRealRepoEvalRun {
         name: scenario.name.clone(),
@@ -44516,6 +44572,8 @@ fn dogfood_python_real_repo_eval_run(
         false_positive_notes: scenario.false_positive_notes.clone(),
         limitation_notes: scenario.limitation_notes.clone(),
         unsupported_limitations: scenario.unsupported_limitations.clone(),
+        ranked_top_3_findings: scenario.ranked_top_3_findings.clone(),
+        ranked_top_3_limit_reason: scenario.ranked_top_3_limit_reason.clone(),
         claim_boundary: scenario.claim_boundary.clone(),
         reason: scenario.reason.clone(),
         errors,
@@ -44553,6 +44611,15 @@ fn dogfood_python_repair_routing_quality_summary(
         if run.gap_movement == "closed" && run.receipt_result == "pass" {
             summary.receipt_closed += 1;
         }
+        if !run.ranked_top_3_findings.is_empty() {
+            summary.top_3_cases_with_ranked_capture += 1;
+        }
+        summary.top_3_ranked_findings_checked += run.ranked_top_3_findings.len();
+        summary.top_3_actionable_usable += run
+            .ranked_top_3_findings
+            .iter()
+            .filter(|finding| dogfood_python_ranked_finding_actionable_usable(finding))
+            .count();
         for limitation in &run.unsupported_limitations {
             *unsupported_limitations
                 .entry(limitation.clone())
@@ -44570,7 +44637,10 @@ fn dogfood_python_repair_routing_quality_summary(
         || summary.suggested_test_location != summary.cases
         || summary.false_actionable > 0
         || summary.crashes > 0
-        || summary.receipt_closed == 0;
+        || summary.receipt_closed == 0
+        || summary.top_3_cases_with_ranked_capture != summary.cases
+        || summary.top_3_ranked_findings_checked == 0
+        || summary.top_3_actionable_usable != summary.top_3_ranked_findings_checked;
     if missing_quality {
         summary.gate_status = "review".to_string();
         summary.gate_reason =
@@ -44623,6 +44693,154 @@ fn dogfood_python_eval_false_positive_clean(run: &DogfoodPythonRealRepoEvalRun) 
     )
 }
 
+fn dogfood_python_ranked_findings_errors(
+    scenario: &DogfoodPythonRealRepoEvalScenario,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let findings = &scenario.ranked_top_3_findings;
+    if findings.is_empty() {
+        errors
+            .push("ranked_top_3_findings must capture at least the top Python finding".to_string());
+        return errors;
+    }
+    if findings.len() > 3 {
+        errors.push(format!(
+            "ranked_top_3_findings must capture at most three findings, got {}",
+            findings.len()
+        ));
+    }
+    if findings.len() < 3
+        && scenario
+            .ranked_top_3_limit_reason
+            .as_deref()
+            .is_none_or(|reason| reason.trim().is_empty() || reason == "unknown")
+    {
+        errors.push(
+            "ranked_top_3_limit_reason must explain fewer-than-three ranked findings".to_string(),
+        );
+    }
+
+    let mut ranks = BTreeSet::new();
+    for finding in findings {
+        if finding.rank == 0 || finding.rank > 3 {
+            errors.push(format!(
+                "ranked_top_3_findings rank must be between 1 and 3, got {}",
+                finding.rank
+            ));
+        }
+        if !ranks.insert(finding.rank) {
+            errors.push(format!(
+                "ranked_top_3_findings rank {} is duplicated",
+                finding.rank
+            ));
+        }
+        if !finding.canonical_gap_id.starts_with("gap:python:") {
+            errors.push(format!(
+                "ranked_top_3_findings rank {} canonical_gap_id must use gap:python: identity",
+                finding.rank
+            ));
+        }
+        if !finding.repair_card_present {
+            errors.push(format!(
+                "ranked_top_3_findings rank {} must be repair-card-backed",
+                finding.rank
+            ));
+        }
+        if !dogfood_python_ranked_finding_actionable_usable(finding) {
+            errors.push(format!(
+                "ranked_top_3_findings rank {} must be usable, concrete, placed, verifiable, and false-positive clean",
+                finding.rank
+            ));
+        }
+        if finding.reason.trim().is_empty() || finding.reason == "unknown" {
+            errors.push(format!(
+                "ranked_top_3_findings rank {} must document a reason",
+                finding.rank
+            ));
+        }
+    }
+
+    match findings.iter().find(|finding| finding.rank == 1) {
+        Some(top) => {
+            if top.canonical_gap_id != scenario.canonical_gap_id {
+                errors.push(
+                    "ranked_top_3_findings rank 1 canonical_gap_id must match the recorded top finding"
+                        .to_string(),
+                );
+            }
+            if top.missing_discriminator != scenario.missing_discriminator {
+                errors.push(
+                    "ranked_top_3_findings rank 1 missing_discriminator must match the recorded top finding"
+                        .to_string(),
+                );
+            }
+            if top.suggested_test_file != scenario.suggested_test_file {
+                errors.push(
+                    "ranked_top_3_findings rank 1 suggested_test_file must match the recorded top finding"
+                        .to_string(),
+                );
+            }
+            if top.verify_command != scenario.verify_command {
+                errors.push(
+                    "ranked_top_3_findings rank 1 verify_command must match the recorded top finding"
+                        .to_string(),
+                );
+            }
+        }
+        None => errors.push("ranked_top_3_findings must include rank 1".to_string()),
+    }
+
+    errors
+}
+
+fn dogfood_python_ranked_finding_actionable_usable(finding: &DogfoodPythonRankedFinding) -> bool {
+    finding.repair_card_present
+        && finding.usability == "usable"
+        && dogfood_python_ranked_finding_has_concrete_discriminator(finding)
+        && dogfood_python_ranked_finding_has_suggested_test_location(finding)
+        && dogfood_python_ranked_finding_verify_command_valid(finding)
+        && dogfood_python_ranked_finding_false_positive_clean(finding)
+}
+
+fn dogfood_python_ranked_finding_verify_command_valid(
+    finding: &DogfoodPythonRankedFinding,
+) -> bool {
+    finding.verify_command.starts_with("pytest ")
+        || finding.verify_command.starts_with("python -m unittest ")
+}
+
+fn dogfood_python_ranked_finding_has_concrete_discriminator(
+    finding: &DogfoodPythonRankedFinding,
+) -> bool {
+    let discriminator = finding.missing_discriminator.trim();
+    !discriminator.is_empty()
+        && discriminator != "unknown"
+        && !discriminator.contains("...")
+        && !discriminator.eq_ignore_ascii_case("uncertain")
+}
+
+fn dogfood_python_ranked_finding_has_suggested_test_location(
+    finding: &DogfoodPythonRankedFinding,
+) -> bool {
+    let file = finding.suggested_test_file.trim();
+    !file.is_empty()
+        && file != "unknown"
+        && (file.starts_with("tests/") || file.ends_with("_test.py") || file.contains("/test_"))
+}
+
+fn dogfood_python_ranked_finding_false_positive_clean(
+    finding: &DogfoodPythonRankedFinding,
+) -> bool {
+    matches!(
+        finding
+            .false_positive_notes
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "none observed" | "none"
+    )
+}
+
 fn dogfood_push_python_quality_ratio_json(
     body: &mut String,
     name: &str,
@@ -44646,6 +44864,29 @@ fn dogfood_push_python_quality_ratio_json(
         checked,
         json_escape(reason)
     ));
+}
+
+fn dogfood_push_python_ranked_findings_json(
+    body: &mut String,
+    findings: &[DogfoodPythonRankedFinding],
+) {
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push_str(&format!(
+            "{{ \"rank\": {}, \"canonical_gap_id\": \"{}\", \"repair_card_present\": {}, \"usability\": \"{}\", \"missing_discriminator\": \"{}\", \"suggested_test_file\": \"{}\", \"verify_command\": \"{}\", \"false_positive_notes\": \"{}\", \"reason\": \"{}\" }}",
+            finding.rank,
+            json_escape(&finding.canonical_gap_id),
+            finding.repair_card_present,
+            json_escape(&finding.usability),
+            json_escape(&finding.missing_discriminator),
+            json_escape(&finding.suggested_test_file),
+            json_escape(&finding.verify_command),
+            json_escape(&finding.false_positive_notes),
+            json_escape(&finding.reason)
+        ));
+    }
 }
 
 fn dogfood_typescript_preview_repair_loop_scenarios()
@@ -48164,12 +48405,21 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         markdown_cell(&python_repair_quality.gate_status),
         markdown_cell(&python_repair_quality.gate_reason)
     ));
-    body.push_str("- Top-3 actionable precision: `not_measured` - the current corpus records the top finding only; ranked top-3 capture remains future work.\n\n");
+    body.push_str(&format!(
+        "- Top-3 actionable precision: {} / {} ranked findings - fewer-than-three eval outputs must document a stop reason.\n\n",
+        python_repair_quality.top_3_actionable_usable,
+        python_repair_quality.top_3_ranked_findings_checked
+    ));
     body.push_str("| Metric | Passing / Checked |\n");
     body.push_str("| --- | --- |\n");
     body.push_str(&format!(
         "| Top-1 actionable precision | {} / {} |\n",
         python_repair_quality.top_1_actionable_usable, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
+        "| Top-3 actionable precision | {} / {} |\n",
+        python_repair_quality.top_3_actionable_usable,
+        python_repair_quality.top_3_ranked_findings_checked
     ));
     body.push_str(&format!(
         "| Verify-command validity | {} / {} |\n",
@@ -48279,6 +48529,26 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
             body.push_str(&format!(
                 "- Unsupported limitations: `{}`\n",
                 markdown_cell(&run.unsupported_limitations.join(", "))
+            ));
+        }
+        body.push_str(&format!(
+            "- Ranked top-3 findings checked: {}\n",
+            run.ranked_top_3_findings.len()
+        ));
+        if let Some(reason) = &run.ranked_top_3_limit_reason {
+            body.push_str(&format!(
+                "- Ranked top-3 limit reason: {}\n",
+                markdown_cell(reason)
+            ));
+        }
+        for finding in &run.ranked_top_3_findings {
+            body.push_str(&format!(
+                "  - Rank {}: `{}`; discriminator `{}`; verify `{}`; usability `{}`\n",
+                finding.rank,
+                markdown_cell(&finding.canonical_gap_id),
+                markdown_cell(&finding.missing_discriminator),
+                markdown_cell(&finding.verify_command),
+                markdown_cell(&finding.usability)
             ));
         }
         body.push_str(&format!(
@@ -49970,6 +50240,13 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str("        \"unsupported_limitations\": [");
         write_json_string_array(&mut body, &run.unsupported_limitations);
         body.push_str("],\n");
+        body.push_str("        \"ranked_top_3_findings\": [");
+        dogfood_push_python_ranked_findings_json(&mut body, &run.ranked_top_3_findings);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"ranked_top_3_limit_reason\": {},\n",
+            json_optional_string(run.ranked_top_3_limit_reason.as_deref())
+        ));
         body.push_str("        \"claim_boundary\": [");
         write_json_string_array(&mut body, &run.claim_boundary);
         body.push_str("],\n");
@@ -50001,6 +50278,14 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         python_repair_quality.cases,
         true,
         "top finding is usable, repair-card-backed, and has no observed false actionability",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "top_3_actionable_precision",
+        python_repair_quality.top_3_actionable_usable,
+        python_repair_quality.top_3_ranked_findings_checked,
+        true,
+        "ranked Python repair-card findings within the top-3 window are usable, concrete, placed, verifiable, and false-positive clean",
     );
     dogfood_push_python_quality_ratio_json(
         &mut body,
@@ -50050,9 +50335,18 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         false,
         "eval validation reported parser/reporting crashes or contract errors",
     );
-    body.push_str(
-        "      \"top_3_actionable_precision\": { \"status\": \"not_measured\", \"reason\": \"the current Python real-repo eval corpus records the top finding only\" }\n",
-    );
+    body.push_str(&format!(
+        "      \"ranked_top_3_cases_with_capture\": {{ \"status\": \"{}\", \"count\": {}, \"checked\": {}, \"reason\": \"every eval case records ranked top-3 finding capture or a fewer-than-three stop reason\" }}\n",
+        if python_repair_quality.top_3_cases_with_ranked_capture == python_repair_quality.cases
+            && python_repair_quality.cases > 0
+        {
+            "pass"
+        } else {
+            "review"
+        },
+        python_repair_quality.top_3_cases_with_ranked_capture,
+        python_repair_quality.cases
+    ));
     body.push_str("    },\n    \"unsupported_limitation_distribution\": [");
     for (index, (limitation, count)) in python_repair_quality
         .unsupported_limitation_distribution
@@ -71169,8 +71463,26 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending ranked top-3 metrics review".to_string(),
+            limitation_notes: "support-tier promotion remains pending support-tier review".to_string(),
             unsupported_limitations: Vec::new(),
+            ranked_top_3_findings: vec![super::DogfoodPythonRankedFinding {
+                rank: 1,
+                canonical_gap_id:
+                    "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                        .to_string(),
+                repair_card_present: true,
+                usability: "usable".to_string(),
+                missing_discriminator: "amount == threshold".to_string(),
+                suggested_test_file: "tests/test_pricing.py".to_string(),
+                verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
+                    .to_string(),
+                false_positive_notes: "none observed".to_string(),
+                reason: "rank 1 repair card matched the closed Python receipt".to_string(),
+            }],
+            ranked_top_3_limit_reason: Some(
+                "focused eval emitted one Python repair card; no rank 2 or 3 repairable finding was present"
+                    .to_string(),
+            ),
             claim_boundary: vec![
                 "Python remains preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
@@ -71376,7 +71688,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Real Repair Attempt Receipts"));
         assert!(markdown.contains("Python Real-Repo Eval Receipts"));
         assert!(markdown.contains("Python Repair-Routing Quality Metrics"));
-        assert!(markdown.contains("Top-3 actionable precision: `not_measured`"));
+        assert!(markdown.contains("Top-3 actionable precision: 1 / 1 ranked findings"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
@@ -71619,7 +71931,15 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_eq!(
             python_quality["summary"]["top_3_actionable_precision"]["status"],
-            serde_json::Value::from("not_measured")
+            serde_json::Value::from("pass")
+        );
+        assert_eq!(
+            python_quality["summary"]["top_3_actionable_precision"]["count"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            python_quality["summary"]["ranked_top_3_cases_with_capture"]["status"],
+            serde_json::Value::from("pass")
         );
         assert_eq!(
             python_quality["summary"]["receipt_closure_rate"]["count"],
@@ -72352,6 +72672,11 @@ fn exact_owner_call_has_external_expected_value() {
             let quality = dogfood_python_repair_routing_quality_summary(&runs);
             assert_eq!(quality.gate_status, "pass");
             assert_eq!(quality.top_1_actionable_usable, quality.cases);
+            assert_eq!(quality.top_3_cases_with_ranked_capture, quality.cases);
+            assert_eq!(
+                quality.top_3_actionable_usable,
+                quality.top_3_ranked_findings_checked
+            );
             assert_eq!(quality.verify_command_valid, quality.cases);
             assert_eq!(quality.concrete_discriminator, quality.cases);
             assert_eq!(quality.suggested_test_location, quality.cases);
@@ -72434,11 +72759,14 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(quality.gate_status, "review");
         assert_eq!(quality.cases, 8);
         assert_eq!(quality.top_1_actionable_usable, 6);
+        assert_eq!(quality.top_3_cases_with_ranked_capture, 8);
+        assert_eq!(quality.top_3_ranked_findings_checked, 8);
+        assert_eq!(quality.top_3_actionable_usable, 8);
         assert_eq!(quality.verify_command_valid, 7);
         assert_eq!(quality.concrete_discriminator, 7);
         assert_eq!(quality.suggested_test_location, 7);
         assert_eq!(quality.false_actionable, 1);
-        assert_eq!(quality.crashes, 1);
+        assert_eq!(quality.crashes, 3);
         assert_eq!(quality.receipt_closed, 6);
         assert!(
             quality
@@ -72468,6 +72796,47 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(body.contains("\"higher_review\": { \"status\": \"review\""));
         assert!(body.contains("\"lower_pass\": { \"status\": \"pass\""));
         assert!(body.contains("\"lower_review\": { \"status\": \"review\""));
+    }
+
+    #[test]
+    fn dogfood_python_ranked_finding_parser_defaults_missing_reason() {
+        let case = serde_json::json!({
+            "ranked_top_3_findings": [
+                {
+                    "rank": 1,
+                    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+                    "repair_card_present": true,
+                    "usability": "usable",
+                    "missing_discriminator": "amount == threshold",
+                    "suggested_test_file": "tests/test_pricing.py",
+                    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+                    "false_positive_notes": "none observed"
+                }
+            ]
+        });
+
+        let findings = super::dogfood_python_ranked_findings(&case);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].reason,
+            "ranked Python finding did not document a reason"
+        );
+    }
+
+    #[test]
+    fn dogfood_python_ranked_findings_json_separates_multiple_entries() {
+        let findings = vec![
+            valid_python_ranked_finding(1),
+            valid_python_ranked_finding(2),
+        ];
+        let mut body = String::new();
+
+        super::dogfood_push_python_ranked_findings_json(&mut body, &findings);
+
+        assert!(body.contains("}, {"));
+        assert!(body.contains("\"rank\": 1"));
+        assert!(body.contains("\"rank\": 2"));
     }
 
     fn valid_python_real_repo_eval_scenario() -> DogfoodPythonRealRepoEvalScenario {
@@ -72505,8 +72874,26 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending ranked top-3 metrics review".to_string(),
+            limitation_notes: "support-tier promotion remains pending support-tier review".to_string(),
             unsupported_limitations: Vec::new(),
+            ranked_top_3_findings: vec![super::DogfoodPythonRankedFinding {
+                rank: 1,
+                canonical_gap_id:
+                    "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                        .to_string(),
+                repair_card_present: true,
+                usability: "usable".to_string(),
+                missing_discriminator: "amount == threshold".to_string(),
+                suggested_test_file: "tests/test_pricing.py".to_string(),
+                verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
+                    .to_string(),
+                false_positive_notes: "none observed".to_string(),
+                reason: "rank 1 repair card matched the closed Python receipt".to_string(),
+            }],
+            ranked_top_3_limit_reason: Some(
+                "focused eval emitted one Python repair card; no rank 2 or 3 repairable finding was present"
+                    .to_string(),
+            ),
             claim_boundary: vec![
                 "Python remains preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
@@ -72515,6 +72902,20 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "tiny controlled repo proved one Python repair card closes with receipt"
                 .to_string(),
         }
+    }
+
+    fn valid_python_ranked_finding(rank: usize) -> super::DogfoodPythonRankedFinding {
+        let mut finding = valid_python_real_repo_eval_scenario().ranked_top_3_findings[0].clone();
+        finding.rank = rank;
+        if rank > 1 {
+            finding.canonical_gap_id =
+                format!("gap:python:app/pricing.py:calculate_discount:return_value:rank-{rank}");
+            finding.missing_discriminator = format!("amount == threshold + {rank}");
+            finding.verify_command =
+                format!("pytest tests/test_pricing.py::test_calculate_discount_rank_{rank}");
+            finding.reason = format!("rank {rank} repair card remained usable in dogfood capture");
+        }
+        finding
     }
 
     #[test]
@@ -72542,6 +72943,186 @@ fn exact_owner_call_has_external_expected_value() {
             "limitation_notes mention unsupported behavior but unsupported_limitations is empty"
         ));
         assert!(report.contains("claim_boundary must keep preview boundary denials visible"));
+    }
+
+    #[test]
+    fn dogfood_python_real_repo_eval_rejects_unranked_top_3_capture() {
+        let mut scenario = valid_python_real_repo_eval_scenario();
+        scenario.ranked_top_3_findings.clear();
+        scenario.ranked_top_3_limit_reason = None;
+
+        let report = dogfood_python_real_repo_eval_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(
+            report.contains("ranked_top_3_findings must capture at least the top Python finding")
+        );
+
+        let mut malformed = valid_python_real_repo_eval_scenario();
+        malformed.ranked_top_3_findings[0].rank = 4;
+        malformed.ranked_top_3_findings[0].canonical_gap_id =
+            "gap:rust:src/lib.rs:predicate_boundary".to_string();
+        malformed.ranked_top_3_findings[0].usability = "needs_review".to_string();
+        malformed.ranked_top_3_findings[0].missing_discriminator = "uncertain".to_string();
+        malformed.ranked_top_3_findings[0].suggested_test_file = "src/pricing.py".to_string();
+        malformed.ranked_top_3_findings[0].verify_command = "tox".to_string();
+        malformed.ranked_top_3_findings[0].false_positive_notes =
+            "possible false actionability".to_string();
+
+        let report = dogfood_python_real_repo_eval_run(&malformed)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("ranked_top_3_findings rank must be between 1 and 3"));
+        assert!(
+            report.contains("ranked_top_3_findings rank 4 canonical_gap_id must use gap:python")
+        );
+        assert!(report.contains(
+            "ranked_top_3_findings rank 4 must be usable, concrete, placed, verifiable, and false-positive clean"
+        ));
+        assert!(report.contains("ranked_top_3_findings must include rank 1"));
+
+        let mut too_many = valid_python_real_repo_eval_scenario();
+        too_many.ranked_top_3_findings = vec![
+            valid_python_ranked_finding(1),
+            valid_python_ranked_finding(2),
+            valid_python_ranked_finding(3),
+            valid_python_ranked_finding(4),
+        ];
+
+        let report = dogfood_python_real_repo_eval_run(&too_many)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("ranked_top_3_findings must capture at most three findings"));
+
+        let mut missing_limit_reason = valid_python_real_repo_eval_scenario();
+        missing_limit_reason.ranked_top_3_limit_reason = Some(" ".to_string());
+
+        let report = dogfood_python_real_repo_eval_run(&missing_limit_reason)
+            .errors
+            .join("\n");
+
+        assert!(
+            report.contains(
+                "ranked_top_3_limit_reason must explain fewer-than-three ranked findings"
+            )
+        );
+
+        let mut duplicate_rank = valid_python_real_repo_eval_scenario();
+        duplicate_rank.ranked_top_3_findings = vec![
+            valid_python_ranked_finding(1),
+            valid_python_ranked_finding(1),
+        ];
+
+        let report = dogfood_python_real_repo_eval_run(&duplicate_rank)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("ranked_top_3_findings rank 1 is duplicated"));
+
+        let mut missing_card = valid_python_real_repo_eval_scenario();
+        missing_card.ranked_top_3_findings[0].repair_card_present = false;
+
+        let report = dogfood_python_real_repo_eval_run(&missing_card)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("ranked_top_3_findings rank 1 must be repair-card-backed"));
+
+        let mut missing_reason = valid_python_real_repo_eval_scenario();
+        missing_reason.ranked_top_3_findings[0].reason.clear();
+
+        let report = dogfood_python_real_repo_eval_run(&missing_reason)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("ranked_top_3_findings rank 1 must document a reason"));
+
+        let mut verify_mismatch = valid_python_real_repo_eval_scenario();
+        verify_mismatch.ranked_top_3_findings[0].verify_command =
+            "pytest tests/test_pricing.py::test_calculate_discount_boundary".to_string();
+
+        let report = dogfood_python_real_repo_eval_run(&verify_mismatch)
+            .errors
+            .join("\n");
+
+        assert!(report.contains(
+            "ranked_top_3_findings rank 1 verify_command must match the recorded top finding"
+        ));
+    }
+
+    #[test]
+    fn dogfood_python_real_repo_eval_accepts_unittest_ranked_verify_command() {
+        let mut scenario = valid_python_real_repo_eval_scenario();
+        let verify_command =
+            "python -m unittest tests.test_pricing.PricingTests.test_calculate_discount_smoke";
+        scenario.verify_command = verify_command.to_string();
+        scenario.ranked_top_3_findings[0].verify_command = verify_command.to_string();
+
+        let run = dogfood_python_real_repo_eval_run(&scenario);
+
+        assert!(
+            run.errors.is_empty(),
+            "unittest verify commands should validate for ranked Python dogfood findings: {:?}",
+            run.errors
+        );
+    }
+
+    #[test]
+    fn dogfood_python_real_repo_eval_checks_ranked_top_3_boundaries() {
+        let mut valid_top_3 = valid_python_real_repo_eval_scenario();
+        let mut second = valid_top_3.ranked_top_3_findings[0].clone();
+        second.rank = 2;
+        second.canonical_gap_id = "gap:python:app/cart.py:total:return_value:total".to_string();
+        second.missing_discriminator = "cart total includes tax".to_string();
+        second.suggested_test_file = "cart_test.py".to_string();
+        second.verify_command = "python -m unittest cart_test.CartTotalTest".to_string();
+        second.false_positive_notes = "none".to_string();
+        second.reason =
+            "rank 2 uses unittest verification and a module-level test file".to_string();
+
+        let mut third = valid_top_3.ranked_top_3_findings[0].clone();
+        third.rank = 3;
+        third.canonical_gap_id = "gap:python:app/orders.py:submit:side_effect:email".to_string();
+        third.missing_discriminator = "submission sends confirmation email".to_string();
+        third.suggested_test_file = "app/tests/test_orders.py".to_string();
+        third.reason = "rank 3 uses a package-local test path".to_string();
+
+        valid_top_3.ranked_top_3_findings.push(second);
+        valid_top_3.ranked_top_3_findings.push(third);
+        valid_top_3.ranked_top_3_limit_reason = None;
+
+        assert!(
+            dogfood_python_real_repo_eval_run(&valid_top_3)
+                .errors
+                .is_empty()
+        );
+
+        let mut missing_limit_reason = valid_python_real_repo_eval_scenario();
+        missing_limit_reason.ranked_top_3_limit_reason = None;
+        let report = dogfood_python_real_repo_eval_run(&missing_limit_reason)
+            .errors
+            .join("\n");
+        assert!(
+            report.contains(
+                "ranked_top_3_limit_reason must explain fewer-than-three ranked findings"
+            )
+        );
+
+        let mut malformed = valid_top_3;
+        malformed
+            .ranked_top_3_findings
+            .push(malformed.ranked_top_3_findings[0].clone());
+        malformed.ranked_top_3_findings[3].rank = 2;
+        malformed.ranked_top_3_findings[3].reason.clear();
+        let report = dogfood_python_real_repo_eval_run(&malformed)
+            .errors
+            .join("\n");
+        assert!(report.contains("ranked_top_3_findings must capture at most three findings"));
+        assert!(report.contains("ranked_top_3_findings rank 2 is duplicated"));
+        assert!(report.contains("ranked_top_3_findings rank 2 must document a reason"));
     }
 
     #[test]
