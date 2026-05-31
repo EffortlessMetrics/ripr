@@ -545,11 +545,20 @@
                 "dominant_evidence_class": "call_presence",
                 "why_not_actionable": "assertion-target affinity relates a test to a call target but does not prove direct owner-call activation",
                 "unlock_condition": "implement assertion-target affinity owner-call tracing before repair packets are emitted",
-                "samples": [
+                "non_claims": [
+                  "not a public repair packet",
+                  "not swarm-ready work",
+                  "do not edit tests from this backlog item alone"
+                ],
+                "sample_canonical_gap_ids": [
+                  "gap:activation-owner-call-absent-assertion-target-affinity"
+                ],
+                "sample_sources": [
                   {
                     "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",
                     "source_file": "crates/ripr/src/output/evidence_record.rs",
-                    "evidence_class": "call_presence"
+                    "evidence_class": "call_presence",
+                    "limitation_reason": "assertion-target affinity relates a test to a call target but does not prove direct owner-call activation"
                   }
                 ]
               }

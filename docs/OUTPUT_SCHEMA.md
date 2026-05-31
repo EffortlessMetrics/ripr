@@ -3597,8 +3597,8 @@ actionable. This field is advisory limitation backlog, not a public actionable
 count and not a CI gate predicate.
 `top_limitation_routes[]` is a readiness-level projection of those analyzer
 routes with sample packet context, sample category/subroute, sample canonical
-gap IDs, and sample source locations so operators can inspect the backlog
-without treating it as repair work. It is intentionally separate from
+gap IDs, sample source locations, and non-claims so operators can inspect the
+backlog without treating it as repair work. It is intentionally separate from
 `repair_route_quality[]`, which is based only on latest repair attempts.
 `attempt_history_summary` preserves durable attempt-ledger history before
 readiness collapses to latest attempts for current routing counts. Use it to
@@ -3732,7 +3732,12 @@ limits.
       ],
       "dominant_evidence_class": "predicate_boundary",
       "why_not_actionable": "activation value cannot be safely mapped to a test input",
-      "unlock_condition": "implement analyzer value-resolution before public repair packets are emitted"
+      "unlock_condition": "implement analyzer value-resolution before public repair packets are emitted",
+      "non_claims": [
+        "not a public repair packet",
+        "not swarm-ready work",
+        "do not edit tests from this backlog item alone"
+      ]
     }
   ],
   "blocked_state_routes": [

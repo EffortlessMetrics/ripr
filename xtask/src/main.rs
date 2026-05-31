@@ -22400,6 +22400,7 @@ struct RiprSwarmLimitationRouteRow {
     dominant_evidence_class: Option<String>,
     why_not_actionable: Option<String>,
     unlock_condition: Option<String>,
+    non_claims: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27287,6 +27288,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 dominant_evidence_class: None,
                 why_not_actionable: None,
                 unlock_condition: None,
+                non_claims: Vec::new(),
             })
             .signal_count = signal_count;
     }
@@ -27315,6 +27317,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 dominant_evidence_class: None,
                 why_not_actionable: None,
                 unlock_condition: None,
+                non_claims: Vec::new(),
             });
         row.signal_count = row.signal_count.max(signal_count);
         if row.sample_packet_id.is_none() {
@@ -27332,6 +27335,7 @@ fn ripr_swarm_readiness_top_limitation_routes(backlog: &Value) -> Vec<RiprSwarmL
                 audit_non_empty_string(packet, &["dominant_evidence_class"]);
             row.why_not_actionable = audit_non_empty_string(packet, &["why_not_actionable"]);
             row.unlock_condition = audit_non_empty_string(packet, &["unlock_condition"]);
+            row.non_claims = audit_string_array(packet, &["non_claims"]).unwrap_or_default();
         }
     }
     let mut rows = rows.into_values().collect::<Vec<_>>();
@@ -27404,6 +27408,7 @@ fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Ve
                 "dominant_evidence_class": row.dominant_evidence_class,
                 "why_not_actionable": row.why_not_actionable,
                 "unlock_condition": row.unlock_condition,
+                "non_claims": row.non_claims,
             })
         })
         .collect()
@@ -28529,11 +28534,11 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
     out.push_str(
         "Limitation routes are analyzer backlog signals, not swarm-ready repair work.\n\n",
     );
-    out.push_str("| Repair route | Signals | Sample packet | Category | Subroute | Dominant class | Sample sources | Unlock condition |\n");
-    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- |\n");
+    out.push_str("| Repair route | Signals | Sample packet | Category | Subroute | Dominant class | Sample sources | Unlock condition | Non-claims |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` | {} | {} |\n",
+            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} |\n",
             audit_markdown_cell(&row.repair_route),
             row.signal_count,
             audit_markdown_cell(row.sample_packet_id.as_deref().unwrap_or("unknown")),
@@ -28553,7 +28558,8 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
                 row.unlock_condition
                     .as_deref()
                     .unwrap_or("inspect the analyzer route before attempting repairs")
-            )
+            ),
+            audit_markdown_cell(&row.non_claims.join(", "))
         ));
     }
     out.push('\n');
@@ -44247,6 +44253,137 @@ fn dogfood_surface_projection_alignment_run(
                     "cargo xtask lane1-evidence-audit",
                     "readiness top_next_action.command",
                 );
+                let backlog_packets = audit_array(
+                    &scenario.swarm_plan,
+                    &["static_limitation_backlog", "limitation_backlog_packets"],
+                );
+                if let Some(backlog_packet) = backlog_packets.first() {
+                    if audit_array(backlog_packet, &["sample_canonical_gap_ids"]).is_empty() {
+                        errors.push(
+                            "limitation backlog packet must include sample_canonical_gap_ids"
+                                .to_string(),
+                        );
+                    }
+                    if audit_array(backlog_packet, &["sample_sources"]).is_empty() {
+                        errors.push(
+                            "limitation backlog packet must include sample_sources".to_string(),
+                        );
+                    }
+                    if !audit_array(backlog_packet, &["non_claims"])
+                        .iter()
+                        .any(|claim| claim.as_str() == Some("not a public repair packet"))
+                    {
+                        errors.push(
+                            "limitation backlog packet must preserve non_claims denying public repair status"
+                                .to_string(),
+                        );
+                    }
+                    if backlog_packet.get("public_projection_eligible").is_some() {
+                        errors.push(
+                            "limitation backlog packet must not expose public_projection_eligible"
+                                .to_string(),
+                        );
+                    }
+                    if backlog_packet.get("swarm_ready").is_some() {
+                        errors.push(
+                            "limitation backlog packet must not expose swarm_ready".to_string(),
+                        );
+                    }
+                } else {
+                    errors.push(
+                        "static limitation backlog must include limitation_backlog_packets"
+                            .to_string(),
+                    );
+                }
+                let readiness_backlog_packets = audit_array(
+                    &value,
+                    &["static_limitation_backlog", "limitation_backlog_packets"],
+                );
+                if let Some(readiness_backlog_packet) = readiness_backlog_packets.first() {
+                    if audit_array(readiness_backlog_packet, &["sample_canonical_gap_ids"])
+                        .is_empty()
+                    {
+                        errors.push(
+                            "readiness limitation backlog packet must preserve sample_canonical_gap_ids"
+                                .to_string(),
+                        );
+                    }
+                    if audit_array(readiness_backlog_packet, &["sample_sources"]).is_empty() {
+                        errors.push(
+                            "readiness limitation backlog packet must preserve sample_sources"
+                                .to_string(),
+                        );
+                    }
+                    if !audit_array(readiness_backlog_packet, &["non_claims"])
+                        .iter()
+                        .any(|claim| claim.as_str() == Some("not a public repair packet"))
+                    {
+                        errors.push(
+                            "readiness limitation backlog packet must preserve non_claims"
+                                .to_string(),
+                        );
+                    }
+                    if readiness_backlog_packet
+                        .get("public_projection_eligible")
+                        .is_some()
+                    {
+                        errors.push(
+                            "readiness limitation backlog packet must not expose public_projection_eligible"
+                                .to_string(),
+                        );
+                    }
+                    if readiness_backlog_packet.get("swarm_ready").is_some() {
+                        errors.push(
+                            "readiness limitation backlog packet must not expose swarm_ready"
+                                .to_string(),
+                        );
+                    }
+                } else {
+                    errors.push(
+                        "readiness static_limitation_backlog must preserve limitation_backlog_packets"
+                            .to_string(),
+                    );
+                }
+                let top_limitation_routes = audit_array(&value, &["top_limitation_routes"]);
+                if let Some(top_limitation_route) = top_limitation_routes.first() {
+                    if audit_array(top_limitation_route, &["sample_canonical_gap_ids"]).is_empty() {
+                        errors.push(
+                            "top_limitation_routes must preserve sample_canonical_gap_ids"
+                                .to_string(),
+                        );
+                    }
+                    if audit_array(top_limitation_route, &["sample_sources"]).is_empty() {
+                        errors
+                            .push("top_limitation_routes must preserve sample_sources".to_string());
+                    }
+                    if !audit_array(top_limitation_route, &["non_claims"])
+                        .iter()
+                        .any(|claim| claim.as_str() == Some("not a public repair packet"))
+                    {
+                        errors.push(
+                            "top_limitation_routes must preserve non_claims denying public repair status"
+                                .to_string(),
+                        );
+                    }
+                    if top_limitation_route
+                        .get("public_projection_eligible")
+                        .is_some()
+                    {
+                        errors.push(
+                            "top_limitation_routes must not expose public_projection_eligible"
+                                .to_string(),
+                        );
+                    }
+                    if top_limitation_route.get("swarm_ready").is_some() {
+                        errors
+                            .push("top_limitation_routes must not expose swarm_ready".to_string());
+                    }
+                } else {
+                    errors.push(
+                        "readiness must expose top_limitation_routes for backlog routing"
+                            .to_string(),
+                    );
+                }
             } else {
                 if scenario.expected_top_next_action_kind == "improve_repair_route_quality" {
                     surface_projection_expect_string(
@@ -86334,6 +86471,11 @@ covered_by = ["cargo xtask check-file-policy"]
                         "dominant_evidence_class": "call_presence",
                         "why_not_actionable": "related tests are affinity-ranked but not tied to direct owner calls",
                         "unlock_condition": "implement related-test owner-call tracing before repair packets are emitted",
+                        "non_claims": [
+                            "not a public repair packet",
+                            "not swarm-ready work",
+                            "do not edit tests from this backlog item alone"
+                        ],
                         "sample_canonical_gap_ids": [
                             "gap:affinity-owner-call"
                         ],
@@ -86465,6 +86607,33 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_limitation_routes"][0]["sample_sources"][0]["limitation_reason"],
             "related tests are affinity-ranked but not tied to direct owner calls"
         );
+        assert!(
+            value["top_limitation_routes"][0]["non_claims"]
+                .as_array()
+                .is_some_and(|claims| claims
+                    .iter()
+                    .any(|claim| claim == "not a public repair packet"))
+        );
+        assert!(
+            value["static_limitation_backlog"]["limitation_backlog_packets"][0]
+                .get("public_projection_eligible")
+                .is_none()
+        );
+        assert!(
+            value["static_limitation_backlog"]["limitation_backlog_packets"][0]
+                .get("swarm_ready")
+                .is_none()
+        );
+        assert!(
+            value["top_limitation_routes"][0]
+                .get("public_projection_eligible")
+                .is_none()
+        );
+        assert!(
+            value["top_limitation_routes"][0]
+                .get("swarm_ready")
+                .is_none()
+        );
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("## Top Limitation Routes"));
         assert!(markdown.contains("route_static_limitation_backlog"));
@@ -86472,6 +86641,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("src/lib.rs:42"));
         assert!(markdown.contains("gap:affinity-owner-call"));
         assert!(markdown.contains("target.call()"));
+        assert!(markdown.contains("not a public repair packet"));
         Ok(())
     }
 
