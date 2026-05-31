@@ -3716,6 +3716,11 @@ gap IDs, sample source locations, `why_not_actionable`, unlock conditions, and
 non-claims so operators can inspect the backlog without treating it as repair
 work. It is intentionally separate from `repair_route_quality[]`, which is
 based only on latest repair attempts.
+The backlog packet set is bounded, but it preserves representative samples for
+each packet-backed top repair route in addition to the highest-volume subroutes
+so low-count routes do not collapse to `unknown` sample context. Report-only
+runtime diagnostics remain in `runtime_status` and `run_limitations`, not in
+the packet-backed route projection.
 For older or external backlog packets that omit presentation-only route fields,
 readiness fills standard non-claims, fallback non-actionability text, fallback
 unlock conditions, and explicit `unknown` evidence class values rather than

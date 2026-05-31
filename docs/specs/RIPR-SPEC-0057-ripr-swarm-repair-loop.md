@@ -189,6 +189,11 @@ identity is route- and subroute-grained when `limitation_subroute` is available,
 so one limitation category can produce separate analyzer backlog packets for
 separate repair routes or expression-shaped repair queues. They remain
 non-actionable and must not be placed in `top_ready_packets`.
+The bounded packet set must keep samples for each packet-backed top repair
+route even when that route's representative packet would otherwise fall below
+the highest-volume subroute cutoff. Report-only runtime diagnostics remain in
+runtime status/run-limitations instead of appearing as sample-less limitation
+routes.
 Readiness may project the leading analyzer backlog routes as
 `top_limitation_routes[]`. That projection carries `why_not_actionable`, unlock
 conditions, non-claims, and sample subroutes, and the top next action must
@@ -704,6 +709,11 @@ Current implementation coverage:
   pins readiness `top_limitation_routes[]`, why-not-actionable projection,
   subroute-preserving top action text, and sample packet routing without making
   limitation backlog packets swarm-ready.
+- `xtask::tests::lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route`
+  pins that bounded backlog packets keep inspectable samples for each
+  packet-backed top repair route even when a low-count route falls below the
+  highest-volume subroute cutoff, while report-only runtime diagnostics stay out
+  of the packet-backed projection.
 - `xtask::tests::ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets`
   pins readiness fallback non-claims, non-actionability text, unlock conditions,
   and explicit unknown evidence classes for older limitation backlog packets.

@@ -19209,6 +19209,7 @@ fn limited_evidence_health_markdown(
 
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
 const LANE1_EVIDENCE_AUDIT_TOP_LIMIT: usize = 10;
+const LANE1_STATIC_LIMITATION_BACKLOG_PACKET_LIMIT: usize = LANE1_EVIDENCE_AUDIT_TOP_LIMIT * 2;
 const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
 const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
@@ -20037,6 +20038,7 @@ fn lane1_evidence_audit_record_run_limitation(
     report: &mut Lane1EvidenceAuditReport,
     limitation: Lane1EvidenceAuditRunLimitation,
 ) {
+    let repair_route = "report/lane1-audit-bounded-diagnostics";
     report.summary.static_limitations_total += 1;
     audit_increment(
         &mut report.static_limitation_category_counts,
@@ -20044,7 +20046,7 @@ fn lane1_evidence_audit_record_run_limitation(
     );
     audit_increment(
         &mut report.static_limitation_repair_route_counts,
-        "report/lane1-audit-bounded-diagnostics",
+        repair_route,
     );
     report.run_limitations.push(limitation);
 }
@@ -21329,19 +21331,24 @@ impl Lane1EvidenceAuditBuilder {
                 .then_with(|| left.line.cmp(&right.line))
         });
         same_line_duplicate_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
-        let mut static_limitation_backlog_packets = self
+        let mut all_static_limitation_backlog_packets = self
             .static_limitation_backlog_packet_builders
             .into_values()
             .map(lane1_static_limitation_backlog_packet_from_builder)
             .collect::<Vec<_>>();
-        static_limitation_backlog_packets.sort_by(|left, right| {
+        all_static_limitation_backlog_packets.sort_by(|left, right| {
             right
                 .signal_count
                 .cmp(&left.signal_count)
                 .then_with(|| left.limitation_category.cmp(&right.limitation_category))
                 .then_with(|| left.repair_route.cmp(&right.repair_route))
         });
-        static_limitation_backlog_packets.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+        let top_static_limitation_repair_routes =
+            audit_top_counts(self.static_repair_route_counts.clone());
+        let static_limitation_backlog_packets = lane1_select_static_limitation_backlog_packets(
+            &all_static_limitation_backlog_packets,
+            &top_static_limitation_repair_routes,
+        );
 
         let actionable_gap_top_lists = Lane1EvidenceAuditActionableGapTopLists {
             top_actionable_gap_classes: audit_top_counts(self.actionable_gap_class_counts),
@@ -22297,7 +22304,11 @@ fn lane1_static_limitation_backlog_json(report: &Lane1EvidenceAuditReport) -> Va
         "top_subroutes": lane1_static_limitation_backlog_top_subroutes(
             &report.static_limitation_backlog_packets
         ),
-        "top_repair_routes": audit_top_counts(report.static_limitation_repair_route_counts.clone())
+        "top_repair_routes": audit_top_counts(
+            lane1_static_limitation_backlog_repair_route_counts(
+                &report.static_limitation_backlog_packets,
+            )
+        )
             .iter()
             .map(|row| {
                 serde_json::json!({
@@ -22310,6 +22321,16 @@ fn lane1_static_limitation_backlog_json(report: &Lane1EvidenceAuditReport) -> Va
             &report.static_limitation_backlog_packets
         ),
     })
+}
+
+fn lane1_static_limitation_backlog_repair_route_counts(
+    packets: &[Lane1StaticLimitationBacklogPacket],
+) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for packet in packets {
+        *counts.entry(packet.repair_route.clone()).or_insert(0) += packet.signal_count;
+    }
+    counts
 }
 
 fn lane1_static_limitation_category_repair_route(
@@ -22371,6 +22392,51 @@ fn lane1_static_limitation_backlog_packet_from_builder(
             Some(&builder.limitation_subroute),
         ),
     }
+}
+
+fn lane1_select_static_limitation_backlog_packets(
+    packets: &[Lane1StaticLimitationBacklogPacket],
+    top_repair_routes: &[Lane1EvidenceAuditTopCount],
+) -> Vec<Lane1StaticLimitationBacklogPacket> {
+    let mut selected = Vec::new();
+    let mut selected_packet_ids = BTreeSet::new();
+
+    for packet in packets.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        if selected_packet_ids.insert(packet.packet_id.clone()) {
+            selected.push(packet.clone());
+        }
+    }
+
+    for route in top_repair_routes
+        .iter()
+        .take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT)
+    {
+        if selected
+            .iter()
+            .any(|packet| packet.repair_route == route.label)
+        {
+            continue;
+        }
+        let Some(packet) = packets
+            .iter()
+            .find(|packet| packet.repair_route == route.label)
+        else {
+            continue;
+        };
+        if selected_packet_ids.insert(packet.packet_id.clone()) {
+            selected.push(packet.clone());
+        }
+    }
+
+    selected.sort_by(|left, right| {
+        right
+            .signal_count
+            .cmp(&left.signal_count)
+            .then_with(|| left.limitation_category.cmp(&right.limitation_category))
+            .then_with(|| left.repair_route.cmp(&right.repair_route))
+    });
+    selected.truncate(LANE1_STATIC_LIMITATION_BACKLOG_PACKET_LIMIT);
+    selected
 }
 
 fn static_limitation_backlog_packet_id(
@@ -84450,6 +84516,25 @@ covered_by = ["cargo xtask check-file-policy"]
             value["run_limitations"][0]["input"],
             "repo-exposure-json:limit_5000_of_39663"
         );
+        let backlog = super::lane1_static_limitation_backlog_json(&report);
+        let backlog_packets = backlog["limitation_backlog_packets"]
+            .as_array()
+            .ok_or_else(|| "expected limitation backlog packets".to_string())?;
+        assert!(
+            backlog_packets
+                .iter()
+                .all(|packet| packet["repair_route"] != "report/lane1-audit-bounded-diagnostics"),
+            "runtime diagnostics should remain in run_limitations, not packet backlog: {backlog_packets:?}"
+        );
+        let top_routes = backlog["top_repair_routes"]
+            .as_array()
+            .ok_or_else(|| "expected top repair routes".to_string())?;
+        assert!(
+            top_routes
+                .iter()
+                .all(|route| route["repair_route"] != "report/lane1-audit-bounded-diagnostics"),
+            "runtime diagnostics should stay out of packet-backed top repair routes: {top_routes:?}"
+        );
         assert!(lane1_evidence_audit_markdown(&report).contains("lane1_repo_exposure_sampled"));
 
         let _ = std::fs::remove_dir_all(&root);
@@ -87810,6 +87895,95 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(10)
         );
         assert_eq!(value["summary"]["swarm_ready_packets"], 0);
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route()
+    -> Result<(), String> {
+        let mut builder = super::Lane1EvidenceAuditBuilder::new(".");
+        let dominant_route = "analysis/same-file-owner-call-tracing";
+        for index in 0..=super::LANE1_EVIDENCE_AUDIT_TOP_LIMIT {
+            let subroute = format!("same_file_subroute_{index}");
+            for _ in 0..(super::LANE1_EVIDENCE_AUDIT_TOP_LIMIT + 1 - index) {
+                builder.ingest_static_limitation_backlog_packet_sample(
+                    "activation_owner_call_absent_same_file_only",
+                    &subroute,
+                    dominant_route,
+                    super::Lane1StaticLimitationBacklogSample {
+                        canonical_gap_id: Some(format!("gap:same-file-{index}")),
+                        evidence_class: "call_presence".to_string(),
+                        source_file: "crates/ripr/src/analysis/classify/activation.rs".to_string(),
+                        line: Some(196 + index),
+                        expression: Some("missing_boundary_discriminator(...)".to_string()),
+                        limitation_reason: Some(
+                            "same-file proximity is not owner-call proof".to_string(),
+                        ),
+                    },
+                );
+            }
+        }
+        builder
+            .static_repair_route_counts
+            .insert(dominant_route.to_string(), 1000);
+
+        let sampled_route = "analysis/macro-generated-value-fixtures";
+        builder.ingest_static_limitation_backlog_packet_sample(
+            "macro_generated_value",
+            "macro_generated_value",
+            sampled_route,
+            super::Lane1StaticLimitationBacklogSample {
+                canonical_gap_id: Some("gap:macro-sample".to_string()),
+                evidence_class: "predicate_boundary".to_string(),
+                source_file: "crates/ripr/src/analysis/macros.rs".to_string(),
+                line: Some(88),
+                expression: Some("macro_generated_case!(input)".to_string()),
+                limitation_reason: Some("macro-generated value remains opaque".to_string()),
+            },
+        );
+        builder
+            .static_repair_route_counts
+            .insert(sampled_route.to_string(), 1);
+
+        let mut report = builder.finish(".".to_string(), None);
+        report
+            .static_limitation_repair_route_counts
+            .insert("report/lane1-audit-bounded-diagnostics".to_string(), 2);
+
+        let backlog = super::lane1_static_limitation_backlog_json(&report);
+        let top_routes = super::ripr_swarm_readiness_top_limitation_routes(&backlog);
+        assert!(
+            top_routes
+                .iter()
+                .all(|route| route.repair_route != "report/lane1-audit-bounded-diagnostics"),
+            "report-only runtime diagnostics should stay out of packet-backed top limitation routes: {top_routes:?}"
+        );
+        let sampled = top_routes
+            .iter()
+            .find(|route| route.repair_route == sampled_route)
+            .ok_or_else(|| {
+                "expected low-count route to remain in top route projection".to_string()
+            })?;
+
+        assert_eq!(
+            sampled.sample_canonical_gap_ids,
+            vec!["gap:macro-sample".to_string()]
+        );
+        assert_eq!(
+            sampled.sample_limitation_category.as_deref(),
+            Some("macro_generated_value")
+        );
+        assert_eq!(
+            sampled.dominant_evidence_class.as_deref(),
+            Some("predicate_boundary")
+        );
+        assert!(
+            sampled
+                .sample_packet_id
+                .as_deref()
+                .is_some_and(|packet| packet.contains("macro_generated_value")),
+            "route sample must keep an inspectable backlog packet id: {sampled:?}"
+        );
         Ok(())
     }
 
