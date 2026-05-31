@@ -8090,6 +8090,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "attempted_no_receipt",
     ),
     (
+        "missing_repair_kind_blocker_route_improved",
+        "evidence_improved",
+    ),
+    (
         "local_computed_boundary_limitation_route_improved",
         "evidence_improved",
     ),

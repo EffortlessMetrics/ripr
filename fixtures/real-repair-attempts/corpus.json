@@ -79,6 +79,40 @@
       "reason": "A real merged route-quality PR made the analyzer backlog actionability boundary explicit so outcome metrics cannot be mistaken for delegation authority."
     },
     {
+      "id": "missing_repair_kind_blocker_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#725",
+      "canonical_gap_id": "gap:missing-repair-kind-blocker-route",
+      "packet_id": "blocked-state:missing-repair-kind",
+      "repair_kind": "route_missing_repair_kind_blockers",
+      "target_test_or_observer_shape": "readiness and swarm-plan assertions that packets excluded for missing_repair_kind route to missing-context remediation instead of public repair queues",
+      "verify_command": "cargo test -p xtask ripr_swarm_plan_routes_explicit_missing_repair_kind_projection_exclusion -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask ripr-swarm readiness",
+      "receipt_path": "target/ripr/reports/swarm-readiness.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "blocked_by_public_projection_exclusion",
+      "after_gap_state": "blocked_by_missing_context",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Routed missing_repair_kind projection exclusions into the blocked-state/missing-context path so readiness names the field that must be supplied before a packet can be repair-ready.",
+      "evidence_movement": "improved: missing repair-kind blockers now carry a named blocked-state route, example packet identity, and next action instead of being ambiguous public projection exclusions.",
+      "operator_note": "This improves Lane 1 repair routing clarity without making an incomplete packet actionable and without changing public badge, CI, LSP, PR, or agent authority.",
+      "must_not_change": [
+        "do not emit repair packets without repair_kind",
+        "do not count missing-repair-kind blockers as public actionable gaps",
+        "do not change badge semantics",
+        "do not change CI gate defaults",
+        "do not add provider calls or autonomous edits"
+      ],
+      "raw_evidence_refs": [
+        "xtask/src/main.rs::tests::ripr_swarm_plan_routes_explicit_missing_repair_kind_projection_exclusion",
+        "docs/OUTPUT_SCHEMA.md:blocked_state_routes",
+        "EffortlessMetrics/ripr-swarm#725"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged readiness PR improved the trust loop by turning an incomplete repair packet into a named blocked route with a concrete remediation field instead of overclaiming actionability."
+    },
+    {
       "id": "readiness_top_next_action_resolved",
       "source_ref": "EffortlessMetrics/ripr-swarm#416",
       "canonical_gap_id": "gap:readiness-top-next-action-missing",
