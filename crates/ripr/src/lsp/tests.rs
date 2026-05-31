@@ -1534,6 +1534,7 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
             .collect::<Vec<_>>(),
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Agent handoff: copy Python packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
             ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (
@@ -1590,18 +1591,29 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         static_limit_position < suggested_action_position,
         "static limits must appear before action language:\n{packet}"
     );
-    assert_eq!(commands[1].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[1].2[0]["label"], "python_agent_packet");
     assert_eq!(commands[1].2[0]["canonical_gap_id"], "gap:py:pricing");
     assert_eq!(
-        commands[1].2[0]["repair_route"]["related_test"],
-        "tests/test_pricing.py::test_discount_boundary"
-    );
-    assert_eq!(commands[2].2[0]["label"], "python_repair_card");
-    assert_eq!(
-        commands[2].2[0]["freshness"],
+        commands[1].2[0]["freshness"],
         "validated_current_gap_record"
     );
-    let card = commands[2].2[0]["brief"]
+    assert_eq!(commands[1].2[0]["packet_kind"], "agent_gap_record_packet");
+    assert_eq!(
+        commands[1].2[0]["gap_ledger"],
+        "target/ripr/reports/gap-decision-ledger.json"
+    );
+    assert_eq!(commands[2].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[2].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[2].2[0]["repair_route"]["related_test"],
+        "tests/test_pricing.py::test_discount_boundary"
+    );
+    assert_eq!(commands[3].2[0]["label"], "python_repair_card");
+    assert_eq!(
+        commands[3].2[0]["freshness"],
+        "validated_current_gap_record"
+    );
+    let card = commands[3].2[0]["brief"]
         .as_str()
         .ok_or_else(|| "missing Python repair-card text".to_string())?;
     for needle in [
@@ -1617,27 +1629,27 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         assert!(card.contains(needle), "missing {needle:?} in:\n{card}");
     }
     assert_eq!(
-        commands[3].2[0]["uri"],
+        commands[4].2[0]["uri"],
         file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
     );
-    assert_eq!(commands[3].2[0]["line"], 2);
-    assert_eq!(commands[3].2[0]["test_name"], "test_discount_boundary");
-    assert_eq!(commands[4].2[0]["label"], "gap_verify");
-    assert_eq!(
-        commands[4].2[0]["command"],
-        "ripr agent verify --root . --json"
-    );
-    assert_eq!(commands[5].2[0]["label"], "gap_receipt");
+    assert_eq!(commands[4].2[0]["line"], 2);
+    assert_eq!(commands[4].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[5].2[0]["label"], "gap_verify");
     assert_eq!(
         commands[5].2[0]["command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(commands[6].2[0]["label"], "gap_receipt");
+    assert_eq!(
+        commands[6].2[0]["command"],
         "ripr agent receipt --root . --json"
     );
     assert!(
-        commands[6].2[0]["note"]
+        commands[7].2[0]["note"]
             .as_str()
             .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
         "expected static-limit note, got {:?}",
-        commands[6].2[0]
+        commands[7].2[0]
     );
     Ok(())
 }
@@ -1680,10 +1692,12 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
         commands
             .iter()
             .all(|(title, _, args)| title != "Copy first repair packet"
+                && title != "Agent handoff: copy Python packet"
                 && args
                     .first()
-                    .is_none_or(|arg| arg["label"] != "first_repair_packet")),
-        "first repair packet must be suppressed when receipt command is missing: {commands:?}"
+                    .is_none_or(|arg| arg["label"] != "first_repair_packet"
+                        && arg["label"] != "python_agent_packet")),
+        "packet actions must be suppressed when receipt command is missing: {commands:?}"
     );
     assert!(
         commands
@@ -1691,6 +1705,54 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
             .any(|(title, _, _)| title == "Inspect gap: copy repair packet"),
         "existing inspect action should remain available"
     );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_suppress_python_agent_packet_without_actionable_python_gap_record()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-agent-packet-contract")?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    for (field, value) in [
+        ("source", "repo_exposure"),
+        ("language", "rust"),
+        ("gap_state", "already_observed"),
+        ("repairability", "no_action"),
+    ] {
+        let mut diagnostic = gap_action_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or_else(|| "missing diagnostic data".to_string())?
+            .as_object_mut()
+            .ok_or_else(|| "expected object data".to_string())?;
+        data.insert(field.to_string(), serde_json::json!(value));
+        let mut snapshot = sample_analysis_snapshot(
+            root.path().to_path_buf(),
+            uri.clone(),
+            vec![diagnostic.clone()],
+            Vec::new(),
+        );
+        snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+        let actions = code_action_response(
+            &code_action_params_for(uri.clone(), diagnostic.range.start.line, vec![diagnostic])?,
+            Some(&snapshot),
+        );
+        let commands = code_action_commands(&actions)?;
+
+        assert!(
+            commands.iter().all(
+                |(title, _, args)| title != "Agent handoff: copy Python packet"
+                    && args
+                        .first()
+                        .is_none_or(|arg| arg["label"] != "python_agent_packet")
+            ),
+            "Python agent packet action must be suppressed when {field}={value}: {commands:?}"
+        );
+    }
     Ok(())
 }
 
@@ -1971,6 +2033,7 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
             .collect::<Vec<_>>(),
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Agent handoff: copy Python packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
             ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (

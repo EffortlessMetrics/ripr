@@ -4054,24 +4054,30 @@ function startRepairActionPriority(title: string, command: vscode.Command): numb
   }
   if (
     command.command === 'ripr.copyContext' &&
-    (title === 'Inspect gap: copy repair packet' || firstArgumentLabelIs(command, 'gap_repair_packet'))
+    (title === 'Agent handoff: copy Python packet' || firstArgumentLabelIs(command, 'python_agent_packet'))
   ) {
     return 1;
   }
-  if (command.command === 'ripr.openRelatedTest') {
+  if (
+    command.command === 'ripr.copyContext' &&
+    (title === 'Inspect gap: copy repair packet' || firstArgumentLabelIs(command, 'gap_repair_packet'))
+  ) {
     return 2;
   }
-  if (command.command === 'ripr.copyAgentVerifyCommand' && firstArgumentLabelIs(command, 'gap_verify')) {
+  if (command.command === 'ripr.openRelatedTest') {
     return 3;
   }
-  if (command.command === 'ripr.copyAgentReceiptCommand' && firstArgumentLabelIs(command, 'gap_receipt')) {
+  if (command.command === 'ripr.copyAgentVerifyCommand' && firstArgumentLabelIs(command, 'gap_verify')) {
     return 4;
+  }
+  if (command.command === 'ripr.copyAgentReceiptCommand' && firstArgumentLabelIs(command, 'gap_receipt')) {
+    return 5;
   }
   if (
     command.command === 'ripr.copyContext' &&
     (title === 'Inspect gap: copy static-limit note' || firstArgumentLabelIs(command, 'static_limit_note'))
   ) {
-    return 5;
+    return 6;
   }
   return undefined;
 }
@@ -4102,9 +4108,13 @@ async function pickStartRepairAction(actions: StartRepairAction[]): Promise<Star
 function startRepairActionDescription(command: vscode.Command): string | undefined {
   switch (command.command) {
     case 'ripr.copyContext':
-      return firstArgumentLabelIs(command, 'first_repair_packet')
-        ? 'Copy the bounded packet'
-        : 'Copy the gap context';
+      if (firstArgumentLabelIs(command, 'first_repair_packet')) {
+        return 'Copy the bounded packet';
+      }
+      if (firstArgumentLabelIs(command, 'python_agent_packet')) {
+        return 'Copy the bounded Python agent packet';
+      }
+      return 'Copy the gap context';
     case 'ripr.openRelatedTest':
       return 'Open the likely repair target';
     case 'ripr.copyAgentVerifyCommand':

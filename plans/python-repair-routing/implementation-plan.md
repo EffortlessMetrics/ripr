@@ -874,6 +874,11 @@ Bring Python repair cards into editor surfaces.
   behavior, current weak test evidence, missing discriminator, suggested
   assertion/location, verify command, receipt command when available, stop
   conditions, and preview/advisory limits.
+- Current actionable and repairable Python GapRecord diagnostics now expose an
+  `Agent handoff: copy Python packet` code action. The action reuses the
+  existing GapRecord-backed `ripr.collectContext` packet path and fails closed
+  without safe gap-ledger paths, repair-route paths, verify commands, and
+  receipt commands.
 - GapRecord code actions now fall back from a bare Python test name to
   `repair_route.target_file` when opening the related test file, matching the
   check-output-derived Python repair-card shape.

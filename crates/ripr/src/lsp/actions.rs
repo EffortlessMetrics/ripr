@@ -277,6 +277,13 @@ fn push_gap_actions(
             target,
         ));
     }
+    if let Some(target) = python_agent_packet_target(params, context.snapshot, context.diagnostic) {
+        actions.push(copy_context_action(
+            COPY_PYTHON_AGENT_PACKET_TITLE,
+            COPY_PYTHON_AGENT_PACKET_TITLE,
+            target,
+        ));
+    }
     if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic) {
         actions.push(copy_context_action(
             INSPECT_GAP_PACKET_TITLE,
@@ -354,6 +361,7 @@ const AGENT_VERIFY_COMMAND_TITLE: &str = "Verify after test: copy verify command
 const AGENT_RECEIPT_COMMAND_TITLE: &str = "Review result: copy receipt command";
 const COPY_STATIC_LIMIT_NOTE_TITLE: &str = "Inspect gap: copy static-limit note";
 const COPY_FIRST_REPAIR_PACKET_TITLE: &str = "Copy first repair packet";
+const COPY_PYTHON_AGENT_PACKET_TITLE: &str = "Agent handoff: copy Python packet";
 const COPY_PYTHON_REPAIR_CARD_TITLE: &str = "Copy Python repair card";
 const COPY_PYTHON_PYTEST_SKELETON_TITLE: &str = "Write Python test: copy pytest skeleton";
 const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
@@ -484,6 +492,47 @@ fn gap_repair_packet_target(
             "Static evidence only; no source edits, generated tests, provider calls, or runtime mutation execution."
                 .to_string(),
         ),
+    );
+    Some(target)
+}
+
+fn python_agent_packet_target(
+    params: &CodeActionParams,
+    snapshot: &AnalysisSnapshot,
+    diagnostic: &Diagnostic,
+) -> Option<LSPAny> {
+    let data = diagnostic.data.as_ref()?;
+    if string_at(data, &["source"]) != Some("gap_decision_ledger")
+        || string_at(data, &["language"]) != Some("python")
+        || string_at(data, &["gap_state"]) != Some("actionable")
+        || string_at(data, &["repairability"]) != Some("repairable")
+    {
+        return None;
+    }
+    string_at(data, &["gap_id"])?;
+    let gap_ledger = string_at(data, &["gap_ledger"])?;
+    if !workspace_path_is_safe(snapshot.root.as_path(), gap_ledger) {
+        return None;
+    }
+    first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;
+    first_safe_receipt_command(snapshot.root.as_path(), data)?;
+    let mut target = gap_repair_packet_target(params, snapshot, diagnostic)?;
+    let object = target.as_object_mut()?;
+    object.insert(
+        "label".to_string(),
+        Value::String("python_agent_packet".to_string()),
+    );
+    object.insert(
+        "freshness".to_string(),
+        Value::String("validated_current_gap_record".to_string()),
+    );
+    object.insert(
+        "packet_source".to_string(),
+        Value::String("gap_decision_ledger".to_string()),
+    );
+    object.insert(
+        "packet_kind".to_string(),
+        Value::String("agent_gap_record_packet".to_string()),
     );
     Some(target)
 }

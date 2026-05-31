@@ -10892,18 +10892,23 @@ Seam diagnostics also drive editor code actions:
 Validated GapRecord diagnostics use the same code-action surface for
 repair-routing records. Python preview GapRecords accept bounded `pytest ...`
 and `python -m unittest ...` verification commands, expose verify and receipt
-copy actions when those commands are safe, expose `Copy Python repair card` to
-copy a current validated GapRecord repair-card brief for safe target-file routes through
+copy actions when those commands are safe, expose `Agent handoff: copy Python
+packet` to copy the same GapRecord-backed agent packet as `ripr agent packet
+--gap-ledger ... --gap-id ...`, expose `Copy Python repair card` to copy a
+current validated GapRecord repair-card brief for safe target-file routes through
 `ripr.copyTargetedTestBrief`, can open `repair_route.target_file` when
 `related_test` is a bare test name, and expose `Write Python test: copy pytest
-skeleton` for pytest-backed repairs. The copied repair card includes the
-current-GapRecord freshness cue, changed owner, changed behavior, current weak
-test evidence, missing discriminator, suggested assertion and location, verify
-and receipt commands when safe, stop conditions, and static preview limits. The
-copied skeleton is a fail-fast work order with the canonical gap, missing
-discriminator, suggested file, verify command, stop conditions, and a
-`NotImplementedError` placeholder; it does not edit files or silently create a
-passing test.
+skeleton` for pytest-backed repairs. The Python agent-packet action appears
+only for current validated Python GapRecord diagnostics with
+`gap_state = "actionable"`, `repairability = "repairable"`, safe gap-ledger and
+repair-route paths, and safe verify plus receipt commands. The copied repair
+card includes the current-GapRecord freshness cue, changed owner, changed
+behavior, current weak test evidence, missing discriminator, suggested
+assertion and location, verify and receipt commands when safe, stop conditions,
+and static preview limits. The copied skeleton is a fail-fast work order with
+the canonical gap, missing discriminator, suggested file, verify command, stop
+conditions, and a `NotImplementedError` placeholder; it does not edit files or
+silently create a passing test.
 
 These actions do not edit files, generate tests, or add CodeLens
 surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
