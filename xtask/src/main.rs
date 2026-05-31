@@ -8159,6 +8159,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "typescript_module_initializer_observer_route_improved",
+        "evidence_improved",
+    ),
+    (
         "typescript_preview_weak_oracle_downgrade_unchanged",
         "evidence_unchanged",
     ),
