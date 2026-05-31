@@ -261,6 +261,9 @@ can show:
 - a check-output gap-ledger fixture proving Python repair cards can become
   bounded agent packets with verify and receipt commands while remaining
   preview/advisory
+- outcome fixtures proving Python canonical gaps can close, remain unchanged,
+  reopen, strengthen without closing, and weaken across check-output snapshots
+  while preserving static/advisory receipt language
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub

@@ -4555,16 +4555,22 @@ gap that moves from `weakly_exposed` to `exposed` is rendered as
 still static/advisory evidence: verify success and a closed gap movement are
 receipt signals, not runtime mutation proof or correctness proof.
 The Python first-PR fixture pins this path with before/after check-output
-snapshots and expected closed, unchanged, and opened receipts at
+snapshots and expected closed, unchanged, opened, strengthened, and weakened
+receipts at
 `fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json`,
 `fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json`,
+`fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json`,
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json`,
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md`,
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.json`,
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.md`,
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.json`,
+`fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md`,
+`fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.json`,
+`fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md`,
+`fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json`,
 and
-`fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md`.
+`fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md`.
 
 Field contract:
 
@@ -4585,6 +4591,9 @@ Field contract:
   `unchanged`, and `changed`. `new` and `removed` are one-sided identity counts.
   These counts are receipt signals for static evidence movement; they are not
   mutation proof or correctness proof.
+- `review_receipt.remaining_weak_or_unknown` includes unchanged, regressed, and
+  improved-but-still-attention-needed rows. A strengthened row is not treated as
+  closed unless the after snapshot no longer needs review attention.
 - `moved[]` / `unchanged[]` / `regressed[]` — matched seams with before/after
   grip classes, a direction string, and evidence-delta hints. When
   `seams[].evidence_record` is present, the comparison prefers that shared

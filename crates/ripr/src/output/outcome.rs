@@ -1088,7 +1088,12 @@ fn targeted_test_outcome_gap_summary_sentence(report: &TargetedTestOutcomeReport
 
 fn review_remaining_weak_or_unknown(report: &TargetedTestOutcomeReport) -> Vec<String> {
     let mut items = Vec::new();
-    for movement in report.unchanged.iter().chain(report.regressed.iter()) {
+    for movement in report
+        .moved
+        .iter()
+        .chain(report.unchanged.iter())
+        .chain(report.regressed.iter())
+    {
         if review_attention_class(&movement.after) {
             items.push(format!(
                 "{} remains {} at {}:{}.",
@@ -1884,6 +1889,9 @@ mod tests {
         let strong = include_str!(
             "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
         );
+        let no_path = include_str!(
+            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json"
+        );
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: weak,
             after: strong,
@@ -1926,6 +1934,36 @@ mod tests {
             ),
             expected_md: include_str!(
                 "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md"
+            ),
+        })?;
+
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: no_path,
+            after: weak,
+            before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
+            after_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            expected_gap_movement: "strengthened",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md"
+            ),
+        })?;
+
+        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+            before: weak,
+            after: no_path,
+            before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
+            expected_gap_movement: "weakened",
+            expected_bucket: "regressed",
+            expected_json: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json"
+            ),
+            expected_md: include_str!(
+                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md"
             ),
         })?;
         Ok(())

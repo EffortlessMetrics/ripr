@@ -1066,9 +1066,11 @@ Make Python gap improvement durable.
   gap ID and report weak-to-strong evidence movement as closed.
 - `fixtures/first_successful_pr/python-preview-gap` now pins the same
   before/after check-output path with expected `ripr outcome` JSON and Markdown
-  receipts for closed, unchanged, and opened movement, proving the first-PR
-  Python preview gap can close, remain weak, or reopen without a Python-only
-  receipt command.
+  receipts for closed, unchanged, opened, strengthened, and weakened movement,
+  proving the first-PR Python preview gap can close, remain weak, partially
+  improve, weaken, or reopen without a Python-only receipt command.
+- Strengthened-but-still-weak rows now stay visible in receipt
+  `remaining_weak_or_unknown` output instead of being mistaken for closure.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.
