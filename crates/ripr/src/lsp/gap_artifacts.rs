@@ -2026,6 +2026,19 @@ mod tests {
     }
 
     #[test]
+    fn actionable_gaps_report_rejects_missing_related_test_or_observer() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["related_test_or_observer"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry typed related_test_or_observer"
+            ))
+        );
+    }
+
+    #[test]
     fn actionable_gaps_report_rejects_placeholder_guidance_fields() {
         let mut artifact = actionable_gaps_report();
         artifact["packets"][0]["confidence_basis"] = json!("unknown");
