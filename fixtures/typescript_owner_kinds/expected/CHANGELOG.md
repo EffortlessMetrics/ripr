@@ -3,6 +3,18 @@
 ## Pending
 
 Reason:
+project bounded TypeScript method receiver preview evidence
+
+Command:
+`cargo xtask goldens bless typescript_owner_kinds --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
 TypeScript owner facts project owner kinds for arrow functions methods class methods and module initializers
 
 Command:

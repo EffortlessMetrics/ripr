@@ -132,7 +132,11 @@ import-reference match, file-path proximity, and call-graph proximity at
 the syntax level. Direct owner-call matches must be token-aware: a top-level
 function owner can match `applyDiscount(...)`, but string/comment mentions and
 arbitrary object-method calls such as `order.applyDiscount(...)` must not make
-the test related.
+the test related. Method owners may use a bounded receiver relation only when
+the test constructs a local receiver with `new ClassName(...)` or a named import
+alias for that class and then calls `receiver.method(...)`; factory returns,
+dependency injection, mocked modules, prototype aliases, and dynamic property
+access remain advisory or unsupported.
 
 ## Probe Facts
 
@@ -293,6 +297,7 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_oracle_snapshot_weak`
 - `language_adapter_typescript_oracle_smoke`
 - `language_adapter_typescript_related_imported_owner_call`
+- `language_adapter_typescript_related_method_receiver_call`
 - `language_adapter_typescript_probe_predicate`
 - `language_adapter_typescript_probe_return_value`
 - `language_adapter_typescript_probe_error_path`

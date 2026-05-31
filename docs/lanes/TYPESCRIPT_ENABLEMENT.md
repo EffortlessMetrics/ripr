@@ -106,14 +106,17 @@ claims.
    - snapshot-only and smoke-only evidence;
    - heuristic related-test links;
    - owner name in test title only;
-   - method receiver ambiguity;
+   - method receiver repair-packet gaps and remaining ambiguity;
    - module initializer ambiguity;
    - mocked module, decorator, and dynamic-dispatch limits.
 3. Expand narrow mock payload support only when syntax can safely name the
    target interaction.
 4. Distinguish broad error checks from exact error payload or rejected-promise
    evidence.
-5. Add bounded method receiver relation support for direct receiver calls only.
+5. Continue bounded method receiver relation support:
+   - direct `new ClassName(...)` receiver calls are fixture-backed;
+   - factories, dependency injection, mocked classes, prototype aliases, and
+     dynamic property access stay advisory or unsupported.
 6. Improve module initializer guidance while keeping dynamic initialization
    limited.
 7. Emit TypeScript preview repair-card fields consistently through existing
@@ -134,7 +137,8 @@ must not become actionable packets without stricter proof. It pins:
 - broad thrown or rejected error evidence without payload proof;
 - snapshot-only and smoke-only weak oracles;
 - heuristic related-test links and owner-name-only test titles;
-- method receiver and module-initializer ambiguity;
+- method receiver repair-packet gaps, remaining receiver ambiguity, and
+  module-initializer ambiguity;
 - mocked module, decorator-indirection, and dynamic-dispatch static limits.
 
 Each row points at an existing checked TypeScript-family fixture finding,

@@ -245,20 +245,20 @@
       "source_finding_id": "probe:src_owners.ts:7:typescript_preview",
       "language": "typescript",
       "language_status": "preview",
-      "risk_class": "method receiver ambiguity",
-      "evidence_kind": "method_owner_relation",
-      "oracle_kind": "unknown",
+      "risk_class": "method receiver incomplete repair packet",
+      "evidence_kind": "bounded_method_receiver_relation",
+      "oracle_kind": "smoke_only",
       "gap_state": "advisory",
-      "actionability_category": "missing_context",
+      "actionability_category": "incomplete_repair_packet",
       "static_limit_kind": null,
       "disposition": "candidate_future_support",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
-      "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route",
-      "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
-      "future_support": "bounded method receiver relation may support direct new-instance receiver calls, but factories, dependency injection, prototype aliases, and dynamic property access stay out of scope",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+      "future_support": "bounded method receiver relation now supports direct new-instance receiver calls; repair-card support still needs canonical gap identity, repair kind, target shape, verify command, receipt command, evidence refs, and edit boundaries; factories, dependency injection, prototype aliases, and dynamic property access stay out of scope",
       "must_remain_non_actionable": true,
-      "required_evidence_fragment": "method owner relation is missing context",
+      "required_evidence_fragment": "Related test reaches `total` with a smoke-only oracle",
       "raw_evidence_refs": [
         "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:7:typescript_preview"
       ],
@@ -274,7 +274,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "Method owner evidence should not infer receiver identity until the adapter can prove the receiver shape."
+      "reason": "Direct receiver evidence is safe advisory context but not an actionable packet; ambiguous receiver shapes remain unsupported."
     },
     {
       "id": "module_initializer_ambiguity",

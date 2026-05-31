@@ -61,6 +61,7 @@ struct TypeScriptOwner {
     start_line: usize,
     end_line: usize,
     owner_kind: OwnerKind,
+    class_name: Option<String>,
     decorated: bool,
     imports: Vec<TypeScriptImport>,
 }
@@ -125,6 +126,7 @@ struct TypeScriptParseLimit {
 enum TypeScriptRelationKind {
     DirectOwnerCall,
     ImportedOwnerCall,
+    ReceiverOwnerCall,
     SameFileProximity,
     DescribeName,
     TestName,
@@ -135,6 +137,7 @@ impl TypeScriptRelationKind {
         match self {
             Self::DirectOwnerCall => 5,
             Self::ImportedOwnerCall => 4,
+            Self::ReceiverOwnerCall => 4,
             Self::SameFileProximity => 3,
             Self::DescribeName => 2,
             Self::TestName => 1,
@@ -142,7 +145,10 @@ impl TypeScriptRelationKind {
     }
 
     fn uses_oracle(self) -> bool {
-        matches!(self, Self::DirectOwnerCall | Self::ImportedOwnerCall)
+        matches!(
+            self,
+            Self::DirectOwnerCall | Self::ImportedOwnerCall | Self::ReceiverOwnerCall
+        )
     }
 
     fn is_uncertain(self) -> bool {
@@ -153,6 +159,7 @@ impl TypeScriptRelationKind {
         match self {
             Self::DirectOwnerCall => "direct_owner_call",
             Self::ImportedOwnerCall => "imported_owner_call",
+            Self::ReceiverOwnerCall => "receiver_owner_call",
             Self::SameFileProximity => "same_file_proximity",
             Self::DescribeName => "describe_name",
             Self::TestName => "test_name",
@@ -575,6 +582,7 @@ fn owner_from_variable_declarator(
             start_line: line_for_offset(source, declarator.span.start as usize),
             end_line: line_for_offset(source, declarator.span.end as usize),
             owner_kind: OwnerKind::ModuleFunction,
+            class_name: None,
             decorated: false,
             imports: imports.to_vec(),
         }),
@@ -596,6 +604,7 @@ fn owner_from_function(
         start_line: line_for_offset(source, func.span.start as usize),
         end_line: line_for_offset(source, func.span.end as usize),
         owner_kind,
+        class_name: None,
         decorated,
         imports: imports.to_vec(),
     }
@@ -616,6 +625,7 @@ fn owner_from_arrow(
         start_line: line_for_offset(source, owner_start as usize),
         end_line: line_for_offset(source, arrow.span.end as usize),
         owner_kind: arrow_owner_kind(file, source, name, arrow.span.start, arrow.span.end),
+        class_name: None,
         decorated,
         imports: imports.to_vec(),
     }
@@ -629,9 +639,20 @@ fn owners_from_class(
 ) -> Vec<TypeScriptOwner> {
     let mut owners = Vec::new();
     let class_decorated = !class.decorators.is_empty();
+    let class_name = class
+        .id
+        .as_ref()
+        .map(|identifier| identifier.name.as_str().to_string());
     for element in &class.body.body {
         if let ClassElement::MethodDefinition(method) = element
-            && let Some(owner) = owner_from_method(method, file, source, class_decorated, imports)
+            && let Some(owner) = owner_from_method(
+                method,
+                file,
+                source,
+                class_decorated,
+                class_name.as_deref(),
+                imports,
+            )
         {
             owners.push(owner);
         }
@@ -644,6 +665,7 @@ fn owner_from_method(
     file: &Path,
     source: &str,
     class_decorated: bool,
+    class_name: Option<&str>,
     imports: &[TypeScriptImport],
 ) -> Option<TypeScriptOwner> {
     if method.computed {
@@ -660,6 +682,7 @@ fn owner_from_method(
         } else {
             OwnerKind::Method
         },
+        class_name: class_name.map(str::to_string),
         decorated: class_decorated || !method.decorators.is_empty(),
         imports: imports.to_vec(),
     })
@@ -814,6 +837,12 @@ fn extract_imports_from_statements(
 fn push_unique_import(out: &mut Vec<TypeScriptImport>, import: TypeScriptImport) {
     if !out.iter().any(|existing| existing == &import) {
         out.push(import);
+    }
+}
+
+fn push_unique_string(out: &mut Vec<String>, value: String) {
+    if !out.iter().any(|existing| existing == &value) {
+        out.push(value);
     }
 }
 
@@ -1414,6 +1443,10 @@ fn owner_call_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
 ) -> Option<TypeScriptRelationKind> {
+    if matches!(owner.owner_kind, OwnerKind::Method | OwnerKind::ClassMethod) {
+        return receiver_owner_call_relation(test, owner)
+            .then_some(TypeScriptRelationKind::ReceiverOwnerCall);
+    }
     if contains_call_name(&test.body_text, &owner.name)
         && !owner_name_shadowed_by_unrelated_import(test, owner)
     {
@@ -1426,6 +1459,100 @@ fn owner_call_relation(
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
     }
     None
+}
+
+fn receiver_owner_call_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    if owner.owner_kind != OwnerKind::Method || test_mocks_owner_module(test, owner) {
+        return false;
+    }
+    let constructor_names = constructor_names_for_method_owner(test, owner);
+    if constructor_names.is_empty() {
+        return false;
+    }
+    receiver_names_for_constructor_calls(&test.body_text, &constructor_names)
+        .iter()
+        .any(|receiver| contains_member_call_name(&test.body_text, receiver, &owner.name))
+}
+
+fn constructor_names_for_method_owner(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+) -> Vec<String> {
+    let Some(class_name) = owner.class_name.as_deref() else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    if normalized_module_path(&test.file) == normalized_module_path(&owner.file) {
+        push_unique_string(&mut names, class_name.to_string());
+    }
+    for import in &test.imports_in_file {
+        if import.namespace || !import_source_matches_owner(import, &test.file, owner) {
+            continue;
+        }
+        if import.imported.as_deref() == Some(class_name) {
+            push_unique_string(&mut names, import.local.clone());
+        }
+    }
+    names
+}
+
+fn receiver_names_for_constructor_calls(
+    body_text: &str,
+    constructor_names: &[String],
+) -> Vec<String> {
+    let mut receiver_names = Vec::new();
+    for line in body_text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let Some(after_keyword) = ["const ", "let ", "var "]
+            .into_iter()
+            .find_map(|keyword| trimmed.strip_prefix(keyword))
+        else {
+            continue;
+        };
+        let Some((declaration, initializer)) = after_keyword.split_once('=') else {
+            continue;
+        };
+        let Some(receiver_name) = receiver_name_from_declaration(declaration) else {
+            continue;
+        };
+        if constructor_names
+            .iter()
+            .any(|constructor| contains_new_constructor_call(initializer, constructor))
+        {
+            push_unique_string(&mut receiver_names, receiver_name);
+        }
+    }
+    receiver_names
+}
+
+fn receiver_name_from_declaration(declaration: &str) -> Option<String> {
+    if declaration.contains(',') {
+        return None;
+    }
+    let name = declaration.split(':').next()?.trim();
+    is_safe_javascript_identifier(name).then(|| name.to_string())
+}
+
+fn contains_new_constructor_call(text: &str, constructor_name: &str) -> bool {
+    let needle = format!("new {constructor_name}(");
+    text.match_indices(&needle).any(|(idx, _)| {
+        text[..idx]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !is_javascript_identifier_char(ch) && ch != '.')
+            && !line_prefix_looks_like_comment_or_string(text, idx)
+            && !inside_block_comment(text, idx)
+    })
+}
+
+fn test_mocks_owner_module(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    test.mocks_in_file.iter().any(|source| {
+        normalized_relative_import_module(&test.file, source)
+            .is_some_and(|module| module == normalized_module_path(&owner.file))
+    })
 }
 
 fn heuristic_relation(
@@ -3014,8 +3141,12 @@ fn classify_change(
 
 fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
     match owner.owner_kind {
-        OwnerKind::Method | OwnerKind::ClassMethod => format!(
-            "No trusted TypeScript method relation for `{}`. Object method calls stay ambiguous in preview until method related-test matching lands.",
+        OwnerKind::Method => format!(
+            "No trusted TypeScript method receiver relation for `{}`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, prototype aliases, and dynamic property access stay ambiguous in preview.",
+            owner.name
+        ),
+        OwnerKind::ClassMethod => format!(
+            "No trusted TypeScript class-method relation for `{}`. Static class calls stay missing context until class-method related-test matching lands.",
             owner.name
         ),
         OwnerKind::ModuleFunction => format!(
@@ -3031,8 +3162,11 @@ fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
 
 fn no_static_path_recommendation(owner: &TypeScriptOwner) -> String {
     match owner.owner_kind {
-        OwnerKind::Method | OwnerKind::ClassMethod => {
-            "TypeScript preview advisory: method owner relation is missing context; add an exact method observer only after the adapter can safely relate the receiver shape.".to_string()
+        OwnerKind::Method => {
+            "TypeScript preview advisory: method receiver relation is missing context; use a direct `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection, mocked modules, prototype aliases, and dynamic property access advisory.".to_string()
+        }
+        OwnerKind::ClassMethod => {
+            "TypeScript preview advisory: class-method relation is missing context; keep the finding advisory until class-method related-test matching lands.".to_string()
         }
         OwnerKind::ModuleFunction => {
             "TypeScript preview advisory: module initializer relation is missing context; add an exact value observer and keep the finding advisory until identifier-reference matching lands.".to_string()
@@ -3309,6 +3443,7 @@ mod tests {
             start_line: 1,
             end_line: 20,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         }
@@ -3699,6 +3834,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3741,6 +3877,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3762,6 +3899,130 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     }
 
     #[test]
+    fn find_related_tests_matches_bounded_method_receiver_calls() {
+        let owner = TypeScriptOwner {
+            name: "total".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 5,
+            end_line: 8,
+            owner_kind: OwnerKind::Method,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart as Subject } from "../src/owners";
+
+test("cart total observes receiver", () => {
+    const cart = new Subject();
+    expect(cart.total()).toBe(1);
+});
+"#,
+        );
+
+        let candidates = related_test_candidates(&owner, &tests);
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].relation,
+            TypeScriptRelationKind::ReceiverOwnerCall
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "cart total observes receiver");
+        assert_eq!(related[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(related[0].oracle_strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn find_related_tests_keeps_factory_receiver_calls_unrelated_for_method_owners() {
+        let owner = TypeScriptOwner {
+            name: "total".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 5,
+            end_line: 8,
+            owner_kind: OwnerKind::Method,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+test("cart total through factory stays ambiguous", () => {
+    const cart = makeCart();
+    expect(cart.total()).toBe(1);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_keeps_dynamic_method_receiver_calls_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "total".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 5,
+            end_line: 8,
+            owner_kind: OwnerKind::Method,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+test("cart total through dynamic method stays ambiguous", () => {
+    const cart = new Cart();
+    const method = "total";
+    expect(cart[method]()).toBe(1);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_keeps_mocked_method_receiver_calls_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "total".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 5,
+            end_line: 8,
+            owner_kind: OwnerKind::Method,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+vi.mock("../src/owners");
+
+test("mocked cart total stays ambiguous", () => {
+    const cart = new Cart();
+    expect(cart.total()).toBe(1);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
     fn find_related_tests_matches_named_import_alias_calls() {
         let owner = TypeScriptOwner {
             name: "applyDiscount".to_string(),
@@ -3769,6 +4030,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3796,6 +4058,7 @@ test("alias import observes threshold", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3823,6 +4086,7 @@ test("namespace import observes threshold", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3859,6 +4123,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3887,6 +4152,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3928,6 +4194,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -3992,6 +4259,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -4018,6 +4286,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -4063,6 +4332,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -4375,6 +4645,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -4413,6 +4684,7 @@ test("type only import", () => {
                 start_line: 1,
                 end_line: 5,
                 owner_kind: OwnerKind::Function,
+                class_name: None,
                 decorated: false,
                 imports: Vec::new(),
             },
@@ -4422,6 +4694,7 @@ test("type only import", () => {
                 start_line: 1,
                 end_line: 5,
                 owner_kind: OwnerKind::Function,
+                class_name: None,
                 decorated: false,
                 imports: Vec::new(),
             },
@@ -4951,6 +5224,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5006,6 +5280,7 @@ test("type only import", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5034,6 +5309,7 @@ test("type only import", () => {
             start_line: 10,
             end_line: 20,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5610,6 +5886,7 @@ test("alpha", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5649,6 +5926,7 @@ test("alpha", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5675,6 +5953,7 @@ test("alpha", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
@@ -5702,6 +5981,7 @@ test("alpha", () => {
             start_line: 1,
             end_line: 5,
             owner_kind: OwnerKind::Function,
+            class_name: None,
             decorated: false,
             imports: Vec::new(),
         };
