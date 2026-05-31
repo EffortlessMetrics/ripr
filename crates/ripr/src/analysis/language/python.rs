@@ -2344,6 +2344,14 @@ fn static_limit_for_change(
             missing: "Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior.".to_string(),
         });
     }
+    if contains_dynamic_import(trimmed) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::MissingImportGraph,
+            evidence: "static_limit missing_import_graph: changed line uses dynamic import syntax"
+                .to_string(),
+            missing: "Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not build an import graph or resolve imported implementation semantics.".to_string(),
+        });
+    }
     if contains_metaprogramming(trimmed) {
         return Some(PythonStaticLimit {
             kind: StaticLimitKind::Metaprogramming,
@@ -2423,6 +2431,58 @@ fn static_limit_for_change(
 
 fn contains_dynamic_dispatch(text: &str) -> bool {
     text.contains("getattr(") || (text.contains('[') && text.contains("]("))
+}
+
+fn contains_dynamic_import(text: &str) -> bool {
+    contains_python_call_shape(text, "importlib.import_module")
+        || contains_python_call_shape(text, "__import__")
+}
+
+fn contains_python_call_shape(text: &str, callee: &str) -> bool {
+    text.match_indices(callee).any(|(idx, _)| {
+        python_callee_start_has_boundary(text, idx)
+            && text[idx + callee.len()..].trim_start().starts_with('(')
+            && !python_prefix_hides_code(line_prefix_before(text, idx))
+    })
+}
+
+fn python_callee_start_has_boundary(text: &str, idx: usize) -> bool {
+    text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_python_identifier_char(ch) && ch != '.')
+}
+
+fn line_prefix_before(text: &str, idx: usize) -> &str {
+    text[..idx]
+        .rsplit_once('\n')
+        .map_or(&text[..idx], |(_, line)| line)
+}
+
+fn python_prefix_hides_code(prefix: &str) -> bool {
+    let mut quote = None;
+    let mut escaped = false;
+    for ch in prefix.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if ch == '\\' {
+                escaped = true;
+            } else if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if ch == '#' {
+            return true;
+        }
+        if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+        }
+    }
+    quote.is_some()
 }
 
 fn contains_metaprogramming(text: &str) -> bool {

@@ -1,0 +1,8 @@
+diff --git a/src/plugin_loader.py b/src/plugin_loader.py
+index 0000000..1111111 100644
+--- a/src/plugin_loader.py
++++ b/src/plugin_loader.py
+@@ -3,2 +3,2 @@
+ def run_plugin(module_name, payload):
+-    return importlib.import_module(module_name).handle(payload)
++    return importlib.import_module(module_name).handle(payload, strict=True)

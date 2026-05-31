@@ -1596,6 +1596,31 @@ fn contains_dynamic_dispatch_detects_registry_indexed_call() {
 }
 
 #[test]
+fn contains_dynamic_import_detects_runtime_import_calls() {
+    assert!(contains_dynamic_import(
+        "    return importlib.import_module(module_name).handle(payload)"
+    ));
+    assert!(contains_dynamic_import(
+        "    return __import__(module_name).handle(payload)"
+    ));
+    assert!(contains_dynamic_import(
+        "    return __import__ (module_name).handle(payload)"
+    ));
+    assert!(!contains_dynamic_import(
+        "    return imported_module.handle(payload)"
+    ));
+    assert!(!contains_dynamic_import(
+        "    note = \"call importlib.import_module(module_name)\""
+    ));
+    assert!(!contains_dynamic_import(
+        "    return payload  # __import__(module_name)"
+    ));
+    assert!(!contains_dynamic_import(
+        "    return not_importlib.import_module(module_name)"
+    ));
+}
+
+#[test]
 fn looks_like_call_expression_rejects_text_without_parens() {
     assert!(!looks_like_call_expression(""));
     assert!(!looks_like_call_expression("name"));

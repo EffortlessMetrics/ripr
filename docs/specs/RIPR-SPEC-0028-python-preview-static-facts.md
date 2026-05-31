@@ -155,7 +155,8 @@ values defined in RIPR-SPEC-0026:
 - `dynamic_dispatch` (e.g., `getattr(obj, name)(...)` or mapping lookups such as `dict[key]` followed by invocation)
 - `metaprogramming` (e.g., metaclass usage, `__getattr__` indirection)
 - `missing_import_graph` (the symbol is imported from a module the
-  adapter cannot resolve syntactically)
+  adapter cannot resolve syntactically, or the changed line uses dynamic import
+  syntax such as `importlib.import_module(...)` / `__import__(...)`)
 - `decorator_indirection` (the decorator changes the call semantics in a
   way the syntax-first adapter cannot follow)
 - `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`

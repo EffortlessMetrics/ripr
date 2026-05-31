@@ -1140,6 +1140,10 @@ Prevent Python support from becoming noisy.
 - `python_generated_file_excluded` pins detectable generated Python file diffs
   such as `*_pb2.py` as excluded from preview diff analysis, so generated-code
   edits do not produce repair cards, canonical repair gaps, or swarm packets.
+- `python_dynamic_import_limit` pins runtime import calls such as
+  `importlib.import_module(...)` as `missing_import_graph` static limitations,
+  so exact-looking related tests stay visible but do not become repair cards,
+  canonical gaps, or swarm packets.
 
 ### Work item: dogfood/python-real-repo-evals
 

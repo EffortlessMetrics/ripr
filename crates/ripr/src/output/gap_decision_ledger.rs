@@ -1672,6 +1672,11 @@ mod tests {
             .to_string()
     }
 
+    fn python_dynamic_import_static_limit_check_output() -> String {
+        include_str!("../../../../fixtures/python_dynamic_import_limit/expected/check.json")
+            .to_string()
+    }
+
     fn minimal_record() -> Value {
         serde_json::json!({
             "gap_id": "gap:minimal",
@@ -3532,6 +3537,38 @@ mod tests {
         assert_eq!(report.summary.records_total, 1);
         assert_eq!(report.summary.static_limitation_total, 1);
         assert_eq!(report.summary.preview_ineligible_total, 1);
+        assert_eq!(report.summary.projection_agent_packet_eligible, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_python_dynamic_import_limit_stays_report_only() -> Result<(), String> {
+        let payload = python_dynamic_import_static_limit_check_output();
+        let records = gap_records_from_check_output_json(&payload)
+            .map_err(|e| format!("parse failed: {e}"))?;
+        assert_eq!(records.len(), 1);
+        let record = &records[0];
+        assert_eq!(record.kind, "StaticLimitation");
+        assert_eq!(record.language, "python");
+        assert_eq!(record.repairability, "analyzer_limitation");
+        assert!(record.repair_route.is_none());
+        assert!(record.verification_commands.is_empty());
+        assert_eq!(
+            record.static_limit_kind.as_deref(),
+            Some("missing_import_graph")
+        );
+        assert!(!projection_eligible(record, "agent_packet"));
+
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: "fixtures/python_dynamic_import_limit/input".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "before-check.json".to_string(),
+            records_json: Ok(payload),
+        });
+        assert_eq!(report.summary.records_total, 1);
+        assert_eq!(report.summary.repairable_total, 0);
+        assert_eq!(report.summary.static_limitation_total, 1);
         assert_eq!(report.summary.projection_agent_packet_eligible, 0);
         Ok(())
     }
