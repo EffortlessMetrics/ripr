@@ -22468,7 +22468,7 @@ fn static_limitation_subroute(
             related_test_affinity_subroute(record, evidence_class)
         }
         "activation_owner_call_absent_same_file_only" => {
-            "same_file_only_missing_owner_call".to_string()
+            same_file_owner_call_subroute(record, evidence_class)
         }
         _ => audit_identifier_slug(category),
     }
@@ -22507,6 +22507,25 @@ fn related_test_affinity_subroute(record: &Value, evidence_class: &str) -> Strin
         format!("{relation}_call_presence_function_call_missing_owner_call")
     } else {
         format!("{relation}_missing_owner_call")
+    }
+}
+
+fn same_file_owner_call_subroute(record: &Value, evidence_class: &str) -> String {
+    if audit_identifier_slug(evidence_class) != "call_presence" {
+        let class = audit_identifier_slug(evidence_class);
+        return format!("same_file_only_{class}_missing_owner_call");
+    }
+    let Some(expression) = audit_static_limitation_example_expression(record) else {
+        return "same_file_only_missing_owner_call".to_string();
+    };
+    if call_presence_expression_is_method_chain(&expression) {
+        "same_file_only_call_presence_method_chain_missing_owner_call".to_string()
+    } else if call_presence_expression_is_associated_call(&expression) {
+        "same_file_only_call_presence_associated_call_missing_owner_call".to_string()
+    } else if expression.contains('(') {
+        "same_file_only_call_presence_function_call_missing_owner_call".to_string()
+    } else {
+        "same_file_only_missing_owner_call".to_string()
     }
 }
 
@@ -22604,6 +22623,13 @@ fn static_limitation_unlock_condition(
             "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is proven"
         );
     }
+    if category == "activation_owner_call_absent_same_file_only"
+        && subroute.starts_with("same_file_only_call_presence_")
+    {
+        return format!(
+            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is proven"
+        );
+    }
 
     match category {
         "activation_boundary_input_unresolved" => {
@@ -22654,6 +22680,11 @@ fn static_limitation_backlog_packet_non_claims(
         && subroute.is_some_and(|subroute| subroute.starts_with("same_test_file_call_presence_"))
     {
         claims.push("do not treat same-file affinity as owner-call evidence".to_string());
+    }
+    if category == "activation_owner_call_absent_same_file_only"
+        && subroute.is_some_and(|subroute| subroute.starts_with("same_file_only_call_presence_"))
+    {
+        claims.push("do not treat same-file proximity as owner-call evidence".to_string());
     }
     claims
 }
@@ -85917,6 +85948,79 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_static_limitation_backlog_splits_same_file_owner_call_absence_by_expression_shape() {
+        let limitation = serde_json::json!({});
+        fn same_file_record(expression: Option<&str>) -> Value {
+            let mut record = serde_json::json!({
+                "related_tests": [
+                    {
+                        "relation_reason": "same_test_file"
+                    }
+                ]
+            });
+            if let Some(expression) = expression {
+                record["raw_findings"] = serde_json::json!([
+                    {
+                        "expression": expression
+                    }
+                ]);
+            }
+            record
+        }
+
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("entry.evidence.missing_discriminators.iter()")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_call_presence_method_chain_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("u64::from(*byte)")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_call_presence_associated_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("missing_evidence(context.probe, &class)")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_call_presence_function_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("return Vec::new()")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "return_value"
+            ),
+            "same_file_only_return_value_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(None),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_missing_owner_call"
+        );
+    }
+
+    #[test]
     fn lane1_static_limitation_backlog_specializes_same_file_affinity_unlock_condition() {
         let unlock = crate::static_limitation_unlock_condition(
             "activation_owner_call_absent_affinity_only",
@@ -85956,6 +86060,23 @@ covered_by = ["cargo xtask check-file-policy"]
             !generic_claims
                 .iter()
                 .any(|claim| claim == "do not treat same-file affinity as owner-call evidence")
+        );
+
+        let same_file_unlock = crate::static_limitation_unlock_condition(
+            "activation_owner_call_absent_same_file_only",
+            "same_file_only_call_presence_function_call_missing_owner_call",
+            "analysis/same-file-owner-call-tracing",
+        );
+        assert!(same_file_unlock.contains("bounded production call graph"));
+
+        let same_file_claims = crate::static_limitation_backlog_packet_non_claims(
+            "activation_owner_call_absent_same_file_only",
+            Some("same_file_only_call_presence_function_call_missing_owner_call"),
+        );
+        assert!(
+            same_file_claims
+                .iter()
+                .any(|claim| claim == "do not treat same-file proximity as owner-call evidence")
         );
     }
 
