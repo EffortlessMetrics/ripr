@@ -9733,6 +9733,7 @@ The queue envelope is:
     "language_records_total": 3,
     "queue_total": 2,
     "returned": 2,
+    "stale_total": 0,
     "excluded_records_total": 1,
     "conflict_groups_total": 1
   },
@@ -9754,6 +9755,7 @@ The queue envelope is:
       "priority": 1,
       "queue_state": "queued",
       "staleness_status": "not_evaluated",
+      "staleness_reason": "GapRecord queue rendering does not compare the ledger with current git state yet.",
       "gap_id": "gap:python:pricing-boundary",
       "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "language": "python",
@@ -9786,11 +9788,15 @@ The queue envelope is:
 }
 ```
 
-`staleness_status = "not_evaluated"` is intentional until the outcome/ledger
-work can compare queue items against current git state. Consumers must treat it
-as a stop-and-refresh signal, not freshness proof. `conflict_group_size > 1`
-means another queued packet targets the same edit surface, so schedulers should
-avoid assigning those packets in parallel.
+`staleness_status = "not_evaluated"` is intentional when no receipt freshness
+state is attached. Consumers must treat it as a stop-and-refresh signal, not
+freshness proof. If a GapRecord receipt says the packet is stale, mismatched, or
+already resolved, the queue keeps the item visible with
+`queue_state = "blocked_stale"`, `staleness_status = "stale"`, and a
+`staleness_reason`; schedulers must refresh instead of assigning that packet.
+`summary.stale_total` counts those visible stale packets. `conflict_group_size >
+1` means another queued packet targets the same edit surface, so schedulers
+should avoid assigning those packets in parallel.
 
 If the gap decision ledger omits top-level `root` provenance, or declares a
 `root` that clearly differs from the selected `--root`, `ripr swarm queue`

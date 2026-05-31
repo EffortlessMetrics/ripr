@@ -26,6 +26,10 @@ use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
 use crate::output::path::{display_path, display_path_text};
+use crate::output::receipt_lifecycle::{
+    RECEIPT_GAP_MISMATCH, RECEIPT_MOVEMENT_IMPROVED, RECEIPT_MOVEMENT_UNCHANGED, RECEIPT_STALE,
+    normalize_receipt_lifecycle_state, receipt_lifecycle_state_from_movement,
+};
 use serde_json::json;
 use std::collections::BTreeMap;
 
@@ -262,6 +266,7 @@ pub(crate) fn render_agent_gap_record_queue_json(
         };
         let allowed_edit_surface = allowed_edit_surface_for_gap_route(route);
         let conflict_group = conflict_group_for_gap_record(record, &allowed_edit_surface);
+        let freshness = gap_record_queue_freshness(record);
         candidates.push(GapRecordQueueCandidate {
             source_index,
             gap_id: gap_record_id(record),
@@ -277,6 +282,9 @@ pub(crate) fn render_agent_gap_record_queue_json(
             verify_command: verify_command.clone(),
             receipt_command: record.receipt_command.clone(),
             conflict_group,
+            queue_state: freshness.queue_state,
+            staleness_status: freshness.staleness_status,
+            staleness_reason: freshness.staleness_reason,
             allowed_edit_surface: allowed_edit_surface.clone(),
             forbidden_files: forbidden_files_for_gap_record(record, &allowed_edit_surface),
             changed_owner: record
@@ -299,6 +307,10 @@ pub(crate) fn render_agent_gap_record_queue_json(
     let conflict_counts = gap_record_queue_conflict_counts(&candidates);
     let selected: Vec<_> = candidates.iter().take(top).collect();
     let conflict_groups = gap_record_queue_conflict_groups(&candidates);
+    let stale_total = candidates
+        .iter()
+        .filter(|candidate| candidate.staleness_status == "stale")
+        .count();
     let excluded_records_total: usize = excluded_by_reason.values().sum();
     let exclusion_reasons: Vec<_> = excluded_by_reason
         .iter()
@@ -320,9 +332,9 @@ pub(crate) fn render_agent_gap_record_queue_json(
             json!({
                 "priority": selected_index + 1,
                 "source_index": candidate.source_index,
-                "queue_state": "queued",
-                "staleness_status": "not_evaluated",
-                "staleness_reason": "GapRecord queue rendering does not compare the ledger with current git state yet.",
+                "queue_state": candidate.queue_state.as_str(),
+                "staleness_status": candidate.staleness_status.as_str(),
+                "staleness_reason": candidate.staleness_reason.as_str(),
                 "gap_id": candidate.gap_id.as_str(),
                 "canonical_gap_id": candidate.canonical_gap_id.as_ref(),
                 "gap_kind": candidate.gap_kind.as_str(),
@@ -378,6 +390,7 @@ pub(crate) fn render_agent_gap_record_queue_json(
             "language_records_total": language_records_total,
             "queue_total": candidates.len(),
             "returned": packets.len(),
+            "stale_total": stale_total,
             "excluded_records_total": excluded_records_total,
             "conflict_groups_total": conflict_groups.len(),
         },
@@ -388,6 +401,7 @@ pub(crate) fn render_agent_gap_record_queue_json(
             "do not consume raw findings as swarm work",
             "do not queue static limitations, no-action records, or records without bounded edit surfaces",
             "do not edit files outside allowed_edit_surface",
+            "do not assign packets with queue_state=blocked_stale or staleness_status=stale",
             "do not treat staleness_status=not_evaluated as freshness proof",
             "do not run providers, generate tests, run mutation testing, or claim runtime proof from this queue"
         ],
@@ -552,6 +566,9 @@ struct GapRecordQueueCandidate {
     verify_command: String,
     receipt_command: Option<String>,
     conflict_group: String,
+    queue_state: String,
+    staleness_status: String,
+    staleness_reason: String,
     allowed_edit_surface: Vec<String>,
     forbidden_files: Vec<String>,
     changed_owner: Option<String>,
@@ -559,6 +576,13 @@ struct GapRecordQueueCandidate {
     changed_line: Option<u64>,
     changed_behavior: Option<String>,
     missing_discriminator: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct GapRecordQueueFreshness {
+    queue_state: String,
+    staleness_status: String,
+    staleness_reason: String,
 }
 
 fn gap_record_queue_conflict_counts(
@@ -591,6 +615,74 @@ fn gap_record_queue_conflict_groups(
             })
         })
         .collect()
+}
+
+fn gap_record_queue_freshness(record: &GapRecord) -> GapRecordQueueFreshness {
+    let default = || GapRecordQueueFreshness {
+        queue_state: "queued".to_string(),
+        staleness_status: "not_evaluated".to_string(),
+        staleness_reason:
+            "GapRecord queue rendering does not compare the ledger with current git state yet."
+                .to_string(),
+    };
+
+    let Some(receipt) = record.receipt.as_ref() else {
+        return default();
+    };
+    if let Some(state) = receipt.state.as_deref().and_then(non_empty) {
+        let lifecycle = normalize_receipt_lifecycle_state(&state);
+        if lifecycle == RECEIPT_STALE {
+            return stale_queue_freshness(
+                "GapRecord receipt state is stale; refresh the ledger before assigning this packet.",
+            );
+        }
+        if lifecycle == RECEIPT_GAP_MISMATCH {
+            return stale_queue_freshness(
+                "GapRecord receipt points at a different gap; refresh the ledger before assigning this packet.",
+            );
+        }
+    }
+
+    if let Some(movement) = receipt.movement.as_deref().and_then(non_empty) {
+        let normalized = normalize_queue_receipt_movement(&movement);
+        if matches!(normalized.as_str(), "closed" | "resolved") {
+            return stale_queue_freshness(
+                "GapRecord receipt movement says this gap already closed; refresh the queue before assigning this packet.",
+            );
+        }
+        if normalized == RECEIPT_STALE || normalized == RECEIPT_GAP_MISMATCH {
+            return stale_queue_freshness(
+                "GapRecord receipt movement marks this packet stale; refresh the queue before assigning this packet.",
+            );
+        }
+    }
+
+    default()
+}
+
+fn stale_queue_freshness(reason: &str) -> GapRecordQueueFreshness {
+    GapRecordQueueFreshness {
+        queue_state: "blocked_stale".to_string(),
+        staleness_status: "stale".to_string(),
+        staleness_reason: reason.to_string(),
+    }
+}
+
+fn normalize_queue_receipt_movement(movement: &str) -> String {
+    let raw = movement.trim().to_ascii_lowercase();
+    match raw.as_str() {
+        "closed" => "closed".to_string(),
+        "resolved" | "receipt_movement_resolved" => "resolved".to_string(),
+        "improved" | "movement_improved" | "receipt_improved" | RECEIPT_MOVEMENT_IMPROVED => {
+            RECEIPT_MOVEMENT_IMPROVED.to_string()
+        }
+        "unchanged"
+        | "movement_unchanged"
+        | "receipt_unchanged"
+        | "unchanged_after_attempt"
+        | RECEIPT_MOVEMENT_UNCHANGED => RECEIPT_MOVEMENT_UNCHANGED.to_string(),
+        _ => receipt_lifecycle_state_from_movement(Some(movement)),
+    }
 }
 
 /// Return the first concrete assertion example carried by the agent
@@ -2935,6 +3027,13 @@ mod tests {
                 .and_then(serde_json::Value::as_u64),
             Some(1)
         );
+        assert_eq!(
+            value
+                .get("summary")
+                .and_then(|summary| summary.get("stale_total"))
+                .and_then(serde_json::Value::as_u64),
+            Some(0)
+        );
         let first = packets
             .first()
             .ok_or_else(|| format!("missing first packet in: {json}"))?;
@@ -2998,6 +3097,83 @@ mod tests {
         assert!(
             json.contains("is not agent-packet eligible: already_observed"),
             "queue should explain excluded no-action records: {json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_queue_marks_receipt_closed_python_packets_stale() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:python:pricing-boundary",
+              "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+              "kind":"MissingBoundaryAssertion",
+              "language":"python",
+              "language_status":"preview",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.py","line":7,"owner":"calculate_discount"},
+              "repair_route":{
+                "route_kind":"StrengthenExistingTest",
+                "target_file":"tests/test_pricing.py",
+                "related_test":"test_calculate_discount_threshold_boundary",
+                "missing_discriminator":"amount == threshold",
+                "assertion_shape":"assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+                "changed_behavior":"if amount >= threshold:"
+              },
+              "verification_commands":["pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"],
+              "receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json",
+              "receipt":{"state":"receipt_found","movement":"resolved","path":"target/ripr/receipts/gap-python-pricing-boundary.targeted-test-outcome.json"},
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
+            }]}"#,
+        )?;
+
+        let json = render_agent_gap_record_queue_json(
+            ".",
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+            "python",
+            10,
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("queue JSON should parse: {err}"))?;
+        assert_eq!(
+            value
+                .get("summary")
+                .and_then(|summary| summary.get("stale_total"))
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+        let packet = value
+            .get("packets")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing packet in: {json}"))?;
+        assert_eq!(
+            packet
+                .get("queue_state")
+                .and_then(serde_json::Value::as_str),
+            Some("blocked_stale")
+        );
+        assert_eq!(
+            packet
+                .get("staleness_status")
+                .and_then(serde_json::Value::as_str),
+            Some("stale")
+        );
+        assert!(
+            packet
+                .get("staleness_reason")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|reason| reason.contains("already closed")),
+            "stale packet should explain the closed receipt: {json}"
+        );
+        assert!(
+            json.contains("do not assign packets with queue_state=blocked_stale"),
+            "queue should tell schedulers not to assign stale packets: {json}"
         );
         Ok(())
     }

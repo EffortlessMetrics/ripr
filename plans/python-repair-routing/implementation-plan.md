@@ -999,6 +999,10 @@ Make multiple Python repair cards shardable.
   declares a different root from the selected `--root`, returning a blocked
   queue with no packets instead of assigning rootless, stale, or
   wrong-workspace repair work.
+- Queue packets now surface explicit stale receipt movement from GapRecords as
+  `queue_state = "blocked_stale"`, `staleness_status = "stale"`, and
+  `summary.stale_total`, so a closed or stale Python repair packet is visible
+  but not silently assignable.
 
 ### Work item: swarm/python-agent-result-ingestion
 
