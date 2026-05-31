@@ -577,7 +577,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/ripr-plus.{json,md}",
             false,
-            "Writes the repo-wide RIPR+ quality receipt from repo-badge-json canonical actionable gaps, not raw seam inventory; --gap-ledger uses an existing gap decision ledger to avoid an expensive fresh repo scan.",
+            "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
         ),
         command_entry(
             "repo-seam-inventory",

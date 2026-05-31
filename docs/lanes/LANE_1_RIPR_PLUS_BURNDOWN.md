@@ -10,8 +10,11 @@ claim badge movement without receipt movement.
 ## Current Measurement Contract
 
 - Raw seam inventory is not debt. `repo-seams-json` is an inventory surface.
-- Repo-wide unresolved RIPR+ debt is sourced from `repo-badge-json` on the
-  canonical actionable basis, using `counts.unsuppressed_exposure_gaps`.
+- Repo-wide unresolved RIPR+ debt is sourced from bounded
+  `repo-exposure-summary-json` on the canonical actionable basis, using
+  `metrics.unsuppressed_exposure_gaps`.
+- The explicit `--gap-ledger` path still uses `repo-badge-json` with
+  `counts.unsuppressed_exposure_gaps` to avoid a fresh large-repo scan.
 - The RIPR+ receipt contract remains:
   `unresolved`, `top_files`, `suppressed`, and `head`.
 - `top_files` must stay bounded. Do not run full `repo-exposure-json` just to
@@ -22,7 +25,7 @@ claim badge movement without receipt movement.
 
 | Evidence | State |
 | --- | --- |
-| Gauge basis fix | #586 is closed by PR #668, which added `cargo xtask ripr-plus` and sources the receipt from `repo-badge-json`. |
+| Gauge basis fix | #586 is closed by PR #668, which added `cargo xtask ripr-plus` and sourced the receipt from canonical actionable gap data rather than raw seams. The no-ledger path now reads bounded `repo-exposure-summary-json`; `--gap-ledger` remains available through `repo-badge-json`. |
 | Current committed public endpoint | `badges/ripr.json` reports `191`; `badges/ripr-plus.json` reports `191`. These are endpoint snapshots, not proof of a fresh recompute in this PR. |
 | Fresh no-ledger repo badge recompute | `cargo xtask badge-basis` timed out after 90 seconds while generating `repo-badge-json`; no public badge endpoint was refreshed. |
 | Latest sampled packet report | `target/ripr/reports/actionable-gaps.json` is `limited_sampled_input`, `repo-exposure-json:limit_5000_of_46406`, and `downstream_consumable: false`; it emitted zero repair packets and must not be treated as the full repo queue. |
@@ -38,13 +41,15 @@ Use these rules until the lane records a fresh downstream-consumable queue:
   explicit `--gap-ledger` for summary counts.
 - Use `cargo xtask repo-exposure-summary-report` when local planning needs a
   bounded repo exposure summary. It writes
-  `target/ripr/reports/repo-exposure-summary.json`.
+  `target/ripr/reports/repo-exposure-summary.json`; no-ledger
+  `cargo xtask ripr-plus` consumes the same bounded summary shape for
+  `unresolved` and `top_files`.
 - Do not use full `repo-exposure-json` for ordinary badge, receipt, top-file, or
   packet-queue paths.
-- Treat fresh no-ledger `repo-badge-json` and `rtk cargo xtask badge-basis`
-  refreshes as build-heavy full-refresh exceptions, not ordinary summary
-  paths. Run only one such scan at a time, then share the generated receipt or
-  ledger with parallel agents.
+- Treat fresh no-ledger bounded summary, no-ledger `repo-badge-json`, and
+  `rtk cargo xtask badge-basis` refreshes as build-heavy full-refresh
+  exceptions, not ordinary repeated loop steps. Run only one such scan at a
+  time, then share the generated receipt or ledger with parallel agents.
 - Use `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000` only as a scoped opt-in
   for a deliberate large-repo refresh on a machine with enough disk headroom.
 - Keep large temporary JSON under `target/ripr/` when possible, and remove

@@ -38736,19 +38736,76 @@ fn build_badge_basis_report(
 pub(crate) fn ripr_plus_impl(args: &[String]) -> Result<(), String> {
     let options = parse_repo_badge_artifact_options(args, "ripr-plus")?;
     run_with_repo_root_cwd(|| {
-        let repo_badge_json =
-            run_repo_badge_artifact_job("repo-badge-json", options.gap_ledger.as_deref())?;
         let head = git_value(&["rev-parse", "HEAD"]);
-        let receipt = ripr_plus_receipt_from_repo_badge_json(
-            &repo_badge_json,
-            &head,
-            options.gap_ledger.as_deref(),
-        )?;
+        let receipt = if options.gap_ledger.is_some() {
+            let repo_badge_json =
+                run_repo_badge_artifact_job("repo-badge-json", options.gap_ledger.as_deref())?;
+            ripr_plus_receipt_from_repo_badge_json(
+                &repo_badge_json,
+                &head,
+                options.gap_ledger.as_deref(),
+            )?
+        } else {
+            let repo_summary_json = run_repo_exposure_summary_job()?;
+            ripr_plus_receipt_from_repo_exposure_summary_json(&repo_summary_json, &head)?
+        };
         let json = serde_json::to_string_pretty(&receipt)
             .map_err(|err| format!("failed to serialize ripr-plus receipt: {err}"))?;
         write_report("ripr-plus.json", &format!("{json}\n"))?;
         write_report("ripr-plus.md", &ripr_plus_receipt_markdown(&receipt))
     })
+}
+
+fn run_repo_exposure_summary_job() -> Result<String, String> {
+    let timeout = Duration::from_millis(repo_badge_artifact_timeout_ms());
+    if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
+        let repo_root = repo_root()?;
+        let args = vec![
+            "check".to_string(),
+            "--root".to_string(),
+            normalize_path(&repo_root),
+            "--format".to_string(),
+            "repo-exposure-summary-json".to_string(),
+        ];
+        return run_repo_exposure_summary_command(&ripr_bin, &args, timeout);
+    }
+
+    let args = repo_seam_inventory_command_args("repo-exposure-summary-json");
+    run_repo_exposure_summary_command("cargo", &args, timeout)
+}
+
+fn run_repo_exposure_summary_command(
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+) -> Result<String, String> {
+    let output = capture_output_with_timeout(
+        program,
+        args,
+        &[],
+        timeout,
+        "repo exposure summary generation for ripr-plus",
+    )?;
+    let command = format!("{} {}", program, args.join(" "));
+    if output.timed_out {
+        return Err(format!(
+            "{command} timed out after {} ms while generating repo-exposure-summary-json for ripr-plus; no RIPR+ receipt is claimed. Rerun with {REPO_BADGE_ARTIFACT_TIMEOUT_ENV}=<milliseconds> only in an explicit large-repo refresh, or pass --gap-ledger to use an existing gap decision ledger.",
+            timeout.as_millis()
+        ));
+    }
+    let Some(status) = output.status else {
+        return Err(format!(
+            "{command} finished without an exit status while generating repo-exposure-summary-json for ripr-plus"
+        ));
+    };
+    if !status.success() {
+        return Err(format!(
+            "{command} failed with {status}\nstdout:\n{}\nstderr:\n{}",
+            output.stdout.trim(),
+            output.stderr.trim()
+        ));
+    }
+    Ok(output.stdout)
 }
 
 fn ripr_plus_receipt_from_repo_badge_json(
@@ -38836,6 +38893,80 @@ fn ripr_plus_accepts_badge_basis(basis: &str) -> bool {
     matches!(basis, "canonical_actionable_gap" | "gap_decision_ledger")
 }
 
+fn ripr_plus_receipt_from_repo_exposure_summary_json(
+    json: &str,
+    head: &str,
+) -> Result<Value, String> {
+    let summary: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse repo-exposure-summary-json: {err}"))?;
+    let format = json_string_field_value(&summary, "format");
+    if format != "repo-exposure-summary-json" {
+        return Err(format!(
+            "ripr-plus requires repo-exposure-summary-json, got {format:?}"
+        ));
+    }
+    let basis = json_string_field_value(&summary, "basis");
+    if basis != "canonical_actionable_gap" {
+        return Err(format!(
+            "ripr-plus requires repo-exposure-summary-json with canonical_actionable_gap basis, got {basis:?}"
+        ));
+    }
+
+    let unresolved =
+        json_path_usize_required(&summary, &["metrics", "unsuppressed_exposure_gaps"])?;
+    let suppressed =
+        json_path_usize_optional(&summary, &["metrics", "suppressed_exposure_gaps"]).unwrap_or(0);
+    let raw_seams = json_path_usize_optional(&summary, &["metrics", "raw_seams"]);
+    let headline_eligible_seams =
+        json_path_usize_optional(&summary, &["metrics", "headline_eligible_seams"]);
+    let canonical_gap_records =
+        json_path_usize_optional(&summary, &["metrics", "canonical_gap_records"]);
+    let raw_actionable_seam_records =
+        json_path_usize_optional(&summary, &["metrics", "raw_actionable_seam_records"]);
+    let reason_counts =
+        json_path_object_usize_map(&summary, &["reason_breakdown", "actionability"]);
+    let counts = json_path_object_usize_map(&summary, &["metrics"]);
+    let top_files = summary
+        .get("top_files")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| "repo-exposure-summary-json is missing top_files array".to_string())?;
+    let status = if unresolved == 0 { "pass" } else { "warn" };
+
+    Ok(serde_json::json!({
+        "schema_version": "0.1",
+        "status": status,
+        "basis": basis,
+        "source_format": "repo-exposure-summary-json",
+        "source_command": "ripr check --root . --format repo-exposure-summary-json",
+        "unresolved": unresolved,
+        "top_files": top_files,
+        "suppressed": suppressed,
+        "head": head,
+        "counts": counts,
+        "metrics": &summary["metrics"],
+        "reason_counts": reason_counts,
+        "reason_breakdown": &summary["reason_breakdown"],
+        "limits": &summary["limits"],
+        "raw_inventory": {
+            "raw_seams": raw_seams,
+            "headline_eligible_seams": headline_eligible_seams,
+            "canonical_gap_records": canonical_gap_records,
+            "raw_actionable_seam_records": raw_actionable_seam_records,
+            "debt_basis": false,
+            "note": "Raw seam inventory is supporting analyzer pressure only; it is not the RIPR+ unresolved debt counter."
+        },
+        "basis_note": "RIPR+ unresolved is sourced from metrics.unsuppressed_exposure_gaps in repo-exposure-summary-json. top_files is bounded by the summary format and this command does not run full repo-exposure-json.",
+        "warnings": [],
+        "non_claims": [
+            "not raw seam inventory",
+            "not runtime mutation confirmation",
+            "not coverage",
+            "not badge endpoint regeneration"
+        ]
+    }))
+}
+
 fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let mut body = String::from("# ripr+ Repo Receipt\n\n");
     body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
@@ -38876,8 +39007,41 @@ fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let reason_counts = json_object_usize_map(receipt, "reason_counts");
     append_count_table(&mut body, &reason_counts);
     body.push_str("\n## Top Files\n\n");
-    body.push_str("No bounded top-file summary is available from `repo-badge-json`; this command intentionally does not run full `repo-exposure-json`.\n");
+    append_ripr_plus_top_files_table(&mut body, receipt);
     body
+}
+
+fn append_ripr_plus_top_files_table(body: &mut String, receipt: &Value) {
+    let Some(top_files) = receipt.get("top_files").and_then(Value::as_array) else {
+        body.push_str("No bounded top-file summary is available.\n");
+        return;
+    };
+    if top_files.is_empty() {
+        body.push_str("No bounded top-file summary is available from this source; this command intentionally does not run full `repo-exposure-json`.\n");
+        return;
+    }
+
+    body.push_str("| File | Unresolved | Canonical gaps | Headline-eligible seams | Raw seams |\n");
+    body.push_str("| --- | ---: | ---: | ---: | ---: |\n");
+    for file in top_files {
+        body.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} |\n",
+            markdown_cell(&json_string_field_value(file, "file")),
+            file.get("unsuppressed_exposure_gaps")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            file.get("canonical_gap_records")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            file.get("headline_eligible_seams")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            file.get("raw_seams").and_then(Value::as_u64).unwrap_or(0)
+        ));
+    }
+    body.push_str(
+        "\nTop files are bounded by `repo-exposure-summary-json`; this command does not run full `repo-exposure-json`.\n",
+    );
 }
 
 fn write_repo_badge_artifacts(options: &RepoBadgeArtifactOptions) -> Result<(), String> {
@@ -38994,7 +39158,19 @@ fn json_string_field_value(value: &Value, key: &str) -> String {
 fn json_object_usize_map(value: &Value, key: &str) -> BTreeMap<String, usize> {
     value
         .get(key)
-        .and_then(Value::as_object)
+        .map(json_value_object_usize_map)
+        .unwrap_or_default()
+}
+
+fn json_path_object_usize_map(value: &Value, path: &[&str]) -> BTreeMap<String, usize> {
+    audit_get(value, path)
+        .map(json_value_object_usize_map)
+        .unwrap_or_default()
+}
+
+fn json_value_object_usize_map(value: &Value) -> BTreeMap<String, usize> {
+    value
+        .as_object()
         .map(|object| {
             object
                 .iter()
@@ -39003,6 +39179,17 @@ fn json_object_usize_map(value: &Value, key: &str) -> BTreeMap<String, usize> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn json_path_usize_optional(value: &Value, path: &[&str]) -> Option<usize> {
+    audit_get(value, path)
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+}
+
+fn json_path_usize_required(value: &Value, path: &[&str]) -> Result<usize, String> {
+    json_path_usize_optional(value, path)
+        .ok_or_else(|| format!("JSON is missing numeric field {}", path.join(".")))
 }
 
 fn badge_basis_needs_repo_badge_plus_job(options: &RepoBadgeArtifactOptions) -> bool {
@@ -60657,7 +60844,8 @@ mod tests {
         report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
         report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
         ripr_plus_receipt_from_badge, ripr_plus_receipt_from_repo_badge_json,
-        ripr_plus_receipt_markdown, ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
+        ripr_plus_receipt_from_repo_exposure_summary_json, ripr_plus_receipt_markdown,
+        ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
         ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
         ripr_swarm_attempt_ledger_from_values,
         ripr_swarm_attempt_ledger_from_values_with_real_repair_attempts,
@@ -76965,35 +77153,83 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
     #[test]
     fn ripr_plus_receipt_counts_canonical_gaps_not_raw_inventory() -> Result<(), String> {
         let fixture = r#"{
-            "schema_version": "0.5",
-            "label": "ripr",
-            "kind": "ripr",
+            "schema_version": "0.1",
+            "format": "repo-exposure-summary-json",
+            "tool": "ripr",
+            "ripr_version": "0.7.0",
             "scope": "repo",
             "basis": "canonical_actionable_gap",
-            "message": "2",
-            "status": "warn",
-            "color": "orange",
-            "counts": {
+            "metadata": {
+                "root": ".",
+                "base": "origin/main",
+                "head": "HEAD",
+                "mode": "draft"
+            },
+            "metrics": {
                 "raw_seams": 5,
+                "headline_eligible_seams": 4,
+                "canonical_gap_records": 2,
+                "raw_actionable_seam_records": 3,
                 "unsuppressed_exposure_gaps": 2,
-                "suppressed_exposure_gaps": 1
+                "suppressed_exposure_gaps": 1,
+                "grip_class": {
+                    "weakly_gripped": 2
+                }
             },
-            "reason_counts": {
-                "no_assertion_detected": 1,
-                "smoke_oracle_only": 1
+            "reason_breakdown": {
+                "actionability": {
+                    "upgrade_assertion": 2
+                },
+                "gap_state": {
+                    "actionable": 3
+                },
+                "seam_kind": {
+                    "predicate_boundary": 2
+                },
+                "grip_class": {
+                    "weakly_gripped": 2
+                }
             },
-            "warnings": []
+            "limits": {
+                "top_files_limit": 25,
+                "top_files_total": 1,
+                "top_files_truncated": false
+            },
+            "top_files": [
+                {
+                    "file": "src/lib.rs",
+                    "raw_seams": 5,
+                    "headline_eligible_seams": 4,
+                    "canonical_gap_records": 2,
+                    "unsuppressed_exposure_gaps": 2,
+                    "suppressed_exposure_gaps": 1,
+                    "reason_breakdown": {
+                        "actionability": {
+                            "upgrade_assertion": 2
+                        },
+                        "grip_class": {
+                            "weakly_gripped": 2
+                        }
+                    }
+                }
+            ]
         }"#;
-        let receipt = ripr_plus_receipt_from_repo_badge_json(fixture, "HEAD", None)?;
+        let receipt = ripr_plus_receipt_from_repo_exposure_summary_json(fixture, "HEAD")?;
 
         assert_eq!(receipt["basis"], "canonical_actionable_gap");
-        assert_eq!(receipt["source_format"], "repo-badge-json");
+        assert_eq!(receipt["source_format"], "repo-exposure-summary-json");
         assert_eq!(receipt["unresolved"], 2);
         assert_ne!(receipt["unresolved"], receipt["raw_inventory"]["raw_seams"]);
         assert_eq!(receipt["raw_inventory"]["raw_seams"], 5);
+        assert_eq!(receipt["raw_inventory"]["headline_eligible_seams"], 4);
+        assert_eq!(receipt["raw_inventory"]["canonical_gap_records"], 2);
+        assert_eq!(receipt["raw_inventory"]["raw_actionable_seam_records"], 3);
         assert_eq!(receipt["raw_inventory"]["debt_basis"], false);
         assert_eq!(receipt["suppressed"], 1);
-        assert_eq!(receipt["top_files"].as_array().map(Vec::len), Some(0));
+        assert_eq!(receipt["reason_counts"]["upgrade_assertion"], 2);
+        assert_eq!(receipt["counts"]["unsuppressed_exposure_gaps"], 2);
+        assert_eq!(receipt["top_files"].as_array().map(Vec::len), Some(1));
+        assert_eq!(receipt["top_files"][0]["file"], "src/lib.rs");
         Ok(())
     }
 
@@ -77052,29 +77288,47 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
     #[test]
     fn ripr_plus_receipt_markdown_names_bounded_top_file_behavior() -> Result<(), String> {
         let fixture = r#"{
-            "schema_version": "0.5",
-            "label": "ripr",
-            "kind": "ripr",
+            "schema_version": "0.1",
+            "format": "repo-exposure-summary-json",
             "scope": "repo",
             "basis": "canonical_actionable_gap",
-            "message": "2",
-            "status": "warn",
-            "color": "orange",
-            "counts": {
+            "metrics": {
+                "raw_seams": 5,
+                "headline_eligible_seams": 4,
+                "canonical_gap_records": 2,
+                "raw_actionable_seam_records": 2,
                 "unsuppressed_exposure_gaps": 2,
                 "suppressed_exposure_gaps": 0
             },
-            "reason_counts": {
-                "smoke_oracle_only": 2
+            "reason_breakdown": {
+                "actionability": {
+                    "upgrade_assertion": 2
+                }
             },
-            "warnings": []
+            "limits": {
+                "top_files_limit": 25,
+                "top_files_total": 1,
+                "top_files_truncated": false
+            },
+            "top_files": [
+                {
+                    "file": "src/lib.rs",
+                    "raw_seams": 5,
+                    "headline_eligible_seams": 4,
+                    "canonical_gap_records": 2,
+                    "unsuppressed_exposure_gaps": 2,
+                    "suppressed_exposure_gaps": 0
+                }
+            ]
         }"#;
-        let receipt = ripr_plus_receipt_from_repo_badge_json(fixture, "HEAD", None)?;
+        let receipt = ripr_plus_receipt_from_repo_exposure_summary_json(fixture, "HEAD")?;
         let markdown = ripr_plus_receipt_markdown(&receipt);
 
         assert!(markdown.contains("canonical_actionable_gap"));
         assert!(markdown.contains("| Unresolved | 2 |"));
-        assert!(markdown.contains("repo-badge-json"));
+        assert!(markdown.contains("repo-exposure-summary-json"));
+        assert!(markdown.contains("src/lib.rs"));
+        assert!(markdown.contains("| `src/lib.rs` | 2 | 2 | 4 | 5 |"));
         assert!(markdown.contains("does not run full `repo-exposure-json`"));
         Ok(())
     }
