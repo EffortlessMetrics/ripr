@@ -38,10 +38,12 @@ Most adopters should choose one of these first-hour paths:
 | PR first | You want reviewers to see advisory evidence in GitHub. | `ripr init --ci github` | Non-blocking summary, repair card, artifact packet. |
 | Editor or agent first | You are repairing while coding, or handing work to an LLM. | VS Code `ripr: Show Status` or `ripr agent status --root .` | Current-work packet, related test, verify command. |
 
-For TypeScript, JavaScript, or Python, first read
+For TypeScript, JavaScript, or broader Python static-fact evaluation, first read
 [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md). Preview
-language evidence is opt-in, syntax-first, visibly preview/advisory, and not a
-default gate input.
+language evidence is syntax-first, visibly preview/advisory, and not a default
+gate input. The scoped Python repair-routing loop is `usable alpha` for selected
+pytest/unittest repair cards, packets, verify commands, and receipts; it remains
+advisory and does not run imports, execute tests, or generate tests by default.
 
 `ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
 wants to review, version, and tune it. It is not activation, and it is not

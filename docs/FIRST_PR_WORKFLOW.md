@@ -85,7 +85,7 @@ ripr reports gap-ledger \
   --out-md target/ripr/reports/gap-decision-ledger.md
 ```
 
-For presentation/output-text changes or Python preview repair-card findings,
+For presentation/output-text changes or scoped Python repair-card findings,
 derive the PR-local route from the checked JSON output:
 
 ```bash
@@ -96,7 +96,7 @@ ripr reports gap-ledger \
   --out-md target/ripr/reports/gap-decision-ledger.md
 ```
 
-For Python preview repair cards, the public first-PR front door can take the
+For scoped Python repair-routing cards, the public first-PR front door can take the
 same saved check JSON directly and materialize the derived ledger before it
 selects the top repair:
 

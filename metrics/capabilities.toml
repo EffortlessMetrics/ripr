@@ -1600,6 +1600,34 @@ next = "cli/python-first-use-path"
 metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_existing_test_strengthening, language_adapter_python_route_decorator_repair_card, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_real_repair_attempt_receipt, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, language_adapter_python_pilot_first_use_path, language_adapter_python_pr_summary_repair_card_projection, language_adapter_python_lsp_agent_packet_action, language_adapter_python_lsp_repair_card_action, language_adapter_python_lsp_pytest_skeleton_action, language_adapter_python_first_pr_start_here_path, language_adapter_python_first_pr_check_output_bridge, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states, language_adapter_python_generated_file_exclusion, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_mocked_module, language_adapter_python_static_limit_opaque_custom_assertion_helper, language_adapter_python_static_limit_property_based_test, language_adapter_python_static_limit_unresolved_pytest_fixture, language_adapter_python_static_limit_*"
 
 [[capability]]
+id = "python_repair_routing_loop"
+name = "Python repair routing loop"
+status = "alpha"
+spec = "RIPR-SPEC-0028"
+evidence = [
+  "direct weak Python findings with canonical gaps, concrete missing discriminators, suggested test locations, verify commands, stop conditions, and limits emit python_repair_card output across human, JSON, SARIF, GitHub, pilot, first-pr, and LSP surfaces",
+  "reports gap-ledger --check-output derives Python GapRecords from actionable python_repair_card findings and synthesizes receipt commands for before/after check-output snapshots",
+  "ripr agent packet --gap-ledger and ripr swarm queue --language python export bounded Python test-repair packets with allowed files, forbidden production files, conflict groups, verify commands, receipt commands/status, and stop conditions while excluding static limits and no-action records",
+  "ripr swarm ingest --result classifies Python repair attempts without trusting them blindly, flags forbidden production-code edits, treats missing verify evidence as uncertain, and attaches before/after movement when available",
+  "fixtures/first_successful_pr/python-preview-gap plus return, exception, field, and output variants pin closed Python before/after outcome receipts by canonical gap ID",
+  "fixtures/real-repair-attempts and fixtures/python-real-repo-evals record test-only Python repair attempts, focused pytest verify passes, and closed outcome receipts for controlled, normal pytest, CLI/output, API, mixed, and decorated route cases",
+  "cargo xtask dogfood derives Python repair-routing quality metrics for top-1 usefulness, ranked top-3 precision, verify-command validity, concrete-discriminator coverage, suggested-location coverage, false-actionable rate, crash rate, receipt closure, and unsupported limitation distribution",
+  "docs/status/SUPPORT_TIERS.md promotes only this scoped Python repair-routing loop to usable alpha while keeping broader Python static facts and static limits preview/advisory",
+  "docs/handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md records the support-tier proof, validation commands, remaining static limits, and non-goals for the scoped Python repair-routing loop"
+]
+fixtures = [
+  "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap",
+  "fixtures/first_successful_pr/python-output-gap",
+  "fixtures/real-repair-attempts",
+  "fixtures/python-real-repo-evals"
+]
+next = "analysis/python-cli-output-pack-v1"
+metric = "language_adapter_python_repair_card_v1, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_real_repair_attempt_receipt, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states"
+
+[[capability]]
 id = "typescript_preview_static_facts"
 name = "TypeScript preview static facts"
 status = "alpha"

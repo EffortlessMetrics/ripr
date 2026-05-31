@@ -101,7 +101,7 @@ linked_plan = "RIPR-PLAN-0059"
 id = "RIPR-PROP-0017"
 kind = "proposal"
 path = "docs/proposals/RIPR-PROP-0017-python-repair-routing-lane.md"
-status = "proposed"
+status = "accepted"
 owner = "language-adapter-swarm"
 
 [[artifact]]

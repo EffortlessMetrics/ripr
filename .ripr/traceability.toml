@@ -2250,11 +2250,14 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
+  "README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/QUICKSTART.md",
   "docs/CAPABILITY_MATRIX.md",
+  "docs/status/SUPPORT_TIERS.md",
   "plans/python-repair-routing/implementation-plan.md",
   "plans/python-repair-routing/current-state-inventory.md",
+  "docs/handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md",
   "docs/specs/README.md",
   "docs/adr/0009-python-parser-substrate.md",
   "docs/adr/README.md",

@@ -13,7 +13,7 @@ typechecker or test runner, and they do not make generated CI blocking.
 | --- | --- | --- | --- |
 | Rust | reference path | enabled | Rust static exposure evidence and the existing CLI, CI, editor, report, and gate surfaces. |
 | TypeScript and JavaScript | preview | disabled | Syntax-first owners, tests, assertions, probes, related tests, and visible static limits for `.ts`, `.tsx`, `.js`, and `.jsx`. |
-| Python | preview | detected Python projects without `ripr.toml`; otherwise disabled unless configured | Syntax-first owners, tests, assertions, probes, related tests, RIPR-stage evidence, selected predicate missing discriminators, and fail-closed static limits for `.py`. |
+| Python | preview static facts; scoped repair routing is `usable alpha` | detected Python projects without `ripr.toml`; otherwise disabled unless configured | Syntax-first owners, tests, assertions, probes, related tests, RIPR-stage evidence, selected repair-class missing discriminators, fail-closed static limits, and bounded repair cards/packets for selected pytest/unittest routes. |
 
 The preview adapters feed the same output schema and review surfaces as Rust.
 Preview findings carry additive metadata such as `language`,
@@ -101,6 +101,13 @@ Read preview findings as syntax-first advisory evidence:
   `*.generated.py`, `*_generated.py`, and `generated_*.py` are excluded from
   preview diff analysis instead of being routed as repairable behavior changes.
 
+Python repair routing has a separate scoped `usable alpha` support-tier row for
+selected pytest/unittest workflows. That row covers direct weak findings that
+carry a canonical gap, missing discriminator, suggested test target, verify
+command, stop conditions, bounded agent packet, and before/after receipt. It
+does not promote broader Python static facts, static limits, generated CI,
+gates, badges, baselines, or RIPR Zero.
+
 The exposure class still uses RIPR's normal conservative vocabulary:
 `exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,
 `infection_unknown`, `propagation_unknown`, and `static_unknown`.
@@ -138,19 +145,24 @@ the evidence narrative. In review artifacts, preview evidence remains advisory
 unless a later policy explicitly promotes it.
 
 Promotion requires a policy-owned preview promotion packet, not just adapter
-routing. The proof criteria include fixture matrix coverage, dogfood receipts,
-related-test accuracy review, static-limit taxonomy coverage, false-positive
-review, false repair packet review, surface consistency, and policy-owner
-signoff. JavaScript evidence shares the TypeScript-family adapter, but it stays
-JavaScript preview evidence unless a later packet explicitly names that scope.
+routing. The scoped Python repair-routing support-tier review is limited to
+selected pytest/unittest repair work and keeps broader Python facts advisory.
+Future promotion beyond that scope still requires fixture matrix coverage,
+dogfood receipts, related-test accuracy review, static-limit taxonomy coverage,
+false-positive review, false repair packet review, surface consistency, and
+policy-owner signoff. JavaScript evidence shares the TypeScript-family adapter,
+but it stays JavaScript preview evidence unless a later packet explicitly names
+that scope.
 
 Useful references:
 
 - [Output schema](OUTPUT_SCHEMA.md) for field contracts.
 - [Support tiers](status/SUPPORT_TIERS.md) for maturity and trust boundaries.
 - [Python repair routing proposal](proposals/RIPR-PROP-0017-python-repair-routing-lane.md)
-  for the end-state repair-card and receipt loop required before Python can
-  move beyond preview evidence.
+  for the end-state repair-card and receipt loop and its scoped `usable alpha`
+  support-tier boundary.
+- [Python repair routing usable-alpha closeout](handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md)
+  for the proof and remaining limits behind the scoped support-tier row.
 - [Preview promotion criteria](policy/PREVIEW_PROMOTION_CRITERIA.md) for the
   proof required before a preview language/class can be reviewed for stronger
   status.

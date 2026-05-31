@@ -1176,7 +1176,7 @@ Prevent Python support from becoming noisy.
 
 ### Work item: dogfood/python-real-repo-evals
 
-Status: in progress
+Status: done
 
 Blocked by:
 
@@ -1233,11 +1233,12 @@ Prove usefulness outside fixtures.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.
-- Metrics and support-tier review remain the next slices before any promotion.
+- The corpus now supplies the receipt-backed dogfood evidence consumed by the
+  route-quality metrics and scoped support-tier review.
 
 ### Work item: metrics/python-repair-routing-quality
 
-Status: in progress
+Status: done
 
 Blocked by:
 
@@ -1275,14 +1276,17 @@ Measure Python quality by repair usefulness, not finding volume.
   no closed receipt. Validation also fails when ranked top-3 finding capture is
   missing, malformed, or not usable, concrete, placed, verifiable, and
   false-positive clean.
+- This metric slice landed before support-tier review, so promotion evidence is
+  based on top-finding usefulness and closure movement rather than raw finding
+  volume.
 
 ### Work item: campaign/python-usable-alpha-promotion
 
-Status: planned
+Status: done
 
 Blocked by:
 
-- `metrics/python-repair-routing-quality`
+- none; metrics and dogfood receipt evidence are checked.
 
 #### Goal
 
@@ -1297,3 +1301,16 @@ Promote Python only when the repair loop has receipt-backed evidence.
   pytest/unittest workflows and does not prove correctness, execute arbitrary
   code, or guarantee mutation adequacy.
 - Source `ripr` remains the release/distribution authority.
+
+#### Delivered
+
+- `docs/status/SUPPORT_TIERS.md` now promotes only the scoped Python
+  repair-routing loop to `usable alpha`: selected pytest/unittest repair cards,
+  verify commands, bounded agent packets, queue/ingest handling, and
+  before/after receipts.
+- Root README, Quickstart, the language-adapter workflow, the capability matrix,
+  and traceability now keep the same claim boundary: broader Python static facts
+  and static limits remain preview/advisory.
+- `docs/handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md`
+  records the proof commands, usable-alpha scope, remaining limits, policy
+  non-claims, and next work.
