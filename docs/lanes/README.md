@@ -100,6 +100,9 @@ the source evidence class first and keep projection changes narrow.
 - [Lane 1 Finding Alignment Burn-Down](LANE_1_FINDING_ALIGNMENT_BURNDOWN.md)
   records the issue-backed queue for generalizing raw-finding to canonical-item
   alignment across remaining evidence classes.
+- [Lane 1 RIPR+ Burndown](LANE_1_RIPR_PLUS_BURNDOWN.md) records the current
+  repo-wide RIPR/RIPR+ measurement basis, blockers, merge order, and first
+  packet-family queue.
 - [Lane 1 Value Resolution Audit Fixes](LANE_1_VALUE_RESOLUTION_AUDIT_FIXES.md)
   records the active issue-backed queue for burning down one fixture-backed
   `predicate_boundary` / `activation_value_unresolved` sub-shape.
