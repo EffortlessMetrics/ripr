@@ -76,9 +76,10 @@ order:
 5. Analyzer false-positive fixture - prove the analyzer is wrong and fix the
    classification without suppressing real gaps.
 
-Each packet PR must include a focused test command, a RIPR receipt command, and
-before/after receipt movement. If a packet no longer moves the canonical
-receipt after #586, close or supersede it instead of forcing it through.
+Each packet PR must include a focused test command, a RIPR receipt command, an
+allowed edit surface, must-not-change constraints, and before/after receipt
+movement. If a packet no longer moves the canonical receipt after #586, close or
+supersede it instead of forcing it through.
 
 ## Commands Recorded For This Map
 
