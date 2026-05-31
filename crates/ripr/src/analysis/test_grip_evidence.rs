@@ -1074,6 +1074,7 @@ fn helper_directly_delegates_to_specific_owner(
     let owner_name_lower = call.name.to_ascii_lowercase();
     if !owner_token_is_specific_enough(&owner_name_lower)
         || !supported_helper_owner_call_name(&call.name, local_function_names, external_owner_names)
+        || !call_text_routes_directly_to_named_call(&call.text, &call.name)
     {
         return false;
     }
@@ -1096,7 +1097,9 @@ fn helper_directly_delegates_to_specific_owner(
             delegates_to_call |= candidate.name == call.name
                 && candidate.line == call.line
                 && candidate.text == call.text;
-        } else if !direct_delegate_extra_call_is_inert(&candidate.name) {
+        } else if candidate.line == call.line
+            && !direct_delegate_extra_call_is_inert(&candidate.name)
+        {
             has_disallowed_extra_call = true;
         }
     }
@@ -1105,6 +1108,37 @@ fn helper_directly_delegates_to_specific_owner(
         && direct_local_owner_call_names.contains(&call.name)
         && delegates_to_call
         && !has_disallowed_extra_call
+}
+
+fn call_text_routes_directly_to_named_call(text: &str, name: &str) -> bool {
+    let cleaned = strip_comments_and_strings(text);
+    cleaned.match_indices(name).any(|(start, _)| {
+        let before = cleaned[..start].trim_end();
+        let after = &cleaned[start + name.len()..];
+        let named_call = after.starts_with("::") || after.trim_start().starts_with('(');
+        if !named_call {
+            return false;
+        }
+        direct_call_prefix_is_allowed(before)
+    })
+}
+
+fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
+    if prefix.is_empty() || prefix == "return" || prefix.ends_with('=') || prefix.ends_with("=>") {
+        return true;
+    }
+    let Some(open) = prefix.strip_suffix('(') else {
+        return false;
+    };
+    let wrapper_name = open
+        .chars()
+        .rev()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    direct_delegate_extra_call_is_inert(&wrapper_name)
 }
 
 fn call_text_contains_named_call(text: &str, name: &str) -> bool {
@@ -5692,6 +5726,68 @@ fn helper_exercises_pipeline() {
                 .contains("one-hop helper owner call for value-insensitive seam"),
             "activation summary should explain the test-local helper owner-call route: {}",
             evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_helper_calls_owner_then_logs_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn note() {}
+
+fn exercise_pipeline() -> String {
+    let output = render_pipeline("alpha");
+    note();
+    output
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected helper owner-call relation through direct owner call statement, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "helper activation must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
