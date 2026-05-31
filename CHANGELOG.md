@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added a repo-local Python repair-routing dogfood receipt row for a
+  test-only packet that strengthens the preview pricing test, forbids the
+  production Python source file, passes the focused pytest verify command, and
+  closes the predicate-boundary canonical gap through `ripr outcome`. Python
+  remains preview/advisory, and broader normal-pytest/API/CLI/mixed dogfood is
+  still the next promotion blocker.
 - Added a Python repair-routing noise-control fixture that pins same-line
   returned-dict return, field, and string-literal signals as one user-facing
   canonical field/object repair gap. The Python false-positive corpus is now

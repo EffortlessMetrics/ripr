@@ -797,6 +797,46 @@
       ],
       "missing_receipt_reason": null,
       "reason": "The improved outcome documents a more precise preview boundary for weak TypeScript oracle evidence."
+    },
+    {
+      "id": "python_preview_boundary_gap_test_only_closed",
+      "source_ref": "fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json",
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "packet_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "language": "python",
+      "evidence_class": "predicate_boundary",
+      "source_file": "app/pricing.py",
+      "repair_kind": "strengthen_existing_pytest_boundary",
+      "target_test_or_observer_shape": "strengthen the existing pytest test with an exact amount == threshold boundary assertion",
+      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+      "verify_result": "pass",
+      "receipt_command": "ripr outcome --before fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json --after fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json --format json",
+      "receipt_path": "fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json",
+      "receipt_state": "receipt_movement_resolved",
+      "actor_kind": "external_agent",
+      "before_gap_state": "actionable",
+      "after_gap_state": "resolved",
+      "outcome": "resolved",
+      "attempted_repair": "A bounded Python packet edited only tests/test_pricing.py, strengthened the weak pytest smoke assertion, and left app/pricing.py forbidden.",
+      "evidence_movement": "resolved: ripr outcome compared before/after Python check-output snapshots and reported the canonical predicate-boundary gap closed.",
+      "operator_note": "This is static preview repair-routing dogfood: verify evidence and receipt movement are present, but ingest still requires human review and does not claim runtime adequacy or support-tier promotion.",
+      "must_not_change": [
+        "app/pricing.py",
+        "production Python files",
+        "preview support tier",
+        "CI gate defaults",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/first_successful_pr/python-preview-gap/expected/start-here.json",
+        "fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json",
+        "fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json",
+        "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
+        "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "The Python preview loop now has a checked repo-local dogfood receipt showing a safe packet, test-only edit, verify pass, and canonical gap closure without changing production code."
     }
   ]
 }

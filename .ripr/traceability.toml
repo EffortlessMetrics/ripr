@@ -2158,6 +2158,7 @@ tests = [
   "crates/ripr/src/output/github.rs::tests::render_includes_python_repair_card_guidance",
   "crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_repair_card_properties",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
+  "xtask::tests::dogfood_real_repair_attempt_receipts_are_checked",
 ]
 fixtures = [
   "fixtures/python/basic",
@@ -2210,6 +2211,7 @@ fixtures = [
   "fixtures/first_successful_pr/python-exception-gap",
   "fixtures/first_successful_pr/python-field-gap",
   "fixtures/first_successful_pr/python-output-gap",
+  "fixtures/real-repair-attempts",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -2278,6 +2280,7 @@ metrics = [
   "language_adapter_python_agent_packet_v1",
   "language_adapter_python_swarm_queue_stale_packets",
   "language_adapter_python_gap_receipt_from_check_output",
+  "language_adapter_python_real_repair_attempt_receipt",
   "language_adapter_python_pilot_first_use_path",
   "language_adapter_python_first_pr_start_here_path",
   "language_adapter_python_static_limit_stop_reasons",

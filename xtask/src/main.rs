@@ -889,6 +889,9 @@ struct DogfoodRealRepairAttemptScenario {
     source_ref: String,
     canonical_gap_id: String,
     packet_id: String,
+    language: Option<String>,
+    evidence_class: Option<String>,
+    source_file: Option<String>,
     repair_kind: String,
     target_test_or_observer_shape: String,
     verify_command: String,
@@ -915,6 +918,9 @@ struct DogfoodRealRepairAttemptRun {
     source_ref: String,
     canonical_gap_id: String,
     packet_id: String,
+    language: Option<String>,
+    evidence_class: Option<String>,
+    source_file: Option<String>,
     repair_kind: String,
     target_test_or_observer_shape: String,
     verify_command: String,
@@ -8012,6 +8018,7 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "typescript_preview_weak_oracle_guidance_improved",
         "evidence_improved",
     ),
+    ("python_preview_boundary_gap_test_only_closed", "resolved"),
 ];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
@@ -42789,6 +42796,9 @@ fn dogfood_real_repair_attempt_scenarios() -> Vec<DogfoodRealRepairAttemptScenar
             source_ref: "unknown".to_string(),
             canonical_gap_id: "unknown".to_string(),
             packet_id: "unknown".to_string(),
+            language: None,
+            evidence_class: None,
+            source_file: None,
             repair_kind: "unknown".to_string(),
             target_test_or_observer_shape: "unknown".to_string(),
             verify_command: "unknown".to_string(),
@@ -42839,6 +42849,9 @@ fn dogfood_real_repair_attempt_scenarios() -> Vec<DogfoodRealRepairAttemptScenar
                 .unwrap_or_else(|| "unknown".to_string()),
             packet_id: json_string_field(case, "packet_id")
                 .unwrap_or_else(|| "unknown".to_string()),
+            language: json_string_field(case, "language"),
+            evidence_class: json_string_field(case, "evidence_class"),
+            source_file: json_string_field(case, "source_file"),
             repair_kind: json_string_field(case, "repair_kind")
                 .unwrap_or_else(|| "unknown".to_string()),
             target_test_or_observer_shape: json_string_field(case, "target_test_or_observer_shape")
@@ -42946,6 +42959,13 @@ fn dogfood_real_repair_attempt_run(
             scenario.outcome
         ));
     }
+    if let Some(language) = scenario.language.as_deref()
+        && !matches!(language, "rust" | "python" | "typescript" | "javascript")
+    {
+        errors.push(format!(
+            "language must be rust, python, typescript, or javascript when present, got {language}"
+        ));
+    }
     if scenario.outcome == "attempted_no_receipt" {
         if scenario
             .missing_receipt_reason
@@ -42971,6 +42991,9 @@ fn dogfood_real_repair_attempt_run(
         source_ref: scenario.source_ref.clone(),
         canonical_gap_id: scenario.canonical_gap_id.clone(),
         packet_id: scenario.packet_id.clone(),
+        language: scenario.language.clone(),
+        evidence_class: scenario.evidence_class.clone(),
+        source_file: scenario.source_file.clone(),
         repair_kind: scenario.repair_kind.clone(),
         target_test_or_observer_shape: scenario.target_test_or_observer_shape.clone(),
         verify_command: scenario.verify_command.clone(),
@@ -46046,13 +46069,14 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         real_attempts_resolved,
         real_attempts_missing_receipt
     ));
-    body.push_str("| Case | Source | Gap ID | Packet | Repair | Verify | Outcome |\n");
-    body.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
+    body.push_str("| Case | Source | Language | Gap ID | Packet | Repair | Verify | Outcome |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
     for run in real_repair_attempt_runs {
         body.push_str(&format!(
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
             markdown_cell(&run.name),
             markdown_cell(&run.source_ref),
+            markdown_cell(run.language.as_deref().unwrap_or("unspecified")),
             markdown_cell(&run.canonical_gap_id),
             markdown_cell(&run.packet_id),
             markdown_cell(&run.repair_kind),
@@ -46070,6 +46094,18 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "- Packet ID: `{}`\n",
             markdown_cell(&run.packet_id)
+        ));
+        body.push_str(&format!(
+            "- Language: `{}`\n",
+            markdown_cell(run.language.as_deref().unwrap_or("unspecified"))
+        ));
+        body.push_str(&format!(
+            "- Evidence class: `{}`\n",
+            markdown_cell(run.evidence_class.as_deref().unwrap_or("unspecified"))
+        ));
+        body.push_str(&format!(
+            "- Source file: `{}`\n",
+            markdown_cell(run.source_file.as_deref().unwrap_or("unspecified"))
         ));
         body.push_str(&format!(
             "- Target shape: `{}`\n",
@@ -47591,6 +47627,18 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"packet_id\": \"{}\",\n",
             json_escape(&run.packet_id)
+        ));
+        body.push_str(&format!(
+            "        \"language\": {},\n",
+            json_optional_string(run.language.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"evidence_class\": {},\n",
+            json_optional_string(run.evidence_class.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"source_file\": {},\n",
+            json_optional_string(run.source_file.as_deref())
         ));
         body.push_str(&format!(
             "        \"repair_kind\": \"{}\",\n",
@@ -68696,6 +68744,9 @@ fn exact_owner_call_has_external_expected_value() {
             source_ref: "EffortlessMetrics/ripr-swarm#415".to_string(),
             canonical_gap_id: "gap:repair-route-quality-metrics-missing".to_string(),
             packet_id: "repair-route-quality-metrics-001".to_string(),
+            language: None,
+            evidence_class: None,
+            source_file: None,
             repair_kind: "add_repair_route_quality_metrics".to_string(),
             target_test_or_observer_shape: "readiness route-quality metric assertions".to_string(),
             verify_command: "cargo xtask check-pr".to_string(),
@@ -69612,6 +69663,9 @@ fn exact_owner_call_has_external_expected_value() {
             source_ref: "EffortlessMetrics/ripr-swarm#415".to_string(),
             canonical_gap_id: "gap:repair-route-quality-metrics-missing".to_string(),
             packet_id: "repair-route-quality-metrics-001".to_string(),
+            language: None,
+            evidence_class: None,
+            source_file: None,
             repair_kind: "add_repair_route_quality_metrics".to_string(),
             target_test_or_observer_shape: "readiness route-quality metric assertions".to_string(),
             verify_command: "cargo xtask check-pr".to_string(),

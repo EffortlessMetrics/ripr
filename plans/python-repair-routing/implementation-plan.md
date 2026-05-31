@@ -885,7 +885,7 @@ Bring Python repair cards into editor surfaces.
 
 ### Work item: analysis/python-http-api-pack-v1
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -1184,6 +1184,21 @@ Prove usefulness outside fixtures.
 - Each run records command, runtime, top finding, repair card, verify command,
   usability, before/after receipt, false-positive notes, and limitation notes.
 - At least one gap closes with receipt before promotion is considered.
+
+#### Progress
+
+- `fixtures/real-repair-attempts/corpus.json` now includes a checked
+  repo-local Python preview receipt where a bounded packet edits only
+  `tests/test_pricing.py`, keeps `app/pricing.py` forbidden, verifies with a
+  focused pytest command, and closes the canonical
+  `amount >= threshold` predicate-boundary gap through `ripr outcome`.
+- `cargo xtask dogfood` requires that Python receipt row as part of the
+  durable repair-attempt corpus, so the first closed Python packet/receipt loop
+  is visible in the same advisory dogfood report as other swarm repair
+  attempts.
+- Broader outside-fixture evaluations across normal pytest, API, CLI/tooling,
+  and mixed Python repos remain the next dogfood slice before metrics or
+  support-tier promotion.
 
 ### Work item: metrics/python-repair-routing-quality
 
