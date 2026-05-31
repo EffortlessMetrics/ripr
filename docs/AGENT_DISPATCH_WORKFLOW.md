@@ -125,7 +125,9 @@ Two entry points:
 The repo-scope report is multi-second on large workspaces today.
 `cache/repo-seam-facts-v1` will make it cheap enough to run on every
 keystroke; until then, treat it as a checkpoint pass, not a
-hot-path command.
+hot-path command. `cargo xtask repo-exposure-summary-report` is bounded by
+`RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS` (default: 240000); a timeout writes a
+non-consumable warning artifact instead of a canonical count.
 
 Use `cargo xtask repo-exposure-report` only for explicit full evidence
 inspection. It writes evidence-heavy `repo-exposure.{json,md}` artifacts and is

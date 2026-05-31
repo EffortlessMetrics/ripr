@@ -1245,6 +1245,22 @@ The summary format is additive. It does not replace `repo-exposure-json`, which
 remains the full per-seam evidence artifact for deep debugging and downstream
 consumers that require complete evidence records.
 
+`cargo xtask repo-exposure-summary-report` wraps this format with a local
+timeout. The timeout is controlled by `RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS`
+(default: 240000). If the command times out, exits before a complete summary, or
+cannot start, it writes a warning artifact to the same
+`target/ripr/reports/repo-exposure-summary.json` path with:
+
+- `basis: "limited_runtime_status"`
+- `run_status` such as `limited_timeout`, `limited_runner_failure`, or
+  `limited_incomplete_input`
+- `runtime_status.downstream_consumable: false`
+- an empty `metrics` object and empty `top_files` array
+- `run_limitations[]` with command, timeout, duration, exit code, and stderr/stdout
+  excerpts
+
+Consumers must not treat limited artifacts as canonical actionable counts.
+
 ```json
 {
   "schema_version": "0.3",

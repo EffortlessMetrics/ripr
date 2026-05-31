@@ -165,7 +165,11 @@ report index, it also refreshes the deterministic suggested-fixes patch under
 `repo-exposure-summary-report` is the ordinary repo-local summary route. It
 writes `target/ripr/reports/repo-exposure-summary.json` from
 `repo-exposure-summary-json` and avoids the per-seam evidence payloads carried
-by full `repo-exposure-json`. Use `repo-exposure-report` only when an operator
+by full `repo-exposure-json`. The command is bounded by
+`RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS` (default: 240000). On timeout or
+incomplete output, it overwrites stale summary JSON with a warning artifact whose
+`runtime_status.downstream_consumable` is `false` and whose `metrics` object does
+not claim a gap count. Use `repo-exposure-report` only when an operator
 explicitly needs the full classified seam inventory for deep inspection.
 
 `fixtures` validates fixture contract shape, runs `ripr check` for fixture

@@ -18024,8 +18024,297 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
 /// `target/ripr/reports/repo-exposure-summary.json`.
 pub(crate) fn repo_exposure_summary_report_impl() -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args("repo-exposure-summary-json");
-    let json_output = run_output_owned("cargo", &json_args)?;
-    write_report("repo-exposure-summary.json", &json_output)
+    let timeout = Duration::from_millis(repo_exposure_summary_report_timeout_ms());
+    write_repo_exposure_summary_report_with_runner(
+        &json_args,
+        timeout,
+        run_repo_exposure_summary_report_command,
+    )
+}
+
+const REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV: &str = "RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS";
+const REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS: u64 = 240_000;
+const REPO_EXPOSURE_SUMMARY_REPORT_SCHEMA_VERSION: &str = "0.1";
+
+fn repo_exposure_summary_report_timeout_ms() -> u64 {
+    repo_exposure_summary_report_timeout_ms_from_env(
+        std::env::var(REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV).ok(),
+    )
+}
+
+fn repo_exposure_summary_report_timeout_ms_from_env(value: Option<String>) -> u64 {
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS)
+}
+
+fn run_repo_exposure_summary_report_command(
+    args: &[String],
+    timeout: Duration,
+) -> Result<TimedOutput, String> {
+    capture_output_with_timeout(
+        "cargo",
+        args,
+        &[(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")],
+        timeout,
+        "repo exposure summary report",
+    )
+}
+
+fn write_repo_exposure_summary_report_with_runner<F>(
+    args: &[String],
+    timeout: Duration,
+    mut run_summary: F,
+) -> Result<(), String>
+where
+    F: FnMut(&[String], Duration) -> Result<TimedOutput, String>,
+{
+    let command = format!("cargo {}", args.join(" "));
+    let started = Instant::now();
+    let output = match run_summary(args, timeout) {
+        Ok(output) => output,
+        Err(err) => {
+            let output = TimedOutput {
+                status: None,
+                stdout: String::new(),
+                stderr: err.clone(),
+                duration: started.elapsed(),
+                timed_out: false,
+            };
+            return write_limited_repo_exposure_summary_report(
+                &command,
+                timeout,
+                &output,
+                "repo_exposure_summary_runner_error",
+                Some("runner_error"),
+                Some(&err),
+            );
+        }
+    };
+
+    if output.timed_out {
+        return write_limited_repo_exposure_summary_report(
+            &command,
+            timeout,
+            &output,
+            "repo_exposure_summary_timeout",
+            None,
+            None,
+        );
+    }
+
+    let Some(status) = output.status else {
+        return write_limited_repo_exposure_summary_report(
+            &command,
+            timeout,
+            &output,
+            "repo_exposure_summary_incomplete",
+            Some("missing_exit_status"),
+            Some("repo exposure summary generation finished without an exit status"),
+        );
+    };
+
+    if !status.success() {
+        return write_limited_repo_exposure_summary_report(
+            &command,
+            timeout,
+            &output,
+            "repo_exposure_summary_incomplete",
+            None,
+            Some("repo exposure summary generation exited non-zero"),
+        );
+    }
+
+    if let Err(err) = validate_repo_exposure_summary_stdout(&output.stdout) {
+        return write_limited_repo_exposure_summary_report(
+            &command,
+            timeout,
+            &output,
+            "repo_exposure_summary_incomplete",
+            Some("pass_incomplete"),
+            Some(&err),
+        );
+    }
+
+    write_report("repo-exposure-summary.json", &output.stdout)
+}
+
+fn validate_repo_exposure_summary_stdout(stdout: &str) -> Result<(), String> {
+    let value: Value = serde_json::from_str(stdout)
+        .map_err(|err| format!("failed to parse repo-exposure-summary-json stdout: {err}"))?;
+    let format = value.get("format").and_then(Value::as_str);
+    if format != Some("repo-exposure-summary-json") {
+        return Err(format!(
+            "repo exposure summary stdout used unexpected format {format:?}"
+        ));
+    }
+    let basis = value.get("basis").and_then(Value::as_str);
+    if basis != Some("canonical_actionable_gap") {
+        return Err(format!(
+            "repo exposure summary stdout used unexpected basis {basis:?}"
+        ));
+    }
+    if !value.get("metrics").is_some_and(Value::is_object) {
+        return Err("repo exposure summary stdout is missing metrics object".to_string());
+    }
+    if !value.get("top_files").is_some_and(Value::is_array) {
+        return Err("repo exposure summary stdout is missing top_files array".to_string());
+    }
+    Ok(())
+}
+
+fn write_limited_repo_exposure_summary_report(
+    command: &str,
+    timeout: Duration,
+    output: &TimedOutput,
+    limitation: &str,
+    generation_status: Option<&str>,
+    failure_reason: Option<&str>,
+) -> Result<(), String> {
+    write_report(
+        "repo-exposure-summary.json",
+        &limited_repo_exposure_summary_report_json(
+            command,
+            timeout,
+            output,
+            limitation,
+            generation_status,
+            failure_reason,
+        )?,
+    )
+}
+
+fn limited_repo_exposure_summary_report_json(
+    command: &str,
+    timeout: Duration,
+    output: &TimedOutput,
+    limitation: &str,
+    generation_status: Option<&str>,
+    failure_reason: Option<&str>,
+) -> Result<String, String> {
+    let runtime_state = repo_exposure_summary_limited_runtime_state(limitation);
+    let summary = repo_exposure_summary_limited_summary(limitation);
+    let repair_route = repo_exposure_summary_limited_repair_route(limitation);
+    let (latency_trace_events_total, latency_trace_tail) =
+        evidence_health_latency_trace_tail(output);
+    let value = serde_json::json!({
+        "schema_version": REPO_EXPOSURE_SUMMARY_REPORT_SCHEMA_VERSION,
+        "tool": "ripr",
+        "report": "repo-exposure-summary",
+        "format": "repo-exposure-summary-json",
+        "scope": "repo",
+        "basis": "limited_runtime_status",
+        "status": "warn",
+        "run_status": runtime_state,
+        "runtime_status": {
+            "state": runtime_state,
+            "phase": "repo_exposure_summary_generation",
+            "duration_ms": output.duration.as_millis(),
+            "limit_ms": timeout.as_millis(),
+            "input_kind": "repo-exposure-summary-json",
+            "input_path": "target/ripr/reports/repo-exposure-summary.json",
+            "limitation_category": limitation,
+            "repair_route": repair_route,
+            "downstream_consumable": false,
+        },
+        "generation": {
+            "command": command,
+            "timeout_ms": timeout.as_millis(),
+            "status": generation_status.unwrap_or(if output.timed_out { "timeout" } else { "fail" }),
+            "duration_ms": output.duration.as_millis(),
+            "timed_out": output.timed_out,
+            "exit_code": output.status.and_then(|status| status.code()),
+            "stdout_bytes": output.stdout.len(),
+            "stderr_bytes": output.stderr.len(),
+            "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
+            "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
+            "failure_reason": failure_reason,
+            "latency_trace_events_total": latency_trace_events_total,
+            "latency_trace_tail": latency_trace_tail
+                .iter()
+                .map(repo_exposure_latency_trace_json)
+                .collect::<Vec<_>>(),
+        },
+        "metrics": {},
+        "reason_breakdown": {},
+        "limits": {
+            "top_files_limit": 0,
+            "top_files_total": 0,
+            "top_files_truncated": false,
+            "timeout_ms": timeout.as_millis(),
+        },
+        "top_files": [],
+        "run_limitations": [
+            {
+                "category": limitation,
+                "phase": "repo_exposure_summary_generation",
+                "input": "repo-exposure-summary-json",
+                "summary": summary,
+                "repair_route": repair_route,
+                "timeout_ms": timeout.as_millis(),
+                "duration_ms": output.duration.as_millis(),
+                "command": command,
+                "exit_code": output.status.and_then(|status| status.code()),
+                "stdout_bytes": output.stdout.len(),
+                "stderr_bytes": output.stderr.len(),
+                "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
+                "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
+                "failure_reason": failure_reason,
+                "downstream_consumable": false,
+                "latency_trace_events_total": latency_trace_events_total,
+                "latency_trace_tail": latency_trace_tail
+                    .iter()
+                    .map(repo_exposure_latency_trace_json)
+                    .collect::<Vec<_>>(),
+            }
+        ],
+        "non_claims": [
+            "not a canonical actionable gap count",
+            "not raw seam inventory",
+            "not runtime mutation confirmation",
+            "not downstream consumable"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render limited repo exposure summary JSON: {err}"))
+}
+
+fn repo_exposure_summary_limited_runtime_state(limitation: &str) -> &'static str {
+    match limitation {
+        "repo_exposure_summary_timeout" => "limited_timeout",
+        "repo_exposure_summary_runner_error" => "limited_runner_failure",
+        _ => "limited_incomplete_input",
+    }
+}
+
+fn repo_exposure_summary_limited_summary(limitation: &str) -> &'static str {
+    match limitation {
+        "repo_exposure_summary_timeout" => {
+            "Repo exposure summary generation exceeded its bounded runtime; partial stdout was discarded and no repair debt count is claimed."
+        }
+        "repo_exposure_summary_runner_error" => {
+            "Repo exposure summary generation could not be started or captured; no repair debt count is claimed."
+        }
+        _ => {
+            "Repo exposure summary generation ended before producing a complete canonical actionable summary; no repair debt count is claimed."
+        }
+    }
+}
+
+fn repo_exposure_summary_limited_repair_route(limitation: &str) -> &'static str {
+    match limitation {
+        "repo_exposure_summary_timeout" => {
+            "inspect repo-exposure summary runtime, rerun with RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS for an explicit large-repo refresh, or use a fresh downstream-consumable summary artifact"
+        }
+        "repo_exposure_summary_runner_error" => {
+            "inspect repo exposure summary command availability, report directory permissions, and child process capture before rerunning"
+        }
+        _ => {
+            "inspect repo exposure summary exit status, stdout/stderr, and output schema before treating the artifact as planning input"
+        }
+    }
 }
 
 /// Run the Lane 1 evidence health report and write
@@ -62025,8 +62314,9 @@ mod tests {
         LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
         PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
         REAL_REPAIR_ATTEMPTS_CORPUS, REAL_REPAIR_ATTEMPTS_REQUIRED_CASES,
-        REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV, ReceiptRecord,
-        RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV,
+        REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS, REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV,
+        ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
         SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
@@ -62120,8 +62410,9 @@ mod tests {
         repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
         repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
-        repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
-        report_index_json, report_index_lane1_overall_status, report_index_lane1_readiness_packets,
+        repo_exposure_latency_trace, repo_exposure_summary_report_timeout_ms_from_env, repo_root,
+        repo_seam_inventory_command_args_for_root, report_index_json,
+        report_index_lane1_overall_status, report_index_lane1_readiness_packets,
         report_index_markdown, report_index_missing_artifact_count, report_index_missing_expected,
         report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
         report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
@@ -62158,6 +62449,7 @@ mod tests {
         write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
         write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
+        write_repo_exposure_summary_report_with_runner,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -78614,6 +78906,146 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             120_000
         );
         Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_summary_report_timeout_ms_uses_positive_env_override_only()
+    -> Result<(), String> {
+        assert_eq!(
+            repo_exposure_summary_report_timeout_ms_from_env(None),
+            REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            repo_exposure_summary_report_timeout_ms_from_env(Some(String::new())),
+            REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            repo_exposure_summary_report_timeout_ms_from_env(Some("0".to_string())),
+            REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            repo_exposure_summary_report_timeout_ms_from_env(Some("not-a-timeout".to_string())),
+            REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            repo_exposure_summary_report_timeout_ms_from_env(Some("300000".to_string())),
+            300_000
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_summary_report_timeout_writes_non_consumable_limitation() -> Result<(), String>
+    {
+        with_temp_cwd("repo-exposure-summary-timeout", |_root| {
+            let args = repo_seam_inventory_command_args_for_root("repo-exposure-summary-json", ".");
+            let output_path = Path::new("target/ripr/reports/repo-exposure-summary.json");
+            write(output_path, "stale summary");
+
+            write_repo_exposure_summary_report_with_runner(
+                &args,
+                Duration::from_millis(7),
+                |_args, _timeout| {
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "{\"format\":\"repo-exposure-summary-json\"".to_string(),
+                        stderr: concat!(
+                            "ripr_repo_exposure_latency phase=inventory_seams status=ok duration_ms=3\n",
+                            "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_39021 duration_ms=7\n",
+                        )
+                        .to_string(),
+                        duration: Duration::from_millis(8),
+                        timed_out: true,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(output_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(value["basis"], "limited_runtime_status");
+            assert_eq!(value["run_status"], "limited_timeout");
+            assert_eq!(value["runtime_status"]["downstream_consumable"], false);
+            assert_eq!(
+                value["runtime_status"]["limitation_category"],
+                "repo_exposure_summary_timeout"
+            );
+            assert_eq!(value["generation"]["status"], "timeout");
+            assert_eq!(value["generation"]["timed_out"], true);
+            assert_eq!(value["generation"]["latency_trace_events_total"], 2);
+            assert_eq!(
+                value["generation"]["latency_trace_tail"][1]["status"],
+                "processed_500_of_39021"
+            );
+            assert!(
+                value["metrics"]
+                    .as_object()
+                    .is_some_and(|map| map.is_empty())
+            );
+            assert!(value["top_files"].as_array().is_some_and(Vec::is_empty));
+            assert_eq!(value["run_limitations"][0]["downstream_consumable"], false);
+            assert!(
+                value["run_limitations"][0]["repair_route"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains(REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV)
+            );
+            assert!(!json_text.contains("stale summary"));
+            assert!(!json_text.contains("unsuppressed_exposure_gaps"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn repo_exposure_summary_report_success_writes_complete_summary() -> Result<(), String> {
+        with_temp_cwd("repo-exposure-summary-success", |_root| {
+            let args = repo_seam_inventory_command_args_for_root("repo-exposure-summary-json", ".");
+            let output_path = Path::new("target/ripr/reports/repo-exposure-summary.json");
+            let summary = r#"{
+  "schema_version": "0.1",
+  "format": "repo-exposure-summary-json",
+  "scope": "repo",
+  "basis": "canonical_actionable_gap",
+  "metrics": {
+    "raw_seams": 5,
+    "unsuppressed_exposure_gaps": 2
+  },
+  "reason_breakdown": {
+    "actionability": {
+      "upgrade_assertion": 2
+    }
+  },
+  "limits": {
+    "top_files_limit": 25,
+    "top_files_total": 0,
+    "top_files_truncated": false
+  },
+  "top_files": []
+}
+"#;
+
+            write_repo_exposure_summary_report_with_runner(
+                &args,
+                Duration::from_millis(7),
+                |_args, _timeout| {
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: summary.to_string(),
+                        stderr: String::new(),
+                        duration: Duration::from_millis(6),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(output_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["format"], "repo-exposure-summary-json");
+            assert_eq!(value["basis"], "canonical_actionable_gap");
+            assert_eq!(value["metrics"]["unsuppressed_exposure_gaps"], 2);
+            assert!(value.get("runtime_status").is_none());
+            Ok(())
+        })
     }
 
     #[test]

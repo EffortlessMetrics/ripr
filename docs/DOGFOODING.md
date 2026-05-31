@@ -33,7 +33,9 @@ preview/advisory boundary.
   `repo-badge-json`, generated receipts, or an explicit gap ledger for ordinary
   summary counts. Use `cargo xtask repo-exposure-summary-report` when local
   planning needs bounded repo exposure counts, and run only one no-ledger repo
-  scan at a time.
+  scan at a time. If it emits `basis: "limited_runtime_status"` with
+  `runtime_status.downstream_consumable: false`, do not use that artifact as a
+  repair queue or badge basis.
 - Do not use full `repo-exposure-json` as the normal badge, receipt, top-file,
   or packet-queue input. Full exposure dumps require explicit operator intent
   and cleanup after inspection.
