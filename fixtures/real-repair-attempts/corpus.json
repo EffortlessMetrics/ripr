@@ -44,6 +44,41 @@
       "reason": "A real merged repair-loop PR converted attempt outcomes into route-quality evidence."
     },
     {
+      "id": "route_quality_backlog_nonclaims_actionability_boundary",
+      "source_ref": "EffortlessMetrics/ripr-swarm#722",
+      "canonical_gap_id": "gap:route-quality-backlog-actionability-boundary",
+      "packet_id": "route-quality:backlog:actionability-boundary",
+      "repair_kind": "harden_route_quality_backlog_nonclaims",
+      "target_test_or_observer_shape": "route-quality backlog assertions that non_claims preserve the actionability boundary and keep metrics from promoting or downgrading repair packets",
+      "verify_command": "cargo test -p xtask repair_route_quality -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "actionable",
+      "after_gap_state": "actionable",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Added the route-quality backlog non-claim that route-quality evidence alone must not promote or downgrade actionability.",
+      "evidence_movement": "The route-quality backlog now carries an explicit actionability-boundary non-claim while keeping repair-route metrics separate from public repair packet eligibility.",
+      "operator_note": "This records route-learning safety progress. It improves analyzer backlog guidance without changing public packet eligibility, badge semantics, CI gates, or autonomous repair behavior.",
+      "must_not_change": [
+        "public repair packet actionability",
+        "public badge semantics",
+        "CI gate defaults",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "xtask/src/main.rs:ripr_swarm_repair_route_quality_backlog_json",
+        "xtask/src/main.rs:repair_route_quality",
+        "docs/OUTPUT_SCHEMA.md:repair_route_quality_backlog",
+        "EffortlessMetrics/ripr-swarm#722"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged route-quality PR made the analyzer backlog actionability boundary explicit so outcome metrics cannot be mistaken for delegation authority."
+    },
+    {
       "id": "readiness_top_next_action_resolved",
       "source_ref": "EffortlessMetrics/ripr-swarm#416",
       "canonical_gap_id": "gap:readiness-top-next-action-missing",
