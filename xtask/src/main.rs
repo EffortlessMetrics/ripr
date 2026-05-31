@@ -23102,6 +23102,8 @@ struct RiprSwarmReadinessSummary {
     missing_related_test_or_observer: usize,
     related_context_missing: usize,
     static_limitation_packets: usize,
+    static_limitation_backlog_packets: usize,
+    static_limitation_backlog_signals: usize,
     high_confidence_packets: usize,
     attempted_packets: usize,
     attempted_no_receipt_packets: usize,
@@ -24569,12 +24571,37 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
                         .any(|reason| reason == "static_limitation_present")
             })
             .count(),
+        "static_limitation_backlog_packets":
+            ripr_swarm_static_limitation_backlog_packet_count(&report.static_limitation_backlog),
+        "static_limitation_backlog_signals":
+            ripr_swarm_static_limitation_backlog_signal_count(&report.static_limitation_backlog),
         "high_confidence_packets": report
             .packets
             .iter()
             .filter(|packet| ripr_swarm_plan_packet_is_high_confidence(packet))
             .count(),
     })
+}
+
+fn ripr_swarm_static_limitation_backlog_packet_count(backlog: &Value) -> usize {
+    audit_array(backlog, &["limitation_backlog_packets"]).len()
+}
+
+fn ripr_swarm_static_limitation_backlog_signal_count(backlog: &Value) -> usize {
+    let packet_signals = audit_array(backlog, &["limitation_backlog_packets"])
+        .iter()
+        .filter_map(|packet| audit_usize(packet, &["signal_count"]))
+        .sum::<usize>();
+    let route_signals = audit_array(backlog, &["top_repair_routes"])
+        .iter()
+        .filter_map(|row| audit_usize(row, &["count"]))
+        .sum::<usize>();
+    let category_signals = audit_array(backlog, &["top_categories"])
+        .iter()
+        .filter_map(|row| audit_usize(row, &["count"]))
+        .sum::<usize>();
+
+    packet_signals.max(route_signals).max(category_signals)
 }
 
 fn ripr_swarm_plan_packet_state_count(report: &RiprSwarmPlanReport, state: &str) -> usize {
@@ -24903,6 +24930,8 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
         "missing_related_test_or_observer",
         "related_context_missing",
         "static_limitation_packets",
+        "static_limitation_backlog_packets",
+        "static_limitation_backlog_signals",
         "high_confidence_packets",
     ] {
         out.push_str(&format!(
@@ -27113,6 +27142,19 @@ fn ripr_swarm_readiness_summary(
         summary.related_context_missing = related_context_missing;
         summary.static_limitation_packets =
             audit_usize(plan, &["summary", "static_limitation_packets"]).unwrap_or_default();
+        let static_limitation_backlog = audit_get(plan, &["static_limitation_backlog"]);
+        summary.static_limitation_backlog_packets =
+            audit_usize(plan, &["summary", "static_limitation_backlog_packets"])
+                .or_else(|| {
+                    static_limitation_backlog.map(ripr_swarm_static_limitation_backlog_packet_count)
+                })
+                .unwrap_or_default();
+        summary.static_limitation_backlog_signals =
+            audit_usize(plan, &["summary", "static_limitation_backlog_signals"])
+                .or_else(|| {
+                    static_limitation_backlog.map(ripr_swarm_static_limitation_backlog_signal_count)
+                })
+                .unwrap_or_default();
         summary.high_confidence_packets =
             audit_usize(plan, &["summary", "high_confidence_packets"]).unwrap_or_default();
     }
@@ -27371,6 +27413,8 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "missing_related_test_or_observer": summary.missing_related_test_or_observer,
         "related_context_missing": summary.related_context_missing,
         "static_limitation_packets": summary.static_limitation_packets,
+        "static_limitation_backlog_packets": summary.static_limitation_backlog_packets,
+        "static_limitation_backlog_signals": summary.static_limitation_backlog_signals,
         "high_confidence_packets": summary.high_confidence_packets,
         "attempted_packets": summary.attempted_packets,
         "attempted_no_receipt_packets": summary.attempted_no_receipt_packets,
@@ -29028,6 +29072,8 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
         "missing_related_test_or_observer",
         "related_context_missing",
         "static_limitation_packets",
+        "static_limitation_backlog_packets",
+        "static_limitation_backlog_signals",
         "high_confidence_packets",
         "attempted_packets",
         "attempted_no_receipt_packets",
@@ -86240,6 +86286,74 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("| Input path | `target/ripr/reports/actionable-gaps.json` |"));
         Ok(())
     }
+
+    #[test]
+    fn ripr_swarm_plan_summarizes_static_limitation_backlog_without_repair_packets()
+    -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "report": "actionable-gaps",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "actionable_gaps": 0,
+                "public_projection_eligible_packets": 0
+            },
+            "static_limitation_backlog": {
+                "source": "lane1-evidence-audit.static_limitations",
+                "top_categories": [
+                    {
+                        "category": "activation_owner_call_absent_affinity_only",
+                        "count": 10,
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing"
+                    }
+                ],
+                "top_repair_routes": [
+                    {
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                        "count": 10
+                    }
+                ],
+                "limitation_backlog_packets": [
+                    {
+                        "packet_id": "limitation:owner-call:first",
+                        "limitation_category": "activation_owner_call_absent_affinity_only",
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                        "signal_count": 3
+                    },
+                    {
+                        "packet_id": "limitation:owner-call:second",
+                        "limitation_category": "activation_owner_call_absent_affinity_only",
+                        "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                        "signal_count": 7
+                    }
+                ]
+            },
+            "packets": []
+        });
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&ripr_swarm_plan_json(&report)?).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["summary"]["static_limitation_packets"], 0);
+        assert_eq!(
+            value["summary"]["static_limitation_backlog_packets"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["summary"]["static_limitation_backlog_signals"],
+            serde_json::Value::from(10)
+        );
+        assert_eq!(value["summary"]["swarm_ready_packets"], 0);
+        Ok(())
+    }
+
     #[test]
     fn ripr_swarm_plan_blocks_legacy_unbounded_repo_exposure_verify_commands() -> Result<(), String>
     {
@@ -89051,6 +89165,15 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["top_next_action"]["kind"],
             "route_static_limitation_backlog"
+        );
+        assert_eq!(value["summary"]["static_limitation_packets"], 0);
+        assert_eq!(
+            value["summary"]["static_limitation_backlog_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["static_limitation_backlog_signals"],
+            serde_json::Value::from(1148)
         );
         assert_eq!(
             value["top_next_action"]["packet_id"],

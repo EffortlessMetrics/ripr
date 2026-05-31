@@ -2853,6 +2853,11 @@ blocked by unsupported alias or ambiguity shapes. Packet identity is route- and
 subroute-grained: the same limitation category can emit separate backlog packets
 for separate analyzer repair routes or named subroutes. These packets are not
 public repair packets and must not enter the swarm-ready queue.
+The `summary.static_limitation_packets` count is limited to public repair
+packets that carry static limitations. `summary.static_limitation_backlog_packets`
+and `summary.static_limitation_backlog_signals` summarize the separate analyzer
+backlog so consumers can route analyzer work even when no public repair packets
+are emitted.
 
 ```json
 {
@@ -2919,6 +2924,8 @@ public repair packets and must not enter the swarm-ready queue.
     "missing_related_test_or_observer": 3,
     "related_context_missing": 3,
     "static_limitation_packets": 2,
+    "static_limitation_backlog_packets": 6,
+    "static_limitation_backlog_signals": 141,
     "high_confidence_packets": 4
   },
   "blocked_state_examples": [
@@ -3620,6 +3627,10 @@ Readiness forwards `static_limitation_backlog` from `swarm-plan` so thin
 surfaces can show the leading analyzer repair routes when no packet is safely
 actionable. This field is advisory limitation backlog, not a public actionable
 count and not a CI gate predicate.
+Readiness summary counts keep the same split as the plan summary:
+`static_limitation_packets` counts public repair packets blocked by static
+limitations, while `static_limitation_backlog_packets` and
+`static_limitation_backlog_signals` describe the separate analyzer backlog.
 `top_limitation_routes[]` is a readiness-level projection of those analyzer
 routes with sample packet context, sample category/subroute, sample canonical
 gap IDs, sample source locations, and non-claims so operators can inspect the
@@ -3695,6 +3706,8 @@ limits.
     "missing_receipt_command": 0,
     "missing_target_test_shape": 0,
     "static_limitation_packets": 2,
+    "static_limitation_backlog_packets": 6,
+    "static_limitation_backlog_signals": 141,
     "high_confidence_packets": 4,
     "attempted_packets": 3,
     "attempted_no_receipt_packets": 0,
