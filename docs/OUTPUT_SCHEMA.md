@@ -2562,14 +2562,14 @@ Field contract:
   badge-readiness diagnostics for the emitted packet set. It counts
   public-projection eligible packets, excluded packets, and stable
   `projection_exclusion_reasons` rows such as `not_actionable_gap_state`,
-  `missing_canonical_gap_id`, `missing_receipt_command`,
+  `missing_canonical_gap_id`, `missing_receipt_command`, `missing_repair_kind`,
   `missing_target_test_shape`, `missing_related_test_or_observer`, `missing_confidence`,
   `missing_must_not_change`, `missing_allowed_edit_surface`,
   `missing_raw_evidence_refs`, `unbounded_verify_command`, and
   `static_limitation_present`. This is advisory report evidence only and does
   not change public badge endpoint semantics. Swarm planning treats explicit
   packet-field projection exclusions such as `not_actionable_gap_state`,
-  `missing_repair_route`, `missing_verify_command`, `unbounded_verify_command`,
+  `missing_repair_kind`, `missing_repair_route`, `missing_verify_command`, `unbounded_verify_command`,
   `missing_receipt_command`, `missing_must_not_change`,
   `missing_raw_evidence_refs`, `missing_related_test_or_observer`, or
   `missing_confidence` as field-level blocked states even if stale actionability
@@ -2915,6 +2915,7 @@ are emitted.
     "missing_canonical_gap_id": 0,
     "missing_verify_command": 0,
     "missing_receipt_command": 0,
+    "missing_repair_kind": 0,
     "missing_repair_route": 0,
     "missing_target_test_shape": 0,
     "missing_must_not_change": 0,
@@ -3704,6 +3705,7 @@ limits.
     "missing_verify_command": 0,
     "missing_verify_result": 0,
     "missing_receipt_command": 0,
+    "missing_repair_kind": 0,
     "missing_target_test_shape": 0,
     "static_limitation_packets": 2,
     "static_limitation_backlog_packets": 6,
@@ -3995,7 +3997,7 @@ count, reason, next action kind, repair route, and example packet/canonical gap
 identity when source artifacts provide one, so no blocked class is visible only
 through raw packet JSON. It includes coarse states such as
 `blocked_by_missing_context`, field-level blockers such as
-`missing_canonical_gap_id`, `missing_target_test_shape`, `missing_allowed_edit_surface`,
+`missing_canonical_gap_id`, `missing_repair_kind`, `missing_target_test_shape`, `missing_allowed_edit_surface`,
 `missing_confidence`, `missing_raw_evidence_refs`, and
 `missing_related_test_or_observer`, and outcome blockers such as `orphan_receipt`,
 `unchanged_attempt`, and
