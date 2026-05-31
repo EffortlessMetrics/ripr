@@ -110,6 +110,13 @@ the source evidence class first and keep projection changes narrow.
   records the current-state audit and missing slices for completing
   TypeScript/JavaScript as an opt-in preview repair-guidance surface.
 
+## Language Enablement Trackers
+
+- [TypeScript Enablement](TYPESCRIPT_ENABLEMENT.md) is the active successor to
+  the closed TypeScript preview-completion lane. It owns TypeScript/JavaScript
+  usefulness, precision, repair-card shape, dogfood, and promotion-readiness
+  while preserving opt-in preview authority.
+
 ## Lane 4 Source Of Truth
 
 Lane 4 owns PR and CI review composition:

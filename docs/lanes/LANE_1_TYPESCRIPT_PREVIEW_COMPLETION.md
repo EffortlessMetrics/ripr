@@ -373,9 +373,10 @@ support-tier promotion, complete repair-packet claims, runtime Jest/Vitest
 execution, generated tests, source edits, default gates, badge contribution,
 baseline authority, or RIPR Zero contribution.
 
-The TypeScript preview completion lane is closed. Future work should be a
-separate support-tier promotion or analyzer-improvement packet, not a
-continuation of this completion lane.
+The TypeScript preview completion lane is closed. Future TypeScript-family work
+belongs to the [TypeScript Enablement](TYPESCRIPT_ENABLEMENT.md) successor lane
+or to a separate support-tier promotion packet, not to a continuation of this
+completion lane.
 
 ## Validation
 
