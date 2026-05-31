@@ -69613,6 +69613,95 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn dogfood_surface_projection_alignment_rejects_missing_limitation_backlog_packet()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let mut scenario = dogfood_surface_projection_alignment_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "static_limitation_backlog_alignment")
+                .ok_or("surface projection corpus must include static limitation backlog case")?;
+            scenario.swarm_plan["static_limitation_backlog"]["limitation_backlog_packets"] =
+                serde_json::json!([]);
+
+            let report = dogfood_surface_projection_alignment_run(&scenario)
+                .errors
+                .join("\n");
+
+            assert!(
+                report
+                    .contains("static limitation backlog must include limitation_backlog_packets")
+            );
+            assert!(report.contains(
+                "readiness static_limitation_backlog must preserve limitation_backlog_packets"
+            ));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_surface_projection_alignment_rejects_incomplete_limitation_backlog_packet()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let mut scenario = dogfood_surface_projection_alignment_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "static_limitation_backlog_alignment")
+                .ok_or("surface projection corpus must include static limitation backlog case")?;
+            scenario.swarm_plan["static_limitation_backlog"]["limitation_backlog_packets"] = serde_json::json!([
+                {
+                    "packet_id": scenario.packet_id,
+                    "canonical_gap_id": scenario.canonical_gap_id,
+                    "limitation_category": "activation_owner_call_absent",
+                    "repair_route": "analysis/related-test-affinity-owner-call-tracing",
+                    "signal_count": 1,
+                    "public_projection_eligible": true,
+                    "swarm_ready": true
+                }
+            ]);
+
+            let report = dogfood_surface_projection_alignment_run(&scenario)
+                .errors
+                .join("\n");
+
+            assert!(
+                report.contains("limitation backlog packet must include sample_canonical_gap_ids")
+            );
+            assert!(report.contains("limitation backlog packet must include sample_sources"));
+            assert!(report.contains(
+                "limitation backlog packet must preserve non_claims denying public repair status"
+            ));
+            assert!(
+                report.contains(
+                    "limitation backlog packet must not expose public_projection_eligible"
+                )
+            );
+            assert!(report.contains("limitation backlog packet must not expose swarm_ready"));
+            assert!(report.contains(
+                "readiness limitation backlog packet must preserve sample_canonical_gap_ids"
+            ));
+            assert!(
+                report.contains("readiness limitation backlog packet must preserve sample_sources")
+            );
+            assert!(
+                report.contains("readiness limitation backlog packet must preserve non_claims")
+            );
+            assert!(report.contains(
+                "readiness limitation backlog packet must not expose public_projection_eligible"
+            ));
+            assert!(
+                report.contains("readiness limitation backlog packet must not expose swarm_ready")
+            );
+            assert!(
+                report.contains("top_limitation_routes must preserve sample_canonical_gap_ids")
+            );
+            assert!(report.contains("top_limitation_routes must preserve sample_sources"));
+            assert!(report.contains(
+                "top_limitation_routes must preserve non_claims denying public repair status"
+            ));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn dogfood_real_repair_attempt_receipts_are_checked() -> Result<(), String> {
         with_repo_cwd(|| {
             let scenarios = dogfood_real_repair_attempt_scenarios();
