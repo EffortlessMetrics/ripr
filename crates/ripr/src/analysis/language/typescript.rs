@@ -3070,6 +3070,33 @@ mod tests {
         }
     }
 
+    fn direct_test_with_assertion(
+        test_name: &str,
+        body_text: impl Into<String>,
+        matcher: &str,
+        argument_count: usize,
+        oracle_kind: OracleKind,
+        oracle_strength: OracleStrength,
+    ) -> TypeScriptTest {
+        TypeScriptTest {
+            name: test_name.to_string(),
+            local_name: test_name.to_string(),
+            describe_names: Vec::new(),
+            file: PathBuf::from("tests/lib.test.ts"),
+            line: 1,
+            body_text: body_text.into(),
+            assertions: vec![TypeScriptAssertion {
+                matcher: matcher.to_string(),
+                argument_count,
+                line: 2,
+                oracle_kind,
+                oracle_strength,
+            }],
+            mocks_in_file: Vec::new(),
+            imports_in_file: Vec::new(),
+        }
+    }
+
     fn heuristic_name_test_for(owner_name: &str) -> TypeScriptTest {
         TypeScriptTest {
             name: format!("{owner_name} boundary"),
@@ -3805,6 +3832,126 @@ test("type only import", () => {
                 .as_deref()
                 .is_some_and(|step| step.contains("smoke-only assertion")
                     && step.contains("no actionable repair packet is emitted"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_weak_oracle_guidance_names_snapshot_exact_value_shape()
+    -> Result<(), String> {
+        let owner = test_owner("renderSummary", "src/lib.ts");
+        let test = direct_test_with_assertion(
+            "renders summary snapshot",
+            "const value = renderSummary(status);\nexpect(value).toMatchSnapshot();",
+            "toMatchSnapshot",
+            0,
+            OracleKind::Snapshot,
+            OracleStrength::Medium,
+        );
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    return `summary:${status.trim()}`;",
+            &[owner],
+            &[test],
+        )
+        .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::Snapshot);
+        assert!(finding.canonical_gap.is_none());
+        assert_evidence_contains(&finding, "gap_state: advisory");
+        assert!(
+            finding.missing.iter().any(|line| {
+                line.contains("snapshot evidence") && line.contains("add an exact-value assertion")
+            }),
+            "expected snapshot exact-value guidance, got {:?}",
+            finding.missing
+        );
+        let recommended = finding
+            .recommended_next_step
+            .as_deref()
+            .ok_or_else(|| "expected recommended next step".to_string())?;
+        assert!(
+            recommended.contains("add an exact-value assertion alongside the snapshot")
+                && recommended.contains("no actionable repair packet is emitted"),
+            "expected snapshot advisory recommendation, got {recommended:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_weak_oracle_guidance_names_smoke_exact_value_shape() -> Result<(), String>
+    {
+        let finding = classify_weak_direct_line("    return count >= 1;")?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::SmokeOnly);
+        assert!(finding.canonical_gap.is_none());
+        assert_evidence_contains(&finding, "gap_state: advisory");
+        assert!(
+            finding.missing.iter().any(|line| {
+                line.contains("smoke-only oracle") && line.contains("exact-value assertion")
+            }),
+            "expected smoke-only exact-value guidance, got {:?}",
+            finding.missing
+        );
+        let recommended = finding
+            .recommended_next_step
+            .as_deref()
+            .ok_or_else(|| "expected recommended next step".to_string())?;
+        assert!(
+            recommended.contains("replace or augment the smoke-only assertion")
+                && recommended.contains("no actionable repair packet is emitted"),
+            "expected smoke-only advisory recommendation, got {recommended:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_weak_oracle_guidance_keeps_broad_error_advisory() -> Result<(), String> {
+        let owner = test_owner("parseUser", "src/lib.ts");
+        let test = direct_test_with_assertion(
+            "rejects empty user broadly",
+            "expect(() => parseUser('')).toThrow();",
+            "toThrow",
+            0,
+            OracleKind::BroadError,
+            OracleStrength::Weak,
+        );
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    throw new Error(\"empty user\");",
+            &[owner],
+            &[test],
+        )
+        .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::BroadError);
+        assert!(finding.canonical_gap.is_none());
+        assert_evidence_contains(&finding, "gap_state: advisory");
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|line| line.contains("broad error evidence") && line.contains("keep it weak")),
+            "expected broad-error advisory guidance, got {:?}",
+            finding.missing
+        );
+        let recommended = finding
+            .recommended_next_step
+            .as_deref()
+            .ok_or_else(|| "expected recommended next step".to_string())?;
+        assert!(
+            recommended.contains("broad error evidence does not establish missing discriminator")
+                && recommended.contains("no actionable repair packet is emitted"),
+            "expected broad-error advisory recommendation, got {recommended:?}"
+        );
+        assert!(
+            !recommended.contains("exact-value assertion"),
+            "broad error preview guidance should not ask for an exact-value assertion: {recommended:?}"
         );
         Ok(())
     }
