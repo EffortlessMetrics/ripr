@@ -237,8 +237,9 @@ can show:
 - a fixture corpus pinning at least one example per `static_limit_kind`
 - fixtures cover plain `def`, `async def`, classes, methods, decorated
   methods, and module-level fixtures
-- a fixture proving `pytest.raises` and `self.assertRaises` are
-  recognised as error-path oracles
+- fixtures proving broad `pytest.raises` / `self.assertRaises` are recognised
+  as weak error-path oracles while `pytest.raises(..., match=...)` /
+  `self.assertRaisesRegex(...)` are recognised as exact exception observers
 - a fixture proving unittest assertion argument shapes can identify field,
   output, and status-code oracles
 - a fixture proving pytest and unittest related tests produce
@@ -266,6 +267,8 @@ can show:
   while preserving static/advisory receipt language
 - a non-boundary return-value outcome fixture proving a weak broad assertion can
   become an exact return assertion and close the canonical Python gap
+- a non-boundary exception-path outcome fixture proving a weak broad exception
+  observer can become exact message evidence and close the canonical Python gap
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub

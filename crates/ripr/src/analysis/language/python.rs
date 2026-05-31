@@ -1844,16 +1844,31 @@ fn oracle_for_call(
             OracleStrength::Smoke,
             PythonOracleShape::BroadSmokeAssertion,
         )),
-        "assertRaises" | "assertRaisesRegex" => Some((
+        "assertRaisesRegex" => Some((
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+            PythonOracleShape::ExceptionAssertion,
+        )),
+        "assertRaises" => Some((
             OracleKind::BroadError,
             OracleStrength::Weak,
             PythonOracleShape::ExceptionAssertion,
         )),
-        "raises" if name == "pytest.raises" || name == "raises" => Some((
-            OracleKind::BroadError,
-            OracleStrength::Weak,
-            PythonOracleShape::ExceptionAssertion,
-        )),
+        "raises" if name == "pytest.raises" || name == "raises" => {
+            if call_has_keyword(call, "match") {
+                Some((
+                    OracleKind::ExactErrorVariant,
+                    OracleStrength::Strong,
+                    PythonOracleShape::ExceptionAssertion,
+                ))
+            } else {
+                Some((
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                    PythonOracleShape::ExceptionAssertion,
+                ))
+            }
+        }
         "assert_called"
         | "assert_called_once"
         | "assert_called_with"
@@ -1872,6 +1887,12 @@ fn oracle_for_call(
         )),
         _ => None,
     }
+}
+
+fn call_has_keyword(call: &ast::ExprCall, name: &str) -> bool {
+    call.keywords
+        .iter()
+        .any(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg == name))
 }
 
 fn oracle_shape_for_call_arguments(
@@ -4145,6 +4166,36 @@ def test_notifies_callback():
         );
         assert!(finding.canonical_gap.is_some());
         assert!(finding.recommended_next_step.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_exception_match_assertion_as_exposed() -> Result<(), String> {
+        let finding = classify_change(
+            Path::new("src/validation.py"),
+            3,
+            "        raise ValueError(\"positive required\")",
+            &extract_owners(
+                Path::new("src/validation.py"),
+                "def require_positive(value):\n    if value <= 0:\n        raise ValueError(\"positive required\")\n    return value\n",
+            ),
+            &extract_tests(
+                Path::new("tests/test_validation.py"),
+                "import pytest\nfrom src.validation import require_positive\n\n\
+                 def test_rejects_zero_value():\n    with pytest.raises(ValueError, match=\"positive required\"):\n        require_positive(0)\n",
+            ),
+        )
+        .ok_or_else(|| "exception-path change should classify".to_string())?;
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(missing_discriminator_values(&finding).is_empty());
+        assert_eq!(
+            finding.related_tests[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
         Ok(())
     }
 

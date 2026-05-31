@@ -716,6 +716,10 @@ outputs = [
   "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
   "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json",
   "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md",
+  "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json",
+  "fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json",
+  "fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.json",
+  "fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json",
@@ -2118,6 +2122,7 @@ name = "Python preview static facts"
 spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/analysis/language/python.rs::tests::classify_exception_match_assertion_as_exposed",
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
   "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
   "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
@@ -2126,6 +2131,7 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_queue_marks_receipt_closed_python_packets_stale",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "crates/ripr/src/output/first_pr.rs::tests::python_check_output_materializes_gap_ledger_for_start_here",
   "crates/ripr/src/output/github.rs::tests::render_includes_python_repair_card_guidance",
@@ -2177,6 +2183,7 @@ fixtures = [
   "fixtures/python_disabled",
   "fixtures/first_successful_pr/python-preview-gap",
   "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -4020,6 +4027,7 @@ tests = [
   "xtask::tests::first_successful_pr_corpus_reports_outcome_receipt_drift",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_return_value_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",
@@ -4043,6 +4051,10 @@ fixtures = [
   "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
   "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json",
   "fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md",
+  "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json",
+  "fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json",
+  "fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.json",
+  "fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.md",
 ]
 code = [
   "xtask/src/command.rs",

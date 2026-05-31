@@ -306,6 +306,27 @@ def test_with_item_assertion():
 }
 
 #[test]
+fn collect_with_item_assertions_treats_pytest_raises_match_as_exact_error() -> Result<(), String> {
+    let source = r#"
+import pytest
+
+def test_with_item_assertion():
+    with pytest.raises(ValueError, match="positive required"):
+        do_thing()
+"#;
+    let oracles = assertion_oracles(source);
+    if !oracles.iter().any(|(kind, strength)| {
+        matches!(kind, OracleKind::ExactErrorVariant) && *strength == OracleStrength::Strong
+    }) {
+        return Err(format!(
+            "expected pytest.raises(..., match=...) to register ExactErrorVariant oracle, got {:?}",
+            oracles
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn pytest_oracle_shapes_cover_repair_routing_categories() -> Result<(), String> {
     let source = r#"
 from pytest import raises
@@ -539,6 +560,10 @@ class CaseAll(unittest.TestCase):
         .iter()
         .filter(|(kind, _)| matches!(kind, OracleKind::BroadError))
         .count();
+    let exact_error = oracles
+        .iter()
+        .filter(|(kind, _)| matches!(kind, OracleKind::ExactErrorVariant))
+        .count();
     let mock_expectations = oracles
         .iter()
         .filter(|(kind, _)| matches!(kind, OracleKind::MockExpectation))
@@ -561,9 +586,15 @@ class CaseAll(unittest.TestCase):
             oracles
         ));
     }
-    if broad_error < 2 {
+    if broad_error < 1 {
         return Err(format!(
-            "expected assertRaises + assertRaisesRegex broad-error oracles, got {:?}",
+            "expected assertRaises broad-error oracle, got {:?}",
+            oracles
+        ));
+    }
+    if exact_error < 1 {
+        return Err(format!(
+            "expected assertRaisesRegex exact-error oracle, got {:?}",
             oracles
         ));
     }

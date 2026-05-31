@@ -1074,6 +1074,10 @@ Make Python gap improvement durable.
 - `fixtures/first_successful_pr/python-return-gap` pins a non-boundary
   return-value receipt where broad pytest evidence strengthens to an exact
   return assertion and closes the canonical Python gap.
+- `fixtures/first_successful_pr/python-exception-gap` pins exception-path
+  receipt movement where broad exception evidence strengthens to exact
+  `pytest.raises(..., match=...)` message evidence and closes the canonical
+  Python gap.
 - `ripr reports gap-ledger --check-output` now carries the corresponding
   receipt command into repairable Python GapRecords, which makes bounded
   packet delegation receipt-ready.
