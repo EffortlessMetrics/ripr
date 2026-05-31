@@ -227,7 +227,8 @@ mod tests {
         assert!(CHECK_HELP.contains("repo-exposure-json"));
         assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
-        assert!(CHECK_HELP.contains("test-efficiency-report"));
+        assert!(CHECK_HELP.contains("needs test-efficiency"));
+        assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
     }
 

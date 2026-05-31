@@ -581,11 +581,12 @@ ripr check --base origin/main --format badge-plus-shields
 ```
 
 The `badge-plus-*` formats read `target/ripr/reports/test-efficiency.json`
-(relative to `--root`). If the report is missing, the command fails with a
-clear error pointing at `cargo xtask test-efficiency-report`. CI artifact
-wiring (`ci/badge-artifacts`) will eventually generate the report as part
-of the badge pipeline; until then, callers must regenerate the report
-explicitly when test-efficiency state changes.
+(relative to `--root`). If the report is missing, the command renders a neutral
+`ripr+` badge with `message = "needs test-efficiency"`, warns on stderr, and
+exits successfully so badge generators do not publish a permanent
+`unavailable` state. CI artifact wiring (`ci/badge-artifacts`) should generate
+the report as part of the badge pipeline before publishing or enforcing a
+measured `ripr+` value.
 
 Reasoning. The current top-level commands are `check`, `explain`, `context`,
 `doctor`, `lsp`. Each is a distinct *operation*. A badge is the same

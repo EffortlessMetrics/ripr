@@ -84,9 +84,10 @@ Options:
                            repo-badge-plus-shields, repo-seams-json,
                            repo-seams-md, repo-exposure-json, repo-exposure-md,
                            repo-sarif, agent-seam-packets-json. Defaults to human.
-                           badge-plus-* and repo-badge-plus-* formats require
-                           target/ripr/reports/test-efficiency.json (run
-                           `cargo xtask test-efficiency-report` first).
+                           badge-plus-* and repo-badge-plus-* formats read
+                           target/ripr/reports/test-efficiency.json when present;
+                           missing input renders a neutral "needs test-efficiency"
+                           badge and warns on stderr. See docs/BADGE_ADOPTION.md.
                            repo-* and agent-seam-packets-json formats render
                            against the full repo baseline; the non-repo badge-*
                            formats remain diff-scoped.

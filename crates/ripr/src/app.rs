@@ -121,10 +121,9 @@ pub struct CheckOutput {
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.
 ///
-/// Returns `Err` when the requested format requires auxiliary inputs that
-/// are not present — currently only the `BadgePlus*` formats, which read
-/// the test-efficiency report. The other formats are infallible and
-/// always return `Ok`.
+/// Missing auxiliary inputs for badge rendering produce neutral badge output
+/// when that is safe for badge generators. Malformed auxiliary inputs still
+/// return `Err` so callers do not publish misleading measured badges.
 pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<String, String> {
     render_check_with_config(output, format, &RiprConfig::default())
 }

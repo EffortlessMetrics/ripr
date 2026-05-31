@@ -114,7 +114,7 @@ fn render_check_repo_badge_shields_stays_four_fields_without_scope_leak() -> Res
 }
 
 #[test]
-fn render_check_badge_plus_fails_when_test_efficiency_report_missing() -> Result<(), String> {
+fn render_check_badge_plus_missing_test_efficiency_is_neutral() -> Result<(), String> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -125,17 +125,13 @@ fn render_check_badge_plus_fails_when_test_efficiency_report_missing() -> Result
     let mut output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
     output.root = tmp.clone();
 
-    let result = render_check(&output, &OutputFormat::BadgePlusJson);
-    assert!(result.is_err(), "badge-plus must fail when report missing");
-    let err = result.err().unwrap_or_default();
-    assert!(
-        err.contains("test-efficiency.json"),
-        "error must name the missing report: {err}"
-    );
-    assert!(
-        err.contains("cargo xtask test-efficiency-report"),
-        "error must direct the user to the regenerator command: {err}"
-    );
+    let rendered = render_check(&output, &OutputFormat::BadgePlusJson)?;
+    assert!(rendered.contains(r#""kind": "ripr_plus""#));
+    assert!(rendered.contains(r#""message": "needs test-efficiency""#));
+    assert!(rendered.contains(r#""color": "lightgrey""#));
+    assert!(rendered.contains("test-efficiency.json"));
+    assert!(rendered.contains("docs/BADGE_ADOPTION.md"));
+    assert!(!rendered.contains("cargo xtask test-efficiency-report"));
 
     let _ = std::fs::remove_dir_all(&tmp);
     Ok(())

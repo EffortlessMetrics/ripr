@@ -2543,18 +2543,67 @@ fn make_temp_workspace_with_suppressions(
 }
 
 #[test]
-fn check_badge_plus_fails_clearly_when_test_efficiency_report_missing() -> Result<(), String> {
+fn check_badge_plus_missing_test_efficiency_renders_neutral_badge() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     let root = workspace.display().to_string();
     let diff = sample_diff().display().to_string();
 
-    for format in ["badge-plus-json", "badge-plus-shields"] {
-        let output = run_ripr(&[
-            "check", "--root", &root, "--diff", &diff, "--format", format,
-        ]);
+    for (format, args) in [
+        (
+            "badge-plus-json",
+            vec![
+                "check",
+                "--root",
+                root.as_str(),
+                "--diff",
+                diff.as_str(),
+                "--format",
+                "badge-plus-json",
+            ],
+        ),
+        (
+            "badge-plus-shields",
+            vec![
+                "check",
+                "--root",
+                root.as_str(),
+                "--diff",
+                diff.as_str(),
+                "--format",
+                "badge-plus-shields",
+            ],
+        ),
+        (
+            "repo-badge-plus-json",
+            vec![
+                "check",
+                "--root",
+                root.as_str(),
+                "--format",
+                "repo-badge-plus-json",
+            ],
+        ),
+        (
+            "repo-badge-plus-shields",
+            vec![
+                "check",
+                "--root",
+                root.as_str(),
+                "--format",
+                "repo-badge-plus-shields",
+            ],
+        ),
+    ] {
+        let output = run_ripr(&args);
+        assert_success(&output);
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            !output.status.success(),
-            "format `{format}` should fail when report missing"
+            stdout.contains(r#""message": "needs test-efficiency""#),
+            "stdout must render neutral badge for `{format}`: {stdout}"
+        );
+        assert!(
+            stdout.contains(r#""color": "lightgrey""#),
+            "stdout must render neutral color for `{format}`: {stdout}"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
@@ -2562,8 +2611,12 @@ fn check_badge_plus_fails_clearly_when_test_efficiency_report_missing() -> Resul
             "stderr must name the missing report for `{format}`: {stderr}"
         );
         assert!(
-            stderr.contains("cargo xtask test-efficiency-report"),
-            "stderr must direct the user to the regenerator for `{format}`: {stderr}"
+            stderr.contains("docs/BADGE_ADOPTION.md"),
+            "stderr must point to badge adoption docs for `{format}`: {stderr}"
+        );
+        assert!(
+            !stderr.contains("cargo xtask test-efficiency-report"),
+            "stderr must not hardcode repo-private xtask guidance for `{format}`: {stderr}"
         );
     }
     let _ = std::fs::remove_dir_all(&workspace);
