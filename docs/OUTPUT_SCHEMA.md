@@ -2899,6 +2899,7 @@ public repair packets and must not enter the swarm-ready queue.
     "missing_allowed_edit_surface": 0,
     "missing_confidence": 0,
     "missing_raw_evidence_refs": 0,
+    "missing_related_test_or_observer": 3,
     "related_context_missing": 3,
     "static_limitation_packets": 2,
     "high_confidence_packets": 4
@@ -3961,8 +3962,8 @@ identity when source artifacts provide one, so no blocked class is visible only
 through raw packet JSON. It includes coarse states such as
 `blocked_by_missing_context`, field-level blockers such as
 `missing_canonical_gap_id`, `missing_target_test_shape`, `missing_allowed_edit_surface`,
-`missing_confidence`, and
-`missing_raw_evidence_refs`, and outcome blockers such as `orphan_receipt`,
+`missing_confidence`, `missing_raw_evidence_refs`, and
+`missing_related_test_or_observer`, and outcome blockers such as `orphan_receipt`,
 `unchanged_attempt`, and
 `regressed_attempt`. For `blocked_by_static_limitation`, readiness prefers the
 top static-limitation backlog route and sample packet when available, so the

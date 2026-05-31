@@ -22656,6 +22656,7 @@ struct RiprSwarmReadinessSummary {
     missing_allowed_edit_surface: usize,
     missing_confidence: usize,
     missing_raw_evidence_refs: usize,
+    missing_related_test_or_observer: usize,
     related_context_missing: usize,
     static_limitation_packets: usize,
     high_confidence_packets: usize,
@@ -23955,6 +23956,21 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
                     .any(|reason| reason == "missing_receipt_command")
         })
         .count();
+    let related_context_missing = report
+        .packets
+        .iter()
+        .filter(|packet| {
+            !packet.related_test_or_observer_available
+                || packet
+                    .missing_context
+                    .iter()
+                    .any(|field| field == "related_test_or_observer")
+                || packet
+                    .projection_exclusion_reasons
+                    .iter()
+                    .any(|reason| reason == "missing_related_test_or_observer")
+        })
+        .count();
     serde_json::json!({
         "packets_total": report.packets.len(),
         "swarm_ready_packets": ready,
@@ -24093,21 +24109,8 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
                         .any(|reason| reason == "missing_raw_evidence_refs")
             })
             .count(),
-        "related_context_missing": report
-            .packets
-            .iter()
-            .filter(|packet| {
-                !packet.related_test_or_observer_available
-                    || packet
-                        .missing_context
-                        .iter()
-                        .any(|field| field == "related_test_or_observer")
-                    || packet
-                        .projection_exclusion_reasons
-                        .iter()
-                        .any(|reason| reason == "missing_related_test_or_observer")
-            })
-            .count(),
+        "missing_related_test_or_observer": related_context_missing,
+        "related_context_missing": related_context_missing,
         "static_limitation_packets": report
             .packets
             .iter()
@@ -24454,6 +24457,7 @@ fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
         "missing_allowed_edit_surface",
         "missing_confidence",
         "missing_raw_evidence_refs",
+        "missing_related_test_or_observer",
         "related_context_missing",
         "static_limitation_packets",
         "high_confidence_packets",
@@ -26657,8 +26661,12 @@ fn ripr_swarm_readiness_summary(
                     "raw_evidence_refs",
                     &["missing_raw_evidence_refs"],
                 ));
-        summary.related_context_missing =
-            audit_usize(plan, &["summary", "related_context_missing"]).unwrap_or_default();
+        let related_context_missing =
+            audit_usize(plan, &["summary", "missing_related_test_or_observer"]).unwrap_or_else(
+                || audit_usize(plan, &["summary", "related_context_missing"]).unwrap_or_default(),
+            );
+        summary.missing_related_test_or_observer = related_context_missing;
+        summary.related_context_missing = related_context_missing;
         summary.static_limitation_packets =
             audit_usize(plan, &["summary", "static_limitation_packets"]).unwrap_or_default();
         summary.high_confidence_packets =
@@ -26916,6 +26924,7 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "missing_allowed_edit_surface": summary.missing_allowed_edit_surface,
         "missing_confidence": summary.missing_confidence,
         "missing_raw_evidence_refs": summary.missing_raw_evidence_refs,
+        "missing_related_test_or_observer": summary.missing_related_test_or_observer,
         "related_context_missing": summary.related_context_missing,
         "static_limitation_packets": summary.static_limitation_packets,
         "high_confidence_packets": summary.high_confidence_packets,
@@ -27112,7 +27121,7 @@ fn ripr_swarm_readiness_blocked_state_routes(
     ripr_swarm_readiness_push_blocked_state_route(
         &mut routes,
         "missing_related_test_or_observer",
-        summary.related_context_missing,
+        summary.missing_related_test_or_observer,
         "the packet has no typed related test or observer target",
         "fix_related_test_or_observer",
         "cargo xtask lane1-evidence-audit",
@@ -28036,7 +28045,7 @@ fn ripr_swarm_readiness_next_actions(
             ),
         });
     }
-    if summary.related_context_missing > 0 {
+    if summary.missing_related_test_or_observer > 0 {
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_related_test_or_observer".to_string(),
             packet_id: None,
@@ -28046,7 +28055,7 @@ fn ripr_swarm_readiness_next_actions(
             command: Some("cargo xtask lane1-evidence-audit".to_string()),
             reason: format!(
                 "{} packet(s) are missing typed related test or observer context; repair target projection before attempting swarm work",
-                summary.related_context_missing
+                summary.missing_related_test_or_observer
             ),
         });
     }
@@ -28572,6 +28581,7 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
         "missing_allowed_edit_surface",
         "missing_confidence",
         "missing_raw_evidence_refs",
+        "missing_related_test_or_observer",
         "related_context_missing",
         "static_limitation_packets",
         "high_confidence_packets",
@@ -86342,6 +86352,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 "missing_allowed_edit_surface": 1,
                 "missing_confidence": 1,
                 "missing_raw_evidence_refs": 1,
+                "missing_related_test_or_observer": 1,
                 "related_context_missing": 1,
                 "static_limitation_packets": 1,
                 "high_confidence_packets": 0,
@@ -86564,6 +86575,7 @@ covered_by = ["cargo xtask check-file-policy"]
             "missing_allowed_edit_surface",
             "missing_confidence",
             "missing_raw_evidence_refs",
+            "missing_related_test_or_observer",
             "related_context_missing",
             "attempted_no_receipt_packets",
             "unchanged_packets",
@@ -89266,6 +89278,10 @@ covered_by = ["cargo xtask check-file-policy"]
         let json = ripr_swarm_plan_json(&report)?;
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["missing_related_test_or_observer"],
+            serde_json::Value::from(1)
+        );
         assert_eq!(
             value["summary"]["related_context_missing"],
             serde_json::Value::from(1)
