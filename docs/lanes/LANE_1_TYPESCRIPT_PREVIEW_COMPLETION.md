@@ -310,10 +310,9 @@ Completed after the initial audit:
      already-observed evidence, intentionally skipped incomplete-packet cases,
      and route-quality metrics by language and repair kind while preserving
      `repair_packet_ready = false` and advisory preview authority.
-   - Missing proof: closeout has not decided whether the evidence remains
-     `preview` or supports a narrow support-tier move.
-   - Next step: review support tiers with proof links, deferred work, and
-     explicit non-claims. The default decision remains `preview`.
+   - Closeout decision: TypeScript and JavaScript remain `preview`; a later
+     promotion would need a separate support-tier packet with complete repair
+     packets and route-quality proof.
 
 ## PR Sequence
 

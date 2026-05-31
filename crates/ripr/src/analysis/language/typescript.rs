@@ -1,25 +1,18 @@
-//! TypeScript preview adapter — owner + test sub-slice.
+//! TypeScript preview adapter.
 //!
 //! See `docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md` and
 //! `docs/adr/0008-typescript-parser-substrate.md`.
 //!
-//! This sub-slice extracts syntax-first owner facts and Jest/Vitest
-//! `test(...)` / `it(...)` / `.each(...)` blocks from TypeScript /
-//! JavaScript files,
-//! matches related tests by owner-call or bounded proximity signals, and emits one preview-tagged
-//! `Finding` per changed line that falls within an owner. The classifier
-//! is intentionally minimal — it produces a two-way gradient:
+//! This adapter extracts syntax-first owner, Jest/Vitest test/assertion,
+//! related-test, probe-shape, and static-limit facts from TypeScript /
+//! JavaScript files, then emits one preview-tagged `Finding` per changed
+//! production line that falls within an owner.
 //!
-//! - `WeaklyExposed` when the changed-line's owner is referenced by at
-//!   least one test (any oracle, including unknown).
-//! - `NoStaticPath` when no related test references the owner.
-//!
-//! Assertion-shape extraction (refining `WeaklyExposed` → `Exposed` for
-//! exact-value oracles), probe-family shape detection, and explicit
-//! static-limit reporting land in follow-up issues:
-//! #767 (assertion shapes), #768 (probe shapes), #769 (static limits).
-//! Nested `describe(...)` blocks are syntax-walked for test discovery and
-//! bounded name/proximity matching. Heuristic links stay uncertainty-only.
+//! The adapter remains a preview evidence surface: it does not invoke `tsc`,
+//! `tsserver`, package graph resolution, Jest/Vitest runtime execution,
+//! providers, generated tests, or source edits. Heuristic links stay
+//! uncertainty-only, static limits fail closed, and incomplete repair packets
+//! remain advisory.
 
 use super::super::{AnalysisOptions, diff::ChangedFile, probes};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
@@ -2009,10 +2002,9 @@ fn classify_probe_shape_detail(line_text: &str) -> TypeScriptProbeShape {
     {
         return TypeScriptProbeShape::new(ProbeFamily::SideEffect, DeltaKind::Effect);
     }
-    // Fall through: keep the pre-#768 default. The adapter does not yet
-    // recognise this shape, so flagging it as a generic predicate-control
-    // change matches the owner+test sub-slice baseline rather than
-    // committing to a more specific family the adapter cannot confirm.
+    // Fall through conservatively. The adapter does not recognise this shape,
+    // so flagging it as a generic predicate-control change avoids committing
+    // to a more specific family the preview surface cannot confirm.
     TypeScriptProbeShape::ambiguous_fallback()
 }
 

@@ -1,6 +1,6 @@
 # TypeScript Preview Completion Plan
 
-Status: proposed lane plan; not a support-tier promotion
+Status: closed lane plan; not a support-tier promotion
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0027
 Linked proposal: RIPR-PROP-0001

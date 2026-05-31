@@ -290,4 +290,11 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_oracle_snapshot_weak`
 - `language_adapter_typescript_oracle_smoke`
 - `language_adapter_typescript_related_imported_owner_call`
+- `language_adapter_typescript_probe_predicate`
+- `language_adapter_typescript_probe_return_value`
+- `language_adapter_typescript_probe_error_path`
+- `language_adapter_typescript_probe_field_construction`
+- `language_adapter_typescript_probe_call_side_effect`
+- `language_adapter_typescript_probe_mock_interaction`
+- `language_adapter_typescript_probe_ambiguous_suppressed`
 - `language_adapter_typescript_static_limit_mocked_module`
