@@ -450,6 +450,41 @@
       "reason": "A real merged limitation-route PR made the highest-volume sampled call-presence target-affinity limitation more trustworthy by routing it to a precise analyzer backlog item while keeping it non-actionable."
     },
     {
+      "id": "same_file_owner_call_route_samples_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#746",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "harden_limitation_route_samples",
+      "target_test_or_observer_shape": "readiness top_limitation_routes assertions that every top limitation repair route keeps an inspectable sample backlog packet even when high-volume subroutes consume the bounded packet list",
+      "verify_command": "cargo test -p xtask lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask ripr-swarm readiness",
+      "receipt_path": "target/ripr/reports/swarm-readiness.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Preserved representative limitation backlog packets for each top packet-backed repair route so the same-file owner-call limitation route remains inspectable instead of collapsing to unknown sample context, while keeping sampled-run diagnostics in runtime status rather than packet-backed route rows.",
+      "evidence_movement": "The sampled readiness report now shows the top analysis/same-file-owner-call-tracing route with packet_id, limitation category, evidence class, and sample canonical gaps while preserving non-actionable status.",
+      "operator_note": "This is a successful negative-capability dogfood attempt. It made the top analyzer backlog route operational without promoting same-file proximity into repair work.",
+      "must_not_change": [
+        "do not treat same-file proximity as owner-call activation",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not make limitation backlog packets swarm-ready",
+        "do not invent exact candidate values",
+        "do not change public badge or CI semantics"
+      ],
+      "raw_evidence_refs": [
+        "xtask/src/main.rs::tests::lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route",
+        "target/ripr/reports/swarm-readiness.json:analysis/same-file-owner-call-tracing",
+        "docs/OUTPUT_SCHEMA.md:top_limitation_routes",
+        "EffortlessMetrics/ripr-swarm#746"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged limitation-backlog PR turned the highest-volume sampled same-file owner-call route into inspectable analyzer backlog evidence while keeping the route non-actionable."
+    },
+    {
       "id": "call_presence_imported_module_wrapper_route_improved",
       "source_ref": "local:analysis-call-presence-target-affinity-owner-call-tracing-2026-05-30",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
