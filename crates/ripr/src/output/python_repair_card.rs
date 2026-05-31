@@ -361,5 +361,14 @@ mod tests {
             ),
             "Strengthen the existing pytest CLI output assertion for `output contains \"shipment queued\"`."
         );
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::CallDeletion,
+                "log contains \"shipment queued\"",
+                "python -m unittest tests.test_cli.TestCli.test_cli_smoke",
+                "add_or_strengthen_test",
+            ),
+            "Add or strengthen a unittest output/log/call-effect assertion for `log contains \"shipment queued\"`."
+        );
     }
 }
