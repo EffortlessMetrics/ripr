@@ -24007,6 +24007,10 @@ fn ripr_swarm_plan_blocked_state_examples_json(report: &RiprSwarmPlanReport) -> 
                 .missing_context
                 .iter()
                 .any(|field| field == "allowed_edit_surface")
+                || packet
+                    .projection_exclusion_reasons
+                    .iter()
+                    .any(|reason| reason == "missing_allowed_edit_surface")
         },
     );
     ripr_swarm_plan_push_blocked_state_example(
@@ -26274,11 +26278,23 @@ fn ripr_swarm_readiness_summary(
         summary.missing_must_not_change =
             audit_usize(plan, &["summary", "missing_must_not_change"]).unwrap_or_default();
         summary.missing_allowed_edit_surface =
-            audit_usize(plan, &["summary", "missing_allowed_edit_surface"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_allowed_edit_surface"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "allowed_edit_surface",
+                    &["missing_allowed_edit_surface"],
+                ));
         summary.missing_confidence =
             audit_usize(plan, &["summary", "missing_confidence"]).unwrap_or_default();
         summary.missing_raw_evidence_refs =
-            audit_usize(plan, &["summary", "missing_raw_evidence_refs"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_raw_evidence_refs"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "raw_evidence_refs",
+                    &["missing_raw_evidence_refs"],
+                ));
         summary.related_context_missing =
             audit_usize(plan, &["summary", "related_context_missing"]).unwrap_or_default();
         summary.static_limitation_packets =
@@ -26381,6 +26397,25 @@ fn ripr_swarm_readiness_summary(
             audit_usize(outcomes, &["summary", "orphaned_receipts"]).unwrap_or_default();
     }
     summary
+}
+
+fn ripr_swarm_readiness_plan_packet_field_blocker_count(
+    plan: &Value,
+    missing_context_field: &str,
+    projection_exclusion_reasons: &[&str],
+) -> usize {
+    let blocked = audit_array(plan, &["top_blocked_packets"]);
+    let ready = audit_array(plan, &["top_ready_packets"]);
+    blocked
+        .iter()
+        .chain(ready.iter())
+        .filter(|packet| {
+            ripr_swarm_readiness_packet_missing_context(packet, missing_context_field)
+                || projection_exclusion_reasons
+                    .iter()
+                    .any(|reason| ripr_swarm_readiness_packet_projection_exclusion(packet, reason))
+        })
+        .count()
 }
 
 fn ripr_swarm_readiness_attempt_history_summary(
@@ -26760,7 +26795,13 @@ fn ripr_swarm_readiness_blocked_state_routes(
         ripr_swarm_readiness_plan_packet_sample(
             swarm_plan,
             "missing_allowed_edit_surface",
-            |packet| ripr_swarm_readiness_packet_missing_context(packet, "allowed_edit_surface"),
+            |packet| {
+                ripr_swarm_readiness_packet_missing_context(packet, "allowed_edit_surface")
+                    || ripr_swarm_readiness_packet_projection_exclusion(
+                        packet,
+                        "missing_allowed_edit_surface",
+                    )
+            },
         ),
     );
     ripr_swarm_readiness_push_blocked_state_route(
@@ -84915,6 +84956,242 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("suppressed_by_public_projection_policy"));
         assert!(markdown.contains("target/ripr/receipts/orphan.json"));
         assert!(markdown.contains("cargo xtask lane1-evidence-audit"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_routes_missing_allowed_edit_surface_projection_exclusion_without_missing_context()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "source_summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 0
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 1,
+                "blocked_by_public_projection_exclusion_packets": 1,
+                "public_projection_excluded_packets": 1
+            },
+            "top_ready_packets": [],
+            "top_blocked_packets": [
+                {
+                    "packet_id": "packet:stale-missing-edit-surface",
+                    "canonical_gap_id": "gap:stale-missing-edit-surface",
+                    "evidence_class": "error_path",
+                    "repair_kind": "add_exact_error_variant",
+                    "swarm_state": "blocked_by_public_projection_exclusion",
+                    "missing_context": [],
+                    "projection_exclusion_reasons": [
+                        "missing_allowed_edit_surface"
+                    ],
+                    "blocked_reasons": [
+                        "public_projection_excluded"
+                    ]
+                }
+            ]
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "not_attempted": 0
+            },
+            "attempts": []
+        });
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["missing_allowed_edit_surface"],
+            serde_json::Value::from(1)
+        );
+        let routes = value["blocked_state_routes"]
+            .as_array()
+            .ok_or("blocked_state_routes must be an array")?;
+        let route = routes
+            .iter()
+            .find(|route| route["state"] == "missing_allowed_edit_surface")
+            .ok_or("missing allowed-edit-surface route")?;
+        assert_eq!(route["count"], serde_json::Value::from(1));
+        assert_eq!(
+            route["example_packet_id"],
+            serde_json::Value::from("packet:stale-missing-edit-surface")
+        );
+        assert_eq!(
+            route["example_canonical_gap_id"],
+            serde_json::Value::from("gap:stale-missing-edit-surface")
+        );
+        assert!(value["next_actions"].as_array().is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|action| action["kind"] == "fix_allowed_edit_surface")
+        }));
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("missing_allowed_edit_surface"));
+        assert!(markdown.contains("packet:stale-missing-edit-surface"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_routes_missing_raw_evidence_refs_projection_exclusion_without_missing_context()
+    -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "source_summary": {
+                "actionable_gaps": 1,
+                "public_projection_eligible_packets": 0
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 1,
+                "blocked_by_public_projection_exclusion_packets": 1,
+                "public_projection_excluded_packets": 1
+            },
+            "top_ready_packets": [],
+            "top_blocked_packets": [
+                {
+                    "packet_id": "packet:stale-missing-raw-evidence",
+                    "canonical_gap_id": "gap:stale-missing-raw-evidence",
+                    "evidence_class": "error_path",
+                    "repair_kind": "add_exact_error_variant",
+                    "swarm_state": "blocked_by_public_projection_exclusion",
+                    "missing_context": [],
+                    "projection_exclusion_reasons": [
+                        "missing_raw_evidence_refs"
+                    ],
+                    "blocked_reasons": [
+                        "public_projection_excluded"
+                    ]
+                }
+            ]
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "not_attempted": 0
+            },
+            "attempts": []
+        });
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["missing_raw_evidence_refs"],
+            serde_json::Value::from(1)
+        );
+        let routes = value["blocked_state_routes"]
+            .as_array()
+            .ok_or("blocked_state_routes must be an array")?;
+        let route = routes
+            .iter()
+            .find(|route| route["state"] == "missing_raw_evidence_refs")
+            .ok_or("missing raw-evidence route")?;
+        assert_eq!(route["count"], serde_json::Value::from(1));
+        assert_eq!(
+            route["example_packet_id"],
+            serde_json::Value::from("packet:stale-missing-raw-evidence")
+        );
+        assert_eq!(
+            route["example_canonical_gap_id"],
+            serde_json::Value::from("gap:stale-missing-raw-evidence")
+        );
+        assert!(value["next_actions"].as_array().is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|action| action["kind"] == "fix_raw_evidence_refs")
+        }));
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("missing_raw_evidence_refs"));
+        assert!(markdown.contains("packet:stale-missing-raw-evidence"));
         Ok(())
     }
 
