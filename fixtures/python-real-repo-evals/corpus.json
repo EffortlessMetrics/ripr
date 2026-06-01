@@ -897,6 +897,40 @@
       "reason": "The run records the fail-closed side of Python repair routing: a dynamic-dispatch Python change stays visible as a static limitation with a related test but does not enter the repair queue."
     },
     {
+      "id": "decorator_indirection_no_packet_eval",
+      "repo_shape": "decorator_indirection_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/decorator-indirection-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/decorator-indirection-limit --base HEAD~1 --format json",
+      "runtime_ms": 247,
+      "finding_id": "probe:src_retry_total.py:3:python_preview",
+      "changed_owner": "python:src/retry_total.py::fetch_total",
+      "static_limit_kind": "decorator_indirection",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_retry_total.py",
+      "related_test_name": "test_fetch_total_uses_retry_path",
+      "why_not_actionable": "static limit decorator_indirection prevents bounded repair routing because the changed owner is wrapped by a runtime decorator whose call behavior is not resolved",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed owner is decorated with retry; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: decorator-modified call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
       "id": "mocked_module_no_packet_eval",
       "repo_shape": "mocked_module_pytest",
       "source_kind": "scratch_repo",

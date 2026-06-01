@@ -8279,6 +8279,10 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
 
 const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
     ("dynamic_dispatch_no_packet_eval", "dynamic_dispatch"),
+    (
+        "decorator_indirection_no_packet_eval",
+        "decorator_indirection",
+    ),
     ("mocked_module_no_packet_eval", "mocked_module"),
     (
         "opaque_custom_helper_no_packet_eval",
