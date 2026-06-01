@@ -1163,6 +1163,9 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
     if prefix.is_empty() || prefix == "return" || prefix.ends_with('=') || prefix.ends_with("=>") {
         return true;
     }
+    if direct_receiver_method_prefix_is_allowed(prefix) {
+        return true;
+    }
     let Some(open) = prefix.strip_suffix('(') else {
         return false;
     };
@@ -1175,6 +1178,21 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
         .rev()
         .collect::<String>();
     direct_delegate_extra_call_is_inert(&wrapper_name)
+}
+
+fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
+    let Some(receiver_prefix) = prefix.strip_suffix('.') else {
+        return false;
+    };
+    let receiver = receiver_prefix.trim();
+    !receiver.is_empty()
+        && receiver
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        && receiver
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
 }
 
 fn call_text_contains_named_call(text: &str, name: &str) -> bool {
@@ -5695,6 +5713,145 @@ mod tests {
                 .summary
                 .contains("helper owner call for value-insensitive seam"),
             "activation summary should explain the wrapper owner-call route: {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_wrapper_calls_owner_method_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+struct Pipeline;
+
+impl Pipeline {
+    fn render_pipeline(&self, input: &str) -> String {
+        input.trim().to_string()
+    }
+}
+
+fn exercise_pipeline(input: &str) -> String {
+    let pipeline = Pipeline;
+    pipeline.render_pipeline(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_exercises_pipeline_method() {
+        let output = exercise_pipeline(" alpha ");
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::impl Pipeline::render_pipeline")
+                    && s.expression().contains("trim")
+            })
+            .ok_or_else(|| "expected render_pipeline method call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected same-file receiver-method wrapper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "method wrapper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("helper owner call for value-insensitive seam"),
+            "activation summary should explain the method wrapper owner-call route: {}",
+            evidence.activate.summary
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_wrapper_uses_dynamic_method_receiver_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+struct Pipeline;
+
+impl Pipeline {
+    fn render_pipeline(&self, input: &str) -> String {
+        input.trim().to_string()
+    }
+}
+
+fn pipeline_factory() -> Pipeline {
+    Pipeline
+}
+
+fn exercise_pipeline(input: &str) -> String {
+    pipeline_factory().render_pipeline(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_uses_dynamic_receiver() {
+        let output = exercise_pipeline(" alpha ");
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::impl Pipeline::render_pipeline")
+                    && s.expression().contains("trim")
+            })
+            .ok_or_else(|| "expected render_pipeline method call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "dynamic receiver method call must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "dynamic receiver method route must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("No direct owner call observed for value-insensitive seam"),
+            "activation summary should keep owner-call limitation, got {}",
             evidence.activate.summary
         );
         Ok(())

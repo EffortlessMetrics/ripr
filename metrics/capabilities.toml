@@ -449,7 +449,9 @@ evidence = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown keeps the value-insensitive route target-scoped so another asserted target does not confirm this owner",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes and analysis::extract::calls::tests::call_extraction_recognizes_turbofish_function_calls validate direct generic owner calls can reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_space_before_paren_then_activation_is_yes validates direct owner calls with whitespace before the call delimiter reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
-  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while analysis/call-presence-target-affinity-owner-call-tracing remains the next sampled work-queue proof"
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_calls_owner_method_then_activation_is_yes validates simple same-file receiver-method wrappers can reduce activation_owner_call_absent_same_file_only without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_uses_dynamic_method_receiver_then_activation_stays_unknown keeps dynamic method receivers as static limitations for analysis/same-file-owner-call-tracing",
+  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while analysis/same-file-owner-call-tracing remains the next sampled work-queue proof"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
@@ -458,7 +460,7 @@ fixtures = [
   "fixtures/real-repair-attempts",
   "fixtures/user-surface-projection-alignment"
 ]
-next = "analysis/call-presence-target-affinity-owner-call-tracing"
+next = "analysis/same-file-owner-call-tracing"
 metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, real_repair_attempt_receipts, user_surface_projection_alignment_receipts, lane1_closeout_evidence_audit"
 
 [[capability]]
