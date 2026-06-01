@@ -730,5 +730,41 @@
       ],
       "reason": "The run extends post-usable-alpha stability evidence to a unittest return-value repair: RIPR routes the missing exact return discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
     }
+  ],
+  "static_limit_cases": [
+    {
+      "id": "dynamic_dispatch_no_packet_eval",
+      "repo_shape": "dynamic_dispatch_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/dynamic-dispatch-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/dynamic-dispatch-limit --base HEAD~1 --format json",
+      "runtime_ms": 230,
+      "finding_id": "probe:src_runtime.py:2:python_preview",
+      "changed_owner": "python:src/runtime.py::dispatch",
+      "static_limit_kind": "dynamic_dispatch",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "dynamic_dispatch_unresolved"
+      ],
+      "related_test_file": "tests/test_runtime.py",
+      "related_test_name": "test_dispatch_total",
+      "why_not_actionable": "static limit dynamic_dispatch prevents bounded repair routing from a dynamic registry call to a safe test input",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed line uses registry[key]() dynamic dispatch; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records the fail-closed side of Python repair routing: a dynamic-dispatch Python change stays visible as a static limitation with a related test but does not enter the repair queue."
+    }
   ]
 }

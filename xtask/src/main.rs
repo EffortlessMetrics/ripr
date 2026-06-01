@@ -1038,6 +1038,65 @@ struct DogfoodPythonRealRepoEvalRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodPythonStaticLimitEvalScenario {
+    name: String,
+    repo_shape: String,
+    source_kind: String,
+    source_ref: String,
+    command: String,
+    runtime_ms: usize,
+    finding_id: String,
+    changed_owner: String,
+    static_limit_kind: String,
+    classification: String,
+    stop_reasons: Vec<String>,
+    related_test_file: String,
+    related_test_name: String,
+    why_not_actionable: String,
+    repair_card_present: bool,
+    agent_packet_present: bool,
+    verify_command: String,
+    verify_result: String,
+    receipt_command: String,
+    receipt_result: String,
+    gap_movement: String,
+    false_positive_notes: String,
+    limitation_notes: String,
+    claim_boundary: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodPythonStaticLimitEvalRun {
+    name: String,
+    repo_shape: String,
+    source_kind: String,
+    source_ref: String,
+    command: String,
+    runtime_ms: usize,
+    finding_id: String,
+    changed_owner: String,
+    static_limit_kind: String,
+    classification: String,
+    stop_reasons: Vec<String>,
+    related_test_file: String,
+    related_test_name: String,
+    why_not_actionable: String,
+    repair_card_present: bool,
+    agent_packet_present: bool,
+    verify_command: String,
+    verify_result: String,
+    receipt_command: String,
+    receipt_result: String,
+    gap_movement: String,
+    false_positive_notes: String,
+    limitation_notes: String,
+    claim_boundary: Vec<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
 #[derive(Debug, Default)]
 struct DogfoodPythonRepairRoutingQualitySummary {
     cases: usize,
@@ -1224,6 +1283,7 @@ struct DogfoodReportInputs<'a> {
     surface_projection_alignment_runs: &'a [DogfoodSurfaceProjectionAlignmentRun],
     real_repair_attempt_runs: &'a [DogfoodRealRepairAttemptRun],
     python_real_repo_eval_runs: &'a [DogfoodPythonRealRepoEvalRun],
+    python_static_limit_eval_runs: &'a [DogfoodPythonStaticLimitEvalRun],
     typescript_preview_repair_loop_runs: &'a [DogfoodTypescriptPreviewRepairLoopRun],
     user_surface_projection_runs: &'a [DogfoodUserSurfaceProjectionRun],
     pr_inline_comment_runs: &'a [DogfoodPrInlineCommentRun],
@@ -8215,6 +8275,9 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("decorated_route_status_pytest_receipt", "closed"),
 ];
 
+const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] =
+    &[("dynamic_dispatch_no_packet_eval", "dynamic_dispatch")];
+
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typescript_boundary_predicate_proof", "proof_improved"),
     (
@@ -9371,6 +9434,38 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
             "Python repair-routing quality gate is {}: {}",
             quality.gate_status, quality.gate_reason
         ));
+    }
+
+    let static_limit_scenarios = dogfood_python_static_limit_eval_scenarios_at(path);
+    let mut seen_static_limits = BTreeMap::new();
+    for scenario in &static_limit_scenarios {
+        if seen_static_limits
+            .insert(scenario.name.clone(), scenario.static_limit_kind.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "Python static-limit eval case {} is duplicated",
+                scenario.name
+            ));
+        }
+        let run = dogfood_python_static_limit_eval_run(scenario);
+        for error in &run.errors {
+            violations.push(format!(
+                "Python static-limit eval case {}: {error}",
+                scenario.name
+            ));
+        }
+    }
+    for (case_id, static_limit_kind) in PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES {
+        match seen_static_limits.get(*case_id) {
+            Some(actual) if actual == static_limit_kind => {}
+            Some(actual) => violations.push(format!(
+                "Python static-limit eval case {case_id} must have static_limit_kind {static_limit_kind}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "Python real-repo eval corpus is missing static-limit case {case_id}"
+            )),
+        }
     }
 
     Ok(())
@@ -41432,6 +41527,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_python_real_repo_eval_run(&scenario))
         .collect::<Vec<_>>();
+    let python_static_limit_eval_runs = dogfood_python_static_limit_eval_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_python_static_limit_eval_run(&scenario))
+        .collect::<Vec<_>>();
     let typescript_preview_repair_loop_runs = dogfood_typescript_preview_repair_loop_scenarios()
         .into_iter()
         .map(|scenario| dogfood_typescript_preview_repair_loop_run(&scenario))
@@ -41462,6 +41561,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         surface_projection_alignment_runs: &surface_projection_alignment_runs,
         real_repair_attempt_runs: &real_repair_attempt_runs,
         python_real_repo_eval_runs: &python_real_repo_eval_runs,
+        python_static_limit_eval_runs: &python_static_limit_eval_runs,
         typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
         user_surface_projection_runs: &user_surface_projection_runs,
         pr_inline_comment_runs: &pr_inline_comment_runs,
@@ -44886,6 +44986,232 @@ fn dogfood_python_real_repo_eval_run(
     }
 }
 
+fn dogfood_python_static_limit_eval_scenarios() -> Vec<DogfoodPythonStaticLimitEvalScenario> {
+    dogfood_python_static_limit_eval_scenarios_at(Path::new(PYTHON_REAL_REPO_EVAL_CORPUS))
+}
+
+fn dogfood_python_static_limit_eval_scenarios_at(
+    corpus_path: &Path,
+) -> Vec<DogfoodPythonStaticLimitEvalScenario> {
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(_) => return Vec::new(),
+    };
+    let Some(cases) = corpus.get("static_limit_cases").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    cases
+        .iter()
+        .map(|case| DogfoodPythonStaticLimitEvalScenario {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            repo_shape: json_string_field(case, "repo_shape")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_kind: json_string_field(case, "source_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            source_ref: json_string_field(case, "source_ref")
+                .unwrap_or_else(|| "unknown".to_string()),
+            command: json_string_field(case, "command").unwrap_or_else(|| "unknown".to_string()),
+            runtime_ms: json_usize_field(case, "runtime_ms").unwrap_or_default(),
+            finding_id: json_string_field(case, "finding_id")
+                .unwrap_or_else(|| "unknown".to_string()),
+            changed_owner: json_string_field(case, "changed_owner")
+                .unwrap_or_else(|| "unknown".to_string()),
+            static_limit_kind: json_string_field(case, "static_limit_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            classification: json_string_field(case, "classification")
+                .unwrap_or_else(|| "unknown".to_string()),
+            stop_reasons: json_string_array_field(case, "stop_reasons"),
+            related_test_file: json_string_field(case, "related_test_file")
+                .unwrap_or_else(|| "unknown".to_string()),
+            related_test_name: json_string_field(case, "related_test_name")
+                .unwrap_or_else(|| "unknown".to_string()),
+            why_not_actionable: json_string_field(case, "why_not_actionable")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_card_present: json_bool_field(case, "repair_card_present").unwrap_or(true),
+            agent_packet_present: json_bool_field(case, "agent_packet_present").unwrap_or(true),
+            verify_command: json_string_field(case, "verify_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_result: json_string_field(case, "verify_result")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_command: json_string_field(case, "receipt_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            receipt_result: json_string_field(case, "receipt_result")
+                .unwrap_or_else(|| "unknown".to_string()),
+            gap_movement: json_string_field(case, "gap_movement")
+                .unwrap_or_else(|| "unknown".to_string()),
+            false_positive_notes: json_string_field(case, "false_positive_notes")
+                .unwrap_or_else(|| "unknown".to_string()),
+            limitation_notes: json_string_field(case, "limitation_notes")
+                .unwrap_or_else(|| "unknown".to_string()),
+            claim_boundary: json_string_array_field(case, "claim_boundary"),
+            reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                "Python static-limit eval case did not document a reason".to_string()
+            }),
+        })
+        .collect()
+}
+
+fn dogfood_python_static_limit_eval_run(
+    scenario: &DogfoodPythonStaticLimitEvalScenario,
+) -> DogfoodPythonStaticLimitEvalRun {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &scenario.name),
+        ("repo_shape", &scenario.repo_shape),
+        ("source_kind", &scenario.source_kind),
+        ("source_ref", &scenario.source_ref),
+        ("command", &scenario.command),
+        ("finding_id", &scenario.finding_id),
+        ("changed_owner", &scenario.changed_owner),
+        ("static_limit_kind", &scenario.static_limit_kind),
+        ("classification", &scenario.classification),
+        ("related_test_file", &scenario.related_test_file),
+        ("related_test_name", &scenario.related_test_name),
+        ("why_not_actionable", &scenario.why_not_actionable),
+        ("verify_command", &scenario.verify_command),
+        ("verify_result", &scenario.verify_result),
+        ("receipt_command", &scenario.receipt_command),
+        ("receipt_result", &scenario.receipt_result),
+        ("gap_movement", &scenario.gap_movement),
+        ("false_positive_notes", &scenario.false_positive_notes),
+        ("limitation_notes", &scenario.limitation_notes),
+        ("reason", &scenario.reason),
+    ] {
+        if value.trim().is_empty() || value == "unknown" {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+    if !matches!(
+        scenario.source_kind.as_str(),
+        "scratch_repo" | "external_repo" | "local_repo"
+    ) {
+        errors.push(format!(
+            "source_kind must be scratch_repo, external_repo, or local_repo, got {}",
+            scenario.source_kind
+        ));
+    }
+    if scenario.runtime_ms == 0 {
+        errors.push("runtime_ms must be greater than zero".to_string());
+    }
+    if !scenario.finding_id.starts_with("probe:") {
+        errors.push(format!(
+            "finding_id must use the static finding probe identity, got {}",
+            scenario.finding_id
+        ));
+    }
+    if !scenario.changed_owner.starts_with("python:") {
+        errors.push(format!(
+            "changed_owner must use python: identity, got {}",
+            scenario.changed_owner
+        ));
+    }
+    if scenario.classification != "static_unknown" {
+        errors.push(format!(
+            "classification must be static_unknown for no-action limitation evals, got {}",
+            scenario.classification
+        ));
+    }
+    if scenario.static_limit_kind.trim().is_empty()
+        || scenario.static_limit_kind == "unknown"
+        || scenario.static_limit_kind.contains(' ')
+    {
+        errors.push(format!(
+            "static_limit_kind must be a stable token, got {}",
+            scenario.static_limit_kind
+        ));
+    }
+    if scenario.stop_reasons.is_empty() {
+        errors.push("stop_reasons must include the static-limit stop reason".to_string());
+    }
+    if !scenario
+        .stop_reasons
+        .iter()
+        .any(|reason| reason.contains(&scenario.static_limit_kind))
+    {
+        errors.push("stop_reasons must name the static limit kind".to_string());
+    }
+    if !scenario
+        .why_not_actionable
+        .contains(&scenario.static_limit_kind)
+    {
+        errors.push("why_not_actionable must name the static limit kind".to_string());
+    }
+    if scenario.repair_card_present {
+        errors.push("static-limit evals must not emit repair cards".to_string());
+    }
+    if scenario.agent_packet_present {
+        errors.push("static-limit evals must not emit agent packets".to_string());
+    }
+    if scenario.verify_result != "not_applicable" {
+        errors.push("static-limit evals must record verify_result=not_applicable".to_string());
+    }
+    if scenario.receipt_result != "not_applicable" {
+        errors.push("static-limit evals must record receipt_result=not_applicable".to_string());
+    }
+    if scenario.gap_movement != "no_receipt" {
+        errors.push("static-limit evals must record gap_movement=no_receipt".to_string());
+    }
+    if !dogfood_python_static_limit_false_positive_clean(scenario) {
+        errors.push("static-limit eval false_positive_notes must be none observed".to_string());
+    }
+    for required in [
+        "preview",
+        "No repair packet emitted",
+        "No support-tier promotion",
+    ] {
+        if !scenario.claim_boundary.iter().any(|claim| {
+            claim
+                .to_ascii_lowercase()
+                .contains(&required.to_ascii_lowercase())
+        }) {
+            errors.push(format!("claim_boundary must include {required}"));
+        }
+    }
+
+    DogfoodPythonStaticLimitEvalRun {
+        name: scenario.name.clone(),
+        repo_shape: scenario.repo_shape.clone(),
+        source_kind: scenario.source_kind.clone(),
+        source_ref: scenario.source_ref.clone(),
+        command: scenario.command.clone(),
+        runtime_ms: scenario.runtime_ms,
+        finding_id: scenario.finding_id.clone(),
+        changed_owner: scenario.changed_owner.clone(),
+        static_limit_kind: scenario.static_limit_kind.clone(),
+        classification: scenario.classification.clone(),
+        stop_reasons: scenario.stop_reasons.clone(),
+        related_test_file: scenario.related_test_file.clone(),
+        related_test_name: scenario.related_test_name.clone(),
+        why_not_actionable: scenario.why_not_actionable.clone(),
+        repair_card_present: scenario.repair_card_present,
+        agent_packet_present: scenario.agent_packet_present,
+        verify_command: scenario.verify_command.clone(),
+        verify_result: scenario.verify_result.clone(),
+        receipt_command: scenario.receipt_command.clone(),
+        receipt_result: scenario.receipt_result.clone(),
+        gap_movement: scenario.gap_movement.clone(),
+        false_positive_notes: scenario.false_positive_notes.clone(),
+        limitation_notes: scenario.limitation_notes.clone(),
+        claim_boundary: scenario.claim_boundary.clone(),
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
+fn dogfood_python_static_limit_false_positive_clean(
+    scenario: &DogfoodPythonStaticLimitEvalScenario,
+) -> bool {
+    matches!(
+        scenario
+            .false_positive_notes
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "none observed" | "none"
+    )
+}
+
 fn dogfood_python_repair_routing_quality_summary(
     runs: &[DogfoodPythonRealRepoEvalRun],
 ) -> DogfoodPythonRepairRoutingQualitySummary {
@@ -47385,6 +47711,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
     let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
+    let python_static_limit_eval_runs = inputs.python_static_limit_eval_runs;
     let python_repair_quality =
         dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
@@ -47425,6 +47752,9 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
             .iter()
             .any(|run| !run.errors.is_empty())
         || python_real_repo_eval_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || python_static_limit_eval_runs
             .iter()
             .any(|run| !run.errors.is_empty())
         || python_repair_quality.gate_status != "pass"
@@ -48687,6 +49017,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     }
 
     let python_real_repo_eval_total = python_real_repo_eval_runs.len();
+    let python_static_limit_eval_runs = inputs.python_static_limit_eval_runs;
     let python_real_repo_eval_closed = python_real_repo_eval_runs
         .iter()
         .filter(|run| run.gap_movement == "closed")
@@ -48702,8 +49033,11 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     body.push_str("- Default CI blocking: no\n");
     body.push_str("- Receipt input: `fixtures/python-real-repo-evals/corpus.json`\n");
     body.push_str(&format!(
-        "- Cases: {}; closed gaps: {}; usable recommendations: {}\n\n",
-        python_real_repo_eval_total, python_real_repo_eval_closed, python_real_repo_eval_usable
+        "- Repair cases: {}; closed gaps: {}; usable recommendations: {}; static-limit no-action cases: {}\n\n",
+        python_real_repo_eval_total,
+        python_real_repo_eval_closed,
+        python_real_repo_eval_usable,
+        python_static_limit_eval_runs.len()
     ));
     body.push_str(
         "| Case | Repo shape | Source | Gap ID | Verify | Receipt | Movement | Usability |\n",
@@ -48911,6 +49245,105 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         } else {
             body.push_str(&format!(
                 "- Receipt validation: fail - `{}`\n\n",
+                markdown_cell(&run.errors.join("; "))
+            ));
+        }
+    }
+
+    body.push_str("## Python Static-Limit Eval Receipts\n\n");
+    body.push_str("These checked no-action cases record where Python repair routing stops instead of emitting a repair card or agent packet. They protect the fail-closed side of the lane and are not counted as successful repair recommendations.\n\n");
+    body.push_str(
+        "| Case | Repo shape | Static limit | Finding | Related test | Packet | Reason |\n",
+    );
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
+    for run in python_static_limit_eval_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` / `{}` | `{}` | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.repo_shape),
+            markdown_cell(&run.static_limit_kind),
+            markdown_cell(&run.finding_id),
+            markdown_cell(&run.related_test_file),
+            markdown_cell(&run.related_test_name),
+            if run.agent_packet_present {
+                "emitted"
+            } else {
+                "none"
+            },
+            markdown_cell(&run.why_not_actionable)
+        ));
+    }
+    body.push('\n');
+    for run in python_static_limit_eval_runs {
+        body.push_str(&format!("### Python Static-Limit Eval `{}`\n\n", run.name));
+        body.push_str(&format!(
+            "- Source: `{}` / `{}`\n",
+            markdown_cell(&run.source_kind),
+            markdown_cell(&run.source_ref)
+        ));
+        body.push_str(&format!(
+            "- Command: `{}` ({} ms)\n",
+            markdown_cell(&run.command),
+            run.runtime_ms
+        ));
+        body.push_str(&format!(
+            "- Changed owner: `{}`\n",
+            markdown_cell(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "- Static limit: `{}`; classification: `{}`\n",
+            markdown_cell(&run.static_limit_kind),
+            markdown_cell(&run.classification)
+        ));
+        body.push_str(&format!(
+            "- Stop reasons: `{}`\n",
+            markdown_cell(&run.stop_reasons.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Related test: `{}` / `{}`\n",
+            markdown_cell(&run.related_test_file),
+            markdown_cell(&run.related_test_name)
+        ));
+        body.push_str(&format!(
+            "- Why not actionable: {}\n",
+            markdown_cell(&run.why_not_actionable)
+        ));
+        body.push_str(&format!(
+            "- Repair card present: {}; agent packet present: {}\n",
+            run.repair_card_present, run.agent_packet_present
+        ));
+        body.push_str(&format!(
+            "- Verify: `{}` ({})\n",
+            markdown_cell(&run.verify_command),
+            markdown_cell(&run.verify_result)
+        ));
+        body.push_str(&format!(
+            "- Receipt: `{}` ({})\n",
+            markdown_cell(&run.receipt_command),
+            markdown_cell(&run.receipt_result)
+        ));
+        body.push_str(&format!(
+            "- Gap movement: `{}`\n",
+            markdown_cell(&run.gap_movement)
+        ));
+        body.push_str(&format!(
+            "- False-positive notes: {}\n",
+            markdown_cell(&run.false_positive_notes)
+        ));
+        body.push_str(&format!(
+            "- Limitation notes: {}\n",
+            markdown_cell(&run.limitation_notes)
+        ));
+        body.push_str(&format!(
+            "- Claim boundary: `{}`\n",
+            markdown_cell(&run.claim_boundary.join("; "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Static-limit validation: pass\n\n");
+        } else {
+            body.push_str(&format!(
+                "- Static-limit validation: fail - `{}`\n\n",
                 markdown_cell(&run.errors.join("; "))
             ));
         }
@@ -49202,6 +49635,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let surface_projection_alignment_runs = inputs.surface_projection_alignment_runs;
     let real_repair_attempt_runs = inputs.real_repair_attempt_runs;
     let python_real_repo_eval_runs = inputs.python_real_repo_eval_runs;
+    let python_static_limit_eval_runs = inputs.python_static_limit_eval_runs;
     let python_repair_quality =
         dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
@@ -50477,11 +50911,15 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
             .count()
     ));
     body.push_str(&format!(
-        "      \"usable\": {}\n",
+        "      \"usable\": {},\n",
         python_real_repo_eval_runs
             .iter()
             .filter(|run| run.usability == "usable")
             .count()
+    ));
+    body.push_str(&format!(
+        "      \"static_limit_cases\": {}\n",
+        python_static_limit_eval_runs.len()
     ));
     body.push_str("    },\n    \"cases\": [\n");
     for (index, run) in python_real_repo_eval_runs.iter().enumerate() {
@@ -50617,6 +51055,111 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"ranked_top_3_limit_reason\": {},\n",
             json_optional_string(run.ranked_top_3_limit_reason.as_deref())
+        ));
+        body.push_str("        \"claim_boundary\": [");
+        write_json_string_array(&mut body, &run.claim_boundary);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ],\n    \"static_limit_cases\": [\n");
+    for (index, run) in python_static_limit_eval_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"repo_shape\": \"{}\",\n",
+            json_escape(&run.repo_shape)
+        ));
+        body.push_str(&format!(
+            "        \"source_kind\": \"{}\",\n",
+            json_escape(&run.source_kind)
+        ));
+        body.push_str(&format!(
+            "        \"source_ref\": \"{}\",\n",
+            json_escape(&run.source_ref)
+        ));
+        body.push_str(&format!(
+            "        \"command\": \"{}\",\n",
+            json_escape(&run.command)
+        ));
+        body.push_str(&format!("        \"runtime_ms\": {},\n", run.runtime_ms));
+        body.push_str(&format!(
+            "        \"finding_id\": \"{}\",\n",
+            json_escape(&run.finding_id)
+        ));
+        body.push_str(&format!(
+            "        \"changed_owner\": \"{}\",\n",
+            json_escape(&run.changed_owner)
+        ));
+        body.push_str(&format!(
+            "        \"static_limit_kind\": \"{}\",\n",
+            json_escape(&run.static_limit_kind)
+        ));
+        body.push_str(&format!(
+            "        \"classification\": \"{}\",\n",
+            json_escape(&run.classification)
+        ));
+        body.push_str("        \"stop_reasons\": [");
+        write_json_string_array(&mut body, &run.stop_reasons);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"related_test_file\": \"{}\",\n",
+            json_escape(&run.related_test_file)
+        ));
+        body.push_str(&format!(
+            "        \"related_test_name\": \"{}\",\n",
+            json_escape(&run.related_test_name)
+        ));
+        body.push_str(&format!(
+            "        \"why_not_actionable\": \"{}\",\n",
+            json_escape(&run.why_not_actionable)
+        ));
+        body.push_str(&format!(
+            "        \"repair_card_present\": {},\n",
+            run.repair_card_present
+        ));
+        body.push_str(&format!(
+            "        \"agent_packet_present\": {},\n",
+            run.agent_packet_present
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": \"{}\",\n",
+            json_escape(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "        \"verify_result\": \"{}\",\n",
+            json_escape(&run.verify_result)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_command\": \"{}\",\n",
+            json_escape(&run.receipt_command)
+        ));
+        body.push_str(&format!(
+            "        \"receipt_result\": \"{}\",\n",
+            json_escape(&run.receipt_result)
+        ));
+        body.push_str(&format!(
+            "        \"gap_movement\": \"{}\",\n",
+            json_escape(&run.gap_movement)
+        ));
+        body.push_str(&format!(
+            "        \"false_positive_notes\": \"{}\",\n",
+            json_escape(&run.false_positive_notes)
+        ));
+        body.push_str(&format!(
+            "        \"limitation_notes\": \"{}\",\n",
+            json_escape(&run.limitation_notes)
         ));
         body.push_str("        \"claim_boundary\": [");
         write_json_string_array(&mut body, &run.claim_boundary);
@@ -63583,8 +64126,9 @@ mod tests {
         DogfoodFindingAlignmentScenario, DogfoodFirstActionRun, DogfoodFirstPrRun,
         DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodPythonRealRepoEvalScenario, DogfoodRealRepairAttemptScenario, DogfoodReportInputs,
-        DogfoodReportPacketIndexRun, DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
+        DogfoodPythonRealRepoEvalScenario, DogfoodPythonStaticLimitEvalScenario,
+        DogfoodRealRepairAttemptScenario, DogfoodReportInputs, DogfoodReportPacketIndexRun,
+        DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
         DogfoodTypescriptPreviewRepairLoopScenario, DogfoodUserSurfaceProjectionScenario,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
@@ -63594,15 +64138,16 @@ mod tests {
         GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
         Lane1EvidenceAuditRepoExposureGeneration, Lane1EvidenceAuditRepoExposureOutcome,
         LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
-        PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
-        REAL_REPAIR_ATTEMPTS_CORPUS, REAL_REPAIR_ATTEMPTS_REQUIRED_CASES,
-        REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV,
-        REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS, REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV,
-        ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
-        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
+        PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES,
+        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, REAL_REPAIR_ATTEMPTS_CORPUS,
+        REAL_REPAIR_ATTEMPTS_REQUIRED_CASES, REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS,
+        REPO_BADGE_ARTIFACT_TIMEOUT_ENV, REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS,
+        REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV, ReceiptRecord, RepoBadgeArtifactOptions,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact,
+        RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
         TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
         WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
@@ -63634,6 +64179,7 @@ mod tests {
         dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
         dogfood_push_python_quality_ratio_json, dogfood_python_real_repo_eval_run,
         dogfood_python_real_repo_eval_scenarios, dogfood_python_repair_routing_quality_summary,
+        dogfood_python_static_limit_eval_run, dogfood_python_static_limit_eval_scenarios,
         dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
@@ -72017,6 +72563,7 @@ fn exact_owner_call_has_external_expected_value() {
         let surface_projection_alignment_runs = [surface_projection_alignment_run];
         let real_repair_attempt_runs = [real_repair_attempt_run];
         let python_real_repo_eval_runs = [python_real_repo_eval_run];
+        let python_static_limit_eval_runs = [];
         let typescript_preview_repair_loop_runs = [typescript_preview_repair_loop_run];
         let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
@@ -72044,6 +72591,7 @@ fn exact_owner_call_has_external_expected_value() {
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
             python_real_repo_eval_runs: &python_real_repo_eval_runs,
+            python_static_limit_eval_runs: &python_static_limit_eval_runs,
             typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &markdown_pr_inline_comment_runs,
@@ -72066,6 +72614,7 @@ fn exact_owner_call_has_external_expected_value() {
             surface_projection_alignment_runs: &surface_projection_alignment_runs,
             real_repair_attempt_runs: &real_repair_attempt_runs,
             python_real_repo_eval_runs: &python_real_repo_eval_runs,
+            python_static_limit_eval_runs: &python_static_limit_eval_runs,
             typescript_preview_repair_loop_runs: &typescript_preview_repair_loop_runs,
             user_surface_projection_runs: &user_surface_projection_runs,
             pr_inline_comment_runs: &empty_pr_inline_comment_runs,
@@ -73091,6 +73640,33 @@ fn exact_owner_call_has_external_expected_value() {
                     .any(|(kind, count)| kind == "dynamic_route_registration" && *count == 1)
             );
 
+            let static_limit_scenarios = dogfood_python_static_limit_eval_scenarios();
+            for required in PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES {
+                assert!(
+                    static_limit_scenarios.iter().any(|scenario| {
+                        scenario.name == required.0 && scenario.static_limit_kind == required.1
+                    }),
+                    "{} Python static-limit eval should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+            assert!(
+                static_limit_scenarios
+                    .iter()
+                    .any(|scenario| !scenario.agent_packet_present && !scenario.repair_card_present),
+                "Python static-limit evals should record no-packet/no-card cases"
+            );
+            for scenario in static_limit_scenarios {
+                let run = dogfood_python_static_limit_eval_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} Python static-limit eval should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
             for scenario in scenarios {
                 let run = dogfood_python_real_repo_eval_run(&scenario);
                 assert!(
@@ -73198,6 +73774,30 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(body.contains("\"higher_review\": { \"status\": \"review\""));
         assert!(body.contains("\"lower_pass\": { \"status\": \"pass\""));
         assert!(body.contains("\"lower_review\": { \"status\": \"review\""));
+    }
+
+    #[test]
+    fn dogfood_python_static_limit_eval_rejects_actionable_overclaiming() {
+        let mut scenario = valid_python_static_limit_eval_scenario();
+        scenario.repair_card_present = true;
+        scenario.agent_packet_present = true;
+        scenario.verify_result = "pass".to_string();
+        scenario.receipt_result = "pass".to_string();
+        scenario.gap_movement = "closed".to_string();
+        scenario.stop_reasons.clear();
+        scenario.claim_boundary.clear();
+
+        let report = dogfood_python_static_limit_eval_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.contains("static-limit evals must not emit repair cards"));
+        assert!(report.contains("static-limit evals must not emit agent packets"));
+        assert!(report.contains("verify_result=not_applicable"));
+        assert!(report.contains("receipt_result=not_applicable"));
+        assert!(report.contains("gap_movement=no_receipt"));
+        assert!(report.contains("stop_reasons must include the static-limit stop reason"));
+        assert!(report.contains("claim_boundary must include No repair packet emitted"));
     }
 
     #[test]
@@ -73332,6 +73932,44 @@ fn exact_owner_call_has_external_expected_value() {
             finding.reason = format!("rank {rank} repair card remained usable in dogfood capture");
         }
         finding
+    }
+
+    fn valid_python_static_limit_eval_scenario() -> DogfoodPythonStaticLimitEvalScenario {
+        DogfoodPythonStaticLimitEvalScenario {
+            name: "dynamic_dispatch_no_packet_eval".to_string(),
+            repo_shape: "dynamic_dispatch_pytest".to_string(),
+            source_kind: "scratch_repo".to_string(),
+            source_ref: "target/ripr/python-real-repo-evals/dynamic-dispatch-limit".to_string(),
+            command: "ripr check --root target/ripr/python-real-repo-evals/dynamic-dispatch-limit --base HEAD~1 --format json".to_string(),
+            runtime_ms: 233,
+            finding_id: "probe:src_runtime.py:2:python_preview".to_string(),
+            changed_owner: "python:src/runtime.py::dispatch".to_string(),
+            static_limit_kind: "dynamic_dispatch".to_string(),
+            classification: "static_unknown".to_string(),
+            stop_reasons: vec!["dynamic_dispatch_unresolved".to_string()],
+            related_test_file: "tests/test_runtime.py".to_string(),
+            related_test_name: "test_dispatch_total".to_string(),
+            why_not_actionable:
+                "static limit `dynamic_dispatch` prevents bounded repair routing".to_string(),
+            repair_card_present: false,
+            agent_packet_present: false,
+            verify_command: "not_applicable_static_limit".to_string(),
+            verify_result: "not_applicable".to_string(),
+            receipt_command: "not_applicable_static_limit".to_string(),
+            receipt_result: "not_applicable".to_string(),
+            gap_movement: "no_receipt".to_string(),
+            false_positive_notes: "none observed".to_string(),
+            limitation_notes: "dynamic dispatch stays visible as a no-packet static limitation"
+                .to_string(),
+            claim_boundary: vec![
+                "Broader Python static facts remain preview/advisory".to_string(),
+                "No repair packet emitted".to_string(),
+                "No support-tier promotion".to_string(),
+            ],
+            reason:
+                "dynamic dispatch dogfood records an honest no-action result instead of a repair card"
+                    .to_string(),
+        }
     }
 
     #[test]

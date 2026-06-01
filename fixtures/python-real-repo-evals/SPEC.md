@@ -11,9 +11,12 @@ that are outside analyzer fixture goldens.
 
 ## When
 
-An eval case records a Python check run, top repair card, bounded agent
-packet, focused verify command, after check run, and before/after outcome
-receipt.
+An eval case records either a Python repair-routing receipt or a checked
+static-limit no-action result. Repair cases record a Python check run, top
+repair card, bounded agent packet, focused verify command, after check run, and
+before/after outcome receipt. Static-limit cases record the changed owner,
+typed limitation, stop reason, related test context when available, and the
+reason no repair card, packet, verify command, or receipt movement is emitted.
 
 ## Then
 
@@ -22,7 +25,10 @@ gap ID, missing discriminator, suggested test target, agent packet command,
 allowed files, forbidden files, stop conditions, verify result, receipt result,
 gap movement, usability notes, false-positive notes, limitation notes,
 structured unsupported limitation kinds, ranked top-3 repair-card findings, and
-claim boundaries.
+claim boundaries for repair cases. Static-limit cases live under
+`static_limit_cases` and must prove the fail-closed side of the lane: no repair
+card, no agent packet, `not_applicable` verify and receipt results, explicit
+stop reasons, `no_receipt` gap movement, and preview/advisory claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
 normal pytest app repo, one CLI/output-style pytest repo, pytest and unittest
@@ -38,9 +44,15 @@ closure rate, and unsupported limitation distribution. Eval cases with fewer
 than three user-facing repair cards must include a ranked top-3 limit reason
 instead of silently passing the metric.
 
+Static-limit no-action cases are not counted as successful repair
+recommendations. They exist to keep unsupported Python shapes visible without
+routing unsafe human or agent work.
+
 ## Must Not
 
 - Do not treat these records as support-tier promotion.
 - Do not claim correctness, mutation adequacy, generated tests, provider calls,
   CI gate eligibility, or arbitrary runtime import execution.
 - Do not hide unsupported dynamic routing or missing metrics evidence.
+- Do not count static-limit no-action cases as closed repair cards or queueable
+  packets.
