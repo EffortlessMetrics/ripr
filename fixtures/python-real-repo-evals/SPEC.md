@@ -26,9 +26,9 @@ claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
 normal pytest app repo, one CLI/output-style pytest repo, pytest and unittest
-exception-path repos, API-style status-code and JSON-field pytest repos, one
-mixed Rust/Python pytest repo, and one decorated route pytest repo before
-metrics can support promotion discussion.
+exception-path repos, API-style status-code, JSON-field, and exception-response
+pytest repos, one mixed Rust/Python pytest repo, and one decorated route pytest
+repo before metrics can support promotion discussion.
 
 Dogfood quality metrics must report top-1 actionable usefulness, top-3
 actionable precision over captured ranked repair-card findings, verify-command

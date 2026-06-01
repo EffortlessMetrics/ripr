@@ -588,6 +588,59 @@ def test_expired_coupon_response_smoke(client):
 }
 
 #[test]
+fn classify_change_uses_status_discriminator_for_route_response_constructor_assignment()
+-> Result<(), String> {
+    let source = r#"
+class Response:
+    def __init__(self, status_code, detail):
+        self.status_code = status_code
+        self.detail = detail
+
+api = object()
+
+@api.post("/checkout")
+def checkout(payload):
+    if payload.get("expired"):
+        response = Response(status_code=422, detail="coupon expired")
+        return response
+    return Response(status_code=200, detail="ok")
+"#;
+    let owners = extract_owners(Path::new("app/checkout.py"), source);
+    let tests = extract_tests(
+        Path::new("tests/test_checkout.py"),
+        r#"
+def test_expired_coupon_response_smoke(client):
+    response = client.post("/checkout", json={"expired": True})
+    assert response
+"#,
+    );
+
+    let Some(finding) = classify_change(
+        Path::new("app/checkout.py"),
+        12,
+        "        response = Response(status_code=422, detail=\"coupon expired\")",
+        &owners,
+        &tests,
+    ) else {
+        return Err("changed route response constructor should classify".to_string());
+    };
+
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert_eq!(finding.probe.family, ProbeFamily::FieldConstruction);
+    assert_eq!(
+        finding
+            .activation
+            .missing_discriminators
+            .first()
+            .map(|missing| missing.value.as_str()),
+        Some("response.status_code == 422")
+    );
+    assert!(finding.evidence.iter().any(|entry| entry
+        == "related_test_relation: api_client_route_call (test_expired_coupon_response_smoke)"));
+    Ok(())
+}
+
+#[test]
 fn classify_change_dynamic_route_registration_fails_closed() -> Result<(), String> {
     let source = r#"
 api = object()

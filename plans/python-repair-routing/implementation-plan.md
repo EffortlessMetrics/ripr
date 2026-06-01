@@ -1431,6 +1431,14 @@ git diff --check
   strengthens to exact `self.assertRaisesRegex(...)` evidence, verifies with
   `python -m unittest`, exports a bounded test-only packet, and closes the
   canonical Python exception gap through `ripr outcome`.
+- Route response-constructor assignments such as `response =
+  Response(status_code=422, detail="coupon expired")` now route through the
+  field/object repair path for statically recognized Python route owners. The
+  corpus records `api_exception_response_pytest_receipt`, where a route catches
+  an application exception, constructs a response object, recommends
+  `assert response.status_code == 422`, verifies with focused `pytest`, exports
+  a bounded test-only packet, and closes the canonical Python gap through
+  `ripr outcome`.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
