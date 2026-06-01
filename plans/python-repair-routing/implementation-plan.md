@@ -1426,6 +1426,11 @@ git diff --check
   strengthens to exact `pytest.raises(..., match=...)` evidence, verifies with
   a focused `pytest` command, exports a bounded test-only packet, and closes
   the canonical Python exception gap through `ripr outcome`.
+- The corpus now adds `unittest_exception_path_receipt` as a post-promotion
+  stability eval where a broad `self.assertRaises(ValueError)` observer
+  strengthens to exact `self.assertRaisesRegex(...)` evidence, verifies with
+  `python -m unittest`, exports a bounded test-only packet, and closes the
+  canonical Python exception gap through `ripr outcome`.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
