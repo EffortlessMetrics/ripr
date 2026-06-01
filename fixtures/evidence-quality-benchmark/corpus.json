@@ -1217,6 +1217,147 @@
       "repair_route": "analysis/same-file-owner-call-tracing"
     },
     {
+      "id": "call_presence_same_file_unit_parent_qualified_helper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-source-file unit test that explicitly calls a parent-module production helper can activate a value-insensitive call-presence seam when that helper directly calls the owner, without treating bare shadowed helper names as proof.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_parent_qualified_wrapper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "#[cfg(test)]\nmod tests {\n    #[test]\n    fn parent_qualified_wrapper_reaches_pipeline() {\n        let output = super::exercise_pipeline();\n        assert_eq!(output, \"alpha\");\n    }\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-unit-parent-qualified-helper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-unit-parent-qualified-helper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a same-source-file unit test can satisfy activation when it explicitly calls a parent-module production helper that directly calls the owner.",
+      "must_not_claim": [
+        "Do not treat bare test-local helper shadows as production helper calls.",
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_unit_shadow_helper_stays_named_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-source-file unit test with a bare call to a test-local helper that shadows a production wrapper remains a named owner-call limitation for the production owner.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_shadow_calls_wrapper_name_then_activation_stays_unknown",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "#[cfg(test)]\nmod tests {\n    fn exercise_pipeline() -> String {\n        \"shadow\".to_string()\n    }\n\n    #[test]\n    fn bare_shadowed_wrapper_name_does_not_reach_pipeline() {\n        let output = exercise_pipeline();\n        assert_eq!(output, \"shadow\");\n    }\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-unit-shadow-helper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-unit-shadow-helper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_same_file_only",
+              "repair_route": "analysis/same-file-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_same_file_only",
+      "expected_claim": "Bare calls to test-local helpers that shadow production wrapper names do not prove the production wrapper or owner is exercised.",
+      "must_not_claim": [
+        "Do not treat bare shadowed helper names as production helper calls.",
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not classify test-local shadow calls as user test debt.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
       "id": "call_presence_test_local_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",

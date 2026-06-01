@@ -9409,6 +9409,140 @@ mod tests {
     }
 
     #[test]
+    fn given_call_presence_when_same_file_unit_parent_qualified_wrapper_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parent_qualified_wrapper_reaches_pipeline() {
+        let output = super::exercise_pipeline();
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "parent-qualified same-file unit helper should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("helper owner call for value-insensitive seam"),
+            "activation summary should explain the parent-qualified helper route: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "parent-qualified same-file unit helper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_unit_shadow_calls_wrapper_name_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    fn exercise_pipeline() -> String {
+        "shadow".to_string()
+    }
+
+    #[test]
+    fn bare_shadowed_wrapper_name_does_not_reach_pipeline() {
+        let output = exercise_pipeline();
+        assert_eq!(output, "shadow");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "test-local shadow must not inherit production wrapper owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("No direct owner call observed for value-insensitive seam"),
+            "activation summary should keep owner-call limitation, got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "test-local shadow must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_call_presence_when_test_calls_two_hop_production_wrapper_then_activation_is_yes()
     -> Result<(), String> {
         let source = PathBuf::from("src/pipeline.rs");
