@@ -32129,6 +32129,14 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
         "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
         "static_limitation_unclassified" => "analysis/static-limitation-taxonomy",
+        "lane1_repo_exposure_sampled"
+        | "lane1_repo_exposure_timeout"
+        | "lane1_repo_exposure_incomplete"
+        | "lane1_repo_exposure_runner_error"
+        | "lane1_repo_exposure_large_cache_preflight_skip"
+        | "lane1_repo_exposure_cache_store_skipped_large_entry" => {
+            "report/lane1-audit-bounded-diagnostics"
+        }
         _ => "analysis/static-limitation-taxonomy",
     }
 }
@@ -85426,6 +85434,20 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["static_limitations"]["by_category"]["lane1_repo_exposure_timeout"],
             1
+        );
+        let backlog = super::lane1_static_limitation_backlog_json(&report);
+        assert_eq!(
+            backlog["top_categories"][0]["repair_route"],
+            "report/lane1-audit-bounded-diagnostics"
+        );
+        let top_routes = backlog["top_repair_routes"]
+            .as_array()
+            .ok_or_else(|| "expected top repair routes".to_string())?;
+        assert!(
+            top_routes
+                .iter()
+                .all(|route| route["repair_route"] != "report/lane1-audit-bounded-diagnostics"),
+            "report-only runtime diagnostics should stay out of packet-backed top repair routes: {top_routes:?}"
         );
         assert_eq!(value["summary"]["static_limitations_total"], 1);
         assert_eq!(
