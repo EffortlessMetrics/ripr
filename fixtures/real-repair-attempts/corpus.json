@@ -1352,6 +1352,46 @@
       "reason": "A real merged Python preview PR converted literal API JSON-field route evidence into concrete advisory repair-card guidance while preserving the dynamic-route and receipt/actionability boundaries."
     },
     {
+      "id": "python_model_field_repair_card_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#772",
+      "canonical_gap_id": "gap:python:src/users.py:build_user:field_value:field_construction:return_user_active=true",
+      "packet_id": "python-repair-card:gap:python:src/users.py:build_user:field_value:field_construction:return_user_active=true",
+      "language": "python",
+      "evidence_class": "field_construction",
+      "source_file": "src/users.py",
+      "repair_kind": "route_python_model_field_repair_card",
+      "target_test_or_observer_shape": "Python preview repair-card guidance for a simple returned model-like constructor keyword field: strengthen the existing pytest test `tests/test_users.py::test_build_user_smoke` with `assert result.active == True`.",
+      "verify_command": "cargo xtask fixtures python_model_field_repair_gap",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Routed simple returned Python model-like constructor keyword fields through the Python preview repair-card flow, naming the exact `result.active == True` discriminator and suggested pytest node.",
+      "evidence_movement": "improved: the fixture now emits a canonical Python field-value gap, repair-card target shape, suggested pytest file/test/node id, and verify command for returned object fields while non-simple constructor values remain fail-closed.",
+      "operator_note": "This is analyzer-route dogfood, not public repair delegation. The preview card is useful guidance, but it remains advisory because the card itself reports receipt status as unavailable_until_python_gap_ledger.",
+      "must_not_change": [
+        "do not promote Python preview cards to public repair packets",
+        "do not assume runtime constructor semantics or import Python modules",
+        "do not emit repair cards for non-simple constructor values",
+        "do not authorize production-code edits",
+        "do not change badge or CI gate semantics"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/python_model_field_repair_gap/SPEC.md",
+        "fixtures/python_model_field_repair_gap/expected/check.json",
+        "fixtures/python_model_field_repair_gap/expected/human.txt",
+        "crates/ripr/src/analysis/language/python.rs",
+        "crates/ripr/src/output/python_repair_card.rs",
+        "EffortlessMetrics/ripr-swarm#772"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged Python preview PR converted a simple returned model-field shape into concrete advisory repair-card guidance while preserving the receipt/actionability boundary."
+    },
+    {
       "id": "python_parametrized_boundary_repair_card_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#764",
       "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
