@@ -143,3 +143,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+pytest boundary parameter row wording uses equal input value
+
+Command:
+`cargo xtask goldens bless python_method_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

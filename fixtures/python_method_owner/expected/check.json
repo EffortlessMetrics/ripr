@@ -94,7 +94,7 @@
         "changed_behavior": "predicate_boundary changed at src/policy.py:3: `if amount >= threshold:`",
         "current_test_evidence": "tests/test_policy.py:4 test_discount_policy_apply currently has oracle_strength=unknown, oracle_kind=unknown",
         "missing_discriminator": "amount == threshold",
-        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `amount == threshold`, and `threshold + 1` rows when expected values are clear.",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `threshold`, and `threshold + 1` rows when expected values are clear.",
         "suggested_assertion": "Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"amount, expected\", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only.",
         "suggested_location": {
           "test_file": "tests/test_policy.py",

@@ -45,7 +45,7 @@ Python repair card (preview/advisory)
   changed behavior: predicate_boundary changed at src/quantity.py:2: `if value <= 0:`
   current test evidence: tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)
   missing discriminator: value == 0
-  recommended test shape: Strengthen the existing pytest boundary assertion for `value == 0`. Keep the equality case as the minimum repair; optional pytest parameterization can add `-1`, `value == 0`, and `1` rows when expected values are clear.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `value == 0`. Keep the equality case as the minimum repair; optional pytest parameterization can add `-1`, `0`, and `1` rows when expected values are clear.
   suggested assertion: Assert the owner result or effect at `value == 0` first. Optional pytest shape: @pytest.mark.parametrize("value, expected", [(-1, ...), (0, ...), (1, ...)]); fill expected values from domain behavior only.
   suggested file: tests/test_quantity.py
   suggested test: test_rejects_zero_quantity

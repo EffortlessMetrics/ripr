@@ -45,7 +45,7 @@ Python repair card (preview/advisory)
   changed behavior: predicate_boundary changed at src/tax.py:2: `if amount >= 100:`
   current test evidence: tests/test_tax.py:7 test_tax_band currently has oracle_strength=unknown, oracle_kind=unknown: pytest.mark.parametrize
   missing discriminator: amount == 100
-  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `amount == 100`, and `101` rows when expected values are clear.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `100`, and `101` rows when expected values are clear.
   suggested assertion: Assert the owner result or effect at `amount == 100` first. Optional pytest shape: @pytest.mark.parametrize("amount, expected", [(99, ...), (100, ...), (101, ...)]); fill expected values from domain behavior only.
   suggested file: tests/test_tax.py
   suggested test: test_tax_band

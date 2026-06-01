@@ -45,7 +45,7 @@ Python repair card (preview/advisory)
   changed behavior: predicate_boundary changed at src/c_discount.py:2: `if amount >= threshold:`
   current test evidence: tests/test_discount.py:4 test_calculate_discount_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result
   missing discriminator: amount == threshold
-  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `amount == threshold`, and `threshold + 1` rows when expected values are clear.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `threshold`, and `threshold + 1` rows when expected values are clear.
   suggested assertion: Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize("amount, expected", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only.
   suggested file: tests/test_discount.py
   suggested test: test_calculate_discount_smoke

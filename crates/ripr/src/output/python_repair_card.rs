@@ -187,7 +187,7 @@ fn recommended_test_shape(
             {
                 return format!(
                     "{verb} {framework} boundary assertion for `{missing_discriminator}`. Keep the equality case as the minimum repair; optional pytest parameterization can add `{}`, `{}`, and `{}` rows when expected values are clear.",
-                    candidate.below, candidate.equal, candidate.above
+                    candidate.below, candidate.equal_value, candidate.above
                 );
             }
             format!("{verb} {framework} boundary assertion for `{missing_discriminator}`.")
@@ -507,7 +507,7 @@ mod tests {
                 "pytest tests/test_discount.py::test_apply_discount_smoke",
                 "strengthen_existing_test",
             ),
-            "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `amount == threshold`, and `threshold + 1` rows when expected values are clear."
+            "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `threshold`, and `threshold + 1` rows when expected values are clear."
         );
         assert_eq!(
             suggested_assertion(
