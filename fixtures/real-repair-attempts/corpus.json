@@ -626,6 +626,43 @@
       "reason": "A real merged analyzer slice added bounded assertion-helper proof for the same-file owner-call route while preserving unknown macro and non-actionable backlog boundaries."
     },
     {
+      "id": "same_file_helper_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#773",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed same-file one-hop helper where a unit test calls a helper in the same file and that helper directly calls the production owner for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr same_file_test_helper_call_counts_as_owner_call_evidence --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught compact same-file owner-call context to carry helper-owner evidence when a test calls a same-file helper such as `case_at_threshold()` and that helper directly calls `discounted_total(...)`.",
+      "evidence_movement": "improved: the analyzer route now has compact-context proof and benchmark-backed route evidence for one-hop same-file helper activation without inventing observed values or promoting the remaining same-file backlog to public repair work.",
+      "operator_note": "This is analyzer-route dogfood for an already-merged fixture-backed route. It records movement for the top sampled same-file owner-call backlog while preserving static-limitation boundaries for proximity-only, multi-hop, and value-invention cases.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not follow arbitrary multi-hop helper graphs",
+        "do not use a helper unless it directly calls the owner",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::same_file_test_helper_call_counts_as_owner_call_evidence",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_same_file_helper_owner_call_activation_values_not_required",
+        "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
+        "EffortlessMetrics/ripr-swarm#773"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged analyzer slice added compact same-file helper owner-call proof for the same-file owner-call route while preserving proximity-only and non-actionable backlog boundaries."
+    },
+    {
       "id": "same_file_parent_qualified_owner_call_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#774",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
