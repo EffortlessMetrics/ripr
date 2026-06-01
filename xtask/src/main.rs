@@ -8275,8 +8275,13 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("decorated_route_status_pytest_receipt", "closed"),
 ];
 
-const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] =
-    &[("dynamic_dispatch_no_packet_eval", "dynamic_dispatch")];
+const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
+    ("dynamic_dispatch_no_packet_eval", "dynamic_dispatch"),
+    (
+        "unresolved_fixture_no_packet_eval",
+        "unresolved_pytest_fixture",
+    ),
+];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typescript_boundary_predicate_proof", "proof_improved"),
@@ -45153,12 +45158,14 @@ fn dogfood_python_static_limit_eval_run(
     if scenario.stop_reasons.is_empty() {
         errors.push("stop_reasons must include the static-limit stop reason".to_string());
     }
-    if !scenario
-        .stop_reasons
-        .iter()
-        .any(|reason| reason.contains(&scenario.static_limit_kind))
-    {
-        errors.push("stop_reasons must name the static limit kind".to_string());
+    let has_static_limit_stop_reason = scenario.stop_reasons.iter().any(|reason| {
+        reason.contains(&scenario.static_limit_kind) || reason == "static_probe_unknown"
+    });
+    if !has_static_limit_stop_reason {
+        errors.push(
+            "stop_reasons must include either the static limit kind or static_probe_unknown"
+                .to_string(),
+        );
     }
     if !scenario
         .why_not_actionable
@@ -45239,6 +45246,18 @@ fn dogfood_python_static_limit_false_positive_clean(
             .as_str(),
         "none observed" | "none"
     )
+}
+
+fn dogfood_python_static_limit_eval_distribution(
+    runs: &[DogfoodPythonStaticLimitEvalRun],
+) -> Vec<(String, usize)> {
+    let mut distribution = BTreeMap::<String, usize>::new();
+    for run in runs {
+        *distribution
+            .entry(run.static_limit_kind.clone())
+            .or_default() += 1;
+    }
+    distribution.into_iter().collect()
 }
 
 fn dogfood_python_repair_routing_quality_summary(
@@ -49057,6 +49076,8 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         .count();
     let python_repair_quality =
         dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
+    let python_static_limit_distribution =
+        dogfood_python_static_limit_eval_distribution(python_static_limit_eval_runs);
     body.push_str("## Python Real-Repo Eval Receipts\n\n");
     body.push_str("These receipts record Python repair-routing runs outside analyzer fixture goldens. They are advisory dogfood evidence for the repair card -> verify -> receipt loop, not support-tier promotion or runtime adequacy proof.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -49097,6 +49118,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         "- Top-3 actionable precision: {} / {} ranked findings - fewer-than-three eval outputs must document a stop reason.\n\n",
         python_repair_quality.top_3_actionable_usable,
         python_repair_quality.top_3_ranked_findings_checked
+    ));
+    body.push_str(&format!(
+        "- Static-limit no-action cases: {} - tracked separately from repair-card success metrics.\n\n",
+        python_static_limit_eval_runs.len()
     ));
     body.push_str("| Metric | Passing / Checked |\n");
     body.push_str("| --- | --- |\n");
@@ -49146,6 +49171,20 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str("| none recorded | 0 |\n\n");
     } else {
         for (limitation, count) in &python_repair_quality.unsupported_limitation_distribution {
+            body.push_str(&format!(
+                "| `{}` | {} |\n",
+                markdown_cell(limitation),
+                count
+            ));
+        }
+        body.push('\n');
+    }
+    body.push_str("| No-action static limitation | Cases |\n");
+    body.push_str("| --- | --- |\n");
+    if python_static_limit_distribution.is_empty() {
+        body.push_str("| none recorded | 0 |\n\n");
+    } else {
+        for (limitation, count) in &python_static_limit_distribution {
             body.push_str(&format!(
                 "| `{}` | {} |\n",
                 markdown_cell(limitation),
@@ -49667,6 +49706,8 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let python_static_limit_eval_runs = inputs.python_static_limit_eval_runs;
     let python_repair_quality =
         dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
+    let python_static_limit_distribution =
+        dogfood_python_static_limit_eval_distribution(python_static_limit_eval_runs);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
@@ -51214,6 +51255,10 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         "      \"cases\": {},\n",
         python_repair_quality.cases
     ));
+    body.push_str(&format!(
+        "      \"static_limit_no_action_cases\": {},\n",
+        python_static_limit_eval_runs.len()
+    ));
     dogfood_push_python_quality_ratio_json(
         &mut body,
         "top_1_actionable_precision",
@@ -51304,6 +51349,17 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         .iter()
         .enumerate()
     {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push_str(&format!(
+            "{{ \"kind\": \"{}\", \"cases\": {} }}",
+            json_escape(limitation),
+            count
+        ));
+    }
+    body.push_str("],\n    \"static_limit_no_action_distribution\": [");
+    for (index, (limitation, count)) in python_static_limit_distribution.iter().enumerate() {
         if index > 0 {
             body.push_str(", ");
         }
@@ -72592,7 +72648,12 @@ fn exact_owner_call_has_external_expected_value() {
         let surface_projection_alignment_runs = [surface_projection_alignment_run];
         let real_repair_attempt_runs = [real_repair_attempt_run];
         let python_real_repo_eval_runs = [python_real_repo_eval_run];
-        let python_static_limit_eval_runs = [];
+        let python_static_limit_eval_runs = [
+            dogfood_python_static_limit_eval_run(&valid_python_static_limit_eval_scenario()),
+            dogfood_python_static_limit_eval_run(
+                &valid_python_unresolved_fixture_static_limit_eval_scenario(),
+            ),
+        ];
         let typescript_preview_repair_loop_runs = [typescript_preview_repair_loop_run];
         let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
@@ -72665,6 +72726,12 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Surface Projection Alignment Receipts"));
         assert!(markdown.contains("Real Repair Attempt Receipts"));
         assert!(markdown.contains("Python Real-Repo Eval Receipts"));
+        assert!(markdown.contains("static-limit no-action cases: 2"));
+        assert!(markdown.contains("Python Static-Limit Eval Receipts"));
+        assert!(markdown.contains("dynamic_dispatch_no_packet_eval"));
+        assert!(markdown.contains("unresolved_fixture_no_packet_eval"));
+        assert!(markdown.contains("Static-limit no-action cases: 2"));
+        assert!(markdown.contains("unresolved_pytest_fixture"));
         assert!(markdown.contains("Python Repair-Routing Quality Metrics"));
         assert!(markdown.contains("Top-3 actionable precision: 1 / 1 ranked findings"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
@@ -72691,6 +72758,13 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"surface_projection_alignment\""));
         assert!(json.contains("\"real_repair_attempts\""));
         assert!(json.contains("\"python_real_repo_evals\""));
+        assert!(json.contains("\"static_limit_cases\": 2"));
+        assert!(json.contains("\"static_limit_no_action_cases\": 2"));
+        assert!(json.contains("\"static_limit_no_action_distribution\""));
+        assert!(json.contains("\"dynamic_dispatch_no_packet_eval\""));
+        assert!(json.contains("\"unresolved_fixture_no_packet_eval\""));
+        assert!(json.contains("\"agent_packet_present\": false"));
+        assert!(json.contains("\"gap_movement\": \"no_receipt\""));
         assert!(json.contains("\"typescript_preview_repair_loop\""));
         assert!(json.contains("\"repair_route_quality_metrics_improved\""));
         assert!(json.contains("\"tiny_controlled_pytest_boundary_receipt\""));
@@ -73998,6 +74072,45 @@ fn exact_owner_call_has_external_expected_value() {
             reason:
                 "dynamic dispatch dogfood records an honest no-action result instead of a repair card"
                     .to_string(),
+        }
+    }
+
+    fn valid_python_unresolved_fixture_static_limit_eval_scenario()
+    -> DogfoodPythonStaticLimitEvalScenario {
+        DogfoodPythonStaticLimitEvalScenario {
+            name: "unresolved_fixture_no_packet_eval".to_string(),
+            repo_shape: "fixture_sourced_pytest".to_string(),
+            source_kind: "scratch_repo".to_string(),
+            source_ref: "target/ripr/python-real-repo-evals/unresolved-fixture-limit".to_string(),
+            command: "ripr check --root target/ripr/python-real-repo-evals/unresolved-fixture-limit --base HEAD~1 --format json".to_string(),
+            runtime_ms: 7700,
+            finding_id: "probe:src_pricing.py:2:python_preview".to_string(),
+            changed_owner: "python:src/pricing.py::apply_discount".to_string(),
+            static_limit_kind: "unresolved_pytest_fixture".to_string(),
+            classification: "static_unknown".to_string(),
+            stop_reasons: vec!["static_probe_unknown".to_string()],
+            related_test_file: "tests/test_pricing.py".to_string(),
+            related_test_name: "test_apply_discount_fixture_case".to_string(),
+            why_not_actionable:
+                "static limit unresolved_pytest_fixture prevents bounded repair routing"
+                    .to_string(),
+            repair_card_present: false,
+            agent_packet_present: false,
+            verify_command: "not_applicable_static_limit".to_string(),
+            verify_result: "not_applicable".to_string(),
+            receipt_command: "not_applicable_static_limit".to_string(),
+            receipt_result: "not_applicable".to_string(),
+            gap_movement: "no_receipt".to_string(),
+            false_positive_notes: "none observed".to_string(),
+            limitation_notes:
+                "pytest fixture-sourced values stay visible as a no-packet static limitation"
+                    .to_string(),
+            claim_boundary: vec![
+                "Broader Python static facts remain preview/advisory".to_string(),
+                "No repair packet emitted".to_string(),
+                "No support-tier promotion".to_string(),
+            ],
+            reason: "unresolved pytest fixture dogfood records an honest no-action result instead of a repair card".to_string(),
         }
     }
 

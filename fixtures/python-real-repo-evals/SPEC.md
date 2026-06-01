@@ -40,9 +40,9 @@ Dogfood quality metrics must report top-1 actionable usefulness, top-3
 actionable precision over captured ranked repair-card findings, verify-command
 validity, agent-packet boundary validity, concrete-discriminator coverage,
 suggested test-location coverage, false-actionable rate, crash rate, receipt
-closure rate, and unsupported limitation distribution. Eval cases with fewer
-than three user-facing repair cards must include a ranked top-3 limit reason
-instead of silently passing the metric.
+closure rate, unsupported limitation distribution, and no-action static-limit
+distribution. Eval cases with fewer than three user-facing repair cards must
+include a ranked top-3 limit reason instead of silently passing the metric.
 
 Static-limit no-action cases are not counted as successful repair
 recommendations. They exist to keep unsupported Python shapes visible without
