@@ -43,6 +43,36 @@
       ],
       "related_tests": [
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "static_unknown changed at src/broken.ts:2: `const next = ;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "none",
+        "owner": "unknown",
+        "owner_kind": null,
+        "probe_family": "static_unknown",
+        "related_test": null,
+        "repair_packet_ready": false,
+        "repair_route": "fix or isolate the unsupported syntax before relying on repair guidance",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "unsupported_syntax"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)"
+      },
       "preview_actionability": {
         "actionability_category": "unsupported_syntax",
         "authority_boundary": "preview_advisory_only",

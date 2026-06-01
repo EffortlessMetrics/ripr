@@ -60,6 +60,38 @@
           "oracle": "expect(...).toBe(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/signals.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 19,
+          "name": "discount table %#"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
       "preview_actionability": {
         "actionability_category": "strong_oracle_observed",
         "authority_boundary": "preview_advisory_only",
@@ -146,6 +178,38 @@
           "oracle": "expect(...).toMatchSnapshot(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/signals.ts:9: `return `summary:${status.trim()}`;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "return value == `summary:${status.trim()}`",
+        "oracle_kind": "snapshot",
+        "oracle_strength": "medium",
+        "owner": "renderSummary",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 25,
+          "name": "renders summary snapshot"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact-value toBe/toEqual/toStrictEqual assertion alongside the snapshot.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -242,6 +306,38 @@
           "oracle": "expect(...).toBeTruthy(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/signals.ts:13: `return count >= 1;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "return value == count >= 1",
+        "oracle_kind": "smoke_only",
+        "oracle_strength": "smoke",
+        "owner": "isReady",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 29,
+          "name": "smoke readiness"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -338,6 +434,38 @@
           "oracle": "expect(...).toHaveBeenCalledWith(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "side_effect changed at src/signals.ts:17: `sink.record(status);`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "call sink.record includes status",
+        "oracle_kind": "mock_expectation",
+        "oracle_strength": "medium",
+        "owner": "notifyStatus",
+        "owner_kind": "function",
+        "probe_family": "side_effect",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 33,
+          "name": "records status %s"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Keep the bounded mock interaction evidence advisory until strict packet fields are available.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -434,6 +562,38 @@
           "oracle": "expect(sink.record).toHaveBeenCalledWith(\"ready\")"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "side_effect changed at src/signals.ts:21: `sink.record(\"ready\");`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "call sink.record includes \"ready\"",
+        "oracle_kind": "mock_expectation",
+        "oracle_strength": "medium",
+        "owner": "notifyLiteral",
+        "owner_kind": "function",
+        "probe_family": "side_effect",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 41,
+          "name": "records literal status"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Keep the bounded mock interaction evidence advisory until strict packet fields are available.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -520,6 +680,38 @@
           "oracle": "expect(...).toBe(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/signals.ts:25: `return await Promise.resolve(`profile:${id}`);`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "loadProfile",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/signals.test.ts",
+          "line": 47,
+          "name": "loads profile"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
       "preview_actionability": {
         "actionability_category": "strong_oracle_observed",
         "authority_boundary": "preview_advisory_only",

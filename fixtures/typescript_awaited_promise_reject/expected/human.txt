@@ -46,6 +46,24 @@ Weakness
   - Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.
   - missing discriminator rejects Error matching "missing id": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: loadProfile
+  owner kind: function
+  changed behavior: error_path changed at src/profile.ts:3: `return await Promise.reject(new Error("missing id"));`
+  related test: tests/profile.test.ts:1 rejects missing profile id broadly
+  oracle: broad_error (weak)
+  missing discriminator: rejects Error matching "missing id"
+  suggested assertion shape: Use literal toThrow/rejects.toThrow or rejects.toMatchObject payload evidence; broad error checks stay weak.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.
 
@@ -88,6 +106,23 @@ Evidence
 
 Weakness
   - Related test reaches `publishProfile` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: publishProfile
+  owner kind: function
+  changed behavior: error_path changed at src/profile.ts:10: `await Promise.reject(new Error("missing id"));`
+  related test: tests/profile.test.ts:5 rejects missing publish id exactly
+  oracle: exact_error_variant (strong)
+  suggested assertion shape: Exact error payload evidence is present; no repair packet is emitted without strict fields.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

@@ -68,6 +68,38 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/cart.test.ts",
+          "line": 1,
+          "name": "applyDiscount boundary"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+      },
       "preview_actionability": {
         "actionability_category": "ambiguous_related_test",
         "authority_boundary": "preview_advisory_only",

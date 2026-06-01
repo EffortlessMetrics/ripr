@@ -52,6 +52,38 @@
           "oracle": "expect(...).toEqual(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/price-label.jsx:2: `if (amount >= threshold) {`",
+        "language": "javascript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "PriceLabel",
+        "owner_kind": "component",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/price-label.test.jsx",
+          "line": 1,
+          "name": "renders discounted price"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
       "preview_actionability": {
         "actionability_category": "strong_oracle_observed",
         "authority_boundary": "preview_advisory_only",

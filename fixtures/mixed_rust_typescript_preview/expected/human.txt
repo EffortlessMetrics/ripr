@@ -79,5 +79,22 @@ Evidence
 Weakness
   - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at web/discount.ts:2: `if (amount >= threshold) {`
+  related test: web/discount.test.ts:1 at threshold discounts
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

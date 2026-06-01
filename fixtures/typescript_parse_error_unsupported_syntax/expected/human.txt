@@ -44,5 +44,21 @@ Weakness
 Stop reasons:
   - static_probe_unknown
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: unknown
+  changed behavior: static_unknown changed at src/broken.ts:2: `const next = ;`
+  oracle: unknown (none)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: unsupported_syntax
+  repair packet ready: false
+  why not actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)
+  repair route: fix or isolate the unsupported syntax before relying on repair guidance
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.

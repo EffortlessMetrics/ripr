@@ -8,6 +8,9 @@ use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_preview_card::{
+    typescript_preview_card, typescript_preview_card_json_value,
+};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -216,6 +219,15 @@ fn finding_json_with_config_and_counts(
     }
     if let Some(card) = python_repair_card(finding) {
         python_repair_card_json(out, &card, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = typescript_preview_card(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "typescript_preview_card",
+            &typescript_preview_card_json_value(&card),
+        );
         out.push_str(",\n");
     }
     if let Some(actionability) = preview_actionability_for(finding) {

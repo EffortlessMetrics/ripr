@@ -44,6 +44,23 @@ Weakness
   - No trusted TypeScript method receiver relation for `save`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, prototype aliases, and dynamic property access stay ambiguous in preview.
   - Static limit `decorator_indirection`: owner `save` uses TypeScript decorators; syntax-first preview evidence does not resolve decorator-modified call behavior. Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: save
+  owner kind: method
+  changed behavior: return_value changed at src/decorated.tsx:7: `return value.trim();`
+  oracle: unknown (none)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: decorator_indirection
+  repair packet ready: false
+  why not actionable: static limit `decorator_indirection` prevents bounded TypeScript repair guidance
+  repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: static limit `decorator_indirection`; Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.; no actionable repair packet is emitted.
 
@@ -86,6 +103,24 @@ Evidence
 Weakness
   - Related test reaches `dispatch` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: dispatch
+  owner kind: function
+  changed behavior: side_effect changed at src/dispatch.ts:2: `actions[key]();`
+  related test: tests/dispatch.test.ts:1 dispatch smoke
+  oracle: smoke_only (smoke)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: dynamic_dispatch
+  repair packet ready: false
+  why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
+  repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.
@@ -131,6 +166,24 @@ Weakness
   - Related test reaches `LabelView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `missing_import_graph`: the changed line calls imported symbol `normalizeLabel` from `./labels`; the TypeScript preview adapter does not build a package or import graph for production implementation semantics. Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (javascript/preview)
+  owner: LabelView
+  owner kind: function
+  changed behavior: return_value changed at src/label.jsx:3: `return normalizeLabel(props.label);`
+  related test: tests/label.test.jsx:1 LabelView smoke
+  oracle: smoke_only (smoke)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: missing_import_graph
+  repair packet ready: false
+  why not actionable: static limit `missing_import_graph` prevents bounded TypeScript repair guidance
+  repair route: add import graph support or inspect the imported implementation before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: static limit `missing_import_graph`; Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.; no actionable repair packet is emitted.
 
@@ -174,6 +227,24 @@ Evidence
 Weakness
   - Related test reaches `wrap` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `metaprogramming`: the TypeScript preview adapter saw Proxy, Reflect, or property-definition metaprogramming syntax and does not infer runtime-created behavior. Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (javascript/preview)
+  owner: wrap
+  owner kind: function
+  changed behavior: return_value changed at src/proxy.js:2: `return new Proxy(target, handler);`
+  related test: tests/proxy.test.js:1 wrap smoke
+  oracle: smoke_only (smoke)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: metaprogramming
+  repair packet ready: false
+  why not actionable: static limit `metaprogramming` prevents bounded TypeScript repair guidance
+  repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: static limit `metaprogramming`; Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.; no actionable repair packet is emitted.

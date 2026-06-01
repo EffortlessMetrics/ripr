@@ -46,6 +46,7 @@ pub(crate) mod suppression_health;
 pub(crate) mod suppressions;
 pub(crate) mod swarm_ingest;
 pub(crate) mod test_oracle_assistant_proof;
+pub(crate) mod typescript_preview_card;
 pub(crate) mod value_path;
 pub(crate) mod waiver_aging;
 

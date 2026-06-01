@@ -52,6 +52,40 @@
           "oracle": "expect(...).toBe(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/discount.test.ts",
+          "line": 11,
+          "name": "at threshold discounts"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "mocked_module"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
+      },
       "preview_actionability": {
         "actionability_category": "mocked_module",
         "authority_boundary": "preview_advisory_only",

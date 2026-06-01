@@ -46,5 +46,22 @@ Evidence
 Weakness
   - Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`
+  related test: tests/cart.test.ts:1 applyDiscount boundary
+  oracle: unknown (unknown)
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.

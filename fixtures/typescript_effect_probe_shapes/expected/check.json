@@ -63,6 +63,38 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "field_construction changed at src/profile.ts:4: `profile.status = status;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "profile.status == status",
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "updateProfile",
+        "owner_kind": "function",
+        "probe_family": "field_construction",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "name": "updates and records status"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact field/object assertion for the constructed value.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -159,6 +191,38 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "side_effect changed at src/profile.ts:5: `audit.record(status);`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "call audit.record includes status",
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "updateProfile",
+        "owner_kind": "function",
+        "probe_family": "side_effect",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "name": "updates and records status"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact call/output/log assertion for the changed side effect.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",

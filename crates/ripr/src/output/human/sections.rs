@@ -4,6 +4,7 @@ use crate::output::preview_actionability::{
     PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_preview_card::{TypeScriptPreviewCard, typescript_preview_card};
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
 
@@ -88,6 +89,8 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
 
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
+    } else if let Some(card) = typescript_preview_card(finding) {
+        push_typescript_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {
         out.push_str("\nRepair placement\n");
         out.push_str(&format!("  suggested file: {}\n", placement.test_file));
@@ -209,6 +212,59 @@ fn push_python_repair_card(out: &mut String, card: &PythonRepairCard) {
     for condition in &card.stop_conditions {
         out.push_str(&format!("    - {condition}\n"));
     }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) {
+    out.push_str("\nTypeScript preview card (advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  owner: {}\n", card.owner));
+    if let Some(owner_kind) = &card.owner_kind {
+        out.push_str(&format!("  owner kind: {owner_kind}\n"));
+    }
+    out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
+    if let Some(test) = &card.related_test {
+        out.push_str(&format!(
+            "  related test: {}:{} {}\n",
+            test.file, test.line, test.name
+        ));
+    }
+    out.push_str(&format!(
+        "  oracle: {} ({})\n",
+        card.oracle_kind, card.oracle_strength
+    ));
+    if let Some(discriminator) = &card.missing_discriminator {
+        out.push_str(&format!("  missing discriminator: {discriminator}\n"));
+    }
+    out.push_str(&format!(
+        "  suggested assertion shape: {}\n",
+        card.suggested_assertion_shape
+    ));
+    if !card.static_limits.is_empty() {
+        out.push_str(&format!(
+            "  static limits: {}\n",
+            card.static_limits.join(", ")
+        ));
+    }
+    if let Some(command) = &card.verify_command {
+        out.push_str(&format!("  verify: {command}\n"));
+    }
+    out.push_str(&format!(
+        "  repair packet ready: {}\n",
+        card.repair_packet_ready
+    ));
+    out.push_str(&format!(
+        "  why not actionable: {}\n",
+        card.why_not_actionable
+    ));
+    out.push_str(&format!("  repair route: {}\n", card.repair_route));
     out.push_str("  limits:\n");
     for limit in &card.limits {
         out.push_str(&format!("    - {limit}\n"));

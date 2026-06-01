@@ -44,5 +44,23 @@ Weakness
   - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   - Static limit `mocked_module`: related test file mocks `./api` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/discount.ts:2: `if (amount >= threshold) {`
+  related test: tests/discount.test.ts:11 at threshold discounts
+  oracle: exact_value (strong)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: mocked_module
+  repair packet ready: false
+  why not actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance
+  repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.

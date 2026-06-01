@@ -63,6 +63,38 @@
           "oracle": "expect(...).toThrow()"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "error_path changed at src/profile.ts:3: `return await Promise.reject(new Error(\"missing id\"));`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "rejects Error matching \"missing id\"",
+        "oracle_kind": "broad_error",
+        "oracle_strength": "weak",
+        "owner": "loadProfile",
+        "owner_kind": "function",
+        "probe_family": "error_path",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "name": "rejects missing profile id broadly"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Use literal toThrow/rejects.toThrow or rejects.toMatchObject payload evidence; broad error checks stay weak.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
@@ -149,6 +181,38 @@
           "oracle": "await expect(...).rejects.toThrow(\"missing id\")"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "error_path changed at src/profile.ts:10: `await Promise.reject(new Error(\"missing id\"));`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_error_variant",
+        "oracle_strength": "strong",
+        "owner": "publishProfile",
+        "owner_kind": "function",
+        "probe_family": "error_path",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 5,
+          "name": "rejects missing publish id exactly"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact error payload evidence is present; no repair packet is emitted without strict fields.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
       "preview_actionability": {
         "actionability_category": "strong_oracle_observed",
         "authority_boundary": "preview_advisory_only",

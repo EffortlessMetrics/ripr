@@ -63,6 +63,38 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/rounding.ts:2: `return Math.round(amount * 100) / 100;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "return value == Math.round(amount * 100) / 100",
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "roundCents",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/rounding.test.ts",
+          "line": 6,
+          "name": "rounds two decimals"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact return-value assertion for the changed output.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "preview_actionability": {
         "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",

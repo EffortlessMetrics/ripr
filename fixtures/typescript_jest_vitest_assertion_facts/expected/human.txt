@@ -44,6 +44,23 @@ Evidence
 Weakness
   - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/signals.ts:2: `if (amount >= threshold) {`
+  related test: tests/signals.test.ts:19 discount table %#
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
 
@@ -88,6 +105,24 @@ Evidence
 Weakness
   - Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator return value == `summary:${status.trim()}`: changed TypeScript returned-value at line 9 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: renderSummary
+  owner kind: function
+  changed behavior: return_value changed at src/signals.ts:9: `return `summary:${status.trim()}`;`
+  related test: tests/signals.test.ts:25 renders summary snapshot
+  oracle: snapshot (medium)
+  missing discriminator: return value == `summary:${status.trim()}`
+  suggested assertion shape: Add an exact-value toBe/toEqual/toStrictEqual assertion alongside the snapshot.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: add an exact-value assertion alongside the snapshot for missing discriminator `return value == `summary:${status.trim()}``; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
@@ -134,6 +169,24 @@ Weakness
   - Related test reaches `isReady` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator return value == count >= 1: changed TypeScript returned-value at line 13 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: isReady
+  owner kind: function
+  changed behavior: return_value changed at src/signals.ts:13: `return count >= 1;`
+  related test: tests/signals.test.ts:29 smoke readiness
+  oracle: smoke_only (smoke)
+  missing discriminator: return value == count >= 1
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == count >= 1`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -178,6 +231,24 @@ Evidence
 Weakness
   - Related test reaches `notifyStatus` with a mock interaction oracle, but TypeScript preview does not yet establish the changed call payload; keep the item advisory until mock-shape actionability can name the callee, expected arguments, verify command, receipt command, and edit boundaries.
   - missing discriminator call sink.record includes status: changed TypeScript call side effect at line 17 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: notifyStatus
+  owner kind: function
+  changed behavior: side_effect changed at src/signals.ts:17: `sink.record(status);`
+  related test: tests/signals.test.ts:33 records status %s
+  oracle: mock_expectation (medium)
+  missing discriminator: call sink.record includes status
+  suggested assertion shape: Keep the bounded mock interaction evidence advisory until strict packet fields are available.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: related mock interaction evidence is present, but mock payloads are not yet a safe discriminator for `call sink.record includes status`; no actionable repair packet is emitted until mock-shape support can name verify, receipt, evidence refs, and edit boundaries.
@@ -224,6 +295,24 @@ Weakness
   - Related test reaches `notifyLiteral` with bounded mock payload evidence `expect(sink.record).toHaveBeenCalledWith("ready")`; keep the item advisory until mock-shape actionability can name verify command, receipt command, evidence refs, and edit boundaries.
   - missing discriminator call sink.record includes "ready": changed TypeScript call side effect at line 21 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: notifyLiteral
+  owner kind: function
+  changed behavior: side_effect changed at src/signals.ts:21: `sink.record("ready");`
+  related test: tests/signals.test.ts:41 records literal status
+  oracle: mock_expectation (medium)
+  missing discriminator: call sink.record includes "ready"
+  suggested assertion shape: Keep the bounded mock interaction evidence advisory until strict packet fields are available.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: related mock payload evidence `expect(sink.record).toHaveBeenCalledWith("ready")` is syntax-bounded for `call sink.record includes "ready"`, but no actionable repair packet is emitted until verify, receipt, evidence refs, and edit boundaries are available.
 
@@ -266,6 +355,23 @@ Evidence
 
 Weakness
   - Related test reaches `loadProfile` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: loadProfile
+  owner kind: function
+  changed behavior: return_value changed at src/signals.ts:25: `return await Promise.resolve(`profile:${id}`);`
+  related test: tests/signals.test.ts:47 loads profile
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

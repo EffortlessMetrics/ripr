@@ -18,6 +18,9 @@ use crate::output::python_repair_card::{python_repair_card, python_repair_card_j
 use crate::output::suppressions::{
     SuppressionEntry, SuppressionKind, current_iso_date, is_expired,
 };
+use crate::output::typescript_preview_card::{
+    typescript_preview_card, typescript_preview_card_json_value,
+};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 
@@ -256,6 +259,12 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
         properties.insert(
             "python_repair_card".to_string(),
             python_repair_card_json_value(&card),
+        );
+    }
+    if let Some(card) = typescript_preview_card(finding) {
+        properties.insert(
+            "typescript_preview_card".to_string(),
+            typescript_preview_card_json_value(&card),
         );
     }
     properties.insert(

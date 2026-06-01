@@ -46,5 +46,23 @@ Weakness
   - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - missing discriminator return value == Math.round(amount * 100) / 100: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: roundCents
+  owner kind: function
+  changed behavior: return_value changed at src/rounding.ts:2: `return Math.round(amount * 100) / 100;`
+  related test: tests/rounding.test.ts:6 rounds two decimals
+  oracle: unknown (unknown)
+  missing discriminator: return value == Math.round(amount * 100) / 100
+  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

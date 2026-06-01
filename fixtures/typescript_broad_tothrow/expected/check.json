@@ -52,6 +52,38 @@
           "oracle": "expect(...).toThrow()"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/parser.ts:2: `if (input.trim() === \"\") {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "broad_error",
+        "oracle_strength": "weak",
+        "owner": "parseUser",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/parser.test.ts",
+          "line": 3,
+          "name": "empty user throws"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add probe-specific discriminator extraction for this expression before repair packet projection",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Use literal toThrow/rejects.toThrow or rejects.toMatchObject payload evidence; broad error checks stay weak.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape"
+      },
       "preview_actionability": {
         "actionability_category": "missing_target_shape",
         "authority_boundary": "preview_advisory_only",

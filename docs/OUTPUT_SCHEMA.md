@@ -459,6 +459,17 @@ The evidence-first fields are additive in schema `0.1`:
   `missing_actionability_fields[]`, `evidence_needed_to_promote`, and
   `raw_evidence_refs[]`. Raw evidence refs carry the original raw string plus
   parsed `file`, `line`, `kind`, `source_id`, and optional `owner` when present.
+- `typescript_preview_card` is an additive optional object for TypeScript and
+  JavaScript preview findings that already have structured
+  `preview_actionability`. It is an advisory card, not a repair packet. The v1
+  card carries `card_version`, `source`, `language`, `language_status`,
+  `authority_boundary`, `owner`, optional `owner_kind`, `probe_family`,
+  `changed_behavior`, optional `related_test`, `oracle_kind`,
+  `oracle_strength`, optional `missing_discriminator`,
+  `suggested_assertion_shape`, `static_limits`, nullable `verify.command`,
+  `why_not_actionable`, `repair_route`, `repair_packet_ready`, and `limits`.
+  `repair_packet_ready` remains `false` for this preview slice, and nullable
+  `verify.command` must not be interpreted as a delegated repair route.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
   Those records are advisory preview inputs for `ripr agent packet
@@ -917,9 +928,10 @@ Every result carries:
   `seam_kind`) when available.
 - diff-scoped preview-language Finding results may also carry additive
   `properties.language`, `properties.language_status`, `properties.owner_kind`,
-  `properties.static_limit_kind`, and `properties.preview_actionability`. The
-  `preview_actionability` shape matches `ripr check --format json` and remains
-  advisory preview context, not a SARIF policy decision or repair packet.
+  `properties.static_limit_kind`, `properties.preview_actionability`, and
+  `properties.typescript_preview_card`. The `preview_actionability` and
+  TypeScript preview-card shapes match `ripr check --format json` and remain
+  advisory preview context, not SARIF policy decisions or repair packets.
 - Direct weak Python preview Findings with an eligible `python_repair_card` in
   `ripr check --format json` also carry additive
   `properties.python_repair_card` in diff-scoped SARIF. The nested card keeps

@@ -44,6 +44,23 @@ Evidence
 Weakness
   - Related test reaches `formatPrice` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: formatPrice
+  owner kind: arrow_function
+  changed behavior: return_value changed at src/owners.ts:2: `return `$${amount.toFixed(3)}`;`
+  related test: tests/owners.test.ts:3 formats price
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
 
@@ -89,6 +106,24 @@ Weakness
   - Related test reaches `total` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - missing discriminator return value == this.items.length + 1: changed TypeScript returned-value at line 7 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: total
+  owner kind: method
+  changed behavior: return_value changed at src/owners.ts:7: `return this.items.length + 1;`
+  related test: tests/owners.test.ts:7 cart total smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: return value == this.items.length + 1
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == this.items.length + 1`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -132,6 +167,22 @@ Evidence
 Weakness
   - No trusted TypeScript class-method relation for `build`. Static class calls stay missing context until class-method related-test matching lands.
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: build
+  owner kind: class_method
+  changed behavior: return_value changed at src/owners.ts:11: `return new Cart({ tracked: true });`
+  oracle: unknown (none)
+  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  repair packet ready: false
+  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: class-method relation is missing context; keep the finding advisory until class-method related-test matching lands.
 
@@ -174,6 +225,23 @@ Evidence
 
 Weakness
   - Related test reaches `DEFAULT_RATE` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: DEFAULT_RATE
+  owner kind: module_function
+  changed behavior: predicate changed at src/owners.ts:15: `export const DEFAULT_RATE = 0.09;`
+  related test: tests/owners.test.ts:16 rate is visible
+  oracle: relational_check (weak)
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
+  repair packet ready: false
+  why not actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  repair route: add probe-specific discriminator extraction for this expression before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: related module-initializer observer reaches `DEFAULT_RATE` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.

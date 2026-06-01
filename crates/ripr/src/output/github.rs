@@ -2,6 +2,7 @@ use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
+use crate::output::typescript_preview_card::typescript_preview_card;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
@@ -58,6 +59,17 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str("`; verify `");
             message.push_str(&card.verify_command);
             message.push_str("` (preview advisory).");
+        }
+        if let Some(card) = typescript_preview_card(finding) {
+            message.push_str(" TypeScript preview card: owner `");
+            message.push_str(&card.owner);
+            message.push_str("`, oracle ");
+            message.push_str(&card.oracle_kind);
+            message.push('/');
+            message.push_str(&card.oracle_strength);
+            message.push_str(", suggested shape `");
+            message.push_str(&card.suggested_assertion_shape);
+            message.push_str("` (advisory preview; no repair packet).");
         }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",

@@ -46,6 +46,24 @@ Weakness
   - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
 
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: updateProfile
+  owner kind: function
+  changed behavior: field_construction changed at src/profile.ts:4: `profile.status = status;`
+  related test: tests/profile.test.ts:1 updates and records status
+  oracle: unknown (unknown)
+  missing discriminator: profile.status == status
+  suggested assertion shape: Add an exact field/object assertion for the constructed value.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
 Next step
   TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `profile.status == status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -90,6 +108,24 @@ Evidence
 Weakness
   - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: updateProfile
+  owner kind: function
+  changed behavior: side_effect changed at src/profile.ts:5: `audit.record(status);`
+  related test: tests/profile.test.ts:1 updates and records status
+  oracle: unknown (unknown)
+  missing discriminator: call audit.record includes status
+  suggested assertion shape: Add an exact call/output/log assertion for the changed side effect.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
   TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `call audit.record includes status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
