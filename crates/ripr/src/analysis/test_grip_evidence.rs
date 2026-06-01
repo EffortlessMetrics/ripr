@@ -149,12 +149,17 @@ impl<'a> CompactGripContext<'a> {
                     .map(strip_comments_and_strings)
                     .collect::<Vec<_>>();
                 let module_import_aliases = module_import_aliases_by_file.get(&test.file);
-                let helper_owner_call_names = helper_owner_call_names_for_test(
+                let mut helper_owner_call_names = helper_owner_call_names_for_test(
                     test,
                     &call_names,
                     &helper_owner_lookup,
                     module_import_aliases,
                 );
+                helper_owner_call_names.extend(same_file_helper_owner_call_names_for_test(
+                    test,
+                    &call_names,
+                    &helper_owner_calls_by_file,
+                ));
                 let mut target_affinity_owner_call_names =
                     helper_owner_call_names_from_qualified_calls(
                         &test.calls,
@@ -301,6 +306,21 @@ struct HelperOwnerCallLookup<'a> {
     production_helpers: &'a HelperOwnerCallsByPackage,
     local_function_names_by_file: &'a BTreeMap<PathBuf, BTreeSet<String>>,
     direct_helper_import_aliases_by_file: &'a DirectFunctionImportAliasesByFile,
+}
+
+fn same_file_helper_owner_call_names_for_test(
+    test: &TestSummary,
+    call_names: &BTreeSet<String>,
+    helpers: &HelperOwnerCallsByFile,
+) -> BTreeSet<String> {
+    let Some(file_helpers) = helpers.get(&test.file) else {
+        return BTreeSet::new();
+    };
+    call_names
+        .iter()
+        .filter_map(|call_name| file_helpers.get(call_name))
+        .flat_map(|owner_calls| owner_calls.iter().cloned())
+        .collect()
 }
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
@@ -11085,5 +11105,80 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
             "opaque args must not produce a fake observed value; got {values:?}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn same_file_test_helper_call_counts_as_owner_call_evidence() {
+        let file = PathBuf::from("src/pricing.rs");
+        let index = RustIndex {
+            functions: vec![FunctionSummary {
+                id: crate::domain::SymbolId("src/pricing.rs::discounted_total".to_string()),
+                name: "discounted_total".to_string(),
+                file: file.clone(),
+                start_line: 1,
+                end_line: 5,
+                body: "pub fn discounted_total(amount: i32, threshold: i32) -> i32 { if amount >= threshold { amount - 10 } else { amount } }".to_string(),
+                calls: Vec::new(),
+                returns: Vec::new(),
+                literals: Vec::new(),
+                is_test: false,
+                attrs: Vec::new(),
+            }, FunctionSummary {
+                id: crate::domain::SymbolId("src/pricing.rs::case_at_threshold".to_string()),
+                name: "case_at_threshold".to_string(),
+                file: file.clone(),
+                start_line: 10,
+                end_line: 12,
+                body: "fn case_at_threshold() -> i32 { discounted_total(100, 100) }".to_string(),
+                calls: vec![CallFact {
+                    line: 11,
+                    name: "discounted_total".to_string(),
+                    text: "discounted_total(100, 100)".to_string(),
+                }],
+                returns: Vec::new(),
+                literals: Vec::new(),
+                is_test: false,
+                attrs: Vec::new(),
+            }],
+            tests: vec![TestSummary {
+                name: "unit_test_uses_same_file_helper".to_string(),
+                file: file.clone(),
+                start_line: 20,
+                end_line: 23,
+                body: "#[test] fn unit_test_uses_same_file_helper() { assert_eq!(case_at_threshold(), 90); }".to_string(),
+                calls: vec![CallFact {
+                    line: 21,
+                    name: "case_at_threshold".to_string(),
+                    text: "case_at_threshold()".to_string(),
+                }],
+                assertions: vec![OracleFact {
+                    line: 21,
+                    kind: OracleKind::ExactValue,
+                    strength: OracleStrength::Strong,
+                    text: "assert_eq!(case_at_threshold(), 90)".to_string(),
+                    observed_tokens: Vec::new(),
+                }],
+                literals: Vec::new(),
+                attrs: Vec::new(),
+            }],
+            ..RustIndex::default()
+        };
+
+        let context = CompactGripContext::new(&index);
+
+        assert!(
+            context.tests[0]
+                .helper_owner_call_names
+                .contains("discounted_total"),
+            "same-file helper call must prove the production owner call"
+        );
+        assert_eq!(
+            context
+                .tests_by_helper_owner_call_name
+                .get("discounted_total")
+                .cloned()
+                .unwrap_or_default(),
+            vec![0]
+        );
     }
 }
