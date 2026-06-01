@@ -1171,6 +1171,45 @@
       "reason": "A real merged Python preview PR converted literal API JSON-field route evidence into concrete advisory repair-card guidance while preserving the dynamic-route and receipt/actionability boundaries."
     },
     {
+      "id": "python_parametrized_boundary_repair_card_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#764",
+      "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+      "packet_id": "python-repair-card:gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+      "language": "python",
+      "evidence_class": "predicate_boundary",
+      "source_file": "src/discount.py",
+      "repair_kind": "route_python_parametrized_boundary_repair_card",
+      "target_test_or_observer_shape": "Python preview repair-card guidance for an equality-boundary change: strengthen the existing pytest test `tests/test_discount.py::test_apply_discount_smoke` at `amount == threshold`, with optional below/equal/above parametrized rows only when expected values are clear.",
+      "verify_command": "cargo xtask fixtures python_parametrized_boundary_repair_gap",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "advisory",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Sharpened Python boundary repair-card guidance so the equality discriminator remains the minimum repair and optional pytest parameterization is presented only when domain expected values are known.",
+      "evidence_movement": "improved: the fixture now emits a canonical Python predicate-boundary gap, repair-card target shape, focused pytest verify command, optional parametrized-row guidance, and an explicit stop condition for unclear below/above expected values.",
+      "operator_note": "This is analyzer-route dogfood, not public repair delegation. The preview card is useful guidance, but it remains advisory because the card itself reports receipt status as unavailable_until_python_gap_ledger and does not authorize invented expected values.",
+      "must_not_change": [
+        "do not promote Python preview cards to public repair packets",
+        "do not claim parameterized rows are required for gap closure",
+        "do not invent expected output values for below/equal/above rows",
+        "do not execute pytest or import the Python project during analysis",
+        "do not change badge or CI gate semantics"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/python_parametrized_boundary_repair_gap/SPEC.md",
+        "fixtures/python_parametrized_boundary_repair_gap/expected/check.json",
+        "fixtures/python_parametrized_boundary_repair_gap/expected/human.txt",
+        "crates/ripr/src/output/python_repair_card.rs",
+        "EffortlessMetrics/ripr-swarm#764"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged Python preview PR improved boundary repair-card guidance by making optional parametrized rows safer while preserving the receipt/actionability boundary."
+    },
+    {
       "id": "python_preview_boundary_gap_test_only_closed",
       "source_ref": "fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json",
       "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
