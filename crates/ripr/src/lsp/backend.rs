@@ -765,7 +765,10 @@ fn display_lsp_path(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod gap_record_context_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_ROOT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
     fn collect_context_packet_for_gap_id_reads_explicit_ledger() -> Result<(), String> {
@@ -855,9 +858,10 @@ mod gap_record_context_tests {
             .duration_since(UNIX_EPOCH)
             .map_err(|err| format!("system clock before UNIX_EPOCH: {err}"))?
             .as_nanos();
+        let sequence = TEMP_ROOT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let process_id = std::process::id();
         let root = std::env::temp_dir().join(format!(
-            "ripr-lsp-gap-record-context-{}-{stamp}",
-            std::process::id()
+            "ripr-lsp-gap-record-context-{process_id}-{stamp}-{sequence}"
         ));
         fs::create_dir_all(root.join("target/ripr/reports"))
             .map_err(|err| format!("create temp root {} failed: {err}", root.display()))?;
