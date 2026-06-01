@@ -1155,7 +1155,7 @@ fn helper_directly_delegates_to_specific_owner(
                 && candidate.text == call.text;
         } else if candidate.line == call.line
             && !direct_delegate_extra_call_is_inert(&candidate.name)
-            && !direct_delegate_oracle_macro_is_allowed(&candidate.name)
+            && !direct_delegate_parenthesized_macro_is_allowed(&candidate.name)
             && !direct_delegate_container_macro_is_allowed(&candidate.name)
         {
             has_disallowed_extra_call = true;
@@ -1188,6 +1188,9 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
     if direct_receiver_method_prefix_is_allowed(prefix) {
         return true;
     }
+    if let Some(macro_name) = direct_delegate_parenthesized_macro_name_before_argument(prefix) {
+        return direct_delegate_parenthesized_macro_is_allowed(&macro_name);
+    }
     let Some(open) = prefix.strip_suffix('(') else {
         let Some(open) = prefix.strip_suffix('[') else {
             return false;
@@ -1208,10 +1211,22 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
     }
     if let Some(macro_prefix) = open.strip_suffix('!') {
         let macro_name = trailing_rust_identifier(macro_prefix);
-        return direct_delegate_oracle_macro_is_allowed(&macro_name);
+        return direct_delegate_parenthesized_macro_is_allowed(&macro_name);
     }
     let wrapper_name = trailing_rust_identifier(open);
     direct_delegate_extra_call_is_inert(&wrapper_name)
+}
+
+fn direct_delegate_parenthesized_macro_name_before_argument(prefix: &str) -> Option<String> {
+    let (macro_prefix, argument_prefix) = prefix.rsplit_once("!(")?;
+    if !argument_prefix
+        .chars()
+        .all(|ch| ch.is_whitespace() || ch == ',')
+    {
+        return None;
+    }
+    let macro_name = trailing_rust_identifier(macro_prefix);
+    (!macro_name.is_empty()).then_some(macro_name)
 }
 
 fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
@@ -1259,10 +1274,15 @@ fn supported_helper_owner_call_name(
         || external_owner_names.is_some_and(|owner_names| owner_names.contains(call_name))
 }
 
-fn direct_delegate_oracle_macro_is_allowed(call_name: &str) -> bool {
+fn direct_delegate_parenthesized_macro_is_allowed(call_name: &str) -> bool {
     matches!(
         call_name,
-        "assert_eq" | "assert_ne" | "debug_assert_eq" | "debug_assert_ne" | "assert_matches"
+        "assert_eq"
+            | "assert_ne"
+            | "debug_assert_eq"
+            | "debug_assert_ne"
+            | "assert_matches"
+            | "format"
     )
 }
 
@@ -9165,6 +9185,64 @@ fn helper_asserts_pipeline_output() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "assertion helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_wraps_owner_call_in_format_macro_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    format!("pipeline={}", render_pipeline("alpha"))
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "pipeline=alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected format macro helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "format macro helper activation must not invent values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
