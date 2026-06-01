@@ -89,15 +89,15 @@ records the development proof and support-tier boundary.
 
 ## Remaining Work
 
-- `analysis/python-cli-output-pack-v1` should sharpen Click, Typer, argparse,
-  stdout/stderr, exit-code, and logging repair shapes without broadening
-  actionability.
-- `analysis/python-parametrized-boundaries` can make boundary repair cards more
-  pytest-native when candidate values and expected values are explainable.
-- `analysis/python-http-api-pack-v1` and data/model field packs can expand
-  framework-shaped repair cards, still fail-closed for dynamic routing or model
-  magic, and keep verify commands explicit.
-- Stable Python support would require longer dogfood, lower false-actionable
+- Post-closeout application slices have now made HTTP/API, CLI/output,
+  parameterized-boundary, existing-test-strengthening, and simple model-field
+  repair cards fixture-backed while preserving fail-closed dynamic/framework
+  limits.
+- `dogfood/python-stability-evals-v1` is the next checkpoint: extend
+  post-usable-alpha evidence with more real or external-repo-style Python evals,
+  including top findings, packets, verify commands, receipts or no-receipt
+  reasons, false-positive notes, and limitation notes.
+- Stable Python support still requires longer dogfood, lower false-actionable
   rates across external repos, rollback proof, policy signoff, and an explicit
   later support-tier update.
 

@@ -53,6 +53,7 @@ Linked work items:
 - `dogfood/python-real-repo-evals`
 - `metrics/python-repair-routing-quality`
 - `campaign/python-usable-alpha-promotion`
+- `dogfood/python-stability-evals-v1`
 
 Support-tier impact:
 

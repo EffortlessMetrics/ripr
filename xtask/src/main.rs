@@ -78180,7 +78180,7 @@ status = "usable alpha"
 spec = "RIPR-SPEC-0028"
 evidence = ["fixture-backed repair routing proof"]
 fixtures = ["fixtures/python-real-repo-evals"]
-next = "analysis/python-cli-output-pack-v1"
+next = "dogfood/python-stability-evals-v1"
 metric = "language_adapter_python_repair_routing_quality_metrics"
 "#;
 
@@ -78208,7 +78208,7 @@ name = "Python repair routing loop"
 status = "usable alpha"
 spec = "RIPR-SPEC-0028"
 evidence = ["fixture-backed repair routing proof"]
-next = "analysis/python-cli-output-pack-v1"
+next = "dogfood/python-stability-evals-v1"
 metric = "language_adapter_python_repair_routing_quality_metrics"
 "#;
 

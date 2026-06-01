@@ -1358,3 +1358,49 @@ Promote Python only when the repair loop has receipt-backed evidence.
 - `docs/handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md`
   records the proof commands, usable-alpha scope, remaining limits, policy
   non-claims, and next work.
+
+### Work item: dogfood/python-stability-evals-v1
+
+Status: planned
+
+Blocked by:
+
+- `campaign/python-usable-alpha-promotion`
+
+#### Goal
+
+Extend Python repair-routing evidence after usable alpha before any broader
+support-tier consideration.
+
+#### Acceptance
+
+- Add or refresh real or external-repo-style Python repair-routing evals beyond
+  the promotion corpus.
+- Each eval records command, runtime, top finding, repair card, agent packet,
+  verify command, receipt or no-receipt reason, false-positive notes, and
+  limitation notes.
+- Route-quality metrics continue to emphasize top-1 usefulness, top-3
+  precision, verify-command validity, concrete discriminators, suggested test
+  location, false-actionable rate, crash rate, receipt closure, and limitation
+  distribution.
+- No support-tier promotion, gate eligibility, badge authority, baseline/RIPR
+  Zero inclusion, provider calls, generated tests, arbitrary imports, mutation
+  execution, or production-code edit authority changes.
+
+#### Proof commands
+
+```bash
+cargo xtask dogfood
+cargo xtask metrics
+cargo xtask check-capabilities
+cargo xtask check-traceability
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
+```
+
+#### Rollback
+
+- Revert the added eval entries, generated dogfood/metric expectations, and
+  any docs or capability links. The scoped usable-alpha support claim remains
+  unchanged.

@@ -187,8 +187,13 @@ exception-message, field assertion, or output text evidence.
 
 ## Next Work Item Readiness
 
-The next application-useful slice, such as `analysis/python-cli-output-pack-v1`,
-can start from this boundary:
+The application-useful slices through HTTP/API, CLI/output, parameterized
+boundaries, existing-test strengthening, and simple model-field repair cards are
+now fixture-backed. The next checkpoint is `dogfood/python-stability-evals-v1`,
+which should extend post-usable-alpha evidence before any broader support-tier
+claim.
+
+That stability-eval slice can start from this boundary:
 
 - Python project detection keeps no-config Python repos analyzable without
   weakening explicit `ripr.toml` authority.
@@ -249,7 +254,9 @@ can start from this boundary:
 - The scoped support-tier review promotes only Python repair routing to
   `usable alpha`; broader Python static facts remain preview/advisory.
 
-Acceptance for the next behavior PR should add one application-shaped repair
-class or improve one existing class while preserving the same safe loop:
-canonical gap, missing discriminator, suggested test location, verify command,
-stop conditions, bounded packet, receipt path, and fail-closed limitations.
+Acceptance for the next dogfood PR should record additional real or
+external-repo-style Python repair-routing evals with command, runtime, top
+finding, repair card, packet, verify command, receipt or no-receipt reason,
+false-positive notes, limitation notes, and explicit support-tier boundaries.
+It should not promote Python to stable or route broader preview facts into
+gates, badges, baselines, or RIPR Zero.
