@@ -33,7 +33,7 @@ stop reasons, `no_receipt` gap movement, and preview/advisory claim boundaries.
 The checked corpus must include at least one tiny controlled Python repo, one
 normal pytest app repo, one parameterized-boundary pytest repo, one
 CLI/output-style pytest repo, one Click-shaped CLI output pytest repo, one
-CLI exit-code pytest repo, pytest and
+Typer-shaped CLI output pytest repo, one CLI exit-code pytest repo, pytest and
 unittest exception-path repos,
 API-style status-code, JSON-field, and exception-response pytest repos, one
 mixed Rust/Python pytest repo, one decorated route pytest repo, and one

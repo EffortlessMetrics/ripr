@@ -8272,6 +8272,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("parametrized_boundary_pytest_receipt", "closed"),
     ("cli_output_pytest_receipt", "closed"),
     ("click_cli_output_pytest_receipt", "closed"),
+    ("typer_cli_output_pytest_receipt", "closed"),
     ("cli_exit_code_pytest_receipt", "closed"),
     ("exception_path_pytest_receipt", "closed"),
     ("unittest_exception_path_receipt", "closed"),

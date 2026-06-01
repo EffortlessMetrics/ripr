@@ -1271,6 +1271,11 @@ Prove usefulness outside fixtures.
   strengthen-existing-test repair card, exports a bounded test-only packet,
   verifies with focused pytest against a local Click-shaped stub, and
   `ripr outcome` closes the canonical Python output/call-effect gap.
+- The same corpus now records a Typer-shaped CLI output pytest eval where a
+  changed `typer.echo(...)` side effect under `@app.command()` routes to a
+  strengthen-existing-test repair card, exports a bounded test-only packet,
+  verifies with focused pytest against a local Typer-shaped stub, and
+  `ripr outcome` closes the canonical Python output/call-effect gap.
 - The same corpus now records a lightweight API-handler pytest eval where a
   changed `response.status_code` assignment routes to a field/object repair
   card, the focused status-code pytest verify command passes, and
@@ -1507,3 +1512,9 @@ git diff --check
   routes to a CLI output repair card, exports a bounded test-only packet,
   verifies with focused pytest against a local Click-shaped stub, and closes
   the canonical Python call/output-effect gap through `ripr outcome`.
+- The corpus now adds `typer_cli_output_pytest_receipt` as a post-promotion
+  stability eval where a changed `typer.echo("shipment queued")` side effect
+  under a static Typer `@app.command()` owner routes to a CLI output repair
+  card, exports a bounded test-only packet, verifies with focused pytest
+  against a local Typer-shaped stub, and closes the canonical Python
+  call/output-effect gap through `ripr outcome`.
