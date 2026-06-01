@@ -1191,10 +1191,11 @@
       "after_gap_state": "static_limitation",
       "outcome": "evidence_improved",
       "attempted_repair": "Taught same-file owner-call tracing to recognize embedded unit tests that call a production fan-out wrapper when that wrapper directly and unconditionally calls the owner along with other local helpers.",
-      "evidence_movement": "improved: the analyzer route now has fixture and benchmark proof that same-file fan-out wrappers can satisfy value-insensitive activation without exporting mixed-owner wrapper activation to cross-file tests.",
-      "operator_note": "This is analyzer-route dogfood. It records fixture-backed movement for the same-file owner-call backlog while preserving target-affinity guardrails for cross-file mixed-owner production wrappers.",
+      "evidence_movement": "improved: the analyzer route now has fixture and benchmark proof that embedded same-file fan-out wrappers can satisfy value-insensitive activation without exporting mixed-owner wrapper activation to tests/*.rs helpers or cross-file tests.",
+      "operator_note": "This is analyzer-route dogfood. It records fixture-backed movement for the same-file owner-call backlog while preserving target-affinity guardrails for tests/*.rs fan-out helpers and cross-file mixed-owner production wrappers.",
       "must_not_change": [
         "do not treat same-file proximity alone as owner-call activation",
+        "do not export relaxed fan-out matching to tests/*.rs helpers without target affinity",
         "do not export mixed-owner production wrappers to cross-file integration tests without target affinity",
         "do not accept conditional owner-call paths as guaranteed activation",
         "do not invent observed values for call-presence arguments",
@@ -1204,13 +1205,14 @@
       ],
       "raw_evidence_refs": [
         "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_same_file_fanout_wrapper_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_fanout_helper_asserts_other_target_then_activation_stays_unknown",
         "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown",
         "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown",
         "fixtures/evidence-quality-benchmark/corpus.json:call_presence_same_file_fanout_wrapper_activation_values_not_required",
         "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
       ],
       "missing_receipt_reason": null,
-      "reason": "A local analyzer slice added bounded same-file fan-out wrapper proof while preserving cross-file mixed-owner and non-actionable backlog boundaries."
+      "reason": "A local analyzer slice added bounded embedded same-file fan-out wrapper proof while preserving tests/*.rs fan-out, cross-file mixed-owner, and non-actionable backlog boundaries."
     },
     {
       "id": "call_presence_imported_module_wrapper_route_improved",

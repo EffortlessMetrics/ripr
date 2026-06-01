@@ -2203,6 +2203,7 @@
       "expected_claim": "For value-insensitive call-presence seams, an embedded same-file unit test can satisfy activation by calling a fan-out production wrapper that directly and unconditionally calls the owner.",
       "must_not_claim": [
         "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not export relaxed fan-out matching to tests/*.rs helpers without target affinity.",
         "Do not export mixed-owner production wrappers to cross-file integration tests without target affinity.",
         "Do not accept conditional owner-call paths as guaranteed activation.",
         "Do not infer activation values for opaque call-presence arguments.",

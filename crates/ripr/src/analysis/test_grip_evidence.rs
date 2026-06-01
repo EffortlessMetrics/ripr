@@ -314,6 +314,9 @@ fn same_file_helper_owner_call_names_for_test(
     call_names: &BTreeSet<String>,
     helpers: &HelperOwnerCallsByFile,
 ) -> BTreeSet<String> {
+    if rust_index::is_test_file(&test.file) {
+        return BTreeSet::new();
+    }
     let Some(file_helpers) = helpers.get(&test.file) else {
         return BTreeSet::new();
     };
@@ -6725,6 +6728,73 @@ fn multi_owner_wrapper_observes_report_call_target() {
         assert!(
             evidence.observed_values.is_empty(),
             "other-target wrapper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_fanout_helper_asserts_other_target_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::{render_pipeline, render_report};
+
+fn exercise_both(input: &str) -> String {
+    let pipeline = render_pipeline(input);
+    let report = render_report(input);
+    format!("format_output={pipeline};format_report={report}")
+}
+
+#[test]
+fn test_local_fanout_observes_report_call_target() {
+    let rendered = exercise_both("alpha");
+    assert!(rendered.contains("format_report"));
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "test-local fanout helper must not bypass target affinity: {:?}",
+            evidence.related_tests
+        );
+        assert_ne!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "test-local fanout helper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
