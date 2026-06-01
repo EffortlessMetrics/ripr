@@ -1288,7 +1288,8 @@ fn supported_helper_owner_call_name(
 fn direct_delegate_parenthesized_macro_is_allowed(call_name: &str) -> bool {
     matches!(
         call_name,
-        "assert_eq"
+        "assert"
+            | "assert_eq"
             | "assert_ne"
             | "debug_assert_eq"
             | "debug_assert_ne"
@@ -9196,6 +9197,124 @@ fn helper_asserts_pipeline_output() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "assertion helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_assert_macro_helper_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn assert_pipeline_output() {
+    assert!(render_pipeline("alpha") == "alpha");
+}
+
+#[test]
+fn helper_asserts_pipeline_output() {
+    assert_pipeline_output();
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected assert macro helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "assert macro helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "assert macro helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_assert_macro_short_circuits_owner_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn assert_pipeline_output(enabled: bool) {
+    assert!(enabled && render_pipeline("alpha") == "alpha");
+}
+
+#[test]
+fn helper_asserts_pipeline_output() {
+    assert_pipeline_output(true);
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "short-circuiting assert macro must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "short-circuiting assert macro activation must not invent values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
