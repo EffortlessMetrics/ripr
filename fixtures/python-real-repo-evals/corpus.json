@@ -271,6 +271,71 @@
       "reason": "The run proves a Python CLI/output-style change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "click_cli_output_pytest_receipt",
+      "repo_shape": "click_cli_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/click-cli-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/click-cli-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 809,
+      "top_finding_summary": "Python Click CLI output repair card for ship command output",
+      "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest Click CLI output assertion for output contains \"shipment queued\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/click-cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::ship",
+      "missing_discriminator": "output contains \"shipment queued\"",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_ship_output_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.37s; scratch verification set PYTHONPATH=. and used a local click.py stub instead of installing Click",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/click-cli-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 522,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Click-shaped pytest CLI output scratch repo with a local click.py stub for verification; RIPR did not import Click, execute command decorators, or require external dependencies",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"shipment queued\"",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python Click CLI output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused Click CLI output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used a local Click-shaped stub instead of adding a dependency",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Click-shaped Python CLI output repair: RIPR routes the changed click.echo output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
       "id": "cli_exit_code_pytest_receipt",
       "repo_shape": "cli_exit_code_pytest",
       "source_kind": "scratch_repo",

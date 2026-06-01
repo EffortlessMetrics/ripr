@@ -1266,6 +1266,11 @@ Prove usefulness outside fixtures.
   `print(...)` side effect routes to a strengthen-existing-test repair card,
   the focused `capsys` pytest verify command passes, and `ripr outcome` closes
   the canonical Python output/call-effect gap.
+- The same corpus now records a Click-shaped CLI output pytest eval where a
+  changed `click.echo(...)` side effect routes to a
+  strengthen-existing-test repair card, exports a bounded test-only packet,
+  verifies with focused pytest against a local Click-shaped stub, and
+  `ripr outcome` closes the canonical Python output/call-effect gap.
 - The same corpus now records a lightweight API-handler pytest eval where a
   changed `response.status_code` assignment routes to a field/object repair
   card, the focused status-code pytest verify command passes, and
@@ -1497,3 +1502,8 @@ git diff --check
   CLI exit-code repair card, exports a bounded test-only packet, verifies with
   focused pytest, and closes the canonical Python call/output-effect gap
   through `ripr outcome`.
+- The corpus now adds `click_cli_output_pytest_receipt` as a post-promotion
+  stability eval where a changed `click.echo("shipment queued")` side effect
+  routes to a CLI output repair card, exports a bounded test-only packet,
+  verifies with focused pytest against a local Click-shaped stub, and closes
+  the canonical Python call/output-effect gap through `ripr outcome`.
