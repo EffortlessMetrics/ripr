@@ -1066,6 +1066,43 @@
       "reason": "A real merged analyzer slice added bounded tuple-literal helper proof for the same-file owner-call route while preserving arbitrary-wrapper and non-actionable backlog boundaries."
     },
     {
+      "id": "std_identity_helper_owner_call_route_improved",
+      "source_ref": "local:same-file-identity-owner-call-route-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local helper where fully qualified std::convert::identity directly contains the production owner call for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr std_identity --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize a bounded test-local helper that wraps the production owner call in fully qualified std::convert::identity while preserving the value-insensitive activation boundary.",
+      "evidence_movement": "improved: the analyzer route now has fixture proof that std/core convert identity helper owner calls can satisfy value-insensitive activation without accepting local identity wrappers or arbitrary non-container function wrappers.",
+      "operator_note": "This is analyzer-route dogfood for the same-file owner-call backlog. It records movement for a syntax-bounded standard-library wrapper while preserving non-actionable backlog boundaries for local identity wrappers, arbitrary function wrappers, predicate-boundary value checks, invented observed values, and the remaining backlog.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not accept local identity wrappers as direct owner-call proof",
+        "do not accept arbitrary function wrappers as direct owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_std_identity_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_local_identity_then_activation_stays_unknown",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_helper_wraps_owner_call_with_non_container_call_then_activation_stays_unknown",
+        "target/ripr/reports/swarm-readiness.json:analysis/same-file-owner-call-tracing"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A bounded analyzer slice added std/core convert identity helper proof for the same-file owner-call route while preserving local-wrapper and non-actionable backlog boundaries."
+    },
+    {
       "id": "vec_macro_helper_owner_call_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#793",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
