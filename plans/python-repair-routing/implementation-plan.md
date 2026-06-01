@@ -1459,6 +1459,11 @@ git diff --check
   exact oracle but refuses to emit a repair card, agent packet, verify success,
   or receipt movement because the changed behavior depends on an imported
   implementation outside the static preview import graph.
+- The corpus now records `metaprogramming_no_packet_eval` as a post-promotion
+  fail-closed stability eval where RIPR sees a related pytest exact oracle but
+  refuses to emit a repair card, agent packet, verify success, or receipt
+  movement because the changed behavior depends on runtime-created class
+  semantics.
 - The corpus now records `mocked_module_no_packet_eval` as a post-promotion
   fail-closed stability eval where RIPR sees a related pytest exact oracle but
   refuses to emit a repair card, agent packet, verify success, or receipt

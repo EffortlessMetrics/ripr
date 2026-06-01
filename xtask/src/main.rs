@@ -8287,6 +8287,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
         "missing_import_graph_no_packet_eval",
         "missing_import_graph",
     ),
+    ("metaprogramming_no_packet_eval", "metaprogramming"),
     ("mocked_module_no_packet_eval", "mocked_module"),
     (
         "opaque_custom_helper_no_packet_eval",

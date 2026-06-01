@@ -965,6 +965,40 @@
       "reason": "The run records another fail-closed Python repair-routing shape: unresolved imported-call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
     },
     {
+      "id": "metaprogramming_no_packet_eval",
+      "repo_shape": "metaprogramming_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/metaprogramming-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/metaprogramming-limit --base HEAD~1 --format json",
+      "runtime_ms": 280,
+      "finding_id": "probe:src_models.py:2:python_preview",
+      "changed_owner": "python:src/models.py::build_model",
+      "static_limit_kind": "metaprogramming",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_models.py",
+      "related_test_name": "test_build_model_sets_name",
+      "why_not_actionable": "static limit metaprogramming prevents bounded repair routing because the changed behavior depends on runtime-created class semantics",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because runtime-created class behavior is outside the static preview model; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: runtime-created class behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
       "id": "mocked_module_no_packet_eval",
       "repo_shape": "mocked_module_pytest",
       "source_kind": "scratch_repo",
