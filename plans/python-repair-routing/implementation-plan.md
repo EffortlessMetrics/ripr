@@ -1449,6 +1449,11 @@ git diff --check
   `assert response.status_code == 422`, verifies with focused `pytest`, exports
   a bounded test-only packet, and closes the canonical Python gap through
   `ripr outcome`.
+- The corpus now records `mocked_module_no_packet_eval` as a post-promotion
+  fail-closed stability eval where RIPR sees a related pytest exact oracle but
+  refuses to emit a repair card, agent packet, verify success, or receipt
+  movement because the related test depends on `unittest.mock.patch` runtime
+  substitution.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
