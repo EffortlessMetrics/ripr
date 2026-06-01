@@ -1479,6 +1479,11 @@ git diff --check
   method and weak relational oracle but refuses to emit a repair card, agent
   packet, verify success, or receipt movement because generated inputs do not
   prove that the changed discriminator is covered.
+- The corpus now records `unsupported_syntax_no_packet_eval` as a
+  post-promotion fail-closed stability eval where RIPR sees a related pytest
+  exact oracle but refuses to emit a repair card, agent packet, verify success,
+  or receipt movement because the changed lambda-return expression is outside
+  the preview adapter's precise syntax model.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.

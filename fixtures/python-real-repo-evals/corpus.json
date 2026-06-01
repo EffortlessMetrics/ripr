@@ -1133,6 +1133,40 @@
         "No arbitrary imports or tests were run by RIPR"
       ],
       "reason": "The run records a second fail-closed Python repair-routing shape: fixture-sourced pytest values keep the static limitation visible while excluding the finding from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "unsupported_syntax_no_packet_eval",
+      "repo_shape": "lambda_return_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unsupported-syntax-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unsupported-syntax-limit --base HEAD~1 --format json",
+      "runtime_ms": 663,
+      "finding_id": "probe:src_mapper.py:2:python_preview",
+      "changed_owner": "python:src/mapper.py::make_mapper",
+      "static_limit_kind": "unsupported_syntax",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_mapper.py",
+      "related_test_name": "test_make_mapper_adds_two",
+      "why_not_actionable": "static limit unsupported_syntax prevents bounded repair routing because the changed lambda-return expression is outside the preview adapter's precise syntax model",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed lambda-return syntax is intentionally outside the preview adapter's safe repair-routing model; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: unsupported lambda-return syntax stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
     }
   ]
 }

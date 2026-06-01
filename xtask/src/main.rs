@@ -8298,6 +8298,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
         "unresolved_fixture_no_packet_eval",
         "unresolved_pytest_fixture",
     ),
+    ("unsupported_syntax_no_packet_eval", "unsupported_syntax"),
 ];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[

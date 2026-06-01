@@ -51,7 +51,9 @@ routing unsafe human or agent work. The checked corpus must include
 dynamic-dispatch, decorator-indirection, missing-import-graph, metaprogramming,
 mocked-module, opaque-custom-helper, property-based, and unresolved-fixture
 no-action examples before any broader support-tier discussion treats these
-limits as measured instead of anecdotal.
+limits as measured instead of anecdotal. Post-promotion stability evals also
+record unsupported-syntax no-action cases so syntax gaps stay fail-closed
+instead of becoming implied repair work.
 
 ## Must Not
 
