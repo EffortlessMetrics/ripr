@@ -772,6 +772,42 @@
       "reason": "A real analyzer slice added bounded turbofish inert-wrapper proof for the same-file owner-call route while preserving arbitrary-wrapper and non-actionable backlog boundaries."
     },
     {
+      "id": "dbg_macro_helper_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#825",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local helper where a direct production owner call is wrapped by the standard non-short-circuiting dbg! macro for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr dbg_macro --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize the standard `dbg!` macro when it directly wraps the production owner call, while keeping short-circuiting `dbg!(enabled && owner(...))` limited.",
+      "evidence_movement": "improved: the analyzer route now has positive and negative fixture proof that direct dbg!-macro owner-call wrapping can satisfy value-insensitive activation without accepting short-circuiting macro arguments or arbitrary macros.",
+      "operator_note": "This is analyzer-route dogfood for a fixture-backed route. It records movement for the same-file owner-call backlog while preserving static-limitation boundaries for short-circuiting dbg! guards, arbitrary macro wrappers, predicate-boundary value checks, invented observed values, and the remaining backlog.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not accept short-circuiting dbg! arguments as guaranteed owner-call proof",
+        "do not accept arbitrary macro wrappers as direct owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_dbg_macro_helper_calls_owner_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_dbg_macro_short_circuits_owner_then_activation_stays_unknown",
+        "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real analyzer slice added bounded dbg!-macro helper proof for the same-file owner-call route while preserving short-circuit and non-actionable backlog boundaries."
+    },
+    {
       "id": "block_helper_owner_call_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#805",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
