@@ -555,6 +555,41 @@
       "reason": "A real merged analyzer slice added bounded method-call proof for the same-file owner-call route while preserving dynamic receiver and non-actionable backlog boundaries."
     },
     {
+      "id": "same_file_assertion_helper_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#765",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local assertion helper where a known oracle macro directly wraps the owner call for value-insensitive call-presence activation, while an unknown macro wrapper remains limited",
+      "verify_command": "cargo test -p ripr test_local_assertion_helper --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize bounded test-local assertion helpers such as `assert_eq!(render_pipeline(...), expected)` while keeping unknown macro wrappers such as `trace_value!(render_pipeline(...))` limited.",
+      "evidence_movement": "improved: the analyzer route now has positive and negative fixture proof for assertion-helper owner-call activation without inventing observed values or promoting the remaining same-file backlog to public repair work.",
+      "operator_note": "This is analyzer-route dogfood. It records movement for an already-merged fixture-backed route and preserves the static-limitation boundary for unknown macros, arbitrary helper wrappers, and the remaining same-file backlog.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not accept unknown macro wrappers as direct owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assertion_helper_calls_owner_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_unknown_macro_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_assertion_helper_owner_call_activation_values_not_required",
+        "EffortlessMetrics/ripr-swarm#765"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged analyzer slice added bounded assertion-helper proof for the same-file owner-call route while preserving unknown macro and non-actionable backlog boundaries."
+    },
+    {
       "id": "call_presence_imported_module_wrapper_route_improved",
       "source_ref": "local:analysis-call-presence-target-affinity-owner-call-tracing-2026-05-30",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
