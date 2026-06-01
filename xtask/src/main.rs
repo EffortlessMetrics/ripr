@@ -22831,9 +22831,10 @@ fn call_presence_expression_is_method_chain(expression: &str) -> bool {
     let Some(dot_index) = expression.find('.') else {
         return false;
     };
-    expression
-        .find('(')
-        .is_none_or(|paren_index| dot_index < paren_index)
+    let Some(paren_index) = expression.find('(') else {
+        return false;
+    };
+    dot_index < paren_index
 }
 
 fn call_presence_expression_is_associated_call(expression: &str) -> bool {
@@ -88290,6 +88291,16 @@ covered_by = ["cargo xtask check-file-policy"]
                 "call_presence"
             ),
             "same_file_only_call_presence_function_call_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("description.value")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_missing_owner_call"
         );
         assert_eq!(
             crate::static_limitation_subroute(
