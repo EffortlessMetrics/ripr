@@ -486,6 +486,39 @@
       "reason": "A local analyzer slice made closure-derived boundary operands a precise static-limitation route while keeping candidate-value inference blocked."
     },
     {
+      "id": "same_file_method_chain_owner_call_route_split",
+      "source_ref": "local:same-file-method-chain-owner-route-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-method-chain",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_method_chain_missing_owner_call:analysis-same-file-method-chain-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "same-file call-presence limitation where the unresolved owner call is a method-chain expression such as description.clone()",
+      "verify_command": "cargo test -p ripr evidence_record_routes_same_file_method_chain_owner_call_absence_limitation --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split same-file method-chain call-presence owner-call limitations into a dedicated repair route while preserving non-actionable status.",
+      "evidence_movement": "improved: method-chain same-file owner-call limitations now route to analysis/same-file-method-chain-owner-call-tracing instead of blending with the generic same-file owner-call route.",
+      "operator_note": "This is analyzer-route dogfood. It improves work allocation only; it does not prove owner-call reachability, emit public repair packets, or move badge/gate counters.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not promote method-chain limitations to public repair packets",
+        "do not invent observed values for call-presence arguments",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_same_file_method_chain_owner_call_absence_limitation",
+        "target/ripr/reports/lane1-evidence-audit.json:analysis/same-file-owner-call-tracing",
+        "target/ripr/reports/swarm-plan.json:same_file_only_call_presence_method_chain_missing_owner_call"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice made same-file method-chain owner-call limitations a precise route while keeping the remaining same-file backlog non-actionable."
+    },
+    {
       "id": "call_presence_target_affinity_limitation_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#555",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",

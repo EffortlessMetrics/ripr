@@ -1058,7 +1058,11 @@ fn static_limitation_repair_route_for_entry(
     category: &str,
     entry: &ClassifiedSeam,
 ) -> &'static str {
-    if matches!(
+    if category == "activation_owner_call_absent_same_file_only"
+        && owner_call_absence_same_file_call_presence_is_method_chain(entry)
+    {
+        "analysis/same-file-method-chain-owner-call-tracing"
+    } else if matches!(
         category,
         "activation_owner_call_absent_call_presence_target_affinity"
             | "activation_owner_call_absent_assertion_target_affinity"
@@ -1129,6 +1133,20 @@ fn owner_call_absence_is_same_file_primary(entry: &ClassifiedSeam) -> bool {
             .related_tests
             .first()
             .is_some_and(|test| test.relation_reason == RelationReason::SameTestFile)
+}
+
+fn owner_call_absence_same_file_call_presence_is_method_chain(entry: &ClassifiedSeam) -> bool {
+    entry.seam.kind() == SeamKind::CallPresence
+        && call_presence_expression_is_method_chain(entry.seam.expression())
+}
+
+fn call_presence_expression_is_method_chain(expression: &str) -> bool {
+    let Some(dot_index) = expression.find('.') else {
+        return false;
+    };
+    expression
+        .find('(')
+        .is_none_or(|paren_index| dot_index < paren_index)
 }
 
 fn stage_json(stage: &EvidenceRecordStage) -> Value {
@@ -1869,6 +1887,52 @@ mod tests {
         assert_eq!(
             json["canonical_item"]["static_limitations"][0]["repair_route"],
             "analysis/same-file-owner-call-tracing"
+        );
+    }
+
+    #[test]
+    fn evidence_record_routes_same_file_method_chain_owner_call_absence_limitation() {
+        let mut entry = sample_call_presence_classified();
+        entry.seam = RepoSeam::new(
+            "src/canonical_gap.rs",
+            "canonical_gap::required_discriminator_text",
+            SeamKind::CallPresence,
+            101,
+            101,
+            "description.clone()",
+            RequiredDiscriminator::CallSite {
+                target: "description.clone()".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "No direct owner call observed for value-insensitive seam `description.clone()`",
+        );
+        entry.evidence.related_tests[0].relation_reason = RelationReason::SameTestFile;
+        entry.evidence.related_tests[0].relation_confidence = RelationConfidence::Medium;
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_same_file_only"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/same-file-method-chain-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/same-file-method-chain-owner-call-tracing"
         );
     }
 
