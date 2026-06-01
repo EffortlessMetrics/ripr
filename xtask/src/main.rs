@@ -24922,6 +24922,10 @@ fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
                     .missing_context
                     .iter()
                     .any(|field| field == "allowed_edit_surface")
+                    || packet
+                        .projection_exclusion_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_allowed_edit_surface")
             })
             .count(),
         "missing_confidence": report
@@ -27556,13 +27560,36 @@ fn ripr_swarm_readiness_summary(
         summary.public_projection_exclusion_reasons =
             audit_count_rows_map(plan, &["summary", "public_projection_exclusion_reasons"]);
         summary.missing_canonical_gap_id =
-            audit_usize(plan, &["summary", "missing_canonical_gap_id"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_canonical_gap_id"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "canonical_gap_id",
+                    &["missing_canonical_gap_id"],
+                ));
         summary.not_actionable_gap_state =
-            audit_usize(plan, &["summary", "not_actionable_gap_state"]).unwrap_or_default();
-        summary.missing_verify_command =
-            audit_usize(plan, &["summary", "missing_verify_command"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "not_actionable_gap_state"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "actionable_gap_state",
+                    &["not_actionable_gap_state"],
+                ));
+        summary.missing_verify_command = audit_usize(plan, &["summary", "missing_verify_command"])
+            .unwrap_or_default()
+            .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                plan,
+                "verify_command",
+                &["missing_verify_command", "unbounded_verify_command"],
+            ));
         summary.missing_receipt_command =
-            audit_usize(plan, &["summary", "missing_receipt_command"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_receipt_command"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "receipt_command",
+                    &["missing_receipt_command"],
+                ));
         summary.missing_repair_kind = audit_usize(plan, &["summary", "missing_repair_kind"])
             .unwrap_or_default()
             .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
@@ -27570,12 +27597,29 @@ fn ripr_swarm_readiness_summary(
                 "repair_kind",
                 &["missing_repair_kind"],
             ));
-        summary.missing_repair_route =
-            audit_usize(plan, &["summary", "missing_repair_route"]).unwrap_or_default();
+        summary.missing_repair_route = audit_usize(plan, &["summary", "missing_repair_route"])
+            .unwrap_or_default()
+            .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                plan,
+                "repair_route",
+                &["missing_repair_route"],
+            ));
         summary.missing_target_test_shape =
-            audit_usize(plan, &["summary", "missing_target_test_shape"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_target_test_shape"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "target_test_shape",
+                    &["missing_target_test_shape"],
+                ));
         summary.missing_must_not_change =
-            audit_usize(plan, &["summary", "missing_must_not_change"]).unwrap_or_default();
+            audit_usize(plan, &["summary", "missing_must_not_change"])
+                .unwrap_or_default()
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "must_not_change",
+                    &["missing_must_not_change"],
+                ));
         summary.missing_allowed_edit_surface =
             audit_usize(plan, &["summary", "missing_allowed_edit_surface"])
                 .unwrap_or_default()
@@ -27584,8 +27628,13 @@ fn ripr_swarm_readiness_summary(
                     "allowed_edit_surface",
                     &["missing_allowed_edit_surface"],
                 ));
-        summary.missing_confidence =
-            audit_usize(plan, &["summary", "missing_confidence"]).unwrap_or_default();
+        summary.missing_confidence = audit_usize(plan, &["summary", "missing_confidence"])
+            .unwrap_or_default()
+            .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                plan,
+                "confidence_basis",
+                &["missing_confidence"],
+            ));
         summary.missing_raw_evidence_refs =
             audit_usize(plan, &["summary", "missing_raw_evidence_refs"])
                 .unwrap_or_default()
@@ -27595,9 +27644,15 @@ fn ripr_swarm_readiness_summary(
                     &["missing_raw_evidence_refs"],
                 ));
         let related_context_missing =
-            audit_usize(plan, &["summary", "missing_related_test_or_observer"]).unwrap_or_else(
-                || audit_usize(plan, &["summary", "related_context_missing"]).unwrap_or_default(),
-            );
+            audit_usize(plan, &["summary", "missing_related_test_or_observer"])
+                .unwrap_or_else(|| {
+                    audit_usize(plan, &["summary", "related_context_missing"]).unwrap_or_default()
+                })
+                .max(ripr_swarm_readiness_plan_packet_field_blocker_count(
+                    plan,
+                    "related_test_or_observer",
+                    &["missing_related_test_or_observer"],
+                ));
         summary.missing_related_test_or_observer = related_context_missing;
         summary.related_context_missing = related_context_missing;
         summary.static_limitation_packets =
@@ -91466,6 +91521,206 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("missing_raw_evidence_refs"));
         assert!(markdown.contains("packet:stale-missing-raw-evidence"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_reconstructs_field_blockers_from_projection_exclusions()
+    -> Result<(), String> {
+        let cases = [
+            (
+                "missing_canonical_gap_id",
+                "fix_canonical_gap_identity",
+                "packet:stale-missing-canonical-gap-id",
+                "gap:stale-missing-canonical-gap-id",
+            ),
+            (
+                "not_actionable_gap_state",
+                "inspect_non_actionable_gap_state",
+                "packet:stale-not-actionable-gap-state",
+                "gap:stale-not-actionable-gap-state",
+            ),
+            (
+                "missing_verify_command",
+                "fix_verify_command_source",
+                "packet:stale-missing-verify-command",
+                "gap:stale-missing-verify-command",
+            ),
+            (
+                "missing_receipt_command",
+                "fix_receipt_command_source",
+                "packet:stale-missing-receipt-command",
+                "gap:stale-missing-receipt-command",
+            ),
+            (
+                "missing_repair_kind",
+                "fix_repair_kind_source",
+                "packet:stale-missing-repair-kind",
+                "gap:stale-missing-repair-kind",
+            ),
+            (
+                "missing_repair_route",
+                "fix_repair_route_source",
+                "packet:stale-missing-repair-route",
+                "gap:stale-missing-repair-route",
+            ),
+            (
+                "missing_target_test_shape",
+                "fix_target_test_shape",
+                "packet:stale-missing-target-test-shape",
+                "gap:stale-missing-target-test-shape",
+            ),
+            (
+                "missing_must_not_change",
+                "fix_must_not_change_boundaries",
+                "packet:stale-missing-must-not-change",
+                "gap:stale-missing-must-not-change",
+            ),
+            (
+                "missing_allowed_edit_surface",
+                "fix_allowed_edit_surface",
+                "packet:stale-missing-edit-surface",
+                "gap:stale-missing-edit-surface",
+            ),
+            (
+                "missing_confidence",
+                "fix_confidence_basis",
+                "packet:stale-missing-confidence",
+                "gap:stale-missing-confidence",
+            ),
+            (
+                "missing_raw_evidence_refs",
+                "fix_raw_evidence_refs",
+                "packet:stale-missing-raw-evidence-refs",
+                "gap:stale-missing-raw-evidence-refs",
+            ),
+            (
+                "missing_related_test_or_observer",
+                "fix_related_test_or_observer",
+                "packet:stale-missing-related-context",
+                "gap:stale-missing-related-context",
+            ),
+        ];
+        let top_blocked_packets = cases
+            .iter()
+            .map(|(state, _action, packet_id, canonical_gap_id)| {
+                serde_json::json!({
+                    "packet_id": packet_id,
+                    "canonical_gap_id": canonical_gap_id,
+                    "evidence_class": "error_path",
+                    "repair_kind": "add_exact_error_variant",
+                    "swarm_state": "blocked_by_public_projection_exclusion",
+                    "missing_context": [],
+                    "projection_exclusion_reasons": [state],
+                    "blocked_reasons": [
+                        "public_projection_excluded"
+                    ]
+                })
+            })
+            .collect::<Vec<_>>();
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "source_summary": {
+                "actionable_gaps": cases.len(),
+                "public_projection_eligible_packets": 0
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": cases.len(),
+                "blocked_by_public_projection_exclusion_packets": cases.len(),
+                "public_projection_excluded_packets": cases.len()
+            },
+            "top_ready_packets": [],
+            "top_blocked_packets": top_blocked_packets
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "not_attempted": 0
+            },
+            "attempts": []
+        });
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let routes = value["blocked_state_routes"]
+            .as_array()
+            .ok_or("blocked_state_routes must be an array")?;
+        let actions = value["next_actions"]
+            .as_array()
+            .ok_or("next_actions must be an array")?;
+        for (state, action, packet_id, canonical_gap_id) in cases {
+            assert_eq!(
+                value["summary"][state],
+                serde_json::Value::from(1),
+                "summary count for {state}"
+            );
+            assert!(
+                actions.iter().any(|candidate| candidate["kind"] == action),
+                "missing next action {action} for {state}"
+            );
+            let route = routes
+                .iter()
+                .find(|route| route["state"] == state)
+                .ok_or_else(|| format!("missing blocked-state route for {state}"))?;
+            assert_eq!(route["count"], serde_json::Value::from(1));
+            assert_eq!(
+                route["example_packet_id"],
+                serde_json::Value::from(packet_id)
+            );
+            assert_eq!(
+                route["example_canonical_gap_id"],
+                serde_json::Value::from(canonical_gap_id)
+            );
+        }
+
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("missing_target_test_shape"));
+        assert!(markdown.contains("packet:stale-missing-target-test-shape"));
         Ok(())
     }
 
