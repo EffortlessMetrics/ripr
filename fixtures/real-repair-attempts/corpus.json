@@ -416,6 +416,42 @@
       "reason": "A real merged limitation-route PR made local/computed boundary operands more trustworthy by preserving named non-actionability instead of routing unsafe repair work."
     },
     {
+      "id": "parameter_field_boundary_operand_route_improved",
+      "source_ref": "local:parameter-field-boundary-operands-2026-06-01",
+      "canonical_gap_id": "gap:activation-boundary-input-unresolved-parameter-field-projection",
+      "packet_id": "limitation:activation_boundary_input_unresolved:parameter_field_projection:analysis-local-computed-boundary-operand-resolution",
+      "repair_kind": "resolve_parameter_field_boundary_operands",
+      "target_test_or_observer_shape": "fixture-backed direct owner call where predicate operands are parameter field projections and the related test passes same-test struct values with literal fields",
+      "verify_command": "cargo test -p ripr parameter_field_operands --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught the boundary activation path to resolve simple parameter field operands, such as left.value == right.value, through same-test struct field bindings when direct owner-call arguments are visible.",
+      "evidence_movement": "improved: a fixture-backed predicate boundary can now observe concrete activation values and clear the equality-boundary missing discriminator when both parameter field projections resolve to equal literal fields.",
+      "operator_note": "This is an analyzer-route dogfood slice. Opaque field projections, computed locals, and iterator-derived operands remain blocked instead of being promoted to public repair packets.",
+      "must_not_change": [
+        "do not invent values for opaque struct arguments",
+        "do not resolve arbitrary computed locals",
+        "do not resolve iterator-derived boundary operands",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_parameter_field_operands_resolve_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_parameter_field_operands_are_opaque_then_activation_stays_static_limitation",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_computed_local_then_activation_stays_static_limitation",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_iterator_local_then_activation_is_static_limitation",
+        "metrics/capabilities.toml:lane1_canonical_actionability_contract"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice narrowed the local/computed boundary backlog by resolving safe parameter field projections while keeping unsupported computed and iterator cases non-actionable."
+    },
+    {
       "id": "call_presence_target_affinity_limitation_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#555",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",

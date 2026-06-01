@@ -2717,8 +2717,8 @@ fn activate_evidence(
 ) -> (StageEvidence, Vec<ValueFact>, Vec<MissingDiscriminatorFact>) {
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let mut observed: Vec<ValueFact> = Vec::new();
-    let boundary_activation_operands_unresolved =
-        !owner_name.is_empty() && boundary_activation_operands_unresolved(seam, index, owner_name);
+    let observed_argument_selection =
+        (!owner_name.is_empty()).then(|| observed_argument_selection(seam, index, owner_name));
 
     if !owner_name.is_empty() {
         for indexed in related {
@@ -2735,6 +2735,17 @@ fn activate_evidence(
                 .iter()
                 .any(|indexed| boundary_equality_overlap_score(seam, indexed, index, owner_fn) > 0)
     });
+    let boundary_activation_operands_unresolved =
+        observed_argument_selection
+            .as_ref()
+            .is_some_and(|selection| {
+                matches!(
+                    selection,
+                    ObservedArgumentSelection::UnresolvedBoundaryOperands
+                ) || (selection.requires_projection()
+                    && observed.is_empty()
+                    && !boundary_equality_observed)
+            });
     let missing = missing_discriminators_for(
         seam,
         &observed,
@@ -2835,8 +2846,26 @@ fn requires_concrete_activation_values(seam: &RepoSeam) -> bool {
 
 enum ObservedArgumentSelection {
     AllArguments,
-    ArgumentIndices(Vec<usize>),
+    ArgumentOperands(Vec<ObservedArgumentOperand>),
     UnresolvedBoundaryOperands,
+}
+
+impl ObservedArgumentSelection {
+    fn requires_projection(&self) -> bool {
+        matches!(
+            self,
+            ObservedArgumentSelection::ArgumentOperands(operands)
+                if operands
+                    .iter()
+                    .any(|operand| operand.projection.is_some())
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ObservedArgumentOperand {
+    index: usize,
+    projection: Option<String>,
 }
 
 fn observed_value_facts_for_test(
@@ -2868,16 +2897,21 @@ fn observed_value_facts_for_test(
             continue;
         };
         for (arg_index, arg) in args.into_iter().enumerate() {
-            match &observed_argument_selection {
-                ObservedArgumentSelection::ArgumentIndices(indices)
-                    if !indices.contains(&arg_index) =>
-                {
-                    continue;
-                }
-                ObservedArgumentSelection::AllArguments
-                | ObservedArgumentSelection::ArgumentIndices(_) => {}
+            let argument_operand = match &observed_argument_selection {
+                ObservedArgumentSelection::ArgumentOperands(operands) => operands
+                    .iter()
+                    .find(|operand| operand.index == arg_index)
+                    .cloned(),
+                ObservedArgumentSelection::AllArguments => Some(ObservedArgumentOperand {
+                    index: arg_index,
+                    projection: None,
+                }),
                 ObservedArgumentSelection::UnresolvedBoundaryOperands => continue,
-            }
+            };
+            let Some(argument_operand) = argument_operand else {
+                continue;
+            };
+            let arg = projected_argument_expression(&arg, argument_operand.projection.as_deref());
             let mut emitted = false;
             // Direct literal first (matches pre-v2 behavior).
             for value in scalar_values(&arg) {
@@ -2954,31 +2988,20 @@ fn observed_argument_selection(
         return ObservedArgumentSelection::AllArguments;
     };
     let parameters = function_parameters(owner_fn);
-    if let Some(left_index) = boundary_operand_parameter_index(owner_fn, &parameters, &left) {
-        return ObservedArgumentSelection::ArgumentIndices(vec![left_index]);
+    if let Some(left_operand) = boundary_operand_argument(owner_fn, &parameters, &left) {
+        return ObservedArgumentSelection::ArgumentOperands(vec![left_operand]);
     }
-    if let Some(right_index) = parameters.iter().position(|param| param == &right)
+    if let Some(right_operand) = boundary_operand_argument(owner_fn, &parameters, &right)
         && !scalar_values(&left).is_empty()
     {
-        return ObservedArgumentSelection::ArgumentIndices(vec![right_index]);
+        return ObservedArgumentSelection::ArgumentOperands(vec![right_operand]);
     }
     if !scalar_values(&left).is_empty()
-        && let Some(right_index) = boundary_operand_parameter_index(owner_fn, &parameters, &right)
+        && let Some(right_operand) = boundary_operand_argument(owner_fn, &parameters, &right)
     {
-        return ObservedArgumentSelection::ArgumentIndices(vec![right_index]);
+        return ObservedArgumentSelection::ArgumentOperands(vec![right_operand]);
     }
     ObservedArgumentSelection::UnresolvedBoundaryOperands
-}
-
-fn boundary_activation_operands_unresolved(
-    seam: &RepoSeam,
-    index: &RustIndex,
-    owner_name: &str,
-) -> bool {
-    matches!(
-        observed_argument_selection(seam, index, owner_name),
-        ObservedArgumentSelection::UnresolvedBoundaryOperands
-    )
 }
 
 fn boundary_activation_operands_unresolved_summary(
@@ -3071,15 +3094,61 @@ fn is_boundary_operand_identifier(operand: &str) -> bool {
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
-fn boundary_operand_parameter_index(
+fn boundary_operand_argument(
     owner_fn: &FunctionSummary,
     parameters: &[String],
     operand: &str,
-) -> Option<usize> {
+) -> Option<ObservedArgumentOperand> {
     parameters
         .iter()
         .position(|parameter| parameter == operand)
-        .or_else(|| boundary_local_operand_parameter_index(owner_fn, parameters, operand))
+        .map(|index| ObservedArgumentOperand {
+            index,
+            projection: None,
+        })
+        .or_else(|| {
+            boundary_local_operand_parameter_index(owner_fn, parameters, operand).map(|index| {
+                ObservedArgumentOperand {
+                    index,
+                    projection: None,
+                }
+            })
+        })
+        .or_else(|| boundary_parameter_field_projection(parameters, operand))
+}
+
+fn boundary_parameter_field_projection(
+    parameters: &[String],
+    operand: &str,
+) -> Option<ObservedArgumentOperand> {
+    let operand = operand.trim().trim_start_matches('&').trim();
+    for (index, parameter) in parameters.iter().enumerate() {
+        let Some(rest) = operand.strip_prefix(parameter) else {
+            continue;
+        };
+        let Some(field) = rest.strip_prefix('.') else {
+            continue;
+        };
+        if is_boundary_operand_identifier(field) {
+            return Some(ObservedArgumentOperand {
+                index,
+                projection: Some(field.to_string()),
+            });
+        }
+    }
+    None
+}
+
+fn projected_argument_expression(arg: &str, projection: Option<&str>) -> String {
+    let arg = arg.trim();
+    let Some(field) = projection else {
+        return arg.to_string();
+    };
+    if is_boundary_operand_identifier(arg) {
+        format!("{arg}.{field}")
+    } else {
+        arg.to_string()
+    }
 }
 
 fn boundary_local_operand_parameter_index(
@@ -3215,10 +3284,10 @@ fn boundary_equality_overlap_score(
         return 0;
     };
     let parameters = function_parameters(owner_fn);
-    let Some(left_index) = boundary_operand_parameter_index(owner_fn, &parameters, &left) else {
+    let Some(left_operand) = boundary_operand_argument(owner_fn, &parameters, &left) else {
         return 0;
     };
-    let Some(right_index) = boundary_operand_parameter_index(owner_fn, &parameters, &right) else {
+    let Some(right_operand) = boundary_operand_argument(owner_fn, &parameters, &right) else {
         return 0;
     };
 
@@ -3230,12 +3299,15 @@ fn boundary_equality_overlap_score(
         let Some(args) = call_arguments(&call.text, &owner_fn.name) else {
             continue;
         };
-        let Some(left_arg) = args.get(left_index) else {
+        let Some(left_arg) = args.get(left_operand.index) else {
             continue;
         };
-        let Some(right_arg) = args.get(right_index) else {
+        let Some(right_arg) = args.get(right_operand.index) else {
             continue;
         };
+        let left_arg = projected_argument_expression(left_arg, left_operand.projection.as_deref());
+        let right_arg =
+            projected_argument_expression(right_arg, right_operand.projection.as_deref());
         if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg, call) {
             score += 1;
         }
@@ -3247,15 +3319,15 @@ fn arguments_overlap_at_boundary(
     seam: &RepoSeam,
     indexed: &CompactTest<'_>,
     index: &RustIndex,
-    left_arg: &str,
-    right_arg: &str,
+    left_arg: String,
+    right_arg: String,
     call: &CallFact,
 ) -> bool {
     if left_arg.trim() == right_arg.trim() && !left_arg.trim().is_empty() {
         return true;
     }
-    let left_values = resolved_argument_values(seam, indexed, index, left_arg, call);
-    let right_values = resolved_argument_values(seam, indexed, index, right_arg, call);
+    let left_values = resolved_argument_values(seam, indexed, index, &left_arg, call);
+    let right_values = resolved_argument_values(seam, indexed, index, &right_arg, call);
     left_values.iter().any(|left| {
         let left = comparable_value(left);
         right_values
@@ -12188,6 +12260,104 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "computed local boundary operands must not emit exact candidate discriminator; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_parameter_field_operands_resolve_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod_src = "pub struct BoundarySide { pub value: i32 } \
+                        pub fn equal_boundary(left: BoundarySide, right: BoundarySide) -> bool { \
+                            left.value == right.value \
+                        }\n";
+        let test = (
+            "tests/boundary_tests.rs",
+            "#[test] fn equal_field_boundary() { \
+                 let left = BoundarySide { value: 10 }; \
+                 let right = BoundarySide { value: 10 }; \
+                 assert!(equal_boundary(left, right)); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/boundary.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/boundary.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("Observed 1 concrete activation value(s)"),
+            "parameter field operands must resolve through same-test struct field bindings; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence
+                .observed_values
+                .iter()
+                .any(|fact| fact.value == "10" && fact.context == ValueContext::FunctionArgument),
+            "expected resolved struct-field activation value; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "field operands with equal observed values must not emit boundary repair debt; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_parameter_field_operands_are_opaque_then_activation_stays_static_limitation()
+    -> Result<(), String> {
+        let prod_src = "pub struct BoundarySide { pub value: i32 } \
+                        pub fn equal_boundary(left: BoundarySide, right: BoundarySide) -> bool { \
+                            left.value == right.value \
+                        }\n";
+        let test = (
+            "tests/boundary_tests.rs",
+            "#[test] fn equal_field_boundary() { \
+                 let left = make_side(10); \
+                 let right = make_side(10); \
+                 assert!(equal_boundary(left, right)); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/boundary.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/boundary.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence.activate.summary.contains("local or computed"),
+            "opaque parameter field operands must remain a named limitation; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "opaque parameter field operands must not invent activation values; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "opaque parameter field operands must not emit exact candidate discriminator; got {:?}",
             evidence.missing_discriminators
         );
         Ok(())
