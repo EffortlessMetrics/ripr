@@ -2145,6 +2145,73 @@
       "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
     },
     {
+      "id": "call_presence_same_file_fanout_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file unit test that calls a production fan-out wrapper can activate a value-insensitive call-presence seam when that wrapper directly calls the owner along an unconditional same-file path.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_same_file_fanout_wrapper_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "fn build_pipeline_report() -> String {\n    let context = collect_pipeline_context();\n    let output = render_pipeline(\"alpha\");\n    format!(\"{context}:{output}\")\n}\n\n#[test]\nfn fanout_wrapper_reaches_pipeline_indirectly() {\n    let output = build_pipeline_report();\n    assert!(output.ends_with(\":alpha\"));\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-fanout-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-fanout-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an embedded same-file unit test can satisfy activation by calling a fan-out production wrapper that directly and unconditionally calls the owner.",
+      "must_not_claim": [
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not export mixed-owner production wrappers to cross-file integration tests without target affinity.",
+        "Do not accept conditional owner-call paths as guaranteed activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
       "id": "call_presence_test_local_err_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",

@@ -102,7 +102,8 @@ impl<'a> CompactGripContext<'a> {
         let mut tests_by_assertion_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_file_stem: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_import_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        let helper_owner_calls_by_file = helper_owner_calls_by_file(index);
+        let same_file_helper_owner_calls_by_file = helper_owner_calls_by_file(index);
+        let helper_owner_calls_by_file = strict_helper_owner_calls_by_file(index);
         let unambiguous_test_helper_owner_calls_by_name =
             unambiguous_test_helper_owner_calls_by_name(&helper_owner_calls_by_file);
         let helper_owner_calls_by_module_path =
@@ -158,7 +159,7 @@ impl<'a> CompactGripContext<'a> {
                 helper_owner_call_names.extend(same_file_helper_owner_call_names_for_test(
                     test,
                     &call_names,
-                    &helper_owner_calls_by_file,
+                    &same_file_helper_owner_calls_by_file,
                 ));
                 let mut target_affinity_owner_call_names =
                     helper_owner_call_names_from_qualified_calls(
@@ -324,6 +325,17 @@ fn same_file_helper_owner_call_names_for_test(
 }
 
 fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
+    helper_owner_calls_by_file_with_fanout(index, true)
+}
+
+fn strict_helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
+    helper_owner_calls_by_file_with_fanout(index, false)
+}
+
+fn helper_owner_calls_by_file_with_fanout(
+    index: &RustIndex,
+    allow_fanout_wrappers: bool,
+) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
     let function_names_by_file = local_function_names_by_file(index);
     let production_owner_names = production_owner_names(index);
@@ -342,6 +354,7 @@ fn helper_owner_calls_by_file(index: &RustIndex) -> HelperOwnerCallsByFile {
                         call,
                         local_function_names,
                         external_owner_names,
+                        allow_fanout_wrappers,
                     ))
                     && call_text_contains_named_call(&call.text, &call.name)
             })
@@ -1120,6 +1133,7 @@ fn helper_directly_delegates_to_specific_owner(
     call: &CallFact,
     local_function_names: Option<&BTreeSet<String>>,
     external_owner_names: Option<&BTreeSet<String>>,
+    allow_fanout_wrappers: bool,
 ) -> bool {
     if call.name == function.name {
         return false;
@@ -1160,10 +1174,14 @@ fn helper_directly_delegates_to_specific_owner(
         }
     }
 
-    direct_local_owner_call_names.len() == 1
-        && direct_local_owner_call_names.contains(&call.name)
-        && delegates_to_call
-        && !has_disallowed_extra_call
+    let owner_call_is_unique_or_same_file_fanout = if allow_fanout_wrappers {
+        direct_local_owner_call_names.contains(&call.name)
+    } else {
+        direct_local_owner_call_names.len() == 1
+            && direct_local_owner_call_names.contains(&call.name)
+    };
+
+    owner_call_is_unique_or_same_file_fanout && delegates_to_call && !has_disallowed_extra_call
 }
 
 fn call_text_routes_directly_to_named_call(text: &str, name: &str) -> bool {
@@ -10961,6 +10979,79 @@ mod tests {
         assert!(
             evidence.observed_values.is_empty(),
             "two-hop wrapper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_calls_same_file_fanout_wrapper_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn collect_pipeline_context() -> String {
+    "context".to_string()
+}
+
+fn build_pipeline_report() -> String {
+    let context = collect_pipeline_context();
+    let output = render_pipeline("alpha");
+    format!("{context}:{output}")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fanout_wrapper_reaches_pipeline_indirectly() {
+        let output = build_pipeline_report();
+        assert!(output.ends_with(":alpha"));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "fanout production wrapper should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("helper owner call for value-insensitive seam"),
+            "activation summary should explain the fanout helper owner-call route: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "fanout helper route must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
