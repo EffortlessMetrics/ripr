@@ -1152,6 +1152,71 @@
       "repair_route": "analysis/related-test-ranking-audit-fixes"
     },
     {
+      "id": "call_presence_assertion_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a recognized assertion macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assertion_helper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn assert_pipeline_output() {\n    assert_eq!(render_pipeline(\"alpha\"), \"alpha\");\n}\n\n#[test]\nfn helper_asserts_pipeline_output() {\n    assert_pipeline_output();\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-assertion-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-assertion-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test helper can satisfy activation when it directly calls the owner inside a recognized assertion macro.",
+      "must_not_claim": [
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
       "id": "call_presence_test_local_helper_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "call_presence",

@@ -451,6 +451,8 @@ evidence = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_space_before_paren_then_activation_is_yes validates direct owner calls with whitespace before the call delimiter reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_calls_owner_method_then_activation_is_yes validates simple same-file receiver-method wrappers can reduce activation_owner_call_absent_same_file_only without inventing observed values",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_uses_dynamic_method_receiver_then_activation_stays_unknown keeps dynamic method receivers as static limitations for analysis/same-file-owner-call-tracing",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assertion_helper_calls_owner_then_activation_is_yes validates recognized assertion-macro helpers can establish value-insensitive owner-call activation without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_unknown_macro_then_activation_stays_unknown keeps arbitrary macro wrappers limited for analysis/same-file-owner-call-tracing",
   "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while analysis/same-file-owner-call-tracing remains the next sampled work-queue proof"
 ]
 fixtures = [
