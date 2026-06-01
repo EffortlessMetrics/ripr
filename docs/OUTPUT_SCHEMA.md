@@ -3641,7 +3641,8 @@ sample packet IDs, attempt IDs, and canonical gap IDs for representative attempt
 available, so successful and failing route metrics both remain inspectable.
 `top_failing_repair_routes[]` and `repair_route_quality_backlog[]` still derive
 their routing from failing attempts and preserve the concrete failed-attempt
-sample in the reason text. `repair_route_quality_backlog[]` converts
+sample in both `next_actions[].attempt_id` and the reason text when available.
+`repair_route_quality_backlog[]` converts
 top failing repair routes into analyzer/report backlog packets with stable
 packet IDs, improvement routes, unlock conditions, samples, and non-claims; the
 rows are not public repair packets, are not swarm-ready work, and do not promote
@@ -4034,25 +4035,28 @@ limits.
   "top_next_action": {
     "kind": "improve_repair_route_quality",
     "packet_id": "route-quality:add-boundary-assertion:unchanged",
+    "attempt_id": "attempt-boundary-002",
     "canonical_gap_id": null,
     "evidence_class": null,
     "repair_kind": "add_boundary_assertion",
     "command": "cargo xtask ripr-swarm readiness",
-    "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002`"
+    "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002` attempt `attempt-boundary-002`"
   },
   "next_actions": [
     {
       "kind": "improve_repair_route_quality",
       "packet_id": "route-quality:add-boundary-assertion:unchanged",
+      "attempt_id": "attempt-boundary-002",
       "canonical_gap_id": null,
       "evidence_class": null,
       "repair_kind": "add_boundary_assertion",
       "command": "cargo xtask ripr-swarm readiness",
-      "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002`"
+      "reason": "`add_boundary_assertion` has 1 failing latest attempt(s); dominant reason `unchanged` appears 1 time(s); route backlog packet `route-quality:add-boundary-assertion:unchanged` through `analysis/repair-route-guidance/add-boundary-assertion` before increasing packet volume; sample failed packet `packet-boundary-002` attempt `attempt-boundary-002`"
     },
     {
       "kind": "inspect_unchanged_attempts",
       "packet_id": null,
+      "attempt_id": null,
       "canonical_gap_id": null,
       "evidence_class": null,
       "repair_kind": null,
@@ -4108,7 +4112,9 @@ derived from the same plan and outcome artifacts. It can point operators to a
 ready dry-run packet, missing verify/receipt source fields, orphaned receipts,
 unchanged or regressed attempts, static-limitation backlog work, or
 operator-judgment packets that are visible but not default swarm-ready. It does
-not execute the action or consume raw findings as work. `top_next_action` is
+not execute the action or consume raw findings as work. Route-quality next
+actions may carry `attempt_id` to point at the concrete failed receipt sample
+behind the analyzer/report backlog route. `top_next_action` is
 the first item in that queue, duplicated as a stable object for badge, LSP, PR,
 CI, or other thin surfaces that should not implement their own ranking rules.
 `blocked_state_routes[]` gives every reported blocked packet or attempt state a

@@ -23486,6 +23486,7 @@ struct RiprSwarmReadinessSummary {
 struct RiprSwarmReadinessNextAction {
     kind: String,
     packet_id: Option<String>,
+    attempt_id: Option<String>,
     canonical_gap_id: Option<String>,
     evidence_class: Option<String>,
     repair_kind: Option<String>,
@@ -28744,6 +28745,7 @@ fn ripr_swarm_readiness_missing_receipt_action(
     RiprSwarmReadinessNextAction {
         kind: "collect_missing_attempt_receipts".to_string(),
         packet_id,
+        attempt_id: None,
         canonical_gap_id,
         evidence_class: None,
         repair_kind,
@@ -28769,22 +28771,28 @@ fn ripr_swarm_readiness_repair_route_quality_action(
         .sample_packet_ids
         .first()
         .map_or("unknown", String::as_str);
+    let sample_attempt = route
+        .sample_attempt_ids
+        .first()
+        .map_or("unknown", String::as_str);
     RiprSwarmReadinessNextAction {
         kind: "improve_repair_route_quality".to_string(),
         packet_id: Some(backlog_packet_id.clone()),
+        attempt_id: route.sample_attempt_ids.first().cloned(),
         canonical_gap_id: route.sample_canonical_gap_ids.first().cloned(),
         evidence_class: None,
         repair_kind: Some(route.repair_kind.clone()),
         command: Some("cargo xtask ripr-swarm readiness".to_string()),
         reason: format!(
-            "`{}` has {} failing latest attempt(s); dominant reason `{}` appears {} time(s); route backlog packet `{}` through `{}` before increasing packet volume; sample failed packet `{}`",
+            "`{}` has {} failing latest attempt(s); dominant reason `{}` appears {} time(s); route backlog packet `{}` through `{}` before increasing packet volume; sample failed packet `{}` attempt `{}`",
             route.repair_kind,
             failures,
             dominant_reason,
             dominant_count,
             backlog_packet_id,
             improvement_route,
-            sample_packet
+            sample_packet,
+            sample_attempt
         ),
     }
 }
@@ -28935,6 +28943,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "refresh_swarm_plan".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -28950,6 +28959,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "refresh_outcome_report".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -28965,6 +28975,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "refresh_attempt_ledger".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -28980,6 +28991,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_non_actionable_gap_state".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -28994,6 +29006,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_receipt_command_source".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29008,6 +29021,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_verify_command_source".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29022,6 +29036,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_repair_route_source".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29036,6 +29051,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_repair_kind_source".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29050,6 +29066,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_related_test_or_observer".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29064,6 +29081,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_target_test_shape".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29078,6 +29096,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_canonical_gap_identity".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29092,6 +29111,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_must_not_change_boundaries".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29106,6 +29126,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_allowed_edit_surface".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29120,6 +29141,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_confidence_basis".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29134,6 +29156,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "fix_raw_evidence_refs".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29148,6 +29171,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_blocked_missing_context".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29162,6 +29186,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_public_projection_exclusions".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29210,6 +29235,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_missing_verify_results".to_string(),
             packet_id,
+            attempt_id: None,
             canonical_gap_id,
             evidence_class: None,
             repair_kind,
@@ -29226,6 +29252,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "join_receipt_evidence_movement".to_string(),
             packet_id,
+            attempt_id: None,
             canonical_gap_id,
             evidence_class: None,
             repair_kind,
@@ -29242,6 +29269,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "reconcile_orphaned_receipts".to_string(),
             packet_id,
+            attempt_id: None,
             canonical_gap_id,
             evidence_class: None,
             repair_kind,
@@ -29260,6 +29288,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_regressed_attempts".to_string(),
             packet_id,
+            attempt_id: None,
             canonical_gap_id,
             evidence_class: None,
             repair_kind,
@@ -29287,6 +29316,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "inspect_unchanged_attempts".to_string(),
             packet_id,
+            attempt_id: None,
             canonical_gap_id,
             evidence_class: None,
             repair_kind,
@@ -29301,6 +29331,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "route_static_limitations".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29318,6 +29349,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "route_static_limitation_backlog".to_string(),
             packet_id: route.sample_packet_id.clone(),
+            attempt_id: None,
             canonical_gap_id: route.sample_canonical_gap_ids.first().cloned(),
             evidence_class: route.dominant_evidence_class.clone(),
             repair_kind: None,
@@ -29331,6 +29363,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "route_static_limitation_backlog".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29359,6 +29392,7 @@ fn ripr_swarm_readiness_next_actions(
         actions.push(RiprSwarmReadinessNextAction {
             kind: "no_ready_action".to_string(),
             packet_id: None,
+            attempt_id: None,
             canonical_gap_id: None,
             evidence_class: None,
             repair_kind: None,
@@ -29430,6 +29464,7 @@ fn ripr_swarm_readiness_limited_runtime_action(
     RiprSwarmReadinessNextAction {
         kind: "resolve_limited_runtime_status".to_string(),
         packet_id: None,
+        attempt_id: None,
         canonical_gap_id: None,
         evidence_class: None,
         repair_kind: None,
@@ -29488,6 +29523,7 @@ fn ripr_swarm_readiness_operator_judgment_action(
         kind: "route_operator_judgment_packets".to_string(),
         packet_id: audit_non_empty_string(first, &["packet_id"])
             .or_else(|| audit_non_empty_string(first, &["canonical_gap_id"])),
+        attempt_id: None,
         canonical_gap_id: audit_non_empty_string(first, &["canonical_gap_id"]),
         evidence_class: audit_non_empty_string(first, &["evidence_class"]),
         repair_kind: audit_non_empty_string(first, &["repair_kind"]),
@@ -29516,6 +29552,7 @@ fn ripr_swarm_readiness_ready_packet_actions(
             RiprSwarmReadinessNextAction {
                 kind: "attempt_ready_packet".to_string(),
                 packet_id,
+                attempt_id: None,
                 canonical_gap_id,
                 evidence_class,
                 repair_kind,
@@ -29538,6 +29575,7 @@ fn ripr_swarm_readiness_next_action_json(action: &RiprSwarmReadinessNextAction) 
     serde_json::json!({
         "kind": action.kind,
         "packet_id": action.packet_id,
+        "attempt_id": action.attempt_id,
         "canonical_gap_id": action.canonical_gap_id,
         "evidence_class": action.evidence_class,
         "repair_kind": action.repair_kind,
@@ -29846,11 +29884,11 @@ fn ripr_swarm_readiness_push_next_actions_table(
     out: &mut String,
     actions: &[RiprSwarmReadinessNextAction],
 ) {
-    out.push_str("| Kind | Packet | Evidence class | Repair | Command | Reason |\n");
-    out.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    out.push_str("| Kind | Packet | Attempt | Evidence class | Repair | Command | Reason |\n");
+    out.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
     for action in actions {
         out.push_str(&format!(
-            "| `{}` | {} | {} | {} | {} | {} |\n",
+            "| `{}` | {} | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(&action.kind),
             audit_markdown_cell(
                 action
@@ -29859,6 +29897,7 @@ fn ripr_swarm_readiness_push_next_actions_table(
                     .or(action.canonical_gap_id.as_deref())
                     .unwrap_or("")
             ),
+            audit_markdown_cell(action.attempt_id.as_deref().unwrap_or("")),
             audit_markdown_cell(action.evidence_class.as_deref().unwrap_or("")),
             audit_markdown_cell(action.repair_kind.as_deref().unwrap_or("")),
             audit_markdown_cell(action.command.as_deref().unwrap_or("")),
@@ -92015,6 +92054,10 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from("improve_repair_route_quality")
         );
         assert_eq!(
+            timeout_action["attempt_id"],
+            serde_json::Value::from("attempt:gap-timeout:attempted-no-receipt")
+        );
+        assert_eq!(
             timeout_action["canonical_gap_id"],
             serde_json::Value::from("gap:timeout")
         );
@@ -92055,6 +92098,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("route-quality:add-call-observer:attempted-no-receipt"));
+        assert!(markdown.contains("attempt:gap-timeout:attempted-no-receipt"));
         assert!(markdown.contains(
             "report/repair-route-receipt-reliability/bounded-verify-route/add-call-observer"
         ));
@@ -97893,6 +97937,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     "repair_kind_unknown": 0,
                     "repair_kind_success_rate": 0.0,
                     "sample_packet_ids": ["packet-output-001"],
+                    "sample_attempt_ids": ["attempt-output-001"],
                     "sample_canonical_gap_ids": ["gap:output-a"]
                 }
             ],
@@ -97937,6 +97982,7 @@ covered_by = ["cargo xtask check-file-policy"]
             == "improve_repair_route_quality"
             && action.repair_kind.as_deref() == Some("add_output_observer")
             && action.packet_id.as_deref() == Some("route-quality:add-output-observer:regressed")
+            && action.attempt_id.as_deref() == Some("attempt-output-001")
             && action.canonical_gap_id.as_deref() == Some("gap:output-a")));
         assert!(report.next_actions.iter().any(|action| {
             action.kind == "inspect_unchanged_attempts"
@@ -97986,6 +98032,10 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from("packet-output-001")
         );
         assert_eq!(
+            value["top_failing_repair_routes"][0]["sample_attempt_ids"][0],
+            serde_json::Value::from("attempt-output-001")
+        );
+        assert_eq!(
             value["top_failing_repair_routes"][0]["sample_canonical_gap_ids"][0],
             serde_json::Value::from("gap:output-a")
         );
@@ -98001,12 +98051,17 @@ covered_by = ["cargo xtask check-file-policy"]
             value["repair_route_quality_backlog"][0]["sample_packet_ids"][0],
             "packet-output-001"
         );
+        assert_eq!(
+            value["repair_route_quality_backlog"][0]["sample_attempt_ids"][0],
+            "attempt-output-001"
+        );
         assert!(
             value["next_actions"]
                 .as_array()
                 .is_some_and(|actions| actions.iter().any(|action| {
                     action["kind"] == "improve_repair_route_quality"
                         && action["packet_id"] == "route-quality:add-output-observer:regressed"
+                        && action["attempt_id"] == "attempt-output-001"
                         && action["canonical_gap_id"] == "gap:output-a"
                         && action["command"] == "cargo xtask ripr-swarm readiness"
                         && action["reason"].as_str().is_some_and(|reason| {
@@ -98015,6 +98070,7 @@ covered_by = ["cargo xtask check-file-policy"]
                                     "analysis/repair-route-regression-review/add-output-observer",
                                 )
                                 && reason.contains("sample failed packet `packet-output-001`")
+                                && reason.contains("attempt `attempt-output-001`")
                         })
                 }))
         );

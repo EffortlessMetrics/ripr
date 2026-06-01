@@ -383,12 +383,13 @@ missing-evidence-field counts remain latest-attempt projections. Stored
 `summary`, `repair_route_quality[]`, and `top_missing_evidence_fields[]` rows are
 summary output; they must not override recomputed latest-attempt state if the
 two disagree.
-Repair-route quality rows should carry sample packet IDs and canonical gap IDs
-for failing latest attempts when available, and readiness should point
-`improve_repair_route_quality` at the derived route-quality backlog packet while
-preserving the first failed-attempt sample in the reason text. Route-quality
-work should start from a concrete failed attempt without re-queuing that failed
-repair packet as swarm-ready work.
+Repair-route quality rows should carry sample packet IDs, sample attempt IDs,
+and canonical gap IDs for failing latest attempts when available, and readiness
+should point `improve_repair_route_quality` at the derived route-quality
+backlog packet while preserving the first failed-attempt sample in
+`next_actions[].attempt_id` and the reason text. Route-quality work should
+start from a concrete failed attempt without re-queuing that failed repair
+packet as swarm-ready work.
 Attempt-ledger reports should also project `historical_repair_route_quality[]`,
 `historical_language_repair_route_quality[]`, and
 `top_historical_failing_repair_routes[]` from durable full attempt history. These
