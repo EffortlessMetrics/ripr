@@ -2204,6 +2204,8 @@ fixtures = [
   "fixtures/python_ranking_noise_control",
   "fixtures/python_test_placement_verify",
   "fixtures/python_api_route_decorator_repair_gap",
+  "fixtures/python_api_json_field_repair_gap",
+  "fixtures/python_dynamic_route_registration_limit",
   "fixtures/python_cli_output_repair_gap",
   "fixtures/python_argparse_output_repair_gap",
   "fixtures/python_call_argument_shape",

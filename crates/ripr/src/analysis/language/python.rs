@@ -78,6 +78,8 @@ struct PythonOwner {
     decorators: Vec<String>,
     imports: Vec<PythonImport>,
     cli_receiver_names: Vec<String>,
+    route_paths: Vec<String>,
+    dynamic_route_decorators: Vec<String>,
 }
 
 impl PythonOwner {
@@ -1345,6 +1347,8 @@ fn owner_from_function(
         .class_context
         .map(|class| format!("{class}.{name}"))
         .unwrap_or_else(|| name.to_string());
+    let route_paths = collect_static_route_paths(context.source, decorators);
+    let dynamic_route_decorators = collect_dynamic_route_decorators(context.source, decorators);
     let mut decorators = decorator_names;
     if is_async {
         decorators.push("async_def".to_string());
@@ -1359,6 +1363,8 @@ fn owner_from_function(
         decorators,
         imports: context.imports.to_vec(),
         cli_receiver_names: collect_static_cli_receiver_names(context.source, context.imports),
+        route_paths,
+        dynamic_route_decorators,
     }
 }
 
@@ -1382,6 +1388,8 @@ fn owner_from_class(
         decorators: decorator_names(decorators),
         imports: context.imports.to_vec(),
         cli_receiver_names: collect_static_cli_receiver_names(context.source, context.imports),
+        route_paths: collect_static_route_paths(context.source, decorators),
+        dynamic_route_decorators: collect_dynamic_route_decorators(context.source, decorators),
     }
 }
 
@@ -1401,6 +1409,8 @@ fn module_owner(
         decorators: Vec::new(),
         imports: imports.to_vec(),
         cli_receiver_names: collect_static_cli_receiver_names(source, imports),
+        route_paths: Vec::new(),
+        dynamic_route_decorators: Vec::new(),
     }
 }
 
@@ -1569,6 +1579,42 @@ fn is_pytest_class(class: &ast::StmtClassDef) -> bool {
 
 fn decorator_names(decorators: &[Expr]) -> Vec<String> {
     decorators.iter().filter_map(expr_full_name).collect()
+}
+
+fn collect_static_route_paths(source: &str, decorators: &[Expr]) -> Vec<String> {
+    decorators
+        .iter()
+        .filter_map(|decorator| {
+            let name = expr_full_name(decorator)?;
+            if !is_static_route_decorator(&name) {
+                return None;
+            }
+            route_decorator_literal_argument(source, decorator, &name)
+        })
+        .collect()
+}
+
+fn collect_dynamic_route_decorators(source: &str, decorators: &[Expr]) -> Vec<String> {
+    decorators
+        .iter()
+        .filter_map(|decorator| {
+            let name = expr_full_name(decorator)?;
+            if !is_static_route_decorator(&name) {
+                return None;
+            }
+            route_decorator_literal_argument(source, decorator, &name)
+                .is_none()
+                .then_some(name)
+        })
+        .collect()
+}
+
+fn route_decorator_literal_argument(source: &str, decorator: &Expr, name: &str) -> Option<String> {
+    let text = text_for_range(source, decorator.range());
+    let after_name = text
+        .strip_prefix(name)
+        .or_else(|| text.find(name).and_then(|idx| text.get(idx + name.len()..)))?;
+    first_parenthesized_string_argument(after_name.trim_start())
 }
 
 fn expr_full_name(expr: &Expr) -> Option<String> {
@@ -1939,6 +1985,7 @@ fn looks_like_custom_assertion_helper(name: &str) -> bool {
 enum PythonRelationKind {
     SyntacticCall,
     ImportAliasCall,
+    ApiClientRouteCall,
     SameStem,
     TestNameSimilarity,
     FixtureName,
@@ -1949,6 +1996,7 @@ impl PythonRelationKind {
         match self {
             Self::SyntacticCall => 5,
             Self::ImportAliasCall => 4,
+            Self::ApiClientRouteCall => 4,
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
@@ -1956,7 +2004,10 @@ impl PythonRelationKind {
     }
 
     fn uses_oracle(self) -> bool {
-        matches!(self, Self::SyntacticCall | Self::ImportAliasCall)
+        matches!(
+            self,
+            Self::SyntacticCall | Self::ImportAliasCall | Self::ApiClientRouteCall
+        )
     }
 
     fn is_uncertain(self) -> bool {
@@ -1967,6 +2018,7 @@ impl PythonRelationKind {
         match self {
             Self::SyntacticCall => "syntactic_call",
             Self::ImportAliasCall => "import_alias_call",
+            Self::ApiClientRouteCall => "api_client_route_call",
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
@@ -2143,6 +2195,9 @@ fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<Pytho
     if import_alias_calls_owner(test, owner) {
         return Some(PythonRelationKind::ImportAliasCall);
     }
+    if api_client_route_calls_owner(test, owner) {
+        return Some(PythonRelationKind::ApiClientRouteCall);
+    }
     if same_stem_related(test, owner) {
         return Some(PythonRelationKind::SameStem);
     }
@@ -2181,6 +2236,57 @@ fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> 
         .file_stem()
         .and_then(|stem| stem.to_str())
         .is_some_and(|stem| import.imported.rsplit('.').next() == Some(stem))
+}
+
+fn api_client_route_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    owner
+        .route_paths
+        .iter()
+        .any(|route| body_calls_api_client_route(&test.body_text, route))
+}
+
+fn body_calls_api_client_route(body_text: &str, route: &str) -> bool {
+    [
+        "client.get",
+        "client.post",
+        "client.put",
+        "client.patch",
+        "client.delete",
+        "client.options",
+        "client.head",
+    ]
+    .into_iter()
+    .any(|callee| contains_python_call_with_first_string_argument(body_text, callee, route))
+}
+
+fn contains_python_call_with_first_string_argument(
+    text: &str,
+    callee: &str,
+    expected: &str,
+) -> bool {
+    text.match_indices(callee).any(|(idx, _)| {
+        if !python_callee_start_has_boundary(text, idx)
+            || python_prefix_hides_code(line_prefix_before(text, idx))
+        {
+            return false;
+        }
+        let Some(argument) = first_parenthesized_string_argument(
+            text.get(idx + callee.len()..)
+                .unwrap_or_default()
+                .trim_start(),
+        ) else {
+            return false;
+        };
+        argument == expected
+    })
+}
+
+fn first_parenthesized_string_argument(text: &str) -> Option<String> {
+    let body = text.strip_prefix('(')?.trim_start();
+    let literal = first_python_string_literal(body)?;
+    body.starts_with(&literal)
+        .then(|| python_string_literal_value(&literal))
+        .flatten()
 }
 
 fn contains_call_name(body_text: &str, call_name: &str) -> bool {
@@ -2362,6 +2468,18 @@ fn static_limit_for_change(
             evidence: "static_limit metaprogramming: changed line uses metaprogramming syntax"
                 .to_string(),
             missing: "Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.".to_string(),
+        });
+    }
+    if let Some(decorator) = owner.dynamic_route_decorators.first() {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::DecoratorIndirection,
+            evidence: format!(
+                "static_limit decorator_indirection: dynamic_route_registration `{decorator}`"
+            ),
+            missing: format!(
+                "Static limit `dynamic_route_registration`: owner `{}` uses dynamic route registration `{decorator}`; syntax-first preview evidence cannot safely match client calls to a concrete route path.",
+                owner.qualified_name
+            ),
         });
     }
     if let Some(decorator) = owner
@@ -3107,9 +3225,10 @@ fn python_missing_discriminators(
     probe_family: &ProbeFamily,
     line: usize,
     line_text: &str,
+    owner: &PythonOwner,
     flow_sink: Option<&FlowSinkFact>,
 ) -> Vec<MissingDiscriminatorFact> {
-    let Some(value) = python_missing_discriminator_value(probe_family, line_text) else {
+    let Some(value) = python_missing_discriminator_value(probe_family, line_text, owner) else {
         return Vec::new();
     };
 
@@ -3123,12 +3242,13 @@ fn python_missing_discriminators(
 fn python_missing_discriminator_value(
     probe_family: &ProbeFamily,
     line_text: &str,
+    owner: &PythonOwner,
 ) -> Option<String> {
     match probe_family {
         ProbeFamily::Predicate => python_boundary_discriminator(line_text),
         ProbeFamily::ReturnValue => python_return_value_discriminator(line_text),
         ProbeFamily::ErrorPath => python_exception_discriminator(line_text),
-        ProbeFamily::FieldConstruction => python_field_value_discriminator(line_text),
+        ProbeFamily::FieldConstruction => python_field_value_discriminator(line_text, owner),
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
             python_output_or_call_discriminator(line_text)
         }
@@ -3194,10 +3314,13 @@ fn python_exception_discriminator(line_text: &str) -> Option<String> {
     }
 }
 
-fn python_field_value_discriminator(line_text: &str) -> Option<String> {
+fn python_field_value_discriminator(line_text: &str, owner: &PythonOwner) -> Option<String> {
     let text = line_text.trim();
-    if let Some(discriminator) = python_return_dict_field_discriminator(text) {
-        return Some(discriminator);
+    if let Some((field, value)) = python_return_dict_field_parts(text) {
+        if !owner.route_paths.is_empty() {
+            return Some(format!("response.json()[\"{field}\"] == {value}"));
+        }
+        return Some(format!("{field} == {value}"));
     }
     let (lhs, rhs) = split_python_assignment(text)?;
     if lhs.is_empty() || rhs.is_empty() {
@@ -3207,6 +3330,11 @@ fn python_field_value_discriminator(line_text: &str) -> Option<String> {
 }
 
 fn python_return_dict_field_discriminator(line_text: &str) -> Option<String> {
+    let (key, value) = python_return_dict_field_parts(line_text)?;
+    Some(format!("{key} == {value}"))
+}
+
+fn python_return_dict_field_parts(line_text: &str) -> Option<(String, String)> {
     let expression = line_text.trim().strip_prefix("return ")?.trim();
     let body = expression
         .strip_prefix('{')?
@@ -3225,7 +3353,7 @@ fn python_return_dict_field_discriminator(line_text: &str) -> Option<String> {
     if key.is_empty() || value.is_empty() {
         None
     } else {
-        Some(format!("{key} == {value}"))
+        Some((key.to_string(), value.to_string()))
     }
 }
 
@@ -3374,6 +3502,21 @@ fn first_python_string_literal(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn python_string_literal_value(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    let mut chars = trimmed.chars();
+    let quote = chars.next()?;
+    if quote != '\'' && quote != '"' {
+        return None;
+    }
+    if !trimmed.ends_with(quote) || trimmed.len() < quote.len_utf8() * 2 {
+        return None;
+    }
+    trimmed
+        .get(quote.len_utf8()..trimmed.len() - quote.len_utf8())
+        .map(str::to_string)
 }
 
 fn strip_python_control_prefix(line_text: &str) -> String {
@@ -3661,7 +3804,7 @@ fn classify_change(
         && matches!(class, ExposureClass::WeaklyExposed)
         && has_oracle_eligible_relation
     {
-        python_missing_discriminators(&family, line, line_text, flow_sink.as_ref())
+        python_missing_discriminators(&family, line, line_text, owner, flow_sink.as_ref())
     } else {
         Vec::new()
     };

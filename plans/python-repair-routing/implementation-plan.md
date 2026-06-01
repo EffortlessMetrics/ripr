@@ -885,7 +885,7 @@ Bring Python repair cards into editor surfaces.
 
 ### Work item: analysis/python-http-api-pack-v1
 
-Status: in progress
+Status: done
 
 Blocked by:
 
@@ -907,6 +907,12 @@ Support simple FastAPI/Flask-shaped repair cards.
   FastAPI/Flask-shaped `@api.post(...)` route decorator can remain
   syntax-first route metadata instead of a decorator-indirection limit when a
   changed `response.status_code` assignment has weak pytest evidence.
+- `fixtures/python_api_json_field_repair_gap` now proves a literal client route
+  call such as `client.post("/checkout")` can link to the route owner and
+  produce a framework-shaped `response.json()["detail"]` repair card.
+- `fixtures/python_dynamic_route_registration_limit` now proves dynamic route
+  registration fails closed as a named `dynamic_route_registration` limitation
+  without producing a repair card or agent-packet-eligible canonical gap.
 - Arbitrary decorators remain fail-closed through
   `python_decorator_indirection_limit`.
 
