@@ -3354,6 +3354,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
     }
@@ -3376,6 +3377,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": null,
       "repair_kind_success_rate": 1.0,
       "sample_packet_ids": ["packet-ts-route-001"],
+      "sample_attempt_ids": ["attempt-ts-route-001"],
       "sample_canonical_gap_ids": ["gap:ts-route"],
       "sample_missing_receipt_reasons": []
     }
@@ -3398,6 +3400,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.667,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
     }
@@ -3420,6 +3423,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": null,
       "repair_kind_success_rate": 1.0,
       "sample_packet_ids": ["packet-ts-route-001"],
+      "sample_attempt_ids": ["attempt-ts-route-001"],
       "sample_canonical_gap_ids": ["gap:ts-route"],
       "sample_missing_receipt_reasons": []
     }
@@ -3442,6 +3446,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
     }
@@ -3464,6 +3469,7 @@ actionable operator evidence instead of only route-quality counts.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.667,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
     }
@@ -3477,6 +3483,7 @@ actionable operator evidence instead of only route-quality counts.
       "dominant_failure_reason": "unchanged",
       "dominant_failure_count": 1,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": [],
       "why_action_required": "`add_boundary_assertion` produced unchanged evidence; refine target shape, assertion guidance, or evidence expectations before increasing packet volume",
@@ -3630,7 +3637,7 @@ current routing still comes from latest-attempt `repair_route_quality[]`.
 `top_failing_repair_routes[]` is the subset with unexpected unchanged,
 regressed, no-receipt, missing-verify-result, or unknown outcomes,
 ordered for analyzer-improvement routing. Repair-route quality rows include
-sample packet IDs and canonical gap IDs for representative attempted rows when
+sample packet IDs, attempt IDs, and canonical gap IDs for representative attempted rows when
 available, so successful and failing route metrics both remain inspectable.
 `top_failing_repair_routes[]` and `repair_route_quality_backlog[]` still derive
 their routing from failing attempts and preserve the concrete failed-attempt
@@ -3942,6 +3949,7 @@ limits.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": []
     }
@@ -3964,6 +3972,7 @@ limits.
       "repair_kind_dominant_failure_reason": null,
       "repair_kind_success_rate": 1.0,
       "sample_packet_ids": [],
+      "sample_attempt_ids": [],
       "sample_canonical_gap_ids": [],
       "sample_missing_receipt_reasons": []
     }
@@ -3986,6 +3995,7 @@ limits.
       "repair_kind_dominant_failure_reason": "unchanged",
       "repair_kind_success_rate": 0.5,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"]
     }
   ],
@@ -3998,6 +4008,7 @@ limits.
       "dominant_failure_reason": "unchanged",
       "dominant_failure_count": 1,
       "sample_packet_ids": ["packet-boundary-002"],
+      "sample_attempt_ids": ["attempt-boundary-002"],
       "sample_canonical_gap_ids": ["gap:def"],
       "sample_missing_receipt_reasons": [],
       "why_action_required": "`add_boundary_assertion` produced unchanged evidence; refine target shape, assertion guidance, or evidence expectations before increasing packet volume",

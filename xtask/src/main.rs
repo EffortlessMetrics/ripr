@@ -23370,6 +23370,7 @@ struct RiprSwarmRepairRouteQualityRow {
     expected_unchanged: usize,
     unknown: usize,
     sample_packet_ids: Vec<String>,
+    sample_attempt_ids: Vec<String>,
     sample_canonical_gap_ids: Vec<String>,
     sample_missing_receipt_reasons: Vec<String>,
 }
@@ -26426,6 +26427,7 @@ fn ripr_swarm_attempt_ledger_repair_route_quality_grouped(
         }
         if attempt.outcome != "not_attempted" {
             ripr_swarm_push_limited_unique(&mut row.sample_packet_ids, &attempt.packet_id);
+            ripr_swarm_push_limited_unique(&mut row.sample_attempt_ids, &attempt.attempt_id);
             ripr_swarm_push_limited_unique(
                 &mut row.sample_canonical_gap_ids,
                 &attempt.canonical_gap_id,
@@ -26612,6 +26614,7 @@ fn ripr_swarm_repair_route_quality_json(rows: &[RiprSwarmRepairRouteQualityRow])
                 "repair_kind_dominant_failure_reason": ripr_swarm_repair_route_quality_dominant_failure_reason(row),
                 "repair_kind_success_rate": ripr_swarm_repair_route_quality_success_rate(row),
                 "sample_packet_ids": row.sample_packet_ids,
+                "sample_attempt_ids": row.sample_attempt_ids,
                 "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
                 "sample_missing_receipt_reasons": row.sample_missing_receipt_reasons,
             })
@@ -26663,6 +26666,7 @@ fn ripr_swarm_repair_route_quality_backlog_json(
                 "dominant_failure_reason": dominant_failure,
                 "dominant_failure_count": ripr_swarm_repair_route_quality_dominant_failure_count(row),
                 "sample_packet_ids": row.sample_packet_ids,
+                "sample_attempt_ids": row.sample_attempt_ids,
                 "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
                 "sample_missing_receipt_reasons": row.sample_missing_receipt_reasons,
                 "why_action_required": ripr_swarm_repair_route_quality_why_action_required(
@@ -27111,9 +27115,9 @@ fn ripr_swarm_push_repair_route_quality_table(
         out.push_str("No repair-route quality rows are available.\n\n");
         return;
     }
-    out.push_str("| Language | Repair kind | Attempted | Improved | Unchanged | Expected unchanged | Regressed | Resolved | Failure count | Dominant failure | Success rate | Sample packets | Sample gaps | Missing receipt reasons |\n");
+    out.push_str("| Language | Repair kind | Attempted | Improved | Unchanged | Expected unchanged | Regressed | Resolved | Failure count | Dominant failure | Success rate | Sample packets | Sample attempts | Sample gaps | Missing receipt reasons |\n");
     out.push_str(
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- | --- | --- |\n",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- | --- | --- | --- |\n",
     );
     for row in rows {
         let success_rate = match ripr_swarm_repair_route_quality_success_rate(row) {
@@ -27124,7 +27128,7 @@ fn ripr_swarm_push_repair_route_quality_table(
         let dominant_failure =
             ripr_swarm_repair_route_quality_dominant_failure_reason(row).unwrap_or("n/a");
         out.push_str(&format!(
-            "| {} | `{}` | {} | {} | {} | {} | {} | {} | {} | `{}` | {} | {} | {} | {} |\n",
+            "| {} | `{}` | {} | {} | {} | {} | {} | {} | {} | `{}` | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(row.language.as_deref().unwrap_or("n/a")),
             audit_markdown_cell(&row.repair_kind),
             row.attempted,
@@ -27137,6 +27141,7 @@ fn ripr_swarm_push_repair_route_quality_table(
             audit_markdown_cell(dominant_failure),
             success_rate,
             audit_markdown_cell(&row.sample_packet_ids.join(", ")),
+            audit_markdown_cell(&row.sample_attempt_ids.join(", ")),
             audit_markdown_cell(&row.sample_canonical_gap_ids.join(", ")),
             audit_markdown_cell(&row.sample_missing_receipt_reasons.join(", "))
         ));
@@ -27153,11 +27158,11 @@ fn ripr_swarm_push_repair_route_quality_backlog_table(
         out.push_str("No repair-route quality backlog packets are available.\n\n");
         return;
     }
-    out.push_str("| Packet | Repair kind | Failures | Dominant failure | Improvement route | Sample packets | Sample gaps | Missing receipt reasons | Why action required | Unlock condition |\n");
-    out.push_str("| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |\n");
+    out.push_str("| Packet | Repair kind | Failures | Dominant failure | Improvement route | Sample packets | Sample attempts | Sample gaps | Missing receipt reasons | Why action required | Unlock condition |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | {} |\n",
+            "| `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | {} | {} |\n",
             audit_markdown_cell(row["packet_id"].as_str().unwrap_or("")),
             audit_markdown_cell(row["repair_kind"].as_str().unwrap_or("")),
             row["failure_count"].as_u64().unwrap_or(0),
@@ -27165,6 +27170,11 @@ fn ripr_swarm_push_repair_route_quality_backlog_table(
             audit_markdown_cell(row["improvement_route"].as_str().unwrap_or("")),
             audit_markdown_cell(
                 &audit_string_array(&row, &["sample_packet_ids"])
+                    .unwrap_or_default()
+                    .join(", ")
+            ),
+            audit_markdown_cell(
+                &audit_string_array(&row, &["sample_attempt_ids"])
                     .unwrap_or_default()
                     .join(", ")
             ),
@@ -28861,6 +28871,7 @@ fn ripr_swarm_repair_route_quality_row_from_value(
             .unwrap_or_default(),
         unknown: audit_usize(row, &["repair_kind_unknown"]).unwrap_or_default(),
         sample_packet_ids: audit_string_array(row, &["sample_packet_ids"]).unwrap_or_default(),
+        sample_attempt_ids: audit_string_array(row, &["sample_attempt_ids"]).unwrap_or_default(),
         sample_canonical_gap_ids: audit_string_array(row, &["sample_canonical_gap_ids"])
             .unwrap_or_default(),
         sample_missing_receipt_reasons: audit_string_array(
@@ -97615,6 +97626,13 @@ covered_by = ["cargo xtask check-file-policy"]
             ]
         );
         assert_eq!(
+            rows[0].sample_attempt_ids,
+            vec![
+                "attempt:evidence_improved".to_string(),
+                "attempt:resolved".to_string()
+            ]
+        );
+        assert_eq!(
             rows[0].sample_canonical_gap_ids,
             vec![
                 "gap:evidence_improved".to_string(),
@@ -97704,6 +97722,13 @@ covered_by = ["cargo xtask check-file-policy"]
                 "packet-call-bounded-receipt".to_string()
             ]
         );
+        assert_eq!(
+            historical_repair_route_quality[0].sample_attempt_ids,
+            vec![
+                "attempt:packet-call-broad-receipt:attempted_no_receipt".to_string(),
+                "attempt:packet-call-bounded-receipt:evidence_improved".to_string()
+            ]
+        );
 
         let report = RiprSwarmAttemptLedgerReport {
             status: "advisory".to_string(),
@@ -97744,10 +97769,15 @@ covered_by = ["cargo xtask check-file-policy"]
             value["top_historical_failing_repair_routes"][0]["sample_packet_ids"][0],
             "packet-call-broad-receipt"
         );
+        assert_eq!(
+            value["top_historical_failing_repair_routes"][0]["sample_attempt_ids"][0],
+            "attempt:packet-call-broad-receipt:attempted_no_receipt"
+        );
         let markdown = ripr_swarm_attempt_ledger_markdown(&report);
         assert!(markdown.contains("## Historical Repair Route Quality"));
         assert!(markdown.contains("## Historical Repair Route Quality Backlog"));
         assert!(markdown.contains("packet-call-broad-receipt"));
+        assert!(markdown.contains("attempt:packet-call-broad-receipt:attempted_no_receipt"));
         assert!(markdown.contains("current routing still comes from latest attempts"));
 
         Ok(())

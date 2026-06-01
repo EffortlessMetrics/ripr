@@ -400,8 +400,8 @@ missing-evidence rows.
 Attempt-ledger and readiness reports should also project
 `repair_route_quality_backlog[]` from the top failing repair routes. Each row is
 an analyzer/report improvement packet with a stable `packet_id`,
-`improvement_route`, failure counts, dominant failure reason, sample packet and
-canonical gap IDs, an unlock condition, and non-claims. These rows are not
+`improvement_route`, failure counts, dominant failure reason, sample packet IDs,
+sample attempt IDs, canonical gap IDs, an unlock condition, and non-claims. These rows are not
 public repair packets, are not swarm-ready work, and must not change badge, PR,
 LSP, or CI authority.
 The explicit `missing_verify_result` summary count is the closeout counter for
