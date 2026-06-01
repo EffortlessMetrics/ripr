@@ -3086,6 +3086,10 @@ fn boundary_activation_operands_unresolved_summary(
         format!(
             "Boundary activation operand is iterator-derived for seam `{expression}`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet"
         )
+    } else if boundary_activation_operands_are_closure_derived(seam, index, owner_name) {
+        format!(
+            "Boundary activation operand is closure-derived for seam `{expression}`; add analyzer support for closure boundary operand resolution before emitting an actionable repair packet"
+        )
     } else {
         format!(
             "Boundary activation operands are local or computed for seam `{expression}`; add analyzer support for local/computed boundary operand resolution before emitting an actionable repair packet"
@@ -3114,6 +3118,27 @@ fn boundary_activation_operands_are_iterator_derived(
         || boundary_operand_is_iterator_derived(owner_fn, &right)
 }
 
+fn boundary_activation_operands_are_closure_derived(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_name: &str,
+) -> bool {
+    if seam.kind() != SeamKind::PredicateBoundary {
+        return false;
+    }
+    let Some(owner_fn) = find_owner_function(seam, index) else {
+        return false;
+    };
+    if owner_fn.name != owner_name {
+        return false;
+    }
+    let Some((left, right)) = comparison_operands(seam.expression()) else {
+        return false;
+    };
+    boundary_operand_is_closure_derived(owner_fn, &left)
+        || boundary_operand_is_closure_derived(owner_fn, &right)
+}
+
 fn boundary_operand_is_iterator_derived(owner_fn: &FunctionSummary, operand: &str) -> bool {
     let operand = operand.trim();
     if !is_boundary_operand_identifier(operand) {
@@ -3123,6 +3148,56 @@ fn boundary_operand_is_iterator_derived(owner_fn: &FunctionSummary, operand: &st
         .body
         .lines()
         .any(|line| loop_binds_operand_from_iterator(line, operand))
+}
+
+fn boundary_operand_is_closure_derived(owner_fn: &FunctionSummary, operand: &str) -> bool {
+    let operand_root = boundary_operand_root_identifier(operand);
+    if operand_root.is_empty() {
+        return false;
+    }
+    owner_fn
+        .body
+        .lines()
+        .any(|line| closure_binds_operand_root(line, &operand_root))
+}
+
+fn boundary_operand_root_identifier(operand: &str) -> String {
+    let operand = operand.trim().trim_start_matches('&').trim();
+    operand
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect()
+}
+
+fn closure_binds_operand_root(line: &str, operand_root: &str) -> bool {
+    let code = strip_comments_and_strings(line);
+    let mut rest = code.as_str();
+    while let Some(start) = rest.find('|') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('|') else {
+            return false;
+        };
+        let params = &after_start[..end];
+        if closure_params_contain_operand(params, operand_root) {
+            return true;
+        }
+        rest = &after_start[end + 1..];
+    }
+    false
+}
+
+fn closure_params_contain_operand(params: &str, operand_root: &str) -> bool {
+    params
+        .split(',')
+        .filter_map(|param| {
+            param
+                .trim()
+                .trim_start_matches("mut ")
+                .split_once(':')
+                .map(|(name, _)| name.trim())
+                .or_else(|| Some(param.trim().trim_start_matches("mut ").trim()))
+        })
+        .any(|param| param == operand_root)
 }
 
 fn loop_binds_operand_from_iterator(line: &str, operand: &str) -> bool {
@@ -12449,6 +12524,78 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
             evidence.missing_discriminators
         );
         Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_input_operand_is_closure_local_then_activation_is_static_limitation()
+    -> Result<(), String> {
+        let prod_src = "pub struct FunctionSummary { pub id: &'static str } \
+                        pub fn has_owner(functions: &[FunctionSummary], owner: &str) -> bool { \
+                            functions.iter().any(|function| function.id == owner) \
+                        }\n";
+        let test = (
+            "tests/owner_tests.rs",
+            "#[test] fn finds_owner() { \
+                 let functions = [FunctionSummary { id: \"score\" }]; \
+                 assert!(has_owner(&functions, \"score\")); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/owner.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/owner.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("function.id == owner")
+            })
+            .ok_or_else(|| "closure predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence.activate.summary.contains("closure-derived"),
+            "closure boundary operands must be routed precisely; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            !evidence.activate.summary.contains("iterator-derived"),
+            "closure boundary operands must not be routed as iterator-derived; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "closure-local activation values must not be invented from owner-call args; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "closure-local boundary operands must not emit exact candidate discriminator; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
+        let owner = FunctionSummary {
+            id: crate::domain::SymbolId("src/lib.rs::score".to_string()),
+            name: "score".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "pub fn score(raw_amount: i32, threshold: i32) -> bool {\n    // values.iter().any(|amount| amount >= threshold)\n    let amount = raw_amount + 1;\n    amount >= threshold\n}".to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+
+        assert!(!boundary_operand_is_closure_derived(&owner, "amount"));
     }
 
     #[test]

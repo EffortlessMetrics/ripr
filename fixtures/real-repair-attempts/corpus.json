@@ -452,6 +452,40 @@
       "reason": "A local analyzer slice narrowed the local/computed boundary backlog by resolving safe parameter field projections while keeping unsupported computed and iterator cases non-actionable."
     },
     {
+      "id": "closure_boundary_operand_route_improved",
+      "source_ref": "local:closure-boundary-operands-2026-06-01",
+      "canonical_gap_id": "gap:activation-boundary-input-unresolved-closure-derived",
+      "packet_id": "limitation:activation_boundary_input_unresolved:closure_derived:analysis-closure-boundary-operand-resolution",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "fixture-backed predicate boundary where the unresolved operand is bound by a closure parameter, such as function.id == owner",
+      "verify_command": "cargo test -p ripr closure_boundary_operand --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split closure-derived boundary operands out of the generic local/computed boundary limitation route while preserving non-actionable status.",
+      "evidence_movement": "improved: closure-local boundary operands now route to analysis/closure-boundary-operand-resolution instead of blending with local/computed or iterator-derived boundary work.",
+      "operator_note": "This is analyzer-route dogfood. It improves work allocation only; it does not emit a public repair packet, infer candidate values, or move badge/gate counters.",
+      "must_not_change": [
+        "do not invent values for closure parameters",
+        "do not route closure operands as iterator-derived operands",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_closure_local_then_activation_is_static_limitation",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::closure_boundary_operand_route_ignores_comment_only_closure_pattern",
+        "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_closure_boundary_operands_to_closure_limitation",
+        "target/ripr/reports/swarm-readiness.json:analysis/local-computed-boundary-operand-resolution"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice made closure-derived boundary operands a precise static-limitation route while keeping candidate-value inference blocked."
+    },
+    {
       "id": "call_presence_target_affinity_limitation_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#555",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
