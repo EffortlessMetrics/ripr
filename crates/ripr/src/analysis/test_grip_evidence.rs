@@ -1203,6 +1203,9 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
         return false;
     };
     let open = open.trim_end();
+    if open.is_empty() || open == "return" || open.ends_with('=') || open.ends_with("=>") {
+        return true;
+    }
     if let Some(macro_prefix) = open.strip_suffix('!') {
         let macro_name = trailing_rust_identifier(macro_prefix);
         return direct_delegate_oracle_macro_is_allowed(&macro_name);
@@ -9277,6 +9280,64 @@ fn helper_exercises_pipeline() {
         assert!(
             evidence.observed_values.is_empty(),
             "array literal helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_wraps_owner_call_in_tuple_literal_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> (String, bool) {
+    (render_pipeline("alpha"), true)
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output.0, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected tuple literal helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "tuple literal helper activation must not invent values: {:?}",
             evidence.observed_values
         );
         Ok(())
