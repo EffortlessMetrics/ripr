@@ -1274,6 +1274,11 @@ Prove usefulness outside fixtures.
   field/object repair card with missing discriminator
   `response.status_code == 422`, the focused pytest verify command passes, and
   `ripr outcome` closes the canonical Python gap.
+- The same corpus now records a dataclass/model-field pytest eval where a
+  changed returned constructor field routes to a strengthen-existing-test card
+  with missing discriminator `result.active == True`, the bounded packet edits
+  only `tests/test_users.py`, the focused pytest verify command passes, and
+  `ripr outcome` closes the canonical Python gap.
 - `cargo xtask dogfood` projects the Python real-repo eval corpus into the
   dogfood report as receipt-backed eval evidence separate from analyzer
   fixture goldens.

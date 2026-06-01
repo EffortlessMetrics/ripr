@@ -8273,6 +8273,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("api_status_pytest_receipt", "closed"),
     ("mixed_rust_python_pytest_receipt", "closed"),
     ("decorated_route_status_pytest_receipt", "closed"),
+    ("model_field_pytest_receipt", "closed"),
 ];
 
 const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[

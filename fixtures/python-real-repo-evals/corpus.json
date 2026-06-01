@@ -729,6 +729,71 @@
         "No support-tier promotion"
       ],
       "reason": "The run extends post-usable-alpha stability evidence to a unittest return-value repair: RIPR routes the missing exact return discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "model_field_pytest_receipt",
+      "repo_shape": "dataclass_model_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/model-field-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/model-field-receipt --base HEAD~1 --format json",
+      "runtime_ms": 290,
+      "top_finding_summary": "Python dataclass model field repair card for build_user active field",
+      "canonical_gap_id": "gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest model field test with an exact active-field assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/model-field-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true --json",
+      "agent_packet_allowed_files": [
+        "tests/test_users.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/users.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected field value is ambiguous",
+        "production code edit appears necessary",
+        "returned object does not expose the constructor keyword as a public field or attribute"
+      ],
+      "changed_owner": "python:app/users.py::build_user",
+      "missing_discriminator": "result.active == True",
+      "suggested_test_file": "tests/test_users.py",
+      "suggested_test_name": "test_build_user_smoke",
+      "verify_command": "pytest tests/test_users.py::test_build_user_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 pytest test passed in 0.46s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/model-field-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 18,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "dataclass model-field scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "result.active == True",
+          "suggested_test_file": "tests/test_users.py",
+          "verify_command": "pytest tests/test_users.py::test_build_user_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python dataclass model-field receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused model-field eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a dataclass/model field repair: RIPR routes the missing exact field discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
     }
   ],
   "static_limit_cases": [
