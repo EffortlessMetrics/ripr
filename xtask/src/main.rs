@@ -20935,15 +20935,21 @@ impl Lane1EvidenceAuditBuilder {
                 audit_string(limitation, &["state"]).unwrap_or_else(|| "missing_state".to_string());
             let category = audit_string(limitation, &["category"])
                 .unwrap_or_else(|| static_limitation_category(&stage, &state, &reason).to_string());
-            let repair_route = audit_string(limitation, &["repair_route"])
+            let base_repair_route = audit_string(limitation, &["repair_route"])
                 .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
             let subroute = static_limitation_subroute(
                 record,
                 limitation,
                 &category,
-                &repair_route,
+                &base_repair_route,
                 &evidence_class,
             );
+            let repair_route = static_limitation_repair_route_for_subroute(
+                &category,
+                &subroute,
+                &base_repair_route,
+            )
+            .to_string();
             audit_increment(&mut self.static_reason_counts, &reason);
             audit_increment(&mut self.static_stage_counts, &stage);
             audit_increment(&mut self.static_category_counts, &category);
@@ -22552,6 +22558,20 @@ fn lane1_static_limitation_category_repair_route(
         .first()
         .map(|row| row.label.clone())
         .unwrap_or_else(|| static_limitation_repair_route(category).to_string())
+}
+
+fn static_limitation_repair_route_for_subroute<'a>(
+    category: &str,
+    subroute: &str,
+    fallback: &'a str,
+) -> &'a str {
+    if category == "activation_owner_call_absent_same_file_only"
+        && subroute == "same_file_only_call_presence_method_chain_missing_owner_call"
+    {
+        "analysis/same-file-method-chain-owner-call-tracing"
+    } else {
+        fallback
+    }
 }
 
 fn lane1_static_limitation_backlog_packet_from_builder(
@@ -88271,6 +88291,32 @@ covered_by = ["cargo xtask check-file-policy"]
                 "call_presence"
             ),
             "same_file_only_call_presence_method_chain_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_repair_route_for_subroute(
+                "activation_owner_call_absent_same_file_only",
+                "same_file_only_call_presence_method_chain_missing_owner_call",
+                "analysis/same-file-owner-call-tracing",
+            ),
+            "analysis/same-file-method-chain-owner-call-tracing"
+        );
+        assert_eq!(
+            crate::static_limitation_subroute(
+                &same_file_record(Some("entry.evidence.missing_discriminators")),
+                &limitation,
+                "activation_owner_call_absent_same_file_only",
+                "analysis/same-file-owner-call-tracing",
+                "call_presence"
+            ),
+            "same_file_only_missing_owner_call"
+        );
+        assert_eq!(
+            crate::static_limitation_repair_route_for_subroute(
+                "activation_owner_call_absent_same_file_only",
+                "same_file_only_missing_owner_call",
+                "analysis/same-file-owner-call-tracing",
+            ),
+            "analysis/same-file-owner-call-tracing"
         );
         assert_eq!(
             crate::static_limitation_subroute(
