@@ -142,6 +142,71 @@
       "reason": "The run proves a pyproject-based pytest app can produce a bounded strengthen-existing-test repair card, pass the verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "parametrized_boundary_pytest_receipt",
+      "repo_shape": "parametrized_boundary_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/parametrized-boundary-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1979,
+      "top_finding_summary": "Python parametrized boundary repair card for tax_band amount >= threshold",
+      "canonical_gap_id": "gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest parametrized boundary test for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_tax.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/tax.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary",
+        "below/above parameterized row expected values are unclear"
+      ],
+      "changed_owner": "python:app/tax.py::tax_band",
+      "missing_discriminator": "amount == threshold",
+      "suggested_test_file": "tests/test_tax.py",
+      "suggested_test_name": "test_tax_band_tiers",
+      "verify_command": "pytest tests/test_tax.py::test_tax_band_tiers",
+      "verify_result": "pass",
+      "verify_summary": "3 passed in 0.49s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 235,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "parametrized-boundary scratch repo records optional pytest parameterized shape; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_tax.py",
+          "verify_command": "pytest tests/test_tax.py::test_tax_band_tiers",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python parametrized-boundary receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused parametrized-boundary eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a native pytest parameterized boundary repair: RIPR routes the equality-boundary discriminator to one existing parameterized test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
       "id": "cli_output_pytest_receipt",
       "repo_shape": "cli_output_pytest",
       "source_kind": "scratch_repo",

@@ -31,11 +31,11 @@ card, no agent packet, `not_applicable` verify and receipt results, explicit
 stop reasons, `no_receipt` gap movement, and preview/advisory claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
-normal pytest app repo, one CLI/output-style pytest repo, pytest and unittest
-exception-path repos, API-style status-code, JSON-field, and exception-response
-pytest repos, one mixed Rust/Python pytest repo, one decorated route pytest
-repo, and one data/model field pytest repo before metrics can support promotion
-discussion.
+normal pytest app repo, one parameterized-boundary pytest repo, one
+CLI/output-style pytest repo, pytest and unittest exception-path repos,
+API-style status-code, JSON-field, and exception-response pytest repos, one
+mixed Rust/Python pytest repo, one decorated route pytest repo, and one
+data/model field pytest repo before metrics can support promotion discussion.
 
 Dogfood quality metrics must report top-1 actionable usefulness, top-3
 actionable precision over captured ranked repair-card findings, verify-command

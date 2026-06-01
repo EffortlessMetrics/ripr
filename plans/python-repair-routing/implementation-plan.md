@@ -1257,6 +1257,11 @@ Prove usefulness outside fixtures.
   a `free_shipping_offer` threshold-boundary change routes to a
   strengthen-existing-test repair card, the focused pytest verify command
   passes, and `ripr outcome` closes the canonical Python gap.
+- The same corpus now records a native pytest parametrized-boundary eval where
+  a changed `amount >= threshold` predicate routes to a
+  strengthen-existing-test card with optional below/equal/above row guidance,
+  the bounded packet edits only `tests/test_tax.py`, the focused pytest verify
+  command passes, and `ripr outcome` closes the canonical Python gap.
 - The same corpus now records a CLI/output-style pytest eval where a changed
   `print(...)` side effect routes to a strengthen-existing-test repair card,
   the focused `capsys` pytest verify command passes, and `ripr outcome` closes
