@@ -20033,8 +20033,37 @@ where
     if output.timed_out {
         let diagnostics =
             lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
-        let _ = fs::remove_file(path);
-        return Ok(Lane1EvidenceAuditRepoExposureOutcome::TimedOut(diagnostics));
+        return match lane1_repo_exposure_file_looks_complete(path) {
+            Ok(true) => {
+                eprintln!(
+                    "warning: repo exposure generation hit the timeout after writing complete JSON; continuing from {}",
+                    path.display()
+                );
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::Complete(
+                    Lane1EvidenceAuditRepoExposureGeneration {
+                        status: "timeout_complete".to_string(),
+                        ..diagnostics
+                    },
+                ))
+            }
+            Ok(false) => {
+                let _ = fs::remove_file(path);
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::TimedOut(diagnostics))
+            }
+            Err(inspect_err) => {
+                eprintln!(
+                    "warning: failed to inspect captured repo exposure {} after timeout: {inspect_err}",
+                    path.display()
+                );
+                let _ = fs::remove_file(path);
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::TimedOut(
+                    Lane1EvidenceAuditRepoExposureGeneration {
+                        failure_reason: Some(inspect_err),
+                        ..diagnostics
+                    },
+                ))
+            }
+        };
     }
 
     let diagnostics =
@@ -85297,6 +85326,58 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(
             !output_path.exists(),
             "timed-out repo exposure generation should remove stale or partial output"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_accepts_complete_json_after_timeout()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-timeout-complete");
+        let output_path = root.join("repo-exposure.json");
+        let timeout = Duration::from_millis(5);
+        let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+        let stderr = concat!(
+            "ripr_repo_exposure_latency phase=evidence_for_seams status=ok duration_ms=112847\n",
+            "ripr_repo_exposure_latency phase=total status=sampled_computed duration_ms=115904\n",
+        );
+
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            timeout,
+            |_binary, _args, output_path_seen, _timeout_seen| {
+                write(output_path_seen, stdout);
+                Ok(TimedFileOutput {
+                    status: Some(failure_exit_status()),
+                    stderr: stderr.to_string(),
+                    duration: Duration::from_millis(8),
+                    timed_out: true,
+                    stdout_bytes: stdout.len(),
+                })
+            },
+        )?;
+
+        let Lane1EvidenceAuditRepoExposureOutcome::Complete(diagnostics) = outcome else {
+            return Err("complete timeout capture should remain downstream-consumable".to_string());
+        };
+        assert_eq!(diagnostics.status, "timeout_complete");
+        assert_eq!(diagnostics.timeout_ms, 5);
+        assert_eq!(diagnostics.stdout_bytes, stdout.len());
+        assert_eq!(diagnostics.exit_code, failure_exit_status().code());
+        assert_eq!(
+            fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
+            stdout
+        );
+        assert_eq!(diagnostics.latency_trace_events_total, 2);
+        assert_eq!(
+            diagnostics.latency_trace_tail[1],
+            RepoExposureLatencyTrace {
+                phase: "total".to_string(),
+                status: "sampled_computed".to_string(),
+                duration_ms: 115904,
+            }
         );
 
         Ok(())

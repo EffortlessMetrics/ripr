@@ -2446,11 +2446,15 @@ Field contract:
   trace events. These diagnostics explain long or pathological audit input
   generation without changing classifications, gate policy, or score semantics.
 - `run_limitations` - bounded report-level limitations. A timed-out
-  repo-exposure subprocess produces a warning audit artifact with a
-  `lane1_repo_exposure_timeout` row, phase/input context, timeout/duration
-  diagnostics, the latency trace tail, and a repair route. A subprocess that
-  exits before writing complete repo-exposure JSON, including a nominally
-  successful exit with an empty or malformed output file, produces
+  repo-exposure subprocess produces a warning audit artifact only when the
+  captured repo-exposure JSON is missing or incomplete. If the captured file is
+  complete and contains a top-level `seams` array, the audit consumes it and
+  records `inputs.repo_exposure_generation.status = "timeout_complete"` instead
+  of claiming a timeout-limited zero-debt artifact. A true timeout limitation
+  includes a `lane1_repo_exposure_timeout` row, phase/input context,
+  timeout/duration diagnostics, the latency trace tail, and a repair route. A
+  subprocess that exits before writing complete repo-exposure JSON, including a
+  nominally successful exit with an empty or malformed output file, produces
   `lane1_repo_exposure_incomplete` with the same bounded diagnostics. Counts in
   such limited artifacts are not complete repo truth and downstream reports must
   surface the limitation instead of treating zeros as absence of gaps. A runner

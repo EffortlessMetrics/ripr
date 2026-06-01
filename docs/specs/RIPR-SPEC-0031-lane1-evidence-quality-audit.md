@@ -75,15 +75,16 @@ target/ripr/reports/actionable-gap-outcomes.md
 ```
 
 It exits successfully after both artifacts are written. If repo exposure
-generation exits non-zero after writing a complete repo-exposure JSON document
-with a top-level `seams` array, the audit may continue from that captured
-artifact with a warning. By default, successful repo exposure is sampled to
-5,000 seams and the audit records `lane1_repo_exposure_sampled` with an input
-such as `repo-exposure-json:limit_5000_of_39685`; operators may set
+generation exits non-zero or is reported as timed out after writing a complete
+repo-exposure JSON document with a top-level `seams` array, the audit may
+continue from that captured artifact with a warning. By default, successful
+repo exposure is sampled to 5,000 seams and the audit records
+`lane1_repo_exposure_sampled` with an input such as
+`repo-exposure-json:limit_5000_of_39685`; operators may set
 `RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0` for an unsampled full-repo attempt,
 or a positive integer to change the sample size. If repo exposure generation
-times out before a
-complete artifact exists, the command writes bounded warning artifacts with a
+times out before a complete artifact exists, the command writes bounded warning
+artifacts with a
 `lane1_repo_exposure_timeout` run limitation, phase/input context, the latency
 trace tail, and a repair route. If repo exposure generation exits before the
 captured artifact is complete, including a nominally successful exit that left
