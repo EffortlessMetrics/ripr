@@ -45,8 +45,8 @@ Python repair card (preview/advisory)
   changed behavior: predicate_boundary changed at src/tax.py:2: `if amount >= 100:`
   current test evidence: tests/test_tax.py:7 test_tax_band currently has oracle_strength=unknown, oracle_kind=unknown: pytest.mark.parametrize
   missing discriminator: amount == 100
-  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == 100`.
-  suggested assertion: Assert the owner result or effect at the boundary `amount == 100`.
+  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `amount == 100`, and `101` rows when expected values are clear.
+  suggested assertion: Assert the owner result or effect at `amount == 100` first. Optional pytest shape: @pytest.mark.parametrize("amount, expected", [(99, ...), (100, ...), (101, ...)]); fill expected values from domain behavior only.
   suggested file: tests/test_tax.py
   suggested test: test_tax_band
   pytest node: tests/test_tax.py::test_tax_band
@@ -57,6 +57,7 @@ Python repair card (preview/advisory)
     - Stop if imports, fixtures, or test setup cannot call the changed owner.
     - Stop if the expected value for the missing discriminator is ambiguous.
     - Stop if adding the test appears to require a production-code edit.
+    - Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.
   limits:
     - Syntax-first Python preview evidence only.
     - No source edits, generated tests, mutation execution, provider calls, or gate authority.

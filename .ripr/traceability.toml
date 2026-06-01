@@ -2164,6 +2164,8 @@ tests = [
   "crates/ripr/src/analysis/language/python/python_tests.rs::cli_decorators_are_transparent_only_for_static_cli_shapes",
   "crates/ripr/src/analysis/language/python/python_tests.rs::cli_output_discriminators_cover_echo_streams_and_exit_codes",
   "crates/ripr/src/output/python_repair_card.rs::tests::side_effect_test_shape_specializes_cli_exit_and_output_cards",
+  "crates/ripr/src/output/python_repair_card.rs::tests::pytest_boundary_cards_suggest_parametrized_rows_without_expected_values",
+  "crates/ripr/src/output/python_repair_card.rs::tests::pytest_boundary_parametrization_fails_closed_for_unclear_values",
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
   "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
   "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
@@ -2186,6 +2188,7 @@ tests = [
 fixtures = [
   "fixtures/python/basic",
   "fixtures/python_boundary_gap",
+  "fixtures/python_parametrized_boundary_repair_gap",
   "fixtures/python_async_owner",
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",

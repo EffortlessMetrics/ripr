@@ -94,8 +94,8 @@
         "changed_behavior": "predicate_boundary changed at src/quantity.py:2: `if value <= 0:`",
         "current_test_evidence": "tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
         "missing_discriminator": "value == 0",
-        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `value == 0`.",
-        "suggested_assertion": "Assert the owner result or effect at the boundary `value == 0`.",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `value == 0`. Keep the equality case as the minimum repair; optional pytest parameterization can add `-1`, `value == 0`, and `1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `value == 0` first. Optional pytest shape: @pytest.mark.parametrize(\"value, expected\", [(-1, ...), (0, ...), (1, ...)]); fill expected values from domain behavior only.",
         "suggested_location": {
           "test_file": "tests/test_quantity.py",
           "test_name": "test_rejects_zero_quantity",
@@ -110,7 +110,7 @@
           "status": "unavailable_until_python_gap_ledger",
           "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
          },
-        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
         "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
        },
       "stop_reasons": [],

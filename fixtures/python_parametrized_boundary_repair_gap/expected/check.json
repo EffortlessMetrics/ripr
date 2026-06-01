@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "tool": "ripr",
   "mode": "fast",
-  "root": "fixtures/python_boundary_gap/input",
+  "root": "fixtures/python_parametrized_boundary_repair_gap/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
@@ -36,15 +36,15 @@
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= threshold:`"},
         "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
-        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_apply_discount_smoke uses unknown unknown oracle", "missing discriminator amount == threshold: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_apply_discount_smoke uses smoke smoke only oracle: assert result", "missing discriminator amount == threshold: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":2}
       ],
-      "evidence": ["owner: apply_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_apply_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_apply_discount_smoke", "suggested_verify_command: pytest tests/test_discount.py::test_apply_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_apply_discount_smoke)", "test_verify_command: pytest tests/test_discount.py::test_apply_discount_smoke (test_apply_discount_smoke)", "related_test_relation: syntactic_call (test_apply_discount_smoke)", "test_oracle_shape: reach_only (test_apply_discount_smoke)"],
-      "missing": ["Related Python test reaches `apply_discount` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_apply_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_apply_discount_smoke", "suggested_verify_command: pytest tests/test_discount.py::test_apply_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_apply_discount_smoke)", "test_verify_command: pytest tests/test_discount.py::test_apply_discount_smoke (test_apply_discount_smoke)", "related_test_relation: syntactic_call (test_apply_discount_smoke)", "test_oracle: smoke_only smoke (test_apply_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_apply_discount_smoke)"],
+      "missing": ["Related Python test reaches `apply_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
@@ -70,9 +70,9 @@
           "name": "test_apply_discount_smoke",
           "file": "tests/test_discount.py",
           "line": 4,
-          "oracle_strength": "unknown",
-          "oracle_kind": "unknown",
-          "oracle": ""
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert result"
         }
       ],
       "repair_placement": {
@@ -92,7 +92,7 @@
         "repair_action": "strengthen_existing_test",
         "changed_owner": "apply_discount",
         "changed_behavior": "predicate_boundary changed at src/discount.py:2: `if amount >= threshold:`",
-        "current_test_evidence": "tests/test_discount.py:4 test_apply_discount_smoke currently has oracle_strength=unknown, oracle_kind=unknown",
+        "current_test_evidence": "tests/test_discount.py:4 test_apply_discount_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result",
         "missing_discriminator": "amount == threshold",
         "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `amount == threshold`, and `threshold + 1` rows when expected values are clear.",
         "suggested_assertion": "Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"amount, expected\", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only.",
@@ -114,8 +114,8 @@
         "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
        },
       "stop_reasons": [],
-      "oracle_kind": "unknown",
-      "oracle_strength": "unknown",
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
       "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "language": "python",

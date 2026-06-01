@@ -954,7 +954,7 @@ Support Python CLI/output repair cards.
 
 ### Work item: analysis/python-parametrized-boundaries
 
-Status: planned
+Status: done
 
 Blocked by:
 
@@ -969,6 +969,18 @@ Suggest native pytest parameterization for clear boundary predicates.
 - Suggest parameterization only when candidate values are explainable.
 - Simpler one-case test remains available.
 - Expected values are not invented without uncertainty labeling.
+
+#### Progress
+
+- Predicate-boundary repair cards now keep the equality discriminator as the
+  minimum repair and offer optional pytest below/equal/above parameterized rows
+  only for simple identifier or integer boundaries.
+- Suggested assertion copy labels parameterized expected values as
+  domain-specific placeholders instead of inventing outputs.
+- Boundary cards add a stop condition telling agents and humans to keep only
+  the equality assertion when below/above expected values are unclear.
+- `fixtures/python_parametrized_boundary_repair_gap` pins the human and JSON
+  output contract for this guidance.
 
 ### Work item: analysis/python-existing-test-strengthening
 

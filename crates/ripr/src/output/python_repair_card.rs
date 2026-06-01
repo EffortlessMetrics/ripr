@@ -48,6 +48,11 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
     let verify_command = evidence_value(finding, "suggested_verify_command: ")?.to_string();
     let verify_command_confidence =
         evidence_value(finding, "suggested_verify_command_confidence: ")?.to_string();
+    let stop_conditions = stop_conditions(
+        &finding.probe.family,
+        &missing_discriminator,
+        &verify_command,
+    );
     let repair_action = evidence_value(finding, "suggested_repair_action: ")
         .unwrap_or("add_or_strengthen_test")
         .to_string();
@@ -84,7 +89,7 @@ pub(crate) fn python_repair_card(finding: &Finding) -> Option<PythonRepairCard> 
         receipt_command: None,
         receipt_status: "unavailable_until_python_gap_ledger".to_string(),
         receipt_guidance: receipt_guidance(),
-        stop_conditions: stop_conditions(),
+        stop_conditions,
         limits: limits(),
     })
 }
@@ -177,6 +182,14 @@ fn recommended_test_shape(
     };
     match family {
         ProbeFamily::Predicate => {
+            if let Some(candidate) =
+                pytest_boundary_parametrization(missing_discriminator, verify_command)
+            {
+                return format!(
+                    "{verb} {framework} boundary assertion for `{missing_discriminator}`. Keep the equality case as the minimum repair; optional pytest parameterization can add `{}`, `{}`, and `{}` rows when expected values are clear.",
+                    candidate.below, candidate.equal, candidate.above
+                );
+            }
             format!("{verb} {framework} boundary assertion for `{missing_discriminator}`.")
         }
         ProbeFamily::ReturnValue => {
@@ -219,7 +232,7 @@ fn suggested_assertion(
 ) -> String {
     match family {
         ProbeFamily::Predicate => {
-            format!("Assert the owner result or effect at the boundary `{missing_discriminator}`.")
+            predicate_boundary_assertion(missing_discriminator, verify_command)
         }
         ProbeFamily::ReturnValue => {
             "Assert the returned value equals the expected value for the changed inputs."
@@ -248,6 +261,21 @@ fn suggested_assertion(
         }
         _ => format!("Assert the changed behavior for `{missing_discriminator}`."),
     }
+}
+
+fn predicate_boundary_assertion(missing_discriminator: &str, verify_command: &str) -> String {
+    if let Some(candidate) = pytest_boundary_parametrization(missing_discriminator, verify_command)
+    {
+        return format!(
+            "Assert the owner result or effect at `{}` first. Optional pytest shape: @pytest.mark.parametrize(\"{}, expected\", [({}, ...), ({}, ...), ({}, ...)]); fill expected values from domain behavior only.",
+            candidate.equal,
+            candidate.input_name,
+            candidate.below,
+            candidate.equal_value,
+            candidate.above
+        );
+    }
+    format!("Assert the owner result or effect at the boundary `{missing_discriminator}`.")
 }
 
 fn pytest_exception_assertion(missing_discriminator: &str) -> String {
@@ -284,12 +312,24 @@ fn framework_label(verify_command: &str) -> &'static str {
     }
 }
 
-fn stop_conditions() -> Vec<String> {
-    vec![
+fn stop_conditions(
+    family: &ProbeFamily,
+    missing_discriminator: &str,
+    verify_command: &str,
+) -> Vec<String> {
+    let mut conditions = vec![
         "Stop if imports, fixtures, or test setup cannot call the changed owner.".to_string(),
         "Stop if the expected value for the missing discriminator is ambiguous.".to_string(),
         "Stop if adding the test appears to require a production-code edit.".to_string(),
-    ]
+    ];
+    if matches!(family, ProbeFamily::Predicate)
+        && pytest_boundary_parametrization(missing_discriminator, verify_command).is_some()
+    {
+        conditions.push(
+            "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.".to_string(),
+        );
+    }
+    conditions
 }
 
 fn limits() -> Vec<String> {
@@ -321,10 +361,73 @@ fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PytestBoundaryParametrization {
+    input_name: String,
+    equal_value: String,
+    below: String,
+    equal: String,
+    above: String,
+}
+
+fn pytest_boundary_parametrization(
+    missing_discriminator: &str,
+    verify_command: &str,
+) -> Option<PytestBoundaryParametrization> {
+    if !verify_command.starts_with("pytest ") {
+        return None;
+    }
+    let (input, boundary) = missing_discriminator.split_once(" == ")?;
+    let input = input.trim();
+    let boundary = boundary.trim();
+    if !is_python_identifier(input) || !is_boundary_value_candidate(boundary) {
+        return None;
+    }
+    let (below, equal_value, above) = boundary_candidate_values(boundary)?;
+    Some(PytestBoundaryParametrization {
+        input_name: input.to_string(),
+        equal: format!("{input} == {equal_value}"),
+        equal_value,
+        below,
+        above,
+    })
+}
+
+fn is_boundary_value_candidate(value: &str) -> bool {
+    value.parse::<i64>().is_ok() || is_python_identifier(value)
+}
+
+fn boundary_candidate_values(value: &str) -> Option<(String, String, String)> {
+    if let Ok(number) = value.parse::<i64>() {
+        return Some((
+            number.saturating_sub(1).to_string(),
+            number.to_string(),
+            number.saturating_add(1).to_string(),
+        ));
+    }
+    is_python_identifier(value).then(|| {
+        (
+            format!("{value} - 1"),
+            value.to_string(),
+            format!("{value} + 1"),
+        )
+    })
+}
+
+fn is_python_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_exception_discriminator, pytest_exception_assertion, recommended_test_shape,
+        parse_exception_discriminator, pytest_boundary_parametrization, pytest_exception_assertion,
+        recommended_test_shape, stop_conditions, suggested_assertion,
     };
     use crate::domain::ProbeFamily;
 
@@ -369,6 +472,77 @@ mod tests {
                 "add_or_strengthen_test",
             ),
             "Add or strengthen a unittest output/log/call-effect assertion for `log contains \"shipment queued\"`."
+        );
+    }
+
+    #[test]
+    fn pytest_boundary_cards_suggest_parametrized_rows_without_expected_values() {
+        let candidate = pytest_boundary_parametrization(
+            "amount == threshold",
+            "pytest tests/test_discount.py::test_apply_discount_smoke",
+        );
+        assert_eq!(
+            candidate
+                .as_ref()
+                .map(|candidate| candidate.input_name.as_str()),
+            Some("amount")
+        );
+        assert_eq!(
+            candidate.as_ref().map(|candidate| candidate.below.as_str()),
+            Some("threshold - 1")
+        );
+        assert_eq!(
+            candidate.as_ref().map(|candidate| candidate.equal.as_str()),
+            Some("amount == threshold")
+        );
+        assert_eq!(
+            candidate.as_ref().map(|candidate| candidate.above.as_str()),
+            Some("threshold + 1")
+        );
+
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::Predicate,
+                "amount == threshold",
+                "pytest tests/test_discount.py::test_apply_discount_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `amount == threshold`, and `threshold + 1` rows when expected values are clear."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::Predicate,
+                "amount == threshold",
+                "pytest tests/test_discount.py::test_apply_discount_smoke",
+            ),
+            "Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"amount, expected\", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only."
+        );
+        assert!(
+            stop_conditions(
+                &ProbeFamily::Predicate,
+                "amount == threshold",
+                "pytest tests/test_discount.py::test_apply_discount_smoke",
+            )
+            .iter()
+            .any(|condition| condition.contains("below/above rows"))
+        );
+    }
+
+    #[test]
+    fn pytest_boundary_parametrization_fails_closed_for_unclear_values() {
+        assert!(
+            pytest_boundary_parametrization(
+                "amount == calculate_threshold()",
+                "pytest tests/test_discount.py::test_apply_discount_smoke",
+            )
+            .is_none()
+        );
+        assert!(
+            pytest_boundary_parametrization(
+                "amount == threshold",
+                "python -m unittest tests.test_discount.TestDiscount.test_boundary",
+            )
+            .is_none()
         );
     }
 }

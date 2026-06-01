@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+refresh pytest boundary repair-card parameterization guidance
+
+Command:
+`cargo xtask goldens bless python_test_placement_verify --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
