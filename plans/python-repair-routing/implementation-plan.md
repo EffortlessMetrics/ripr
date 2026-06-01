@@ -697,6 +697,9 @@ Produce copy-ready human Python repair cards.
   shape, suggested assertion, test location, verify command and confidence,
   preview/advisory authority boundary, deferred receipt status, stop
   conditions, and limits.
+- Field/object repair cards now specialize common assertion shapes for returned
+  mapping fields, response JSON fields, and response status-code fields so the
+  suggested assertion is directly copyable while staying static/advisory.
 - Static-limit, heuristic-only, no-path, and already-observed Python findings
   still do not get repair cards.
 

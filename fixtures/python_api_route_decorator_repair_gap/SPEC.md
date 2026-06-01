@@ -38,8 +38,8 @@ The Python preview adapter:
   indirection,
 - finds the `checkout` route owner,
 - emits a field/object repair card for the changed status code,
-- recommends strengthening the existing pytest test with
-  `response.status_code == 422`.
+- recommends strengthening the existing pytest test with a direct
+  `assert response.status_code == 422` assertion shape.
 
 ## Must Not
 

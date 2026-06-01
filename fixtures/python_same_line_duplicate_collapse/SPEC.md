@@ -39,7 +39,8 @@ The Python preview adapter:
   canonical repair gap,
 - classifies the line as a field/object repair shape,
 - keeps the broad pytest assertion weak, and
-- emits the concrete missing discriminator `status == "paid"`.
+- emits the concrete missing discriminator `status == "paid"` with a
+  returned-mapping assertion shape such as `assert result["status"] == "paid"`.
 
 ## Must Not
 

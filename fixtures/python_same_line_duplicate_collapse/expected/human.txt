@@ -45,8 +45,8 @@ Python repair card (preview/advisory)
   changed behavior: field_value changed at src/checkout.py:2: `return {"status": "paid", "event": "receipt.sent", "id": order_id}`
   current test evidence: tests/test_checkout.py:4 test_checkout_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload
   missing discriminator: status == "paid"
-  recommended test shape: Strengthen the existing pytest field/object assertion for `status == "paid"`.
-  suggested assertion: Assert the returned object or field satisfies `status == "paid"`.
+  recommended test shape: Strengthen the existing pytest returned mapping field assertion for `status == "paid"`.
+  suggested assertion: Assert the returned mapping field directly, e.g. `assert result["status"] == "paid"`.
   suggested file: tests/test_checkout.py
   suggested test: test_checkout_payload_smoke
   pytest node: tests/test_checkout.py::test_checkout_payload_smoke

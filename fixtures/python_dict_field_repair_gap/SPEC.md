@@ -37,10 +37,12 @@ The Python preview adapter:
 - classifies the changed returned dict as a `field_construction` / `value`
   probe,
 - keeps the broad pytest assertion weak,
-- emits a field/object missing discriminator for `status == "paid"`.
+- emits a field/object missing discriminator for `status == "paid"`,
+- emits a repair card that recommends a returned-mapping assertion shaped like
+  `assert result["status"] == "paid"`.
 
 ## Must Not
 
 - Execute pytest.
 - Infer dataclass or serializer runtime semantics.
-- Emit a full repair card, verify command, or receipt command.
+- Invent runtime object or serializer behavior beyond the returned dict field.

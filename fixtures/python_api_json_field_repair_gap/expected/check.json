@@ -94,8 +94,8 @@
         "changed_behavior": "field_value changed at app/checkout.py:13: `return {\"detail\": \"coupon expired\"}`",
         "current_test_evidence": "tests/test_checkout.py:1 test_expired_coupon_response_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert response",
         "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
-        "recommended_test_shape": "Strengthen the existing pytest field/object assertion for `response.json()[\"detail\"] == \"coupon expired\"`.",
-        "suggested_assertion": "Assert the returned object or field satisfies `response.json()[\"detail\"] == \"coupon expired\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest response JSON field assertion for `response.json()[\"detail\"] == \"coupon expired\"`.",
+        "suggested_assertion": "Assert the response field directly: `assert response.json()[\"detail\"] == \"coupon expired\"`.",
         "suggested_location": {
           "test_file": "tests/test_checkout.py",
           "test_name": "test_expired_coupon_response_smoke",

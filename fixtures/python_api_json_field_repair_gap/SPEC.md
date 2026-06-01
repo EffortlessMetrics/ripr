@@ -38,8 +38,8 @@ The Python preview adapter:
 - treats the literal route decorator as static route metadata,
 - links the route owner to the pytest client call,
 - emits a field/object repair card for the changed JSON response field,
-- recommends strengthening the existing pytest test with
-  `response.json()["detail"] == "coupon expired"`.
+- recommends strengthening the existing pytest test with a direct
+  `assert response.json()["detail"] == "coupon expired"` assertion shape.
 
 ## Must Not
 

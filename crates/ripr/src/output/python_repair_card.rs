@@ -201,7 +201,10 @@ fn recommended_test_shape(
             format!("{verb} {framework} exception assertion for `{missing_discriminator}`.")
         }
         ProbeFamily::FieldConstruction => {
-            format!("{verb} {framework} field/object assertion for `{missing_discriminator}`.")
+            format!(
+                "{verb} {framework} {} for `{missing_discriminator}`.",
+                field_assertion_label(missing_discriminator)
+            )
         }
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
             if missing_discriminator.starts_with("exit_code == ") {
@@ -242,9 +245,7 @@ fn suggested_assertion(
             unittest_exception_assertion(missing_discriminator)
         }
         ProbeFamily::ErrorPath => pytest_exception_assertion(missing_discriminator),
-        ProbeFamily::FieldConstruction => {
-            format!("Assert the returned object or field satisfies `{missing_discriminator}`.")
-        }
+        ProbeFamily::FieldConstruction => field_assertion(missing_discriminator),
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
             if missing_discriminator.starts_with("exit_code == ") {
                 return format!("Assert the CLI exit code satisfies `{missing_discriminator}`.");
@@ -278,11 +279,60 @@ fn predicate_boundary_assertion(missing_discriminator: &str, verify_command: &st
     format!("Assert the owner result or effect at the boundary `{missing_discriminator}`.")
 }
 
+fn field_assertion_label(missing_discriminator: &str) -> &'static str {
+    if missing_discriminator.starts_with("response.json()[") {
+        return "response JSON field assertion";
+    }
+    if missing_discriminator.starts_with("response.status_code == ") {
+        return "response status-code assertion";
+    }
+    if let Some((lhs, _rhs)) = split_equality_discriminator(missing_discriminator) {
+        if is_python_identifier(lhs) {
+            return "returned mapping field assertion";
+        }
+        if lhs.contains('.') {
+            return "object field assertion";
+        }
+    }
+    "field/object assertion"
+}
+
+fn field_assertion(missing_discriminator: &str) -> String {
+    if missing_discriminator.starts_with("response.json()[")
+        || missing_discriminator.starts_with("response.status_code == ")
+    {
+        return format!("Assert the response field directly: `assert {missing_discriminator}`.");
+    }
+    if let Some((lhs, rhs)) = split_equality_discriminator(missing_discriminator) {
+        if is_python_identifier(lhs) {
+            return format!(
+                "Assert the returned mapping field directly, e.g. `assert result[{lhs:?}] == {rhs}`."
+            );
+        }
+        if let Some(field) = lhs.strip_prefix("self.") {
+            return format!(
+                "Assert the observed instance field directly, e.g. `assert <instance>.{field} == {rhs}`."
+            );
+        }
+        if lhs.contains('.') {
+            return format!("Assert the object field directly: `assert {missing_discriminator}`.");
+        }
+    }
+    format!("Assert the returned object or field satisfies `{missing_discriminator}`.")
+}
+
 fn pytest_exception_assertion(missing_discriminator: &str) -> String {
     if let Some((exception, message)) = parse_exception_discriminator(missing_discriminator) {
         return format!("with pytest.raises({exception}, match={message:?}): ...");
     }
     "with pytest.raises(<expected exception>): ...".to_string()
+}
+
+fn split_equality_discriminator(value: &str) -> Option<(&str, &str)> {
+    let (lhs, rhs) = value.split_once(" == ")?;
+    let lhs = lhs.trim();
+    let rhs = rhs.trim();
+    (!lhs.is_empty() && !rhs.is_empty()).then_some((lhs, rhs))
 }
 
 fn unittest_exception_assertion(missing_discriminator: &str) -> String {
@@ -472,6 +522,98 @@ mod tests {
                 "add_or_strengthen_test",
             ),
             "Add or strengthen a unittest output/log/call-effect assertion for `log contains \"shipment queued\"`."
+        );
+    }
+
+    #[test]
+    fn field_cards_suggest_direct_assertion_shapes() {
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::FieldConstruction,
+                "status == \"paid\"",
+                "pytest tests/test_invoice.py::test_invoice_payload_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest returned mapping field assertion for `status == \"paid\"`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "status == \"paid\"",
+                "pytest tests/test_invoice.py::test_invoice_payload_smoke",
+            ),
+            "Assert the returned mapping field directly, e.g. `assert result[\"status\"] == \"paid\"`."
+        );
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::FieldConstruction,
+                "response.json()[\"detail\"] == \"coupon expired\"",
+                "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest response JSON field assertion for `response.json()[\"detail\"] == \"coupon expired\"`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "response.status_code == 422",
+                "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+            ),
+            "Assert the response field directly: `assert response.status_code == 422`."
+        );
+    }
+
+    #[test]
+    fn field_cards_cover_response_object_and_fallback_assertion_shapes() {
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::FieldConstruction,
+                "response.status_code == 422",
+                "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest response status-code assertion for `response.status_code == 422`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "response.json()[\"detail\"] == \"coupon expired\"",
+                "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+            ),
+            "Assert the response field directly: `assert response.json()[\"detail\"] == \"coupon expired\"`."
+        );
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::FieldConstruction,
+                "order.total == 42",
+                "pytest tests/test_order.py::test_total_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest object field assertion for `order.total == 42`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "self.total == 42",
+                "pytest tests/test_order.py::test_total_smoke",
+            ),
+            "Assert the observed instance field directly, e.g. `assert <instance>.total == 42`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "order.total == 42",
+                "pytest tests/test_order.py::test_total_smoke",
+            ),
+            "Assert the object field directly: `assert order.total == 42`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "payload contains expected detail",
+                "pytest tests/test_order.py::test_total_smoke",
+            ),
+            "Assert the returned object or field satisfies `payload contains expected detail`."
         );
     }
 

@@ -94,8 +94,8 @@
         "changed_behavior": "field_value changed at src/invoice.py:2: `return {\"status\": \"paid\", \"id\": invoice_id}`",
         "current_test_evidence": "tests/test_invoice.py:4 test_invoice_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload",
         "missing_discriminator": "status == \"paid\"",
-        "recommended_test_shape": "Strengthen the existing pytest field/object assertion for `status == \"paid\"`.",
-        "suggested_assertion": "Assert the returned object or field satisfies `status == \"paid\"`.",
+        "recommended_test_shape": "Strengthen the existing pytest returned mapping field assertion for `status == \"paid\"`.",
+        "suggested_assertion": "Assert the returned mapping field directly, e.g. `assert result[\"status\"] == \"paid\"`.",
         "suggested_location": {
           "test_file": "tests/test_invoice.py",
           "test_name": "test_invoice_payload_smoke",

@@ -45,8 +45,8 @@ Python repair card (preview/advisory)
   changed behavior: field_value changed at app/checkout.py:20: `response.status_code = 422`
   current test evidence: tests/test_checkout.py:4 test_expired_coupon_response_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert response
   missing discriminator: response.status_code == 422
-  recommended test shape: Strengthen the existing pytest field/object assertion for `response.status_code == 422`.
-  suggested assertion: Assert the returned object or field satisfies `response.status_code == 422`.
+  recommended test shape: Strengthen the existing pytest response status-code assertion for `response.status_code == 422`.
+  suggested assertion: Assert the response field directly: `assert response.status_code == 422`.
   suggested file: tests/test_checkout.py
   suggested test: test_expired_coupon_response_smoke
   pytest node: tests/test_checkout.py::test_expired_coupon_response_smoke
