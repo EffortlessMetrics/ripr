@@ -127,7 +127,11 @@ The repo-scope report is multi-second on large workspaces today.
 keystroke; until then, treat it as a checkpoint pass, not a
 hot-path command. `cargo xtask repo-exposure-summary-report` is bounded by
 `RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS` (default: 240000); a timeout writes a
-non-consumable warning artifact instead of a canonical count.
+non-consumable warning artifact instead of a canonical count. When the artifact
+is downstream-consumable, reuse it for the quality receipt with
+`cargo xtask ripr-plus --repo-exposure-summary
+target/ripr/reports/repo-exposure-summary.json` instead of starting another
+repo scan.
 
 Use `cargo xtask repo-exposure-report` only for explicit full evidence
 inspection. It writes evidence-heavy `repo-exposure.{json,md}` artifacts and is

@@ -298,7 +298,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "badge-artifacts",
         "repo-badge-artifacts [--gap-ledger <path>]",
         "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
-        "ripr-plus [--gap-ledger <path>]",
+        "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
         "repo-seam-inventory",
         "repo-exposure-report",
         "repo-exposure-summary-report",
@@ -573,11 +573,11 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
         ),
         command_entry(
-            "ripr-plus [--gap-ledger <path>]",
+            "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
             "report_only",
             "target/ripr/reports/ripr-plus.{json,md}",
             false,
-            "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
+            "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --repo-exposure-summary reuses a downstream-consumable bounded summary artifact, and --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
         ),
         command_entry(
             "repo-seam-inventory",
@@ -1386,7 +1386,14 @@ mod tests {
             note("badge-basis [--gap-ledger <path>] [--include-seam-classes]")
                 .contains("Audits public badge endpoint counts")
         );
-        assert!(note("ripr-plus [--gap-ledger <path>]").contains("canonical actionable gaps"));
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("canonical actionable gaps")
+        );
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("downstream-consumable bounded summary artifact")
+        );
     }
 
     #[test]
