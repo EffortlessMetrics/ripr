@@ -8283,6 +8283,10 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
         "decorator_indirection_no_packet_eval",
         "decorator_indirection",
     ),
+    (
+        "missing_import_graph_no_packet_eval",
+        "missing_import_graph",
+    ),
     ("mocked_module_no_packet_eval", "mocked_module"),
     (
         "opaque_custom_helper_no_packet_eval",

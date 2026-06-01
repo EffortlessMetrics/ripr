@@ -931,6 +931,40 @@
       "reason": "The run records another fail-closed Python repair-routing shape: decorator-modified call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
     },
     {
+      "id": "missing_import_graph_no_packet_eval",
+      "repo_shape": "missing_import_graph_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/missing-import-graph-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/missing-import-graph-limit --base HEAD~1 --format json",
+      "runtime_ms": 85,
+      "finding_id": "probe:src_totals.py:4:python_preview",
+      "changed_owner": "python:src/totals.py::total",
+      "static_limit_kind": "missing_import_graph",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_totals.py",
+      "related_test_name": "test_total_includes_tax",
+      "why_not_actionable": "static limit missing_import_graph prevents bounded repair routing because the changed behavior depends on an imported implementation whose semantics are not resolved",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed call targets an imported remote_total implementation outside the static preview import graph; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: unresolved imported-call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
       "id": "mocked_module_no_packet_eval",
       "repo_shape": "mocked_module_pytest",
       "source_kind": "scratch_repo",
