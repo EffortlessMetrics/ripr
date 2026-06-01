@@ -590,6 +590,43 @@
       "reason": "A real merged analyzer slice added bounded assertion-helper proof for the same-file owner-call route while preserving unknown macro and non-actionable backlog boundaries."
     },
     {
+      "id": "same_file_parent_qualified_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#774",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed same-file unit test where an explicit parent-qualified production wrapper call reaches the owner for value-insensitive call-presence activation, while a bare shadowed helper name remains limited",
+      "verify_command": "cargo test -p ripr same_file_unit --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize explicit parent-qualified unit-test calls such as `super::exercise_pipeline()` when that production wrapper directly calls the owner, while keeping bare test-local shadow calls limited.",
+      "evidence_movement": "improved: the analyzer route now has positive and negative fixture proof for parent-qualified same-file unit-test wrapper activation without inventing observed values or promoting the remaining same-file backlog to public repair work.",
+      "operator_note": "This is analyzer-route dogfood. It records movement for an already-merged fixture-backed route and preserves the static-limitation boundary for same-file proximity, bare shadowed helpers, predicate-boundary value checks, and the remaining same-file backlog.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not inherit production wrapper relations for bare test-local helper shadows",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_parent_qualified_wrapper_calls_owner_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_shadow_calls_wrapper_name_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_same_file_unit_parent_qualified_helper_activation_values_not_required",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_same_file_unit_shadow_helper_stays_named_limitation",
+        "EffortlessMetrics/ripr-swarm#774"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged analyzer slice added bounded parent-qualified same-file unit-test wrapper proof for the same-file owner-call route while preserving shadow-helper and non-actionable backlog boundaries."
+    },
+    {
       "id": "call_presence_imported_module_wrapper_route_improved",
       "source_ref": "local:analysis-call-presence-target-affinity-owner-call-tracing-2026-05-30",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
