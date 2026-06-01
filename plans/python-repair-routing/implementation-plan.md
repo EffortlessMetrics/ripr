@@ -1454,6 +1454,11 @@ git diff --check
   refuses to emit a repair card, agent packet, verify success, or receipt
   movement because the related test depends on `unittest.mock.patch` runtime
   substitution.
+- The corpus now records `opaque_custom_helper_no_packet_eval` as a
+  post-promotion fail-closed stability eval where RIPR sees a related pytest
+  method and custom `assert_*` helper oracle but refuses to emit a repair card,
+  agent packet, verify success, or receipt movement because the helper body is
+  opaque to the preview adapter.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.

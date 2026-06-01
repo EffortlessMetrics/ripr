@@ -8281,6 +8281,10 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
     ("dynamic_dispatch_no_packet_eval", "dynamic_dispatch"),
     ("mocked_module_no_packet_eval", "mocked_module"),
     (
+        "opaque_custom_helper_no_packet_eval",
+        "opaque_custom_assertion_helper",
+    ),
+    (
         "unresolved_fixture_no_packet_eval",
         "unresolved_pytest_fixture",
     ),
