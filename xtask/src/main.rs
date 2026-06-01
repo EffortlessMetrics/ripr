@@ -8278,6 +8278,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("unittest_exception_path_receipt", "closed"),
     ("api_status_pytest_receipt", "closed"),
     ("api_json_detail_pytest_receipt", "closed"),
+    ("flask_route_json_detail_pytest_receipt", "closed"),
     ("api_exception_response_pytest_receipt", "closed"),
     ("mixed_rust_python_pytest_receipt", "closed"),
     ("decorated_route_status_pytest_receipt", "closed"),

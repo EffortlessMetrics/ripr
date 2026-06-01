@@ -1441,6 +1441,12 @@ git diff --check
   existing pytest method, verifies with a focused `pytest` command, exports a
   bounded test-only packet, and closes the canonical Python gap through
   `ripr outcome`.
+- The corpus now adds `flask_route_json_detail_pytest_receipt` as a
+  post-promotion stability eval where a Flask-style
+  `@app.route("/checkout", methods=["POST"])` response JSON detail repair
+  routes to one existing pytest method, verifies with focused `pytest` against
+  a local Flask-shaped stub, exports a bounded test-only packet, and closes the
+  canonical Python gap through `ripr outcome`.
 - The corpus now adds `exception_path_pytest_receipt` as a post-promotion
   stability eval where a broad `pytest.raises(ValueError)` observer
   strengthens to exact `pytest.raises(..., match=...)` evidence, verifies with
@@ -1498,10 +1504,10 @@ git diff --check
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
 - `cargo xtask dogfood` now requires the receipt-backed pytest exception,
-  unittest exception, API JSON detail, API exception-response, and unittest
-  return-value eval rows in addition to the original boundary/API/CLI/mixed
-  cases, so those Python closure proofs cannot disappear from the corpus
-  without failing the checked dogfood gate.
+  unittest exception, API JSON detail, Flask route JSON detail, API
+  exception-response, and unittest return-value eval rows in addition to the
+  original boundary/API/CLI/mixed cases, so those Python closure proofs cannot
+  disappear from the corpus without failing the checked dogfood gate.
 - The corpus now adds `cli_exit_code_pytest_receipt` as a post-promotion
   stability eval where a changed literal `sys.exit(2)` side effect routes to a
   CLI exit-code repair card, exports a bounded test-only packet, verifies with

@@ -721,6 +721,70 @@
       "reason": "The run extends post-usable-alpha stability evidence to an API response JSON repair: RIPR routes the missing response detail discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "flask_route_json_detail_pytest_receipt",
+      "repo_shape": "flask_route_json_field_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/flask-route-json-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/flask-route-json-receipt --base HEAD~1 --format json",
+      "runtime_ms": 55,
+      "top_finding_summary": "Python Flask-style route JSON field repair card for checkout expired coupon detail",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest Flask-style API JSON test with response.json()[\"detail\"] == \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/flask-route-json-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected response JSON field is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.48s; scratch verification set PYTHONPATH=. and used a local Flask-shaped stub instead of installing Flask",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/flask-route-json-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 820,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Flask-style route decorator scratch repo with a local Flask-shaped stub; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python Flask-style API JSON receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Flask-style route decorator with a response JSON repair: RIPR treats @app.route(\"/checkout\", methods=[\"POST\"]) as static route metadata, links the client.post route test, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python field/object gap through an outcome receipt."
+    },
+    {
       "id": "api_exception_response_pytest_receipt",
       "repo_shape": "api_exception_response_pytest",
       "source_kind": "scratch_repo",
