@@ -45,7 +45,7 @@ pub(crate) struct TestGripEvidence {
 const COMPACT_RELATED_TEST_LIMIT: usize = 12;
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 const EVIDENCE_PROGRESS_CHUNK: usize = 500;
-const HELPER_OWNER_CALL_GRAPH_MAX_HOPS: usize = 2;
+const HELPER_OWNER_CALL_GRAPH_MAX_HOPS: usize = 3;
 
 /// Per-related-test grip facts attached to a `TestGripEvidence`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -11123,6 +11123,80 @@ fn outer_helper_reaches_pipeline_indirectly() {
         assert!(
             evidence.observed_values.is_empty(),
             "test-local two-hop helper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_three_hop_helper_reaches_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/activation.rs");
+        let source_src = r#"
+pub fn activation_evidence(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {
+    missing_discriminator_facts(rows, parameter)
+}
+
+fn missing_discriminator_facts(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {
+    missing_boundary_discriminator(rows, parameter)
+}
+
+fn missing_boundary_discriminator(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {
+    parameter_value_set(rows, parameter)
+}
+
+fn parameter_value_set(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {
+    let values = observed_parameter_values(rows, parameter);
+    if values.is_empty() { None } else { Some(values) }
+}
+
+fn observed_parameter_values(rows: &[Vec<String>], parameter: &str) -> Vec<String> {
+    rows.iter()
+        .flatten()
+        .filter(|value| value.as_str() == parameter)
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activation_evidence_reports_parameter_value_set() {
+        let rows = vec![vec!["amount".to_string()]];
+        let values = activation_evidence(&rows, "amount");
+        assert_eq!(values, Some(vec!["amount".to_string()]));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/activation.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::parameter_value_set")
+                    && s.expression()
+                        .contains("observed_parameter_values(rows, parameter)")
+            })
+            .ok_or_else(|| "expected parameter_value_set call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected bounded three-hop same-file helper owner-call relation; got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "three-hop same-file helper activation must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())

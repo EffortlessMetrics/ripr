@@ -626,6 +626,44 @@
       "reason": "A real merged analyzer slice reduced the highest-volume sampled same-file owner-call limitation while preserving the non-actionable boundary for the remaining backlog."
     },
     {
+      "id": "same_file_three_hop_helper_owner_call_route_improved",
+      "source_ref": "local:same-file-three-hop-helper-owner-call-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed same-file unit-test helper graph where a test calls a public helper, that helper delegates through two same-file helpers, and the final helper calls the owner for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr given_call_presence_when_same_file_three_hop_helper_reaches_owner_then_activation_is_yes --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask ripr-swarm readiness",
+      "receipt_path": "target/ripr/reports/swarm-readiness.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Raised same-file helper-owner call tracing from two bounded helper edges to three and pinned a same-file unit-test fixture for activation-style helper chains, while preserving the conditional, short-circuit, dynamic-receiver, and unknown-chain limitations.",
+      "evidence_movement": "improved: the analyzer route now has positive fixture and benchmark proof for bounded three-hop same-file helper owner-call tracing. The sampled readiness route count stayed at 438 signals, so this receipt does not claim sampled backlog burn-down.",
+      "operator_note": "This is analyzer-route dogfood. It extends a bounded same-file helper graph only far enough to cover the activation helper-chain shape, while keeping same-file proximity, conditional helper calls, short-circuiting calls, dynamic receivers, and arbitrary helper graphs non-actionable.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not follow arbitrary helper graphs beyond the bounded three-hop same-file route",
+        "do not accept conditional helper calls or short-circuiting expressions as guaranteed owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_three_hop_helper_reaches_owner_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_conditionally_calls_owner_then_activation_stays_unknown",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_format_args_macro_short_circuits_owner_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_same_file_three_hop_helper_owner_call_activation_values_not_required",
+        "target/ripr/reports/swarm-readiness.json:analysis/same-file-owner-call-tracing"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real analyzer slice added bounded three-hop same-file helper proof for the same-file owner-call route while preserving the non-actionable boundary and recording that sampled route counts did not move."
+    },
+    {
       "id": "same_file_method_owner_call_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#761",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
