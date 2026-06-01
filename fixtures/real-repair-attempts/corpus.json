@@ -1095,6 +1095,47 @@
       "reason": "A real merged Python preview PR generalized CLI-output repair-card guidance to argparse-shaped commands while preserving the receipt/actionability boundary."
     },
     {
+      "id": "python_api_json_field_repair_card_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#759",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "packet_id": "python-repair-card:gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "language": "python",
+      "evidence_class": "field_construction",
+      "source_file": "app/checkout.py",
+      "repair_kind": "route_python_api_json_field_repair_card",
+      "target_test_or_observer_shape": "Python preview repair-card guidance for a literal FastAPI/Flask-shaped route returning a changed JSON field: strengthen the existing pytest test `tests/test_checkout.py::test_expired_coupon_response_smoke` with `response.json()[\"detail\"] == \"coupon expired\"`.",
+      "verify_command": "cargo xtask fixtures python_api_json_field_repair_gap",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Routed literal Python API endpoint JSON-field changes through the Python preview repair-card flow, linking `client.post(\"/checkout\")` to the route owner and naming the exact `response.json()[\"detail\"] == \"coupon expired\"` discriminator.",
+      "evidence_movement": "improved: the fixture now emits a canonical Python field-value gap, repair-card target shape, suggested pytest file/test/node id, and verify command for API JSON response fields while dynamic route registration remains fail-closed.",
+      "operator_note": "This is analyzer-route dogfood, not public repair delegation. The preview card is useful guidance, but it remains advisory because the card itself reports receipt status as unavailable_until_python_gap_ledger.",
+      "must_not_change": [
+        "do not promote Python preview cards to public repair packets",
+        "do not emit repair cards for dynamically registered route paths",
+        "do not execute imports, route registration, pytest, or route handlers during analysis",
+        "do not authorize production-code edits",
+        "do not change badge or CI gate semantics"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/python_api_json_field_repair_gap/SPEC.md",
+        "fixtures/python_api_json_field_repair_gap/expected/check.json",
+        "fixtures/python_api_json_field_repair_gap/expected/human.txt",
+        "fixtures/python_dynamic_route_registration_limit/expected/check.json",
+        "crates/ripr/src/analysis/language/python.rs",
+        "crates/ripr/src/output/python_repair_card.rs",
+        "EffortlessMetrics/ripr-swarm#759"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged Python preview PR converted literal API JSON-field route evidence into concrete advisory repair-card guidance while preserving the dynamic-route and receipt/actionability boundaries."
+    },
+    {
       "id": "python_preview_boundary_gap_test_only_closed",
       "source_ref": "fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/closed.json",
       "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
