@@ -450,6 +450,42 @@
       "reason": "A real merged limitation-route PR made the highest-volume sampled call-presence target-affinity limitation more trustworthy by routing it to a precise analyzer backlog item while keeping it non-actionable."
     },
     {
+      "id": "assertion_target_err_wrapped_helper_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#535",
+      "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-affinity",
+      "packet_id": "limitation:activation-owner-call-absent-assertion-target-affinity:assertion-target-affinity-owner-call-tracing",
+      "repair_kind": "trace_assertion_target_affinity_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local one-hop helper where an Err(...) wrapper directly contains the production owner call for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught assertion-target affinity owner-call tracing to recognize a bounded test-local helper that wraps the production owner call in `Err(...)`, while keeping arbitrary Result wrappers and affinity-only evidence limited.",
+      "evidence_movement": "improved: the analyzer route has fixture and benchmark proof that Err-wrapped helper owner calls can satisfy value-insensitive activation without inventing observed values or promoting assertion-target affinity alone to public repair work.",
+      "operator_note": "This is analyzer-route dogfood for an already-merged fixture-backed route. It records movement without changing actionability, gates, badges, or the remaining assertion-target affinity backlog.",
+      "must_not_change": [
+        "do not treat arbitrary Result wrappers as multi-hop helper tracing",
+        "do not treat assertion-target affinity alone as activation without a helper or direct owner call",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_test_local_err_helper_owner_call_activation_values_not_required",
+        "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
+        "EffortlessMetrics/ripr-swarm#535"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real merged analyzer slice added bounded Err-wrapped helper proof for assertion-target affinity owner-call tracing while preserving affinity-only and non-actionable backlog boundaries."
+    },
+    {
       "id": "same_file_owner_call_route_samples_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#746",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
