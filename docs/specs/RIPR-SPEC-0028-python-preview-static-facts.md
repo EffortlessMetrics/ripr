@@ -270,6 +270,11 @@ can show:
 - outcome fixtures proving Python canonical gaps can close, remain unchanged,
   reopen, strengthen without closing, and weaken across check-output snapshots
   while preserving static/advisory receipt language
+- a field/object fixture proving a returned constructor keyword such as
+  `return User(active=True)` can route to a syntax-only object-field repair
+  card with a discriminator such as `result.active == True`, a direct
+  object-field assertion shape, and a stop condition when the returned object
+  does not expose that keyword as a public field or attribute
 - a non-boundary return-value outcome fixture proving a weak broad assertion can
   become an exact return assertion and close the canonical Python gap
 - a non-boundary exception-path outcome fixture proving a weak broad exception

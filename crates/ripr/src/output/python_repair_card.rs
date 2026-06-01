@@ -290,6 +290,9 @@ fn field_assertion_label(missing_discriminator: &str) -> &'static str {
         if is_python_identifier(lhs) {
             return "returned mapping field assertion";
         }
+        if lhs.starts_with("result.") {
+            return "returned object field assertion";
+        }
         if lhs.contains('.') {
             return "object field assertion";
         }
@@ -377,6 +380,13 @@ fn stop_conditions(
     {
         conditions.push(
             "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.".to_string(),
+        );
+    }
+    if matches!(family, ProbeFamily::FieldConstruction)
+        && missing_discriminator.starts_with("result.")
+    {
+        conditions.push(
+            "Stop if the returned object does not expose the constructor keyword as a public field or attribute.".to_string(),
         );
     }
     conditions
@@ -547,6 +557,23 @@ mod tests {
         assert_eq!(
             recommended_test_shape(
                 &ProbeFamily::FieldConstruction,
+                "result.active == True",
+                "pytest tests/test_users.py::test_build_user_smoke",
+                "strengthen_existing_test",
+            ),
+            "Strengthen the existing pytest returned object field assertion for `result.active == True`."
+        );
+        assert_eq!(
+            suggested_assertion(
+                &ProbeFamily::FieldConstruction,
+                "result.active == True",
+                "pytest tests/test_users.py::test_build_user_smoke",
+            ),
+            "Assert the object field directly: `assert result.active == True`."
+        );
+        assert_eq!(
+            recommended_test_shape(
+                &ProbeFamily::FieldConstruction,
                 "response.json()[\"detail\"] == \"coupon expired\"",
                 "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
                 "strengthen_existing_test",
@@ -667,6 +694,15 @@ mod tests {
             )
             .iter()
             .any(|condition| condition.contains("below/above rows"))
+        );
+        assert!(
+            stop_conditions(
+                &ProbeFamily::FieldConstruction,
+                "result.active == True",
+                "pytest tests/test_users.py::test_build_user_smoke",
+            )
+            .iter()
+            .any(|condition| condition.contains("constructor keyword"))
         );
     }
 

@@ -589,6 +589,11 @@ Ship the first high-confidence Python repair classes.
   first repair classes while preserving Python's preview/support-tier boundary.
 - `python_dict_field_repair_gap` pins returned-dict field discriminator
   extraction without requiring runtime dataclass or serializer semantics.
+- `python_model_field_repair_gap` pins syntax-only returned constructor
+  keyword field routing for model-like objects, recommends an object-field
+  assertion such as `assert result.active == True`, and adds a stop condition
+  for cases where the returned object does not expose the keyword as a public
+  field or attribute.
 
 ### Work item: output/python-ranking-noise-control
 

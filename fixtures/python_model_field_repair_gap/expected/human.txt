@@ -1,0 +1,67 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_model_field_repair_gap/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/users.py:7
+
+Changed
+  after:      return User(active=True)
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  python:src/users.py::build_user
+  canonical gap: gap:python:src/users.py:build_user:field_value:field_construction:return_user_active=true
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `build_user`
+  - infection yes: Changed Python field or attribute construction can alter object state: `return User(active=True)`
+  - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
+  - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `result.active == True`.
+  - local flow reaches constructed field: return User(active=True) (line 7)
+  - related test tests/test_users.py:4 test_build_user_smoke uses smoke smoke only oracle: assert user
+
+Weakness
+  - Related Python test reaches `build_user` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
+  - missing discriminator result.active == True: changed Python field/object value at line 7 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/users.py:build_user:field_value:field_construction:return_user_active=true
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: build_user
+  changed behavior: field_value changed at src/users.py:7: `return User(active=True)`
+  current test evidence: tests/test_users.py:4 test_build_user_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert user
+  missing discriminator: result.active == True
+  recommended test shape: Strengthen the existing pytest returned object field assertion for `result.active == True`.
+  suggested assertion: Assert the object field directly: `assert result.active == True`.
+  suggested file: tests/test_users.py
+  suggested test: test_build_user_smoke
+  pytest node: tests/test_users.py::test_build_user_smoke
+  verify: pytest tests/test_users.py::test_build_user_smoke (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+    - Stop if the returned object does not expose the constructor keyword as a public field or attribute.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `result.active == True`.
