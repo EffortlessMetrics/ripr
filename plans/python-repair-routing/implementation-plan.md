@@ -1487,3 +1487,8 @@ git diff --check
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
+- `cargo xtask dogfood` now requires the receipt-backed pytest exception,
+  unittest exception, API JSON detail, API exception-response, and unittest
+  return-value eval rows in addition to the original boundary/API/CLI/mixed
+  cases, so those Python closure proofs cannot disappear from the corpus
+  without failing the checked dogfood gate.

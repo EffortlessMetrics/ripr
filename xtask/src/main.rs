@@ -8271,9 +8271,14 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("normal_pytest_app_boundary_receipt", "closed"),
     ("parametrized_boundary_pytest_receipt", "closed"),
     ("cli_output_pytest_receipt", "closed"),
+    ("exception_path_pytest_receipt", "closed"),
+    ("unittest_exception_path_receipt", "closed"),
     ("api_status_pytest_receipt", "closed"),
+    ("api_json_detail_pytest_receipt", "closed"),
+    ("api_exception_response_pytest_receipt", "closed"),
     ("mixed_rust_python_pytest_receipt", "closed"),
     ("decorated_route_status_pytest_receipt", "closed"),
+    ("unittest_return_value_receipt", "closed"),
     ("model_field_pytest_receipt", "closed"),
 ];
 
