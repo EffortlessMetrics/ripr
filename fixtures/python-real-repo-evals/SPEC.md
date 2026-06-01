@@ -11,14 +11,16 @@ that are outside analyzer fixture goldens.
 
 ## When
 
-An eval case records a Python check run, top repair card, focused verify
-command, after check run, and before/after outcome receipt.
+An eval case records a Python check run, top repair card, bounded agent
+packet, focused verify command, after check run, and before/after outcome
+receipt.
 
 ## Then
 
 The corpus records the repo shape, source kind, commands, runtime, canonical
-gap ID, missing discriminator, suggested test target, verify result, receipt
-result, gap movement, usability notes, false-positive notes, limitation notes,
+gap ID, missing discriminator, suggested test target, agent packet command,
+allowed files, forbidden files, stop conditions, verify result, receipt result,
+gap movement, usability notes, false-positive notes, limitation notes,
 structured unsupported limitation kinds, ranked top-3 repair-card findings, and
 claim boundaries.
 
@@ -29,11 +31,11 @@ route pytest repo before metrics can support promotion discussion.
 
 Dogfood quality metrics must report top-1 actionable usefulness, top-3
 actionable precision over captured ranked repair-card findings, verify-command
-validity, concrete-discriminator coverage, suggested test-location coverage,
-false-actionable rate, crash rate, receipt closure rate, and unsupported
-limitation distribution. Eval cases with fewer than three user-facing repair
-cards must include a ranked top-3 limit reason instead of silently passing the
-metric.
+validity, agent-packet boundary validity, concrete-discriminator coverage,
+suggested test-location coverage, false-actionable rate, crash rate, receipt
+closure rate, and unsupported limitation distribution. Eval cases with fewer
+than three user-facing repair cards must include a ranked top-3 limit reason
+instead of silently passing the metric.
 
 ## Must Not
 

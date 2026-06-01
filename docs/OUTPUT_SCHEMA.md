@@ -11409,14 +11409,15 @@ non-success cases, so failed or incomplete attempts remain visible instead of
 being hidden from the repair queue.
 The checked Python real-repo eval receipts are read from
 `fixtures/python-real-repo-evals/` and record the top Python repair card,
-ranked top-3 repair-card findings, verify command, before/after receipt
-movement, false-positive notes, and unsupported limitation kinds. The report
-derives `python_repair_routing_quality` from those receipts, including top-1
-actionable usefulness, top-3 actionable precision over captured ranked
-repair-card findings, verify-command validity, concrete-discriminator and
-test-location coverage, false-actionable and crash rates, receipt closure rate,
-and unsupported limitation distribution. Eval cases with fewer than three
-ranked repair-card findings must include an explicit limit reason.
+bounded agent packet, ranked top-3 repair-card findings, verify command,
+before/after receipt movement, false-positive notes, and unsupported limitation
+kinds. The report derives `python_repair_routing_quality` from those receipts,
+including top-1 actionable usefulness, top-3 actionable precision over captured
+ranked repair-card findings, verify-command validity, agent-packet boundary
+validity, concrete-discriminator and test-location coverage,
+false-actionable and crash rates, receipt closure rate, and unsupported
+limitation distribution. Eval cases with fewer than three ranked repair-card
+findings must include an explicit limit reason.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
 and CI projection examples share the same canonical gap, packet or limitation
@@ -11727,9 +11728,9 @@ JSON shape:
     "default_ci_blocking": false,
     "receipt_dir": "fixtures/python-real-repo-evals",
     "summary": {
-      "cases": 6,
-      "closed": 6,
-      "usable": 6
+      "cases": 7,
+      "closed": 7,
+      "usable": 7
     },
     "cases": [
       {
@@ -11737,6 +11738,12 @@ JSON shape:
         "repo_shape": "decorated_route_pytest",
         "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
         "repair_card_present": true,
+        "agent_packet_present": true,
+        "agent_packet_task": "Strengthen the existing decorated-route pytest test with response.status_code == 422.",
+        "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/decorated-route-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422 --json",
+        "agent_packet_allowed_files": ["tests/test_checkout.py"],
+        "agent_packet_forbidden_files": ["app/checkout.py"],
+        "agent_packet_stop_if": ["import cannot be resolved", "expected status code is ambiguous", "production code edit appears necessary"],
         "missing_discriminator": "response.status_code == 422",
         "suggested_test_file": "tests/test_checkout.py",
         "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
@@ -11770,51 +11777,56 @@ JSON shape:
       "reason": "All checked top Python repair cards are usable, verifiable, placed, and receipt-backed without observed false actionability"
     },
     "summary": {
-      "cases": 6,
+      "cases": 7,
       "top_1_actionable_precision": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       },
       "top_3_actionable_precision": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       },
       "verify_command_validity": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
+      },
+      "agent_packet_boundary_validity": {
+        "status": "pass",
+        "count": 7,
+        "checked": 7
       },
       "concrete_discriminator_rate": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       },
       "related_test_location_rate": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       },
       "receipt_closure_rate": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       },
       "false_actionable_rate": {
         "status": "pass",
         "count": 0,
-        "checked": 6
+        "checked": 7
       },
       "crash_rate": {
         "status": "pass",
         "count": 0,
-        "checked": 6
+        "checked": 7
       },
       "ranked_top_3_cases_with_capture": {
         "status": "pass",
-        "count": 6,
-        "checked": 6
+        "count": 7,
+        "checked": 7
       }
     },
     "unsupported_limitation_distribution": [

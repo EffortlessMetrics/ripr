@@ -967,6 +967,12 @@ struct DogfoodPythonRealRepoEvalScenario {
     canonical_gap_id: String,
     repair_card_present: bool,
     repair_action: String,
+    agent_packet_present: bool,
+    agent_packet_task: String,
+    agent_packet_command: String,
+    agent_packet_allowed_files: Vec<String>,
+    agent_packet_forbidden_files: Vec<String>,
+    agent_packet_stop_if: Vec<String>,
     changed_owner: String,
     missing_discriminator: String,
     suggested_test_file: String,
@@ -1002,6 +1008,12 @@ struct DogfoodPythonRealRepoEvalRun {
     canonical_gap_id: String,
     repair_card_present: bool,
     repair_action: String,
+    agent_packet_present: bool,
+    agent_packet_task: String,
+    agent_packet_command: String,
+    agent_packet_allowed_files: Vec<String>,
+    agent_packet_forbidden_files: Vec<String>,
+    agent_packet_stop_if: Vec<String>,
     changed_owner: String,
     missing_discriminator: String,
     suggested_test_file: String,
@@ -1031,6 +1043,7 @@ struct DogfoodPythonRepairRoutingQualitySummary {
     cases: usize,
     top_1_actionable_usable: usize,
     verify_command_valid: usize,
+    agent_packet_bounded: usize,
     concrete_discriminator: usize,
     suggested_test_location: usize,
     false_actionable: usize,
@@ -44485,6 +44498,12 @@ fn dogfood_python_real_repo_eval_scenarios_at(
             canonical_gap_id: "unknown".to_string(),
             repair_card_present: false,
             repair_action: "unknown".to_string(),
+            agent_packet_present: false,
+            agent_packet_task: "unknown".to_string(),
+            agent_packet_command: "unknown".to_string(),
+            agent_packet_allowed_files: Vec::new(),
+            agent_packet_forbidden_files: Vec::new(),
+            agent_packet_stop_if: Vec::new(),
             changed_owner: "unknown".to_string(),
             missing_discriminator: "unknown".to_string(),
             suggested_test_file: "unknown".to_string(),
@@ -44552,6 +44571,17 @@ fn dogfood_python_real_repo_eval_scenarios_at(
             repair_card_present: json_bool_field(case, "repair_card_present").unwrap_or(false),
             repair_action: json_string_field(case, "repair_action")
                 .unwrap_or_else(|| "unknown".to_string()),
+            agent_packet_present: json_bool_field(case, "agent_packet_present").unwrap_or(false),
+            agent_packet_task: json_string_field(case, "agent_packet_task")
+                .unwrap_or_else(|| "unknown".to_string()),
+            agent_packet_command: json_string_field(case, "agent_packet_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            agent_packet_allowed_files: json_string_array_field(case, "agent_packet_allowed_files"),
+            agent_packet_forbidden_files: json_string_array_field(
+                case,
+                "agent_packet_forbidden_files",
+            ),
+            agent_packet_stop_if: json_string_array_field(case, "agent_packet_stop_if"),
             changed_owner: json_string_field(case, "changed_owner")
                 .unwrap_or_else(|| "unknown".to_string()),
             missing_discriminator: json_string_field(case, "missing_discriminator")
@@ -44606,6 +44636,8 @@ fn dogfood_python_real_repo_eval_run(
         ("top_finding_summary", &scenario.top_finding_summary),
         ("canonical_gap_id", &scenario.canonical_gap_id),
         ("repair_action", &scenario.repair_action),
+        ("agent_packet_task", &scenario.agent_packet_task),
+        ("agent_packet_command", &scenario.agent_packet_command),
         ("changed_owner", &scenario.changed_owner),
         ("missing_discriminator", &scenario.missing_discriminator),
         ("suggested_test_file", &scenario.suggested_test_file),
@@ -44655,6 +44687,66 @@ fn dogfood_python_real_repo_eval_run(
     }
     if !scenario.repair_card_present {
         errors.push("repair_card_present must be true for recorded eval cases".to_string());
+    }
+    if !scenario.agent_packet_present {
+        errors.push("agent_packet_present must be true for recorded eval cases".to_string());
+    }
+    if !scenario
+        .agent_packet_command
+        .starts_with("ripr agent packet ")
+    {
+        errors.push(format!(
+            "agent_packet_command must be a ripr agent packet command, got {}",
+            scenario.agent_packet_command
+        ));
+    }
+    if !scenario
+        .agent_packet_command
+        .contains(&scenario.canonical_gap_id)
+    {
+        errors.push("agent_packet_command must include the recorded canonical_gap_id".to_string());
+    }
+    if scenario.agent_packet_allowed_files.is_empty() {
+        errors.push("agent_packet_allowed_files must not be empty".to_string());
+    }
+    if !scenario
+        .agent_packet_allowed_files
+        .contains(&scenario.suggested_test_file)
+    {
+        errors.push("agent_packet_allowed_files must include suggested_test_file".to_string());
+    }
+    for allowed in &scenario.agent_packet_allowed_files {
+        if !(allowed.starts_with("tests/")
+            || allowed.ends_with("_test.py")
+            || allowed.contains("/test_"))
+        {
+            errors.push(format!(
+                "agent_packet_allowed_files must stay test-scoped, got {allowed}"
+            ));
+        }
+    }
+    if scenario.agent_packet_forbidden_files.is_empty() {
+        errors.push("agent_packet_forbidden_files must name production files".to_string());
+    }
+    for forbidden in &scenario.agent_packet_forbidden_files {
+        if scenario.agent_packet_allowed_files.contains(forbidden) {
+            errors.push(format!(
+                "agent_packet_forbidden_files overlaps allowed file {forbidden}"
+            ));
+        }
+        if forbidden.starts_with("tests/") {
+            errors.push(format!(
+                "agent_packet_forbidden_files should not forbid test file {forbidden}"
+            ));
+        }
+    }
+    if scenario.agent_packet_stop_if.is_empty() {
+        errors.push("agent_packet_stop_if must list stop conditions".to_string());
+    }
+    for stop_if in &scenario.agent_packet_stop_if {
+        if stop_if.trim().is_empty() || stop_if == "unknown" {
+            errors.push("agent_packet_stop_if entries must be concrete".to_string());
+        }
     }
     if !scenario.verify_command.starts_with("pytest ")
         && !scenario.verify_command.starts_with("python -m unittest ")
@@ -44755,6 +44847,12 @@ fn dogfood_python_real_repo_eval_run(
         canonical_gap_id: scenario.canonical_gap_id.clone(),
         repair_card_present: scenario.repair_card_present,
         repair_action: scenario.repair_action.clone(),
+        agent_packet_present: scenario.agent_packet_present,
+        agent_packet_task: scenario.agent_packet_task.clone(),
+        agent_packet_command: scenario.agent_packet_command.clone(),
+        agent_packet_allowed_files: scenario.agent_packet_allowed_files.clone(),
+        agent_packet_forbidden_files: scenario.agent_packet_forbidden_files.clone(),
+        agent_packet_stop_if: scenario.agent_packet_stop_if.clone(),
         changed_owner: scenario.changed_owner.clone(),
         missing_discriminator: scenario.missing_discriminator.clone(),
         suggested_test_file: scenario.suggested_test_file.clone(),
@@ -44796,6 +44894,9 @@ fn dogfood_python_repair_routing_quality_summary(
         if dogfood_python_eval_verify_command_valid(run) {
             summary.verify_command_valid += 1;
         }
+        if dogfood_python_eval_agent_packet_bounded(run) {
+            summary.agent_packet_bounded += 1;
+        }
         if dogfood_python_eval_has_concrete_discriminator(run) {
             summary.concrete_discriminator += 1;
         }
@@ -44833,6 +44934,7 @@ fn dogfood_python_repair_routing_quality_summary(
     let missing_quality = summary.cases == 0
         || summary.top_1_actionable_usable != summary.cases
         || summary.verify_command_valid != summary.cases
+        || summary.agent_packet_bounded != summary.cases
         || summary.concrete_discriminator != summary.cases
         || summary.suggested_test_location != summary.cases
         || summary.false_actionable > 0
@@ -44863,6 +44965,21 @@ fn dogfood_python_eval_verify_command_valid(run: &DogfoodPythonRealRepoEvalRun) 
     (run.verify_command.starts_with("pytest ")
         || run.verify_command.starts_with("python -m unittest "))
         && run.verify_result == "pass"
+}
+
+fn dogfood_python_eval_agent_packet_bounded(run: &DogfoodPythonRealRepoEvalRun) -> bool {
+    run.agent_packet_present
+        && run.agent_packet_command.starts_with("ripr agent packet ")
+        && run.agent_packet_command.contains(&run.canonical_gap_id)
+        && run
+            .agent_packet_allowed_files
+            .contains(&run.suggested_test_file)
+        && !run.agent_packet_forbidden_files.is_empty()
+        && run
+            .agent_packet_forbidden_files
+            .iter()
+            .all(|forbidden| !run.agent_packet_allowed_files.contains(forbidden))
+        && !run.agent_packet_stop_if.is_empty()
 }
 
 fn dogfood_python_eval_has_concrete_discriminator(run: &DogfoodPythonRealRepoEvalRun) -> bool {
@@ -48626,6 +48743,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         python_repair_quality.verify_command_valid, python_repair_quality.cases
     ));
     body.push_str(&format!(
+        "| Agent-packet boundary validity | {} / {} |\n",
+        python_repair_quality.agent_packet_bounded, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
         "| Concrete discriminator rate | {} / {} |\n",
         python_repair_quality.concrete_discriminator, python_repair_quality.cases
     ));
@@ -48695,6 +48816,27 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
             "- Repair card present: {}; action: `{}`\n",
             run.repair_card_present,
             markdown_cell(&run.repair_action)
+        ));
+        body.push_str(&format!(
+            "- Agent packet present: {}; task: `{}`\n",
+            run.agent_packet_present,
+            markdown_cell(&run.agent_packet_task)
+        ));
+        body.push_str(&format!(
+            "- Agent packet command: `{}`\n",
+            markdown_cell(&run.agent_packet_command)
+        ));
+        body.push_str(&format!(
+            "- Agent packet allowed files: `{}`\n",
+            markdown_cell(&run.agent_packet_allowed_files.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Agent packet forbidden files: `{}`\n",
+            markdown_cell(&run.agent_packet_forbidden_files.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Agent packet stop-if: `{}`\n",
+            markdown_cell(&run.agent_packet_stop_if.join("; "))
         ));
         body.push_str(&format!(
             "- Verify command: `{}` ({}) - {}\n",
@@ -50377,6 +50519,27 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
             json_escape(&run.repair_action)
         ));
         body.push_str(&format!(
+            "        \"agent_packet_present\": {},\n",
+            run.agent_packet_present
+        ));
+        body.push_str(&format!(
+            "        \"agent_packet_task\": \"{}\",\n",
+            json_escape(&run.agent_packet_task)
+        ));
+        body.push_str(&format!(
+            "        \"agent_packet_command\": \"{}\",\n",
+            json_escape(&run.agent_packet_command)
+        ));
+        body.push_str("        \"agent_packet_allowed_files\": [");
+        write_json_string_array(&mut body, &run.agent_packet_allowed_files);
+        body.push_str("],\n");
+        body.push_str("        \"agent_packet_forbidden_files\": [");
+        write_json_string_array(&mut body, &run.agent_packet_forbidden_files);
+        body.push_str("],\n");
+        body.push_str("        \"agent_packet_stop_if\": [");
+        write_json_string_array(&mut body, &run.agent_packet_stop_if);
+        body.push_str("],\n");
+        body.push_str(&format!(
             "        \"changed_owner\": \"{}\",\n",
             json_escape(&run.changed_owner)
         ));
@@ -50494,6 +50657,14 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         python_repair_quality.cases,
         true,
         "verify command is pytest or unittest and passed in the recorded eval",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "agent_packet_boundary_validity",
+        python_repair_quality.agent_packet_bounded,
+        python_repair_quality.cases,
+        true,
+        "agent packet is present, gap-scoped, test-file bounded, production-file-forbidden, and has stop conditions",
     );
     dogfood_push_python_quality_ratio_json(
         &mut body,
@@ -71654,6 +71825,18 @@ fn exact_owner_call_has_external_expected_value() {
                     .to_string(),
             repair_card_present: true,
             repair_action: "strengthen_existing_test".to_string(),
+            agent_packet_present: true,
+            agent_packet_task:
+                "Strengthen the existing pytest boundary test for amount == threshold."
+                    .to_string(),
+            agent_packet_command: "ripr agent packet --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold --json".to_string(),
+            agent_packet_allowed_files: vec!["tests/test_pricing.py".to_string()],
+            agent_packet_forbidden_files: vec!["app/pricing.py".to_string()],
+            agent_packet_stop_if: vec![
+                "import cannot be resolved".to_string(),
+                "expected boundary value is ambiguous".to_string(),
+                "production code edit appears necessary".to_string(),
+            ],
             changed_owner: "python:app/pricing.py::calculate_discount".to_string(),
             missing_discriminator: "amount == threshold".to_string(),
             suggested_test_file: "tests/test_pricing.py".to_string(),
@@ -71670,7 +71853,9 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending support-tier review".to_string(),
+            limitation_notes:
+                "scoped repair routing is usable alpha; broader Python static facts remain preview/advisory"
+                    .to_string(),
             unsupported_limitations: Vec::new(),
             ranked_top_3_findings: vec![super::DogfoodPythonRankedFinding {
                 rank: 1,
@@ -71691,7 +71876,7 @@ fn exact_owner_call_has_external_expected_value() {
                     .to_string(),
             ),
             claim_boundary: vec![
-                "Python remains preview/advisory".to_string(),
+                "Broader Python static facts remain preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
                 "No support-tier promotion".to_string(),
             ],
@@ -72885,6 +73070,7 @@ fn exact_owner_call_has_external_expected_value() {
                 quality.top_3_ranked_findings_checked
             );
             assert_eq!(quality.verify_command_valid, quality.cases);
+            assert_eq!(quality.agent_packet_bounded, quality.cases);
             assert_eq!(quality.concrete_discriminator, quality.cases);
             assert_eq!(quality.suggested_test_location, quality.cases);
             assert_eq!(quality.false_actionable, 0);
@@ -72970,6 +73156,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(quality.top_3_ranked_findings_checked, 8);
         assert_eq!(quality.top_3_actionable_usable, 8);
         assert_eq!(quality.verify_command_valid, 7);
+        assert_eq!(quality.agent_packet_bounded, 7);
         assert_eq!(quality.concrete_discriminator, 7);
         assert_eq!(quality.suggested_test_location, 7);
         assert_eq!(quality.false_actionable, 1);
@@ -73063,6 +73250,18 @@ fn exact_owner_call_has_external_expected_value() {
                     .to_string(),
             repair_card_present: true,
             repair_action: "strengthen_existing_test".to_string(),
+            agent_packet_present: true,
+            agent_packet_task:
+                "Strengthen the existing pytest boundary test for amount == threshold."
+                    .to_string(),
+            agent_packet_command: "ripr agent packet --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold --json".to_string(),
+            agent_packet_allowed_files: vec!["tests/test_pricing.py".to_string()],
+            agent_packet_forbidden_files: vec!["app/pricing.py".to_string()],
+            agent_packet_stop_if: vec![
+                "import cannot be resolved".to_string(),
+                "expected boundary value is ambiguous".to_string(),
+                "production code edit appears necessary".to_string(),
+            ],
             changed_owner: "python:app/pricing.py::calculate_discount".to_string(),
             missing_discriminator: "amount == threshold".to_string(),
             suggested_test_file: "tests/test_pricing.py".to_string(),
@@ -73081,7 +73280,9 @@ fn exact_owner_call_has_external_expected_value() {
             closed_gaps: 1,
             usability: "usable".to_string(),
             false_positive_notes: "none observed".to_string(),
-            limitation_notes: "support-tier promotion remains pending support-tier review".to_string(),
+            limitation_notes:
+                "scoped repair routing is usable alpha; broader Python static facts remain preview/advisory"
+                    .to_string(),
             unsupported_limitations: Vec::new(),
             ranked_top_3_findings: vec![super::DogfoodPythonRankedFinding {
                 rank: 1,
@@ -73102,7 +73303,7 @@ fn exact_owner_call_has_external_expected_value() {
                     .to_string(),
             ),
             claim_boundary: vec![
-                "Python remains preview/advisory".to_string(),
+                "Broader Python static facts remain preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
                 "No support-tier promotion".to_string(),
             ],

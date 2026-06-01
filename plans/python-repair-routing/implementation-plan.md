@@ -1295,9 +1295,10 @@ Measure Python quality by repair usefulness, not finding volume.
 #### Acceptance
 
 - Metrics include time to first useful finding, top-1/top-3 actionable
-  precision, verify-command validity, concrete-discriminator rate,
-  related-test-location rate, false-actionable rate, crash rate, unsupported
-  limitation distribution, and receipt closure rate.
+  precision, verify-command validity, agent-packet boundary validity,
+  concrete-discriminator rate, related-test-location rate, false-actionable
+  rate, crash rate, unsupported limitation distribution, and receipt closure
+  rate.
 - Noisy changes fail quality gates.
 
 #### Progress
@@ -1305,9 +1306,10 @@ Measure Python quality by repair usefulness, not finding volume.
 - `cargo xtask dogfood` now derives Python repair-routing quality metrics from
   `fixtures/python-real-repo-evals/corpus.json`: top-1 actionable usefulness,
   top-3 actionable precision over captured ranked repair-card findings,
-  verify-command validity, concrete-discriminator coverage, suggested
-  test-location coverage, false-actionable rate, crash rate, receipt closure
-  rate, and unsupported limitation distribution.
+  verify-command validity, agent-packet boundary validity,
+  concrete-discriminator coverage, suggested test-location coverage,
+  false-actionable rate, crash rate, receipt closure rate, and unsupported
+  limitation distribution.
 - The Python eval corpus now records structured unsupported limitation kinds,
   and the decorated-route eval contributes `dynamic_route_registration` to the
   limitation distribution while keeping the support-tier boundary explicit.
@@ -1361,7 +1363,7 @@ Promote Python only when the repair loop has receipt-backed evidence.
 
 ### Work item: dogfood/python-stability-evals-v1
 
-Status: planned
+Status: in progress
 
 Blocked by:
 
@@ -1380,9 +1382,9 @@ support-tier consideration.
   verify command, receipt or no-receipt reason, false-positive notes, and
   limitation notes.
 - Route-quality metrics continue to emphasize top-1 usefulness, top-3
-  precision, verify-command validity, concrete discriminators, suggested test
-  location, false-actionable rate, crash rate, receipt closure, and limitation
-  distribution.
+  precision, verify-command validity, agent-packet boundary validity, concrete
+  discriminators, suggested test location, false-actionable rate, crash rate,
+  receipt closure, and limitation distribution.
 - No support-tier promotion, gate eligibility, badge authority, baseline/RIPR
   Zero inclusion, provider calls, generated tests, arbitrary imports, mutation
   execution, or production-code edit authority changes.
@@ -1404,3 +1406,16 @@ git diff --check
 - Revert the added eval entries, generated dogfood/metric expectations, and
   any docs or capability links. The scoped usable-alpha support claim remains
   unchanged.
+
+#### Progress
+
+- `fixtures/python-real-repo-evals/corpus.json` now records bounded agent
+  packet fields for every checked Python dogfood eval: packet command, allowed
+  test files, forbidden production files, and stop conditions.
+- The corpus now adds `unittest_return_value_receipt` as a post-promotion
+  stability eval where a unittest return-value repair routes to one existing
+  test method, verifies with `python -m unittest`, exports a bounded test-only
+  packet, and closes the canonical Python gap through `ripr outcome`.
+- Dogfood quality metrics now include agent-packet boundary validity so a
+  future eval that lacks packet scope, stop conditions, or forbidden-file
+  protection fails the checked quality gate instead of counting as usable.

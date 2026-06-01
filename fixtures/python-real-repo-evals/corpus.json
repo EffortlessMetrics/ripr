@@ -24,6 +24,20 @@
       "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_pricing.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/pricing.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/pricing.py::calculate_discount",
       "missing_discriminator": "amount == threshold",
       "suggested_test_file": "tests/test_pricing.py",
@@ -39,7 +53,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "tiny controlled scratch repo only; support-tier promotion remains pending support-tier review",
+      "limitation_notes": "tiny controlled scratch repo only; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
       "unsupported_limitations": [],
       "ranked_top_3_findings": [
         {
@@ -56,7 +70,7 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
@@ -74,6 +88,20 @@
       "canonical_gap_id": "gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for subtotal == free_shipping_minimum.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/normal-pytest-app-boundary-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum --json",
+      "agent_packet_allowed_files": [
+        "tests/test_shipping.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/shipping.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/shipping.py::free_shipping_offer",
       "missing_discriminator": "subtotal == free_shipping_minimum",
       "suggested_test_file": "tests/test_shipping.py",
@@ -89,7 +117,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; support-tier promotion remains pending support-tier review",
+      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
       "unsupported_limitations": [],
       "ranked_top_3_findings": [
         {
@@ -106,7 +134,7 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
@@ -124,6 +152,20 @@
       "canonical_gap_id": "gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest CLI/output test with an exact priority-shipping output assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id --json",
+      "agent_packet_allowed_files": [
+        "tests/test_notify.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/notify.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/notify.py::notify_shipment",
       "missing_discriminator": "output contains \"priority shipping for {order_id}\"",
       "suggested_test_file": "tests/test_notify.py",
@@ -139,7 +181,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; support-tier promotion remains pending support-tier review",
+      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
       "unsupported_limitations": [],
       "ranked_top_3_findings": [
         {
@@ -156,7 +198,7 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
@@ -174,6 +216,20 @@
       "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest API-status test with response.status_code == 422.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/api-status-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected status code is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/checkout.py::checkout",
       "missing_discriminator": "response.status_code == 422",
       "suggested_test_file": "tests/test_checkout.py",
@@ -189,7 +245,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; support-tier promotion remains pending support-tier review",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
       "unsupported_limitations": [],
       "ranked_top_3_findings": [
         {
@@ -206,7 +262,7 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
@@ -224,6 +280,20 @@
       "canonical_gap_id": "gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test in the mixed repo for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/mixed-rust-python-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_pricing.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/pricing.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/pricing.py::mixed_repo_discount",
       "missing_discriminator": "amount == threshold",
       "suggested_test_file": "tests/test_pricing.py",
@@ -239,7 +309,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; support-tier promotion remains pending support-tier review",
+      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
       "unsupported_limitations": [],
       "ranked_top_3_findings": [
         {
@@ -256,7 +326,7 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
@@ -274,6 +344,20 @@
       "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
       "repair_card_present": true,
       "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing decorated-route pytest test with response.status_code == 422.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/decorated-route-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected status code is ambiguous",
+        "production code edit appears necessary"
+      ],
       "changed_owner": "python:app/checkout.py::checkout",
       "missing_discriminator": "response.status_code == 422",
       "suggested_test_file": "tests/test_checkout.py",
@@ -289,7 +373,7 @@
       "closed_gaps": 1,
       "usability": "usable",
       "false_positive_notes": "none observed",
-      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported and support-tier promotion remains pending support-tier review",
+      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported, scoped repair routing is usable alpha, and broader Python static facts remain preview/advisory",
       "unsupported_limitations": [
         "dynamic_route_registration"
       ],
@@ -308,12 +392,76 @@
       ],
       "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
       "claim_boundary": [
-        "Python remains preview/advisory",
+        "Broader Python static facts remain preview/advisory",
         "No arbitrary imports or tests were run by RIPR",
         "The human-run pytest command verified only the suggested test",
         "No support-tier promotion"
       ],
       "reason": "The run proves a simple decorated Python route can route a changed status-code assignment to a bounded field/object repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt without treating arbitrary decorators as transparent."
+    },
+    {
+      "id": "unittest_return_value_receipt",
+      "repo_shape": "unittest_service",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unittest-return-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unittest-return-receipt --base HEAD~1 --format json",
+      "runtime_ms": 184,
+      "top_finding_summary": "Python unittest return-value repair card for invoice_total subtotal + tax + service_fee",
+      "canonical_gap_id": "gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing unittest return-value test with an exact invoice_total assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/unittest-return-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee --json",
+      "agent_packet_allowed_files": [
+        "tests/test_invoice.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/invoice.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected return value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/invoice.py::invoice_total",
+      "missing_discriminator": "return value == subtotal + tax + service_fee",
+      "suggested_test_file": "tests/test_invoice.py",
+      "suggested_test_name": "TestInvoiceTotals.test_invoice_total_smoke",
+      "verify_command": "python -m unittest tests.test_invoice.TestInvoiceTotals.test_invoice_total_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 unittest test passed in 0.01s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/unittest-return-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 91,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "unittest scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "return value == subtotal + tax + service_fee",
+          "suggested_test_file": "tests/test_invoice.py",
+          "verify_command": "python -m unittest tests.test_invoice.TestInvoiceTotals.test_invoice_total_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python unittest receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused unittest eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run unittest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a unittest return-value repair: RIPR routes the missing exact return discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
     }
   ]
 }
