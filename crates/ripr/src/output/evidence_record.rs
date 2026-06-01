@@ -1144,9 +1144,10 @@ fn call_presence_expression_is_method_chain(expression: &str) -> bool {
     let Some(dot_index) = expression.find('.') else {
         return false;
     };
-    expression
-        .find('(')
-        .is_none_or(|paren_index| dot_index < paren_index)
+    let Some(paren_index) = expression.find('(') else {
+        return false;
+    };
+    dot_index < paren_index
 }
 
 fn stage_json(stage: &EvidenceRecordStage) -> Value {
@@ -1933,6 +1934,48 @@ mod tests {
         assert_eq!(
             json["canonical_item"]["static_limitations"][0]["repair_route"],
             "analysis/same-file-method-chain-owner-call-tracing"
+        );
+    }
+
+    #[test]
+    fn evidence_record_keeps_same_file_dotted_non_call_owner_absence_on_generic_route() {
+        let mut entry = sample_call_presence_classified();
+        entry.seam = RepoSeam::new(
+            "src/canonical_gap.rs",
+            "canonical_gap::required_discriminator_text",
+            SeamKind::CallPresence,
+            101,
+            101,
+            "description.value",
+            RequiredDiscriminator::CallSite {
+                target: "description.value".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "No direct owner call observed for value-insensitive seam `description.value`",
+        );
+        entry.evidence.related_tests[0].relation_reason = RelationReason::SameTestFile;
+        entry.evidence.related_tests[0].relation_confidence = RelationConfidence::Medium;
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_same_file_only"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/same-file-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/same-file-owner-call-tracing"
         );
     }
 
