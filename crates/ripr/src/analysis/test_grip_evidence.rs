@@ -1191,6 +1191,9 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
     if let Some(macro_name) = direct_delegate_parenthesized_macro_name_before_argument(prefix) {
         return direct_delegate_parenthesized_macro_is_allowed(&macro_name);
     }
+    if direct_delegate_block_prefix_is_allowed(prefix) {
+        return true;
+    }
     let Some(open) = prefix.strip_suffix('(') else {
         let Some(open) = prefix.strip_suffix('[') else {
             return false;
@@ -1227,6 +1230,14 @@ fn direct_delegate_parenthesized_macro_name_before_argument(prefix: &str) -> Opt
     }
     let macro_name = trailing_rust_identifier(macro_prefix);
     (!macro_name.is_empty()).then_some(macro_name)
+}
+
+fn direct_delegate_block_prefix_is_allowed(prefix: &str) -> bool {
+    let Some(open) = prefix.strip_suffix('{') else {
+        return false;
+    };
+    let open = open.trim_end();
+    open.is_empty() || open == "return" || open.ends_with('=') || open.ends_with("=>")
 }
 
 fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
@@ -9242,6 +9253,122 @@ fn helper_exercises_pipeline() {
         assert!(
             evidence.observed_values.is_empty(),
             "format macro helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_wraps_owner_call_in_block_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    { render_pipeline("alpha") }
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected block helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "block helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_conditionally_calls_owner_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline(enabled: bool) -> String {
+    if enabled { render_pipeline("alpha") } else { "beta".to_string() }
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline(true);
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "conditional block helper must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "conditional helper activation must not invent values: {:?}",
             evidence.observed_values
         );
         Ok(())
