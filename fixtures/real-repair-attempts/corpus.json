@@ -737,6 +737,42 @@
       "reason": "A real merged analyzer slice added bounded trim/to_string helper proof for the same-file owner-call route while preserving arbitrary-chain and non-actionable backlog boundaries."
     },
     {
+      "id": "as_ref_chain_helper_owner_call_route_improved",
+      "source_ref": "EffortlessMetrics/ripr-swarm#831",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local helper where a direct production owner call is followed only by a bounded as_ref/unwrap/clone borrow chain for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize a bounded test-local helper that directly calls the production owner and applies only `.as_ref().unwrap().clone()` borrow/result handling while preserving value-insensitive activation boundaries.",
+      "evidence_movement": "improved: the analyzer route now has positive fixture proof that a bounded as_ref borrow chain after a direct owner call can satisfy value-insensitive activation, while the existing unknown-method chain guard preserves arbitrary post-owner methods as limited.",
+      "operator_note": "This is analyzer-route dogfood for a fixture-backed route. It records movement for the same-file owner-call backlog while preserving static-limitation boundaries for arbitrary method chains, predicate-boundary value checks, invented observed values, and the remaining backlog.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not accept arbitrary post-owner method chains as direct owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_uses_unknown_owner_call_chain_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_as_ref_chain_helper_owner_call_activation_values_not_required",
+        "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A real analyzer slice added bounded as_ref borrow-chain proof for the same-file owner-call route while preserving arbitrary-chain and non-actionable backlog boundaries."
+    },
+    {
       "id": "turbofish_result_helper_owner_call_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#820",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",

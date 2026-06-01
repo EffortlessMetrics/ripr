@@ -269,6 +269,11 @@ affinity.
   the owner. The related assertion may still mention the call target, but
   assertion-target affinity alone remains non-actionable without the helper
   owner-call proof.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes`
+  pins a bounded post-owner borrow chain: `owner(...).as_ref().unwrap().clone()`
+  can satisfy value-insensitive `call_presence` activation because the helper
+  directly evaluates the owner call, while arbitrary post-owner methods remain
+  limited.
 - `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown`
   pins the helper-name-only must-not-claim guard as
   `activation_owner_call_absent_same_file_only` routed to

@@ -1154,9 +1154,7 @@ fn helper_directly_delegates_to_specific_owner(
                 && candidate.line == call.line
                 && candidate.text == call.text;
         } else if candidate.line == call.line
-            && !direct_delegate_extra_call_is_inert(&candidate.name)
-            && !direct_delegate_parenthesized_macro_is_allowed(&candidate.name)
-            && !direct_delegate_container_macro_is_allowed(&candidate.name)
+            && !direct_delegate_extra_call_is_allowed(candidate, call)
         {
             has_disallowed_extra_call = true;
         }
@@ -1332,6 +1330,62 @@ fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
             | "Ok"
             | "Some"
     )
+}
+
+fn direct_delegate_extra_call_is_allowed(candidate: &CallFact, owner_call: &CallFact) -> bool {
+    direct_delegate_extra_call_is_inert(&candidate.name)
+        || direct_delegate_parenthesized_macro_is_allowed(&candidate.name)
+        || direct_delegate_container_macro_is_allowed(&candidate.name)
+        || direct_delegate_post_owner_method_is_allowed(
+            &candidate.name,
+            &candidate.text,
+            &owner_call.name,
+        )
+}
+
+fn direct_delegate_post_owner_method_is_allowed(
+    method_name: &str,
+    text: &str,
+    owner_name: &str,
+) -> bool {
+    if !matches!(method_name, "as_ref") {
+        return false;
+    }
+    let cleaned = strip_comments_and_strings(text);
+    cleaned.match_indices(owner_name).any(|(start, _)| {
+        let before = cleaned[..start].chars().next_back();
+        if before.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+            return false;
+        }
+        let after_name = &cleaned[start + owner_name.len()..];
+        let after_name = after_name.trim_start();
+        if !after_name.starts_with('(') {
+            return false;
+        }
+        let Some(close_index) = matching_close_paren(after_name) else {
+            return false;
+        };
+        after_name[close_index + 1..]
+            .trim_start()
+            .starts_with(&format!(".{method_name}("))
+    })
+}
+
+fn matching_close_paren(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (idx, ch) in text.char_indices() {
+        match ch {
+            '(' => depth = depth.saturating_add(1),
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn helper_name_carries_owner_token(helper_name_lower: &str, owner_name: &str) -> bool {
@@ -9222,6 +9276,68 @@ fn helper_exercises_pipeline() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "expect helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> Result<String, ()> {
+    Ok(format_output(input))
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> String {
+    render_pipeline("alpha").as_ref().unwrap().clone()
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected as_ref borrow-chain helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "as_ref borrow-chain helper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "as_ref borrow-chain helper activation must not create boundary debt"
         );
         Ok(())
     }
