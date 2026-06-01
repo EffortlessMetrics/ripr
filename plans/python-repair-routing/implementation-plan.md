@@ -1416,6 +1416,11 @@ git diff --check
   stability eval where a unittest return-value repair routes to one existing
   test method, verifies with `python -m unittest`, exports a bounded test-only
   packet, and closes the canonical Python gap through `ripr outcome`.
+- The corpus now adds `api_json_detail_pytest_receipt` as a post-promotion
+  stability eval where an API response JSON detail repair routes to one
+  existing pytest method, verifies with a focused `pytest` command, exports a
+  bounded test-only packet, and closes the canonical Python gap through
+  `ripr outcome`.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
