@@ -1,6 +1,6 @@
 # TypeScript Enablement Lane
 
-Status: Active successor lane; TypeScript preview completion is closed
+Status: Active maintenance successor lane; TypeScript preview completion is closed
 
 Date: 2026-05-31
 
@@ -85,53 +85,50 @@ Python repair routing and future Perl work are parallel language-enablement
 lanes. They may reuse patterns, but they do not change TypeScript support
 claims.
 
-## Active Queue
+## Current Proof
 
-1. Sharpen weak-oracle preview guidance:
-   - snapshots advise exact-value assertions alongside snapshots;
-   - smoke-only truthiness advises exact-value assertions;
-   - mock interaction without safe payload proof stays advisory;
-   - bounded literal/object/count mock payload evidence may name the callee and
-     expected value, but still stays advisory until verify command, receipt
-     command, evidence refs, and edit boundaries exist;
-   - literal `toThrow(...)`, `rejects.toThrow(...)`, and safe
-     `rejects.toMatchObject(...)` payload evidence may count as exact
-     error-variant evidence, but still does not emit repair packets without
-     strict actionability fields;
-   - broad error evidence stays weak until error payload or variant support can
-     name a bounded repair route.
-2. Audit false-actionable candidates:
-   - mock interaction without payload proof;
-   - broad `toThrow` / `rejects`;
-   - snapshot-only and smoke-only evidence;
-   - heuristic related-test links;
-   - owner name in test title only;
-   - method receiver repair-packet gaps and remaining ambiguity;
-   - module initializer ambiguity;
-   - mocked module, decorator, and dynamic-dispatch limits.
-3. Expand narrow mock payload support only when syntax can safely name the
-   target interaction.
-4. Distinguish broad error checks from exact error payload or rejected-promise
-   evidence.
-5. Continue bounded method receiver relation support:
-   - direct `new ClassName(...)` receiver calls are fixture-backed;
-   - factories, dependency injection, mocked classes, prototype aliases, and
-     dynamic property access stay advisory or unsupported.
-6. Improve module initializer guidance while keeping dynamic initialization
-   limited:
-   - direct named-import and namespace `expect(...)` observers for exported
-     module initializers are fixture-backed advisory evidence;
-   - relational and broad observers stay non-actionable until target-shape,
-     verify, receipt, evidence-ref, and edit-boundary fields are available;
-   - helper-derived values, shadowed aliases, and dynamic initialization remain
-     advisory or limited.
-7. Emit TypeScript preview repair-card fields consistently through existing
-   advisory surfaces.
-8. Record real TypeScript/JavaScript dogfood receipts with at least one
-   unchanged or intentionally skipped case.
-9. Decide whether TypeScript/JavaScript remain preview or have enough false-
-   actionable audit, dogfood, route-quality, and surface proof for a narrow
-   promotion packet.
+Current `main` has moved beyond the original enablement queue. The landed proof
+now includes:
+
+- oracle-specific weak-oracle guidance:
+  - snapshots advise exact-value assertions alongside snapshots;
+  - smoke-only truthiness advises exact-value assertions;
+  - mock interaction without safe payload proof stays advisory;
+  - broad error evidence stays weak until payload or variant proof is present;
+- bounded mock payload guidance for syntax-safe literal/object/count cases while
+  withholding repair packets until strict actionability fields exist;
+- exact error-payload recognition for literal `toThrow(...)`,
+  `rejects.toThrow(...)`, and safe `rejects.toMatchObject(...)` evidence, while
+  bare broad checks stay weak;
+- bounded direct `new ClassName(...)` method-receiver related-test matching,
+  with factories, dependency injection, mocked classes, prototype aliases, and
+  dynamic property access excluded;
+- module-initializer observer guidance for direct named-import and namespace
+  `expect(...)` observers, with broad, relational, helper-derived, shadowed, and
+  dynamic cases remaining advisory or limited;
+- advisory `typescript_preview_card.v1` projection through existing human,
+  JSON, GitHub annotation, and SARIF surfaces;
+- dogfood receipts and route-quality rows for TypeScript and JavaScript preview
+  evidence without promotion beyond preview.
+
+These are usefulness and precision improvements only. They do not make
+TypeScript/JavaScript repair-packet, gate, badge, baseline, or RIPR Zero
+eligible.
+
+## Maintenance Queue
+
+Future TypeScript enablement work should start from the current proof above,
+not from preview bootstrap or the completed enablement queue.
+
+1. Add a new false-actionable audit row or fixture whenever a preview finding
+   looks repair-shaped but still lacks strict packet fields.
+2. Record new real TypeScript/JavaScript dogfood receipts for useful advisory
+   guidance, including unchanged or intentionally skipped cases when they occur.
+3. Improve one narrow syntax-backed shape at a time only when fixtures can prove
+   the route and non-goals remain intact.
+4. Prepare a support-tier promotion packet only if false-actionable audit,
+   dogfood, route-quality, and surface consistency justify it; otherwise keep
+   TypeScript and JavaScript as opt-in preview.
 
 ## False-Actionable Audit Packet
 
