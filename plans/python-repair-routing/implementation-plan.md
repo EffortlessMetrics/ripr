@@ -1421,6 +1421,11 @@ git diff --check
   existing pytest method, verifies with a focused `pytest` command, exports a
   bounded test-only packet, and closes the canonical Python gap through
   `ripr outcome`.
+- The corpus now adds `exception_path_pytest_receipt` as a post-promotion
+  stability eval where a broad `pytest.raises(ValueError)` observer
+  strengthens to exact `pytest.raises(..., match=...)` evidence, verifies with
+  a focused `pytest` command, exports a bounded test-only packet, and closes
+  the canonical Python exception gap through `ripr outcome`.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
