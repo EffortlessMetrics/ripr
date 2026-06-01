@@ -1244,14 +1244,82 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
 
 fn direct_delegate_parenthesized_macro_name_before_argument(prefix: &str) -> Option<String> {
     let (macro_prefix, argument_prefix) = prefix.rsplit_once("!(")?;
-    if !argument_prefix
-        .chars()
-        .all(|ch| ch.is_whitespace() || ch == ',')
+    let macro_name = trailing_rust_identifier(macro_prefix);
+    if macro_name.is_empty()
+        || !direct_delegate_macro_argument_prefix_is_allowed(&macro_name, argument_prefix)
     {
         return None;
     }
-    let macro_name = trailing_rust_identifier(macro_prefix);
-    (!macro_name.is_empty()).then_some(macro_name)
+    Some(macro_name)
+}
+
+fn direct_delegate_macro_argument_prefix_is_allowed(
+    macro_name: &str,
+    argument_prefix: &str,
+) -> bool {
+    if argument_prefix
+        .chars()
+        .all(|ch| ch.is_whitespace() || ch == ',')
+    {
+        return true;
+    }
+    direct_delegate_eager_later_argument_macro_is_allowed(macro_name)
+        && argument_prefix_has_trailing_top_level_comma(argument_prefix)
+}
+
+fn direct_delegate_eager_later_argument_macro_is_allowed(macro_name: &str) -> bool {
+    matches!(
+        macro_name,
+        "assert_eq" | "assert_ne" | "debug_assert_eq" | "debug_assert_ne"
+    )
+}
+
+fn argument_prefix_has_trailing_top_level_comma(prefix: &str) -> bool {
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut saw_top_level_comma = false;
+    let mut only_ws_after_last_comma = true;
+
+    for ch in prefix.chars() {
+        match ch {
+            '(' => {
+                paren_depth = paren_depth.saturating_add(1);
+                only_ws_after_last_comma = false;
+            }
+            ')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+                only_ws_after_last_comma = false;
+            }
+            '[' => {
+                bracket_depth = bracket_depth.saturating_add(1);
+                only_ws_after_last_comma = false;
+            }
+            ']' => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+                only_ws_after_last_comma = false;
+            }
+            '{' => {
+                brace_depth = brace_depth.saturating_add(1);
+                only_ws_after_last_comma = false;
+            }
+            '}' => {
+                brace_depth = brace_depth.saturating_sub(1);
+                only_ws_after_last_comma = false;
+            }
+            ',' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                saw_top_level_comma = true;
+                only_ws_after_last_comma = true;
+            }
+            _ => {
+                if !ch.is_whitespace() {
+                    only_ws_after_last_comma = false;
+                }
+            }
+        }
+    }
+
+    saw_top_level_comma && only_ws_after_last_comma
 }
 
 fn direct_delegate_wrapper_name(open: &str) -> String {
@@ -9726,6 +9794,124 @@ fn helper_asserts_pipeline_output() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "assertion helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_equality_helper_calls_owner_as_later_arg_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn assert_pipeline_output(expected: &str) {
+    assert_eq!(expected, render_pipeline("alpha"));
+}
+
+#[test]
+fn helper_asserts_pipeline_output() {
+    assert_pipeline_output("alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected equality helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "equality helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "equality helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_assert_message_arg_calls_owner_then_activation_stays_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn assert_pipeline_output() {
+    assert!(true, "{}", render_pipeline("alpha"));
+}
+
+#[test]
+fn helper_asserts_pipeline_output() {
+    assert_pipeline_output();
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            !evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "assert message argument must not get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "assert message argument must not invent values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }

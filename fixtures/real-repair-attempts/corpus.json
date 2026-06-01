@@ -1251,6 +1251,44 @@
       "reason": "A local analyzer slice added bounded embedded same-file fan-out wrapper proof while preserving tests/*.rs fan-out, cross-file mixed-owner, and non-actionable backlog boundaries."
     },
     {
+      "id": "equality_macro_later_arg_helper_owner_call_route_improved",
+      "source_ref": "local:equality-macro-later-arg-owner-call-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-only",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_function_call_missing_owner_call:analysis-same-file-owner-call-tracing",
+      "repair_kind": "trace_same_file_owner_call",
+      "target_test_or_observer_shape": "fixture-backed test-local helper where a recognized equality macro directly and unconditionally calls the owner as a later top-level argument for value-insensitive call-presence activation",
+      "verify_command": "cargo test -p ripr given_call_presence_when_test_local_equality_helper_calls_owner_as_later_arg_then_activation_is_yes --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Taught same-file owner-call tracing to recognize owner calls passed as later top-level arguments to eager equality macros such as `assert_eq!(expected, render_pipeline(\"alpha\"))`.",
+      "evidence_movement": "improved: the analyzer route now has fixture and benchmark proof that equality-macro helper owner calls can satisfy value-insensitive activation without treating assert! message arguments or arbitrary macro arguments as owner-call proof.",
+      "operator_note": "This is analyzer-route dogfood. It records fixture-backed movement for the same-file owner-call backlog while preserving static-limitation boundaries for assert! message arguments, arbitrary macros, predicate-boundary value checks, and public repair packets.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not treat assert! message arguments as guaranteed owner-call activation",
+        "do not accept arbitrary later macro arguments as direct owner-call proof",
+        "do not invent observed values for call-presence arguments",
+        "do not apply this route to predicate-boundary value checks",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_equality_helper_calls_owner_as_later_arg_then_activation_is_yes",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assert_message_arg_calls_owner_then_activation_stays_unknown",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_equality_macro_later_arg_helper_owner_call_activation_values_not_required",
+        "fixtures/evidence-quality-benchmark/corpus.json:call_presence_assert_message_arg_helper_stays_named_limitation",
+        "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice added bounded equality-macro later-argument owner-call proof while preserving assert! message-argument and non-actionable backlog boundaries."
+    },
+    {
       "id": "call_presence_imported_module_wrapper_route_improved",
       "source_ref": "local:analysis-call-presence-target-affinity-owner-call-tracing-2026-05-30",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",
