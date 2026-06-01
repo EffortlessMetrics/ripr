@@ -1216,7 +1216,7 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
         let macro_name = trailing_rust_identifier(macro_prefix);
         return direct_delegate_parenthesized_macro_is_allowed(&macro_name);
     }
-    let wrapper_name = trailing_rust_identifier(open);
+    let wrapper_name = direct_delegate_wrapper_name(open);
     direct_delegate_extra_call_is_inert(&wrapper_name)
 }
 
@@ -1230,6 +1230,16 @@ fn direct_delegate_parenthesized_macro_name_before_argument(prefix: &str) -> Opt
     }
     let macro_name = trailing_rust_identifier(macro_prefix);
     (!macro_name.is_empty()).then_some(macro_name)
+}
+
+fn direct_delegate_wrapper_name(open: &str) -> String {
+    let open = open.trim_end();
+    if let Some((before_turbofish, generic_tail)) = open.rsplit_once("::<")
+        && generic_tail.trim_end().ends_with('>')
+    {
+        return trailing_rust_identifier(before_turbofish);
+    }
+    trailing_rust_identifier(open)
 }
 
 fn direct_delegate_block_prefix_is_allowed(prefix: &str) -> bool {
@@ -8833,6 +8843,16 @@ mod nested {
     }
 
     #[test]
+    fn direct_delegate_wrapper_name_preserves_turbofish_constructor() {
+        assert_eq!(direct_delegate_wrapper_name("Ok::<String, ()>"), "Ok");
+        assert_eq!(
+            direct_delegate_wrapper_name("decorate::<String>"),
+            "decorate"
+        );
+        assert_eq!(direct_delegate_wrapper_name("Box::<String>::new"), "new");
+    }
+
+    #[test]
     fn given_call_presence_when_test_local_helper_wraps_owner_call_in_option_then_activation_is_yes()
     -> Result<(), String> {
         let prod = PathBuf::from("src/pipeline.rs");
@@ -8952,6 +8972,68 @@ fn helper_exercises_pipeline() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "result-wrapped call_presence helper activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_test_local_helper_wraps_owner_call_in_result_turbofish_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pipeline.rs");
+        let prod_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/pipeline_tests.rs");
+        let tests_src = r#"
+use pipeline::render_pipeline;
+
+fn exercise_pipeline() -> Result<String, ()> {
+    Ok::<String, ()>(render_pipeline("alpha"))
+}
+
+#[test]
+fn helper_exercises_pipeline() {
+    let output = exercise_pipeline().unwrap();
+    assert_eq!(output, "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected result turbofish helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "result turbofish helper activation must not invent values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "result turbofish helper activation must not create boundary debt"
         );
         Ok(())
     }
