@@ -18,6 +18,6 @@
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/routed-rust.yml|60|Swarm routed Rust workflow selects CX53, CX43, or hosted fallback and runs the existing Rust/product command surface.
-.github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
+.github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.

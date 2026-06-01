@@ -2214,12 +2214,16 @@ blocking. Default generated CI still stays non-blocking unless
 The security workflow currently runs:
 
 ```bash
-cargo deny check advisories licenses bans sources
+cargo-deny check advisories licenses bans sources
 ```
 
-It uses `deny.toml` to enforce RustSec advisories, license policy, banned
-crates, and approved dependency sources. Duplicate dependency findings are
-warnings while the `ra_ap_syntax` dependency graph is being baselined.
+It installs `cargo-deny` as a normal command-line binary before running the
+check, so self-hosted runners do not need Docker just to execute the security
+workflow. The job also installs the Rust toolchain because `cargo-deny` shells
+out to `cargo metadata` while evaluating the workspace. It uses `deny.toml` to
+enforce RustSec advisories, license policy, banned crates, and approved
+dependency sources. Duplicate dependency findings are warnings while the
+`ra_ap_syntax` dependency graph is being baselined.
 
 Pull requests also run GitHub Dependency Review for high-severity vulnerability
 alerts and denied license families. Dependency Graph is enabled for the
