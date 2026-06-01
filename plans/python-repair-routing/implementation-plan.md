@@ -1459,6 +1459,11 @@ git diff --check
   method and custom `assert_*` helper oracle but refuses to emit a repair card,
   agent packet, verify success, or receipt movement because the helper body is
   opaque to the preview adapter.
+- The corpus now records `property_based_no_packet_eval` as a post-promotion
+  fail-closed stability eval where RIPR sees a related Hypothesis-style pytest
+  method and weak relational oracle but refuses to emit a repair card, agent
+  packet, verify success, or receipt movement because generated inputs do not
+  prove that the changed discriminator is covered.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.

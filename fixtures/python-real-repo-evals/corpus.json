@@ -965,6 +965,40 @@
       "reason": "The run records another fail-closed Python repair-routing shape: opaque custom assertion helpers stay visible as static limitations while excluded from repair-card, packet, verify, and receipt success metrics."
     },
     {
+      "id": "property_based_no_packet_eval",
+      "repo_shape": "property_based_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/property-based-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/property-based-limit --base HEAD~1 --format json",
+      "runtime_ms": 399,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "static_limit_kind": "property_based_test",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_pricing.py",
+      "related_test_name": "test_apply_discount_property",
+      "why_not_actionable": "static limit property_based_test prevents bounded repair routing because the related pytest test uses generated inputs whose discriminator coverage cannot be determined statically",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and weak relational oracle but emitted no repair card or agent packet because the Hypothesis-style generated inputs may or may not include the changed discriminator; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: property-based generated inputs stay visible as static limitations while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
       "id": "unresolved_fixture_no_packet_eval",
       "repo_shape": "fixture_sourced_pytest",
       "source_kind": "scratch_repo",

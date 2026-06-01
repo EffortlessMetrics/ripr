@@ -48,7 +48,7 @@ include a ranked top-3 limit reason instead of silently passing the metric.
 Static-limit no-action cases are not counted as successful repair
 recommendations. They exist to keep unsupported Python shapes visible without
 routing unsafe human or agent work. The checked corpus must include
-dynamic-dispatch, mocked-module, opaque-custom-helper, and
+dynamic-dispatch, mocked-module, opaque-custom-helper, property-based, and
 unresolved-fixture no-action examples before any broader support-tier
 discussion treats these limits as measured instead of anecdotal.
 

@@ -8284,6 +8284,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
         "opaque_custom_helper_no_packet_eval",
         "opaque_custom_assertion_helper",
     ),
+    ("property_based_no_packet_eval", "property_based_test"),
     (
         "unresolved_fixture_no_packet_eval",
         "unresolved_pytest_fixture",
