@@ -1492,3 +1492,8 @@ git diff --check
   return-value eval rows in addition to the original boundary/API/CLI/mixed
   cases, so those Python closure proofs cannot disappear from the corpus
   without failing the checked dogfood gate.
+- The corpus now adds `cli_exit_code_pytest_receipt` as a post-promotion
+  stability eval where a changed literal `sys.exit(2)` side effect routes to a
+  CLI exit-code repair card, exports a bounded test-only packet, verifies with
+  focused pytest, and closes the canonical Python call/output-effect gap
+  through `ripr outcome`.

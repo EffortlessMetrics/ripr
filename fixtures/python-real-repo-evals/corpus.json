@@ -271,6 +271,70 @@
       "reason": "The run proves a Python CLI/output-style change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "cli_exit_code_pytest_receipt",
+      "repo_shape": "cli_exit_code_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/cli-exit-code-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1376,
+      "top_finding_summary": "Python CLI exit-code repair card for ship failure exit status",
+      "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest CLI exit-code assertion for exit_code == 2.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exit code is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::ship",
+      "missing_discriminator": "exit_code == 2",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_ship_failure_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_ship_failure_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.38s; scratch verification set PYTHONPATH=. so pytest could import the local src namespace",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 313,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "simple pytest CLI exit-code scratch repo with broad SystemExit evidence; focused verify needed PYTHONPATH=. for the scratch src namespace, while the analyzer-suggested command remains the same bounded pytest node",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "exit_code == 2",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_ship_failure_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a Python CLI exit-code change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
+    },
+    {
       "id": "exception_path_pytest_receipt",
       "repo_shape": "exception_path_pytest",
       "source_kind": "scratch_repo",
