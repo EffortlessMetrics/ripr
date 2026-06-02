@@ -277,6 +277,43 @@
       "reason": "Direct receiver evidence is safe advisory context but not an actionable packet; ambiguous receiver shapes remain unsupported."
     },
     {
+      "id": "class_method_static_call_incomplete_packet",
+      "source_fixture": "fixtures/typescript_owner_kinds",
+      "source_finding_id": "probe:src_owners.ts:11:typescript_preview",
+      "language": "typescript",
+      "language_status": "preview",
+      "risk_class": "static class-method incomplete repair packet",
+      "evidence_kind": "bounded_class_method_relation",
+      "oracle_kind": "smoke_only",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
+      "static_limit_kind": null,
+      "disposition": "candidate_future_support",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+      "future_support": "bounded static class-method calls now support direct same-file or imported class member calls; repair-card support still needs canonical gap identity, repair kind, target shape, verify command, receipt command, evidence refs, and edit boundaries; local class shadows, mocked modules, dynamic member access, factories, and namespace chains stay out of scope",
+      "must_remain_non_actionable": true,
+      "required_evidence_fragment": "Related test reaches `build` with a smoke-only oracle",
+      "raw_evidence_refs": [
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:11:typescript_preview"
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Jest/Vitest execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "Direct static class-method evidence can safely relate a smoke test to the owner, but it remains an advisory preview card until strict packet fields exist."
+    },
+    {
       "id": "module_initializer_ambiguity",
       "source_fixture": "fixtures/typescript_owner_kinds",
       "source_finding_id": "probe:src_owners.ts:15:typescript_preview",

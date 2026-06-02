@@ -128,6 +128,7 @@ enum TypeScriptRelationKind {
     ImportedOwnerCall,
     ModuleValueReference,
     ReceiverOwnerCall,
+    ClassMethodCall,
     SameFileProximity,
     DescribeName,
     TestName,
@@ -140,6 +141,7 @@ impl TypeScriptRelationKind {
             Self::ImportedOwnerCall => 4,
             Self::ModuleValueReference => 4,
             Self::ReceiverOwnerCall => 4,
+            Self::ClassMethodCall => 4,
             Self::SameFileProximity => 3,
             Self::DescribeName => 2,
             Self::TestName => 1,
@@ -153,6 +155,7 @@ impl TypeScriptRelationKind {
                 | Self::ImportedOwnerCall
                 | Self::ModuleValueReference
                 | Self::ReceiverOwnerCall
+                | Self::ClassMethodCall
         )
     }
 
@@ -166,6 +169,7 @@ impl TypeScriptRelationKind {
             Self::ImportedOwnerCall => "imported_owner_call",
             Self::ModuleValueReference => "module_value_reference",
             Self::ReceiverOwnerCall => "receiver_owner_call",
+            Self::ClassMethodCall => "class_method_call",
             Self::SameFileProximity => "same_file_proximity",
             Self::DescribeName => "describe_name",
             Self::TestName => "test_name",
@@ -1453,9 +1457,13 @@ fn owner_call_relation(
         return module_initializer_observer_relation(test, owner)
             .then_some(TypeScriptRelationKind::ModuleValueReference);
     }
-    if matches!(owner.owner_kind, OwnerKind::Method | OwnerKind::ClassMethod) {
+    if owner.owner_kind == OwnerKind::Method {
         return receiver_owner_call_relation(test, owner)
             .then_some(TypeScriptRelationKind::ReceiverOwnerCall);
+    }
+    if owner.owner_kind == OwnerKind::ClassMethod {
+        return class_method_owner_call_relation(test, owner)
+            .then_some(TypeScriptRelationKind::ClassMethodCall);
     }
     if contains_call_name(&test.body_text, &owner.name)
         && !owner_name_shadowed_by_unrelated_import(test, owner)
@@ -1505,6 +1513,45 @@ fn receiver_owner_call_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) 
     receiver_names_for_constructor_calls(&test.body_text, &constructor_names)
         .iter()
         .any(|receiver| contains_member_call_name(&test.body_text, receiver, &owner.name))
+}
+
+fn class_method_owner_call_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    if owner.owner_kind != OwnerKind::ClassMethod || test_mocks_owner_module(test, owner) {
+        return false;
+    }
+    let class_names = class_names_for_class_method_owner(test, owner);
+    if class_names.is_empty() {
+        return false;
+    }
+    class_names
+        .iter()
+        .any(|class_name| contains_member_call_name(&test.body_text, class_name, &owner.name))
+}
+
+fn class_names_for_class_method_owner(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+) -> Vec<String> {
+    let Some(class_name) = owner.class_name.as_deref() else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    if normalized_module_path(&test.file) == normalized_module_path(&owner.file)
+        && !local_identifier_declared_in_test_body(&test.body_text, class_name)
+    {
+        push_unique_string(&mut names, class_name.to_string());
+    }
+    for import in &test.imports_in_file {
+        if import.namespace || !import_source_matches_owner(import, &test.file, owner) {
+            continue;
+        }
+        if import.imported.as_deref() == Some(class_name)
+            && !local_identifier_declared_in_test_body(&test.body_text, &import.local)
+        {
+            push_unique_string(&mut names, import.local.clone());
+        }
+    }
+    names
 }
 
 fn constructor_names_for_method_owner(
@@ -4124,6 +4171,188 @@ vi.mock("../src/owners");
 test("mocked cart total stays ambiguous", () => {
     const cart = new Cart();
     expect(cart.total()).toBe(1);
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_matches_bounded_class_method_calls() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart as Subject } from "../src/owners";
+
+test("static build observes class method", () => {
+    expect(Subject.build()).toBeDefined();
+});
+"#,
+        );
+
+        let candidates = related_test_candidates(&owner, &tests);
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].relation,
+            TypeScriptRelationKind::ClassMethodCall
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "static build observes class method");
+        assert_eq!(related[0].oracle_kind, OracleKind::SmokeOnly);
+        assert_eq!(related[0].oracle_strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn find_related_tests_keeps_shadowed_class_method_calls_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+test("shadowed static build stays ambiguous", () => {
+    const Cart = { build: () => "shadow" };
+    expect(Cart.build()).toBe("shadow");
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_matches_same_file_class_method_calls() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("src/owners.ts"),
+            r#"test("same file static build observes class method", () => {
+    expect(Cart.build()).toBeDefined();
+});
+"#,
+        );
+
+        let candidates = related_test_candidates(&owner, &tests);
+        let related = find_related_tests(&owner, &tests);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].relation,
+            TypeScriptRelationKind::ClassMethodCall
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(
+            related[0].name,
+            "same file static build observes class method"
+        );
+    }
+
+    #[test]
+    fn find_related_tests_keeps_namespace_class_method_calls_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import * as Owners from "../src/owners";
+
+test("namespace static build stays ambiguous", () => {
+    expect(Owners.Cart.build()).toBeDefined();
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_keeps_mocked_class_method_calls_unrelated() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: Some("Cart".to_string()),
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+vi.mock("../src/owners");
+
+test("mocked static build stays ambiguous", () => {
+    expect(Cart.build()).toBeDefined();
+});
+"#,
+        );
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_requires_class_name_for_class_method_calls() {
+        let owner = TypeScriptOwner {
+            name: "build".to_string(),
+            file: PathBuf::from("src/owners.ts"),
+            start_line: 10,
+            end_line: 12,
+            owner_kind: OwnerKind::ClassMethod,
+            class_name: None,
+            decorated: false,
+            imports: Vec::new(),
+        };
+        let tests = extract_tests(
+            Path::new("tests/owners.test.ts"),
+            r#"import { Cart } from "../src/owners";
+
+test("unknown class static build stays ambiguous", () => {
+    expect(Cart.build()).toBeDefined();
 });
 "#,
         );

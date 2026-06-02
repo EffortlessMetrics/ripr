@@ -2026,6 +2026,8 @@ tests = [
   "crates/ripr/src/analysis/language/typescript.rs::tests::find_related_tests_matches_module_initializer_named_import_observer",
   "crates/ripr/src/analysis/language/typescript.rs::tests::find_related_tests_matches_module_initializer_namespace_observer",
   "crates/ripr/src/analysis/language/typescript.rs::tests::find_related_tests_keeps_module_initializer_shadow_and_non_expect_references_unrelated",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::find_related_tests_matches_bounded_class_method_calls",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::find_related_tests_keeps_shadowed_class_method_calls_unrelated",
   "crates/ripr/src/output/preview_actionability.rs::tests::parses_typescript_preview_actionability_strings",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_advisory_fields",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_keeps_mock_payload_advisory",

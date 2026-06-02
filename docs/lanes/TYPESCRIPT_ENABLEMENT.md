@@ -100,9 +100,10 @@ now includes:
 - exact error-payload recognition for literal `toThrow(...)`,
   `rejects.toThrow(...)`, and safe `rejects.toMatchObject(...)` evidence, while
   bare broad checks stay weak;
-- bounded direct `new ClassName(...)` method-receiver related-test matching,
-  with factories, dependency injection, mocked classes, prototype aliases, and
-  dynamic property access excluded;
+- bounded direct `new ClassName(...)` method-receiver related-test matching and
+  unshadowed direct static class-method calls, with factories, dependency
+  injection, mocked classes, prototype aliases, namespace chains, and dynamic
+  property access excluded;
 - module-initializer observer guidance for direct named-import and namespace
   `expect(...)` observers, with broad, relational, helper-derived, shadowed, and
   dynamic cases remaining advisory or limited;
@@ -140,8 +141,8 @@ must not become actionable packets without stricter proof. It pins:
 - broad thrown or rejected error evidence without payload proof;
 - snapshot-only and smoke-only weak oracles;
 - heuristic related-test links and owner-name-only test titles;
-- method receiver repair-packet gaps, remaining receiver ambiguity, and
-  module-initializer missing target shape;
+- method receiver and static class-method repair-packet gaps, remaining
+  receiver ambiguity, and module-initializer missing target shape;
 - mocked module, decorator-indirection, and dynamic-dispatch static limits.
 
 Each row points at an existing checked TypeScript-family fixture finding,

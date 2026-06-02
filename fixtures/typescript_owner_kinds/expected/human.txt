@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/typescript_owner_kinds/input
 
-Summary: 4 probe(s), 1 exposed, 2 weak, 0 unrevealed, 1 no path, 0 unknown
+Summary: 4 probe(s), 1 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
 
 INFO src/owners.ts:2
 
@@ -145,27 +145,29 @@ Language
 Preview actionability
   authority: preview_advisory_only
   gap state: advisory
-  category: missing_context
+  category: incomplete_repair_packet
   repair packet ready: false
-  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
-  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
-  missing fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
-  evidence needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
   raw evidence: src/owners.ts:11 (typescript_preview_probe) source=probe:src_owners.ts:11:typescript_preview owner=build
 
 Static exposure
-  no_static_path (warning, confidence 0.40)
+  weakly_exposed (warning, confidence 0.40)
 
 Evidence
-  - reach no: 0 related test(s) found for owner `build`
+  - reach yes: 1 related test(s) found for owner `build`
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
-  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == new Cart({ tracked: true })`.
   - local flow reaches returned value: return new Cart({ tracked: true }); (line 11)
+  - related test tests/owners.test.ts:12 static build smoke uses smoke smoke only oracle: expect(...).toBeDefined(...)
 
 Weakness
-  - No trusted TypeScript class-method relation for `build`. Static class calls stay missing context until class-method related-test matching lands.
+  - Related test reaches `build` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator return value == new Cart({ tracked: true }): changed TypeScript returned-value at line 11 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
@@ -173,18 +175,20 @@ TypeScript preview card (advisory)
   owner: build
   owner kind: class_method
   changed behavior: return_value changed at src/owners.ts:11: `return new Cart({ tracked: true });`
-  oracle: unknown (none)
-  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  related test: tests/owners.test.ts:12 static build smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: return value == new Cart({ tracked: true })
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
   repair packet ready: false
-  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
-  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   limits:
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
 Next step
-  TypeScript preview advisory: class-method relation is missing context; keep the finding advisory until class-method related-test matching lands.
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == new Cart({ tracked: true })`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 WARNING src/owners.ts:15
 

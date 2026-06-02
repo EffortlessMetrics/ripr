@@ -134,9 +134,12 @@ function owner can match `applyDiscount(...)`, but string/comment mentions and
 arbitrary object-method calls such as `order.applyDiscount(...)` must not make
 the test related. Method owners may use a bounded receiver relation only when
 the test constructs a local receiver with `new ClassName(...)` or a named import
-alias for that class and then calls `receiver.method(...)`; factory returns,
-dependency injection, mocked modules, prototype aliases, and dynamic property
-access remain advisory or unsupported.
+alias for that class and then calls `receiver.method(...)`. Static class-method
+owners may use a bounded direct class member relation only when the test calls
+`ClassName.method(...)` through the same-file class name or an unshadowed named
+import alias. Factory returns, dependency injection, mocked modules, prototype
+aliases, namespace chains, and dynamic property access remain advisory or
+unsupported.
 
 ## Probe Facts
 

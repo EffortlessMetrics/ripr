@@ -8371,6 +8371,10 @@ const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES: &[(&str, &str)] 
         "must_remain_non_actionable",
     ),
     ("method_receiver_ambiguity", "candidate_future_support"),
+    (
+        "class_method_static_call_incomplete_packet",
+        "candidate_future_support",
+    ),
     ("module_initializer_ambiguity", "candidate_future_support"),
     ("mocked_module_limit", "named_static_limitation"),
     ("decorator_indirection_limit", "named_static_limitation"),
