@@ -1437,6 +1437,10 @@ git diff --check
 - `fixtures/python-real-repo-evals/corpus.json` now records bounded agent
   packet fields for every checked Python dogfood eval: packet command, allowed
   test files, forbidden production files, and stop conditions.
+- The dogfood checker now requires at least one full top-3 Python repair-card
+  capture, and the corpus records `multi_card_pytest_top3_receipt` where three
+  usable repair cards are ranked while only the top packet is delegated and
+  receipted.
 - The corpus now adds `unittest_return_value_receipt` as a post-promotion
   stability eval where a unittest return-value repair routes to one existing
   test method, verifies with `python -m unittest`, exports a bounded test-only

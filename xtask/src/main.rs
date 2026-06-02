@@ -8345,6 +8345,7 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
 const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("tiny_controlled_pytest_boundary_receipt", "closed"),
     ("normal_pytest_app_boundary_receipt", "closed"),
+    ("multi_card_pytest_top3_receipt", "closed"),
     ("async_return_pytest_receipt", "closed"),
     ("parametrized_boundary_pytest_receipt", "closed"),
     ("cli_output_pytest_receipt", "closed"),
@@ -9510,6 +9511,7 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
     let scenarios = dogfood_python_real_repo_eval_scenarios_at(path);
     let mut seen = BTreeMap::new();
     let mut closed_cases = 0usize;
+    let mut full_ranked_top_3_cases = 0usize;
     let mut runs = Vec::new();
     for scenario in &scenarios {
         if seen
@@ -9523,6 +9525,9 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
         }
         if scenario.gap_movement == "closed" {
             closed_cases += 1;
+        }
+        if scenario.ranked_top_3_findings.len() == 3 {
+            full_ranked_top_3_cases += 1;
         }
         let run = dogfood_python_real_repo_eval_run(scenario);
         for error in &run.errors {
@@ -9551,6 +9556,12 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
     if closed_cases == 0 {
         violations.push(
             "Python real-repo eval corpus must include at least one closed gap receipt".to_string(),
+        );
+    }
+    if full_ranked_top_3_cases == 0 {
+        violations.push(
+            "Python real-repo eval corpus must include at least one full top-3 repair-card capture"
+                .to_string(),
         );
     }
     let quality = dogfood_python_repair_routing_quality_summary(&runs);
@@ -74599,6 +74610,12 @@ fn exact_owner_call_has_external_expected_value() {
                     .iter()
                     .any(|scenario| scenario.gap_movement == "closed"),
                 "Python real-repo eval receipts should include a closed gap"
+            );
+            assert!(
+                scenarios
+                    .iter()
+                    .any(|scenario| scenario.ranked_top_3_findings.len() == 3),
+                "Python real-repo eval receipts should include a full top-3 repair-card capture"
             );
 
             let runs = scenarios
