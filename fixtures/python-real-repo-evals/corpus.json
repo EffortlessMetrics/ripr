@@ -1848,5 +1848,41 @@
       ],
       "reason": "The run records another fail-closed Python repair-routing shape: unsupported lambda-return syntax stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
     }
+  ],
+  "no_action_cases": [
+    {
+      "id": "no_related_test_no_packet_eval",
+      "repo_shape": "unrelated_pytest_text_mention",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_unrelated_test_mention",
+      "command": "ripr check --root fixtures/python_unrelated_test_mention/input --diff fixtures/python_unrelated_test_mention/diff.patch --format json",
+      "runtime_ms": 7181,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "no_action_kind": "no_related_test",
+      "classification": "no_static_path",
+      "stop_reasons": [
+        "no_related_test"
+      ],
+      "related_test_file": "not_applicable_no_related_test",
+      "related_test_name": "not_applicable_no_related_test",
+      "why_not_actionable": "no_action no_related_test prevents bounded repair routing because no related pytest or unittest test statically calls the changed owner",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports no_static_path for the changed apply_discount return because the only pytest text mention is unrelated; no repair card, agent packet, verify success, or receipt movement is claimed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: without a statically related test, RIPR keeps the finding visible but does not route a bounded human or agent test-repair task."
+    }
   ]
 }

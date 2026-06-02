@@ -258,6 +258,7 @@ Acceptance for the next dogfood PR should record additional real or
 external-repo-style Python repair-routing evals with command, runtime, top
 finding, repair card, packet, verify command, receipt or no-receipt reason,
 false-positive notes, limitation notes, and explicit support-tier boundaries.
-No-action static-limit evals should stay in `static_limit_cases` so they do not
-inflate repair-card success metrics. It should not promote Python to stable or
+No-action static-limit evals should stay in `static_limit_cases`; ordinary
+no-action states such as no related static test path should stay in
+`no_action_cases`. Neither bucket should inflate repair-card success metrics or
 route broader preview facts into gates, badges, baselines, or RIPR Zero.

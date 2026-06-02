@@ -1530,6 +1530,11 @@ git diff --check
   `src/schema_pb2.py` is excluded before probe generation, so RIPR records no
   repair card, agent packet, verify success, or receipt movement even when a
   related pytest import exists.
+- The corpus now records `no_related_test_no_packet_eval` under
+  `no_action_cases` as an ordinary fail-closed no-action eval: RIPR reports
+  `no_static_path` for a changed Python owner with only unrelated pytest text
+  mention evidence, and the dogfood report records no repair card, no agent
+  packet, not-applicable verify/receipt results, and no receipt movement.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
