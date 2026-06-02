@@ -341,13 +341,17 @@ fn helper_owner_calls_by_file_with_fanout(
 ) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
     let function_names_by_file = local_function_names_by_file(index);
+    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
+    let unambiguous_production_owner_names_by_package =
+        unambiguous_production_owner_names_by_package(index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(index);
     let production_owner_names = production_owner_names(index);
     for function in index.functions.iter().filter(|function| !function.is_test) {
         let helper_name_lower = function.name.to_ascii_lowercase();
         let local_function_names = function_names_by_file.get(&function.file);
         let external_owner_names =
             rust_index::is_test_file(&function.file).then_some(&production_owner_names);
-        let owner_calls = function
+        let mut owner_calls = function
             .calls
             .iter()
             .filter(|call| {
@@ -363,6 +367,14 @@ fn helper_owner_calls_by_file_with_fanout(
             })
             .map(|call| call.name.clone())
             .collect::<BTreeSet<_>>();
+        if let Some(package) = package_scope(&function.file) {
+            owner_calls.extend(strict_direct_imported_owner_calls_for_helper(
+                function,
+                direct_function_import_aliases_by_file.get(&function.file),
+                unambiguous_production_owner_names_by_package.get(&package),
+                &owner_names_by_module_path,
+            ));
+        }
         if owner_calls.is_empty() {
             continue;
         }
@@ -373,6 +385,25 @@ fn helper_owner_calls_by_file_with_fanout(
     }
     extend_helper_owner_calls_through_bounded_graph(&mut helpers);
     helpers
+}
+
+fn strict_direct_imported_owner_calls_for_helper(
+    function: &FunctionSummary,
+    direct_function_import_aliases: Option<&BTreeMap<String, ImportedFunctionAlias>>,
+    unambiguous_production_owner_names: Option<&BTreeSet<String>>,
+    owner_names_by_module_path: &OwnerNamesByModulePath,
+) -> BTreeSet<String> {
+    let owner_calls = direct_imported_owner_calls_for_function(
+        function,
+        direct_function_import_aliases,
+        unambiguous_production_owner_names,
+        owner_names_by_module_path,
+    );
+    if owner_calls.len() == 1 {
+        owner_calls
+    } else {
+        BTreeSet::new()
+    }
 }
 
 fn extend_helper_owner_calls_through_bounded_graph(helpers: &mut HelperOwnerCallsByFile) {
@@ -402,6 +433,35 @@ fn extend_helper_owner_calls_through_bounded_graph(helpers: &mut HelperOwnerCall
                 }
                 file_helpers.insert(helper_name, expanded_owner_calls);
             }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn extend_helper_owner_calls_through_bounded_name_graph(helpers: &mut HelperOwnerCallsByName) {
+    for _ in 1..HELPER_OWNER_CALL_GRAPH_MAX_HOPS {
+        let snapshot = helpers.clone();
+        let mut changed = false;
+        for helper_name in helpers.keys().cloned().collect::<Vec<_>>() {
+            let Some(owner_calls) = helpers.get(&helper_name).cloned() else {
+                continue;
+            };
+            let mut expanded_owner_calls = owner_calls.clone();
+            for owner_call in owner_calls {
+                let Some(transitive_owner_calls) = snapshot.get(&owner_call) else {
+                    continue;
+                };
+                for transitive_owner_call in transitive_owner_calls {
+                    if transitive_owner_call != &helper_name
+                        && expanded_owner_calls.insert(transitive_owner_call.clone())
+                    {
+                        changed = true;
+                    }
+                }
+            }
+            helpers.insert(helper_name, expanded_owner_calls);
         }
         if !changed {
             break;
@@ -468,12 +528,13 @@ fn production_helper_owner_calls_by_package(
     by_package
         .into_iter()
         .filter_map(|(package, helper_sets)| {
-            let helpers = helper_sets
+            let mut helpers = helper_sets
                 .into_iter()
                 .filter_map(|(helper_name, owner_sets)| {
                     common_helper_owner_calls(helper_name, owner_sets)
                 })
                 .collect::<HelperOwnerCallsByName>();
+            extend_helper_owner_calls_through_bounded_name_graph(&mut helpers);
             (!helpers.is_empty()).then_some((package, helpers))
         })
         .collect()
@@ -11839,6 +11900,97 @@ mod tests {
         assert!(
             evidence.observed_values.is_empty(),
             "two-hop wrapper must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_production_wrapper_imports_owner_helper_then_activation_is_yes()
+    -> Result<(), String> {
+        let path_file = PathBuf::from("src/parser/path.rs");
+        let path_src = r#"
+use std::path::PathBuf;
+
+pub fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
+    let path = parse_diff_path_token(raw)?;
+    Some(PathBuf::from(path))
+}
+
+fn parse_diff_path_token(raw: &str) -> Option<String> {
+    let quoted = raw.strip_prefix('"')?;
+    parse_c_quoted_path(quoted)
+}
+
+fn parse_c_quoted_path(raw: &str) -> Option<String> {
+    let mut chars = raw.chars().peekable();
+    let ch = chars.next()?;
+    match ch {
+        '"' => Some(String::new()),
+        '\\' => Some(parse_c_escape(&mut chars).to_string()),
+        _ => Some(ch.to_string()),
+    }
+}
+
+fn parse_c_escape<I>(chars: &mut std::iter::Peekable<I>) -> char
+where
+    I: Iterator<Item = char>,
+{
+    chars.next().unwrap_or('\\')
+}
+"#;
+        let parse_file = PathBuf::from("src/parser/parse.rs");
+        let parse_src = r#"
+use std::path::PathBuf;
+use crate::parser::path::parse_new_path_marker;
+
+pub fn parse_unified_diff(raw: &str) -> Option<PathBuf> {
+    parse_line(raw)
+}
+
+fn parse_line(raw: &str) -> Option<PathBuf> {
+    parse_new_path_marker(raw)
+}
+"#;
+        let tests = PathBuf::from("tests/parser_tests.rs");
+        let tests_src = r#"
+use parser::parse::parse_unified_diff;
+
+#[test]
+fn quoted_path_reaches_path_parser() {
+    assert_eq!(parse_unified_diff("\"src/lib.rs\"").unwrap(), std::path::PathBuf::from("src/lib.rs"));
+}
+"#;
+        let index = index_from_files(&[
+            (path_file, path_src),
+            (parse_file, parse_src),
+            (tests, tests_src),
+        ])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/parser/path.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::parse_c_quoted_path")
+                    && s.expression().contains("parse_c_escape")
+            })
+            .ok_or_else(|| "expected parse_c_quoted_path call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "imported production helper chain should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "imported production helper activation must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
