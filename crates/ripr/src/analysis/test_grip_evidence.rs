@@ -1522,6 +1522,7 @@ fn direct_delegate_extra_call_is_inert(call_name: &str) -> bool {
             | "to_string"
             | "trim"
             | "unwrap"
+            | "unwrap_or_default"
             | "Err"
             | "Ok"
             | "Some"
@@ -12126,6 +12127,65 @@ mod tests {
         assert!(
             evidence.observed_values.is_empty(),
             "extend wrapper route must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_wrapper_unwraps_or_defaults_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn render_pipeline(input: &str) -> Option<String> {
+    Some(format_output(input))
+}
+
+fn collect_pipeline_output(input: &str) -> String {
+    render_pipeline(input).unwrap_or_default()
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unwrap_or_default_wrapper_reaches_pipeline_owner() {
+        let output = collect_pipeline_output("alpha");
+        assert_eq!(output, "alpha");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "unwrap_or_default wrapper should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "unwrap_or_default wrapper route must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
