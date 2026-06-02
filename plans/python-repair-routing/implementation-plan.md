@@ -1521,15 +1521,22 @@ git diff --check
   protection fails the checked quality gate instead of counting as usable.
 - `cargo xtask dogfood` now requires the receipt-backed async return-value,
   pytest exception, custom exception, unittest exception, API JSON detail,
+  argparse CLI output, Click CLI output, Typer CLI output, CLI exit-code,
   Flask route JSON detail, FastAPI route JSON detail, API exception-response,
   and unittest return-value eval rows in addition to the original
-  boundary/API/CLI/mixed cases, so those Python closure proofs cannot disappear
-  from the corpus without failing the checked dogfood gate.
+  boundary/API/CLI/mixed cases, so those Python closure proofs cannot
+  disappear from the corpus without failing the checked dogfood gate.
 - The corpus now adds `cli_exit_code_pytest_receipt` as a post-promotion
   stability eval where a changed literal `sys.exit(2)` side effect routes to a
   CLI exit-code repair card, exports a bounded test-only packet, verifies with
   focused pytest, and closes the canonical Python call/output-effect gap
   through `ripr outcome`.
+- The corpus now adds `argparse_cli_output_pytest_receipt` as a
+  post-promotion stability eval where a changed static `print(...)` side
+  effect inside an argparse-shaped command routes to a CLI output repair card,
+  exports a bounded test-only packet, verifies with focused pytest, and closes
+  the canonical Python call/output-effect gap through `ripr outcome` without
+  RIPR importing argparse or executing parser setup.
 - The corpus now adds `click_cli_output_pytest_receipt` as a post-promotion
   stability eval where a changed `click.echo("shipment queued")` side effect
   routes to a CLI output repair card, exports a bounded test-only packet,
