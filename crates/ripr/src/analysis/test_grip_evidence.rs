@@ -1216,6 +1216,9 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
     if direct_delegate_std_identity_prefix_is_allowed(prefix) {
         return true;
     }
+    if direct_delegate_field_initializer_prefix_is_allowed(prefix) {
+        return true;
+    }
     let Some(open) = prefix.strip_suffix('(') else {
         let Some(open) = prefix.strip_suffix('[') else {
             return false;
@@ -1359,6 +1362,19 @@ fn direct_delegate_std_identity_path_is_allowed(path: &str) -> bool {
     )
 }
 
+fn direct_delegate_field_initializer_prefix_is_allowed(prefix: &str) -> bool {
+    let Some(before_colon) = prefix.trim_end().strip_suffix(':') else {
+        return false;
+    };
+    let before_colon = before_colon.trim_end();
+    let field_name = trailing_rust_identifier(before_colon);
+    if field_name.is_empty() {
+        return false;
+    }
+    let before_field = before_colon[..before_colon.len() - field_name.len()].trim_end();
+    before_field.is_empty() || before_field.ends_with('{') || before_field.ends_with(',')
+}
+
 fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
     let Some(receiver_prefix) = prefix.strip_suffix('.') else {
         return false;
@@ -1464,7 +1480,7 @@ fn direct_delegate_post_owner_method_is_allowed(
     text: &str,
     owner_name: &str,
 ) -> bool {
-    if !matches!(method_name, "as_ref") {
+    if !matches!(method_name, "as_ref" | "cloned") {
         return false;
     }
     let cleaned = strip_comments_and_strings(text);
@@ -11284,6 +11300,86 @@ mod tests {
         assert!(
             evidence.observed_values.is_empty(),
             "method-chain helper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_helper_clones_owner_result_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/activation.rs");
+        let source_src = r#"
+#[derive(Clone)]
+struct FlowSinkFact {
+    kind: FlowSinkKind,
+}
+
+#[derive(PartialEq)]
+enum FlowSinkKind {
+    Unknown,
+    Return,
+}
+
+struct MissingDiscriminatorFact {
+    flow_sink: Option<FlowSinkFact>,
+}
+
+fn activation_evidence(flow_sinks: &[FlowSinkFact]) -> Option<MissingDiscriminatorFact> {
+    missing_boundary_discriminator(flow_sinks)
+}
+
+fn missing_boundary_discriminator(flow_sinks: &[FlowSinkFact]) -> Option<MissingDiscriminatorFact> {
+    Some(MissingDiscriminatorFact {
+        flow_sink: first_visible_flow_sink(flow_sinks).cloned(),
+    })
+}
+
+fn first_visible_flow_sink(flow_sinks: &[FlowSinkFact]) -> Option<&FlowSinkFact> {
+    flow_sinks
+        .iter()
+        .find(|sink| sink.kind != FlowSinkKind::Unknown)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activation_evidence_reports_visible_flow_sink() {
+        let sinks = vec![FlowSinkFact { kind: FlowSinkKind::Return }];
+        let missing = activation_evidence(&sinks);
+        assert!(missing.and_then(|fact| fact.flow_sink).is_some());
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/activation.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::first_visible_flow_sink")
+                    && s.expression().contains("flow_sinks")
+                    && s.expression().contains(".iter()")
+            })
+            .ok_or_else(|| "expected first_visible_flow_sink call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "same-file helper with cloned owner result should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "cloned owner-result helper must not invent observed values: {:?}",
             evidence.observed_values
         );
         Ok(())
