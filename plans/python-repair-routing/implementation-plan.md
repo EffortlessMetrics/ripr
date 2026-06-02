@@ -1436,6 +1436,15 @@ git diff --check
   stability eval where a unittest return-value repair routes to one existing
   test method, verifies with `python -m unittest`, exports a bounded test-only
   packet, and closes the canonical Python gap through `ripr outcome`.
+- Returned Python dict field discriminators now prefer a literal-valued field
+  over a pass-through field in multi-field return literals, so
+  `{"name": name, "status": "active"}` routes to the missing discriminator
+  `status == "active"` instead of the non-discriminating `name == name`.
+- The corpus now adds `unittest_dict_field_receipt` as a post-promotion
+  stability eval where a unittest returned-dict field repair routes to one
+  existing test method, verifies with `python -m unittest`, exports a bounded
+  test-only packet, and closes the canonical Python field/object gap through
+  `ripr outcome`.
 - The corpus now adds `api_json_detail_pytest_receipt` as a post-promotion
   stability eval where an API response JSON detail repair routes to one
   existing pytest method, verifies with a focused `pytest` command, exports a
@@ -1523,7 +1532,7 @@ git diff --check
   pytest exception, custom exception, unittest exception, API JSON detail,
   log output, argparse CLI output, Click CLI output, Typer CLI output,
   CLI exit-code, Flask route JSON detail, FastAPI route JSON detail, API
-  exception-response, and unittest return-value eval rows in addition to the original
+  exception-response, unittest return-value, and unittest dict-field eval rows in addition to the original
   boundary/API/CLI/mixed cases, so those Python closure proofs cannot
   disappear from the corpus without failing the checked dogfood gate.
 - The corpus now adds `log_output_pytest_receipt` as a post-promotion

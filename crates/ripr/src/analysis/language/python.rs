@@ -3370,19 +3370,68 @@ fn python_return_dict_field_parts(line_text: &str) -> Option<(String, String)> {
         .trim_start()
         .trim_end_matches('}')
         .trim_end();
-    let (raw_key, rest) = body.split_once(':')?;
-    let key = raw_key.trim().trim_matches('"').trim_matches('\'');
-    let value = rest
-        .split(',')
-        .next()
-        .unwrap_or(rest)
-        .trim()
-        .trim_end_matches('}')
-        .trim();
+    let mut fallback = None;
+    for segment in top_level_python_segments(body) {
+        let Some((key, value)) = python_dict_field_segment_parts(segment) else {
+            continue;
+        };
+        if fallback.is_none() {
+            fallback = Some((key.to_string(), value.to_string()));
+        }
+        if is_literal_python_model_field_value(value) {
+            return Some((key.to_string(), value.to_string()));
+        }
+    }
+    fallback
+}
+
+fn top_level_python_segments(text: &str) -> Vec<&str> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    let mut segment_start = 0usize;
+    let mut segments = Vec::new();
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+            continue;
+        }
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                segments.push(text[segment_start..idx].trim());
+                segment_start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    segments.push(text[segment_start..].trim());
+    segments
+}
+
+fn python_dict_field_segment_parts(segment: &str) -> Option<(&str, &str)> {
+    let colon = top_level_colon(segment)?;
+    let key = segment[..colon].trim().trim_matches('"').trim_matches('\'');
+    let value = segment[colon + 1..].trim().trim_end_matches('}').trim();
     if key.is_empty() || value.is_empty() {
         None
     } else {
-        Some((key.to_string(), value.to_string()))
+        Some((key, value))
     }
 }
 
@@ -3498,6 +3547,14 @@ fn python_keyword_argument_parts(segment: &str) -> Option<(&str, &str)> {
 }
 
 fn top_level_equals(text: &str) -> Option<usize> {
+    top_level_delimiter(text, '=')
+}
+
+fn top_level_colon(text: &str) -> Option<usize> {
+    top_level_delimiter(text, ':')
+}
+
+fn top_level_delimiter(text: &str, delimiter: char) -> Option<usize> {
     let mut quote = None;
     let mut escaped = false;
     let mut depth = 0usize;
@@ -3523,7 +3580,7 @@ fn top_level_equals(text: &str) -> Option<usize> {
         match ch {
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            '=' if depth == 0 => return Some(idx),
+            _ if ch == delimiter && depth == 0 => return Some(idx),
             _ => {}
         }
     }
@@ -3532,10 +3589,14 @@ fn top_level_equals(text: &str) -> Option<usize> {
 
 fn is_simple_python_model_field_value(value: &str) -> bool {
     let value = value.trim();
+    is_literal_python_model_field_value(value) || is_simple_python_identifier(value)
+}
+
+fn is_literal_python_model_field_value(value: &str) -> bool {
+    let value = value.trim();
     python_string_literal_value(value).is_some()
         || matches!(value, "True" | "False" | "None")
         || is_simple_python_numeric_literal(value)
-        || is_simple_python_identifier(value)
 }
 
 fn is_simple_python_numeric_literal(value: &str) -> bool {
@@ -4701,6 +4762,31 @@ def test_notifies_callback():
         let (family, delta) = classify_probe_shape("    callback = MagicMock(name=\"receipt\")");
         assert_eq!(family, ProbeFamily::SideEffect);
         assert_eq!(delta, DeltaKind::Effect);
+    }
+
+    #[test]
+    fn return_dict_field_parts_prefer_literal_changed_value_candidates() {
+        assert_eq!(
+            python_return_dict_field_parts("return {\"name\": name, \"status\": \"active\"}"),
+            Some(("status".to_string(), "\"active\"".to_string()))
+        );
+        assert_eq!(
+            python_return_dict_field_discriminator(
+                "return {\"name\": name, \"status\": \"active\"}"
+            )
+            .as_deref(),
+            Some("status == \"active\"")
+        );
+        assert_eq!(
+            python_return_dict_field_parts(
+                "return {\"label\": \"ready, set\", \"status\": status}"
+            ),
+            Some(("label".to_string(), "\"ready, set\"".to_string()))
+        );
+        assert_eq!(
+            python_return_dict_field_parts("return {\"status\": status}"),
+            Some(("status".to_string(), "status".to_string()))
+        );
     }
 
     #[test]

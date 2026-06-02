@@ -1378,6 +1378,70 @@
       "reason": "The run extends post-usable-alpha stability evidence to a unittest return-value repair: RIPR routes the missing exact return discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "unittest_dict_field_receipt",
+      "repo_shape": "unittest_service",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unittest-field-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unittest-field-receipt --base HEAD~1 --format json",
+      "runtime_ms": 210,
+      "top_finding_summary": "Python unittest returned-dict field repair card for build_profile status field",
+      "canonical_gap_id": "gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing unittest returned-dict field test with an exact status assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/unittest-field-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active --json",
+      "agent_packet_allowed_files": [
+        "tests/test_profiles.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/profiles.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected field value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/profiles.py::build_profile",
+      "missing_discriminator": "status == \"active\"",
+      "suggested_test_file": "tests/test_profiles.py",
+      "suggested_test_name": "test_build_profile_status",
+      "verify_command": "python -m unittest tests.test_profiles.TestBuildProfile.test_build_profile_status",
+      "verify_result": "pass",
+      "verify_summary": "1 unittest test passed in 0.00s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/unittest-field-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 210,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "unittest returned-dict field scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "status == \"active\"",
+          "suggested_test_file": "tests/test_profiles.py",
+          "verify_command": "python -m unittest tests.test_profiles.TestBuildProfile.test_build_profile_status",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python unittest returned-dict field receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused unittest dict-field eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run unittest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a unittest returned-dict field repair: RIPR routes the changed literal field to the missing discriminator `status == \"active\"`, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
       "id": "model_field_pytest_receipt",
       "repo_shape": "dataclass_model_pytest",
       "source_kind": "scratch_repo",
