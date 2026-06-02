@@ -14,7 +14,7 @@ Use:
 Manual dispatch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.7.0
+gh workflow run release-server-binaries.yml -f version=0.8.0
 ```
 
 The workflow builds:
@@ -59,8 +59,8 @@ README-server.txt
 
 ## Release Proof
 
-The current verified public release line is `v0.7.0`, published on May 20,
-2026:
+The last verified public release line before 0.8.0 execution is `v0.7.0`,
+published on May 20, 2026:
 
 - The GitHub Release has `ripr-0.7.0.vsix`.
 - The release has `ripr-server-manifest-v0.7.0.json`.
@@ -122,7 +122,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.7.0.vsix --force
+code --install-extension dist/ripr-0.8.0.vsix --force
 ```
 
 For the defaults-first release line, also run the server archive smoke from

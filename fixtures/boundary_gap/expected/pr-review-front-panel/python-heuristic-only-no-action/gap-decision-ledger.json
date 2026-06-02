@@ -1,0 +1,94 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "root": "fixtures/python_related_test_name_similarity/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "source_kind": "check_output",
+    "records": "fixtures/python_related_test_name_similarity/expected/check.json"
+  },
+  "summary": {
+    "records_total": 1,
+    "repairable_total": 0,
+    "static_limitation_total": 0,
+    "no_action_total": 1,
+    "missing_artifact_total": 0,
+    "projection_pr_comment_eligible": 0,
+    "projection_gate_candidate": 0,
+    "projection_agent_packet_eligible": 0,
+    "ripr_zero_target_count": 0,
+    "ripr_plus_target_count": 0,
+    "preview_ineligible_total": 1,
+    "receipt_improved_total": 0,
+    "receipt_unchanged_after_attempt_total": 0,
+    "missing_output_contract_total": 0
+  },
+  "records": [
+    {
+      "gap_id": "gap:pr:gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+      "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+      "kind": "NoActionHeuristicOnly",
+      "language": "python",
+      "language_status": "preview",
+      "scope": "pr_local",
+      "evidence_class": "return_value",
+      "gap_state": "heuristic_only",
+      "policy_state": "not_policy_targeted",
+      "repairability": "no_action",
+      "anchor": {
+        "file": "src/pricing.py",
+        "line": 2,
+        "owner": "python:src/pricing.py::apply_discount",
+        "dedupe_fingerprint": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10"
+      },
+      "evidence_ids": [
+        "probe:src_pricing.py:2:python_preview",
+        "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10"
+      ],
+      "projection_eligibility": {
+        "agent_packet": {
+          "eligible": false,
+          "reason": "not_repairable"
+        },
+        "ci_summary": {
+          "eligible": true,
+          "reason": "pr_local_gap_record"
+        },
+        "gate_candidate": {
+          "eligible": false,
+          "reason": "policy_target_not_supplied"
+        },
+        "lsp_diagnostic": {
+          "eligible": false,
+          "reason": "not_repairable_or_missing_anchor"
+        },
+        "pr_comment": {
+          "eligible": false,
+          "reason": "not_actionable_gap"
+        },
+        "report_packet": {
+          "eligible": true,
+          "reason": "all_gap_records_are_reportable"
+        },
+        "ripr_plus_count": {
+          "eligible": false,
+          "reason": "pr_local_not_repo_scoped"
+        },
+        "ripr_zero_count": {
+          "eligible": false,
+          "reason": "pr_local_not_repo_scoped"
+        }
+      },
+      "verification_commands": [],
+      "authority_boundary": "preview_advisory_only"
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory static gap decisions only.",
+    "Gate-decision artifacts remain the only configured pass/fail authority.",
+    "This report does not rerun analysis, execute mutation tests, edit source, generate tests, call providers, publish comments, or change default CI blocking."
+  ]
+}

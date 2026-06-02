@@ -1,0 +1,10 @@
+diff --git a/src/shop_service/pricing.py b/src/shop_service/pricing.py
+index 0000000..1111111 100644
+--- a/src/shop_service/pricing.py
++++ b/src/shop_service/pricing.py
+@@ -1,4 +1,4 @@
+ def loyalty_discount(subtotal, loyalty_threshold):
+-    if subtotal > loyalty_threshold:
++    if subtotal >= loyalty_threshold:
+         return subtotal - 5
+     return subtotal

@@ -33,6 +33,28 @@
       "reason": "Default generated CI should remain advisory and readable when there is no safe next action."
     },
     {
+      "id": "python_heuristic_only_no_action",
+      "scenario": "Python preview gap is visible but not safe to route because only heuristic related-test evidence exists",
+      "inputs": {
+        "ledger": "fixtures/boundary_gap/expected/pr-review-front-panel/python-heuristic-only-no-action/gap-decision-ledger.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/python-heuristic-only-no-action/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/python-heuristic-only-no-action/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "heuristic_only",
+        "policy_state": "none",
+        "placement": "not_available",
+        "movement_state": "not_available",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "The front panel should surface Python no-action states without emitting a repair packet or implying a missing-proof work order."
+    },
+    {
       "id": "actionable",
       "scenario": "changed-line actionable PR-local weak seam",
       "inputs": {

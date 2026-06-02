@@ -131,6 +131,8 @@ struct PanelTopIssue {
     current_evidence_strength: Option<String>,
     missing_discriminator: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    no_action_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     focused_proof_intent: Option<String>,
     related_test: Option<String>,
     suggested_test: Option<String>,
@@ -442,6 +444,9 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         if let Some(discriminator) = &issue.missing_discriminator {
             out.push_str(&format!("- Missing discriminator: {discriminator}\n"));
         }
+        if let Some(reason) = &issue.no_action_reason {
+            out.push_str(&format!("- Why not actionable: {reason}\n"));
+        }
         if let Some(intent) = &issue.focused_proof_intent {
             out.push_str(&format!("- Focused proof intent: {intent}\n"));
         }
@@ -623,7 +628,9 @@ fn issue_primary_identity(issue: &PanelTopIssue) -> String {
 }
 
 fn issue_repair_route(issue: &PanelTopIssue) -> String {
-    if issue.suggested_test.is_some() {
+    if issue.no_action_reason.is_some() {
+        "no_repair_packet".to_string()
+    } else if issue.suggested_test.is_some() {
         "focused_test".to_string()
     } else if issue.agent_command.is_some() {
         "agent_handoff".to_string()
@@ -835,6 +842,18 @@ fn select_candidate(
                 "Add equality-boundary discriminator test.".to_string()
             },
             placement,
+        };
+    }
+    if let Some(top_issue) = top_issue_from_python_no_action_ledger(input, parsed) {
+        let state = top_issue
+            .classification
+            .clone()
+            .unwrap_or_else(|| "python_no_action".to_string());
+        return Candidate {
+            top_issue: Some(top_issue),
+            top_issue_state: state.clone(),
+            headline: python_no_action_headline(&state),
+            placement: "not_available".to_string(),
         };
     }
     Candidate {
@@ -1300,6 +1319,16 @@ fn artifacts(
                 ));
             }
         }
+        state if is_python_no_action_state(state) => {
+            if let Some(path) = &inputs.ledger {
+                artifacts.push(evidence_artifact(
+                    "Gap decision ledger",
+                    path,
+                    parsed.ledger.is_some(),
+                ));
+            }
+            push_first_action_artifact(&mut artifacts, inputs, parsed);
+        }
         _ => {
             push_first_action_artifact(&mut artifacts, inputs, parsed);
         }
@@ -1374,6 +1403,7 @@ fn top_issue_from_first_action(
         ]),
         current_evidence_strength: current_evidence_strength_from_sources(&[Some(selected)]),
         missing_discriminator: string_path(selected, &["missing_discriminator"]),
+        no_action_reason: None,
         focused_proof_intent: focused_proof_intent_from_action_or_proof(
             action,
             parsed.assistant_proof.as_ref(),
@@ -1439,6 +1469,7 @@ fn top_issue_from_guidance(
                 .map(normalize_class)
             }),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        no_action_reason: None,
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["focused_proof_intent"]),
             (Some(item), &["suggested_test", "focused_proof_intent"]),
@@ -1497,6 +1528,7 @@ fn top_issue_from_gate_decision(
         current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
             .or_else(|| Some("weakly_exposed".to_string())),
         missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
+        no_action_reason: None,
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["evidence", "focused_proof_intent"]),
             (Some(item), &["evidence", "assertion_shape"]),
@@ -1546,6 +1578,7 @@ fn top_issue_from_baseline_delta(
         current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
             .or_else(|| string_path(item, &["static_class"]).map(normalize_class)),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        no_action_reason: None,
         focused_proof_intent: string_from_sources(&[
             (Some(item), &["focused_proof_intent"]),
             (Some(item), &["suggested_test", "assertion_shape"]),
@@ -1594,6 +1627,7 @@ fn top_issue_from_assistant_health(
         ])
         .or_else(|| string_path(seam, &["grip_class"]).map(normalize_class)),
         missing_discriminator: string_path(seam, &["missing_discriminator"]),
+        no_action_reason: None,
         focused_proof_intent: recommendation.and_then(|value| {
             string_from_sources(&[
                 (Some(value), &["focused_proof_intent"]),
@@ -1621,6 +1655,133 @@ fn top_issue_from_assistant_health(
                 .unwrap_or_else(|| RECEIPT_MISSING.to_string()),
         },
     })
+}
+
+fn top_issue_from_python_no_action_ledger(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+) -> Option<PanelTopIssue> {
+    let ledger = parsed.ledger.as_ref()?;
+    let record = ledger
+        .get("records")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|record| python_no_action_record(record))?;
+    let state = string_path(record, &["gap_state"])?;
+    let anchor = record.get("anchor");
+    let static_limit_kind = string_path(record, &["static_limit_kind"]);
+    let static_limit_detail = string_path(record, &["static_limit_detail"]);
+    Some(PanelTopIssue {
+        source: "gap_decision_ledger".to_string(),
+        source_artifact: input.ledger_path.clone()?,
+        seam_id: string_path(record, &["gap_id"]),
+        canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        path: string_from_sources(&[(anchor, &["file"]), (Some(record), &["path"])]),
+        line: u64_from_sources(&[(anchor, &["line"]), (Some(record), &["line"])]),
+        classification: Some(state.clone()),
+        changed_behavior: string_from_sources(&[
+            (record.get("repair_route"), &["changed_behavior"]),
+            (Some(record), &["changed_behavior"]),
+        ]),
+        current_evidence_strength: Some(python_no_action_current_evidence(
+            &state,
+            static_limit_kind.as_deref(),
+        )),
+        missing_discriminator: None,
+        no_action_reason: Some(python_no_action_reason(
+            &state,
+            static_limit_kind.as_deref(),
+            static_limit_detail.as_deref(),
+        )),
+        focused_proof_intent: None,
+        related_test: string_path(record, &["repair_route", "related_test"]),
+        suggested_test: None,
+        verify_command: None,
+        receipt_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        agent_command: None,
+        receipt: PanelReceipt {
+            artifact: None,
+            status: RECEIPT_NOT_APPLICABLE.to_string(),
+        },
+    })
+}
+
+fn python_no_action_record(record: &Value) -> bool {
+    string_path(record, &["language"]).as_deref() == Some("python")
+        && string_path(record, &["language_status"]).as_deref() == Some("preview")
+        && matches!(
+            string_path(record, &["gap_state"]).as_deref(),
+            Some("already_observed" | "no_related_test" | "heuristic_only" | "static_limitation")
+        )
+        && matches!(
+            string_path(record, &["repairability"]).as_deref(),
+            Some("no_action" | "analyzer_limitation")
+        )
+}
+
+fn is_python_no_action_state(state: &str) -> bool {
+    matches!(
+        state,
+        "already_observed" | "no_related_test" | "heuristic_only" | "static_limitation"
+    )
+}
+
+fn python_no_action_headline(state: &str) -> String {
+    match state {
+        "already_observed" => "Python evidence is already observed; no repair packet emitted.",
+        "no_related_test" => "Python evidence has no safe related-test route.",
+        "heuristic_only" => "Python evidence is heuristic-only; no repair packet emitted.",
+        "static_limitation" => "Python repair routing stopped at a static limitation.",
+        _ => "Python repair routing found no bounded repair packet.",
+    }
+    .to_string()
+}
+
+fn python_no_action_current_evidence(state: &str, static_limit_kind: Option<&str>) -> String {
+    match state {
+        "already_observed" => {
+            "Current Python test evidence already observes the changed behavior.".to_string()
+        }
+        "no_related_test" => {
+            "No related static Python test path was found for the changed owner.".to_string()
+        }
+        "heuristic_only" => "Only heuristic Python related-test proximity was found.".to_string(),
+        "static_limitation" => format!(
+            "Python preview hit static limitation `{}`.",
+            static_limit_kind.unwrap_or("unknown")
+        ),
+        _ => "Python preview did not find a bounded repair route.".to_string(),
+    }
+}
+
+fn python_no_action_reason(
+    state: &str,
+    static_limit_kind: Option<&str>,
+    static_limit_detail: Option<&str>,
+) -> String {
+    match state {
+        "already_observed" => {
+            "the related Python test already has strong static evidence for this changed behavior"
+                .to_string()
+        }
+        "no_related_test" => {
+            "no related Python test was statically linked, so RIPR cannot choose a safe edit target"
+                .to_string()
+        }
+        "heuristic_only" => {
+            "the only related-test signal is uncertain name or fixture proximity, so bounded repair routing would overclaim"
+                .to_string()
+        }
+        "static_limitation" => {
+            let limit = static_limit_kind.unwrap_or("unknown");
+            let detail = static_limit_detail.unwrap_or(
+                "syntax-first Python preview evidence cannot route this shape safely",
+            );
+            format!("static limit `{limit}` prevents a safe repair packet: {detail}")
+        }
+        _ => "no bounded Python repair packet is available from the supplied evidence".to_string(),
+    }
 }
 
 fn first_action_status(first_action: Option<&Value>) -> Option<&str> {

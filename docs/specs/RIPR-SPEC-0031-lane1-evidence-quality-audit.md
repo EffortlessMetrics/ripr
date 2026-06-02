@@ -37,7 +37,7 @@ The command:
 - records bounded repo-exposure generation diagnostics in the audit input block,
   including timeout, status, duration, output byte counts, and the tail of the
   latency trace;
-- uses a 120-second default repo-exposure generation budget, configurable with
+- uses a 240-second default repo-exposure generation budget, configurable with
   `RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS`, so cold or pathological live analysis
   reaches a named limited artifact before platform-specific abort behavior can
   leave no report;
