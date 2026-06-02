@@ -263,6 +263,55 @@
       "reason": "The JS side-effect route is intentionally skipped because the current preview can name the missing observer but not a complete agent-safe packet."
     },
     {
+      "id": "typescript_static_class_method_smoke_oracle",
+      "source_fixture": "fixtures/typescript_owner_kinds",
+      "source_finding_id": "probe:src_owners.ts:11:typescript_preview",
+      "language": "typescript",
+      "language_status": "preview",
+      "classification": "weakly_exposed",
+      "changed_owner": "build",
+      "probe_family": "return_value",
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
+      "static_limit_kind": null,
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "expected_test_or_observer_shape": "exact return-value assertion for Cart.build() output instead of toBeDefined smoke evidence",
+      "verify_command": "npm test -- owners",
+      "verify_result": "not_run",
+      "receipt_command": "ripr agent receipt --source fixtures/typescript_owner_kinds --out target/ripr/reports/typescript-static-class-method-preview-receipt.json",
+      "receipt_state": "not_run_preview_route",
+      "outcome": "weak_oracle_downgraded",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+      "operator_note": "Direct static class-method evidence can relate the smoke test to the changed owner, but the preview card still withholds a repair packet until strict fields exist.",
+      "must_not_change": [
+        "production behavior",
+        "public API",
+        "snapshot format",
+        "preview support tier",
+        "default gate or badge policy"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:11:typescript_preview"
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Jest/Vitest execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "The class-method route proves newer bounded relation evidence is useful while smoke-only observation remains weak and non-actionable."
+    },
+    {
       "id": "typescript_mocked_module_static_limit",
       "source_fixture": "fixtures/typescript_mocked_module_limit",
       "source_finding_id": "probe:src_discount.ts:2:typescript_preview",
