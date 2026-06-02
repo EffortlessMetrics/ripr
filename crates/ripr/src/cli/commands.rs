@@ -2827,7 +2827,8 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
         return Ok(());
     };
 
-    let python_first_use = collect_pilot_python_first_use(&input, &config);
+    let python_first_use =
+        collect_pilot_python_first_use_with_timeout(&input, &config, options.timeout_ms);
     let context = output::pilot::PilotSummaryContext {
         root: &input.root,
         mode: &input.mode,
@@ -2897,9 +2898,10 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn collect_pilot_python_first_use(
+fn collect_pilot_python_first_use_with_timeout(
     input: &CheckInput,
     config: &RiprConfig,
+    timeout_ms: u64,
 ) -> Option<output::pilot::PilotPythonFirstUse> {
     if !config
         .languages()
@@ -2909,14 +2911,52 @@ fn collect_pilot_python_first_use(
         return None;
     }
 
-    let mut check_input = input.clone();
+    let check_input = input.clone();
+    let analysis_config = config.clone();
+    Some(run_pilot_python_first_use_with_timeout(
+        timeout_ms,
+        move || collect_pilot_python_first_use(check_input, analysis_config),
+    ))
+}
+
+fn collect_pilot_python_first_use(
+    input: CheckInput,
+    config: RiprConfig,
+) -> output::pilot::PilotPythonFirstUse {
+    let mut check_input = input;
     check_input.format = OutputFormat::Json;
-    Some(
-        match app::check_workspace_with_config(check_input, config) {
-            Ok(output) => output::pilot::PilotPythonFirstUse::from_check_output(&output),
-            Err(error) => output::pilot::PilotPythonFirstUse::analysis_unavailable(error),
-        },
-    )
+    match app::check_workspace_with_config(check_input, &config) {
+        Ok(output) => output::pilot::PilotPythonFirstUse::from_check_output(&output),
+        Err(error) => output::pilot::PilotPythonFirstUse::analysis_unavailable(error),
+    }
+}
+
+fn run_pilot_python_first_use_with_timeout<F>(
+    timeout_ms: u64,
+    runner: F,
+) -> output::pilot::PilotPythonFirstUse
+where
+    F: FnOnce() -> output::pilot::PilotPythonFirstUse + Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = runner();
+        let _ignored = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(format!(
+                "pilot Python first-use analysis timed out after {timeout_ms} ms"
+            ))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(
+                "pilot Python first-use analysis stopped before producing a result".to_string(),
+            )
+        }
+    }
 }
 
 fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
@@ -8030,6 +8070,22 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+    }
+
+    #[test]
+    fn pilot_python_first_use_timeout_returns_analysis_unavailable() {
+        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+        let result = run_pilot_python_first_use_with_timeout(1, move || {
+            let _ignored = hold_rx.recv();
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(
+                "unexpected completion".to_string(),
+            )
+        });
+
+        assert_eq!(result.status.as_str(), "analysis_unavailable");
+        assert!(result.analysis_error.as_deref().is_some_and(|error| {
+            error.contains("pilot Python first-use analysis timed out after 1 ms")
+        }));
     }
 
     #[test]
