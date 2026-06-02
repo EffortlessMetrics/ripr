@@ -822,6 +822,11 @@ Project Python repair cards consistently across output surfaces.
   `python_no_action` properties with `repairability = "analyzer_limitation"`,
   no verify command, no receipt command, no repair card, and no packet-ready
   authority.
+- Python preview ordinary no-action findings now project explicit diff-scoped
+  SARIF `python_no_action` properties for `already_observed`,
+  `no_related_test`, and `heuristic_only` states with
+  `repairability = "no_action"`, no verify command, no receipt command, no
+  repair card, and no packet-ready authority.
 - GitHub annotation output now includes a concise Python repair-card sentence
   with the missing discriminator, suggested test target, verify command, and
   preview/advisory boundary.

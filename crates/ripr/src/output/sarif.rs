@@ -263,7 +263,7 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
             "python_repair_card".to_string(),
             python_repair_card_json_value(card),
         );
-    } else if let Some(no_action) = python_static_limit_no_action_properties(finding) {
+    } else if let Some(no_action) = python_no_action_properties(finding) {
         properties.insert("python_no_action".to_string(), no_action);
     }
     if let Some(card) = typescript_preview_card(finding) {
@@ -334,12 +334,112 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
     Value::Object(properties)
 }
 
-fn python_static_limit_no_action_properties(finding: &Finding) -> Option<Value> {
+fn python_no_action_properties(finding: &Finding) -> Option<Value> {
     if finding.language != Some(LanguageId::Python)
         || finding.language_status != Some(LanguageStatus::Preview)
     {
         return None;
     }
+    if let Some(no_action_kind) = python_ordinary_no_action_kind(finding) {
+        return Some(python_ordinary_no_action_properties(
+            finding,
+            no_action_kind,
+        ));
+    }
+    python_static_limit_no_action_properties(finding)
+}
+
+fn python_ordinary_no_action_kind(finding: &Finding) -> Option<&'static str> {
+    match &finding.class {
+        ExposureClass::Exposed => Some("already_observed"),
+        ExposureClass::NoStaticPath => Some("no_related_test"),
+        ExposureClass::WeaklyExposed if python_finding_is_heuristic_only(finding) => {
+            Some("heuristic_only")
+        }
+        _ => None,
+    }
+}
+
+fn python_finding_is_heuristic_only(finding: &Finding) -> bool {
+    finding
+        .evidence
+        .iter()
+        .any(|item| item.starts_with("related_test_uncertain:"))
+        || finding
+            .ripr
+            .reach
+            .summary
+            .contains("heuristic Python test link")
+}
+
+fn python_ordinary_no_action_properties(finding: &Finding, no_action_kind: &str) -> Value {
+    let changed_owner = finding.probe.owner.as_ref().map(|owner| owner.0.as_str());
+    let stop_conditions = python_ordinary_no_action_stop_conditions(finding, no_action_kind);
+    json!({
+        "source": "check_python_preview",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": PYTHON_PREVIEW_AUTHORITY_BOUNDARY,
+        "repairability": "no_action",
+        "repair_packet_ready": false,
+        "repair_card_present": false,
+        "gap_state": no_action_kind,
+        "no_action_kind": no_action_kind,
+        "changed_owner": changed_owner,
+        "why_not_actionable": python_ordinary_no_action_reason(no_action_kind),
+        "verify": {
+            "command": Value::Null,
+            "status": "not_applicable_no_action"
+        },
+        "receipt": {
+            "command": Value::Null,
+            "status": "not_applicable_no_action"
+        },
+        "stop_conditions": stop_conditions,
+        "limits": [
+            "Syntax-first Python preview evidence only.",
+            "No repair card or agent packet emitted for no-action Python states.",
+            "No source edits, generated tests, mutation execution, provider calls, or gate authority."
+        ]
+    })
+}
+
+fn python_ordinary_no_action_reason(no_action_kind: &str) -> &'static str {
+    match no_action_kind {
+        "already_observed" => {
+            "Current Python test evidence already observes the changed behavior; no missing proof was routed."
+        }
+        "no_related_test" => {
+            "No related Python test was statically linked, so RIPR cannot choose a safe edit target."
+        }
+        "heuristic_only" => {
+            "Only heuristic Python related-test proximity was found, so bounded repair routing would overclaim."
+        }
+        _ => "Python preview did not find a bounded repair route.",
+    }
+}
+
+fn python_ordinary_no_action_stop_conditions(
+    finding: &Finding,
+    no_action_kind: &str,
+) -> Vec<&'static str> {
+    let mut stop_conditions = finding
+        .effective_stop_reasons()
+        .iter()
+        .map(|reason| reason.as_str())
+        .collect::<Vec<_>>();
+    if stop_conditions.is_empty() {
+        stop_conditions.push(match no_action_kind {
+            "already_observed" => "missing_proof_already_observed",
+            "no_related_test" => "related_python_test_not_found",
+            "heuristic_only" => "related_test_link_uncertain",
+            _ => "no_repair_packet_emitted",
+        });
+    }
+    stop_conditions
+}
+
+fn python_static_limit_no_action_properties(finding: &Finding) -> Option<Value> {
     let static_limit_kind = finding.static_limit_kind?;
     let static_limit_kind = static_limit_kind.as_str();
     let stop_reasons = finding
@@ -358,6 +458,7 @@ fn python_static_limit_no_action_properties(finding: &Finding) -> Option<Value> 
         "repairability": "analyzer_limitation",
         "repair_packet_ready": false,
         "repair_card_present": false,
+        "gap_state": "static_limitation",
         "no_action_kind": "static_limit",
         "static_limit_kind": static_limit_kind,
         "changed_owner": changed_owner,
@@ -854,6 +955,92 @@ mod tests {
             no_action["stop_conditions"][0],
             "dynamic_dispatch_unresolved"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_projects_python_ordinary_no_action_properties() -> Result<(), String> {
+        let mut already_observed = sample_finding();
+        already_observed.id = "probe:src_pricing.py:2:observed".to_string();
+        already_observed.class = ExposureClass::Exposed;
+        already_observed.language = Some(LanguageId::Python);
+        already_observed.language_status = Some(LanguageStatus::Preview);
+        already_observed.probe.owner =
+            Some(SymbolId("python:src/pricing.py::discount".to_string()));
+        already_observed.recommended_next_step = None;
+
+        let mut no_related = sample_finding();
+        no_related.id = "probe:src_pricing.py:4:no_path".to_string();
+        no_related.class = ExposureClass::NoStaticPath;
+        no_related.language = Some(LanguageId::Python);
+        no_related.language_status = Some(LanguageStatus::Preview);
+        no_related.probe.location = SourceLocation::new("src/pricing.py", 4, 1);
+        no_related.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+        no_related.related_tests.clear();
+        no_related.recommended_next_step = None;
+
+        let mut heuristic_only = sample_finding();
+        heuristic_only.id = "probe:src_pricing.py:6:heuristic".to_string();
+        heuristic_only.class = ExposureClass::WeaklyExposed;
+        heuristic_only.language = Some(LanguageId::Python);
+        heuristic_only.language_status = Some(LanguageStatus::Preview);
+        heuristic_only.probe.location = SourceLocation::new("src/pricing.py", 6, 1);
+        heuristic_only.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+        heuristic_only.evidence =
+            vec!["related_test_uncertain: test_name_similarity (test_discount)".to_string()];
+        heuristic_only.recommended_next_step = None;
+
+        let output = CheckOutput {
+            findings: vec![already_observed, no_related, heuristic_only],
+            ..sample_output()
+        };
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let results = results(&sarif)?;
+
+        let expected = [
+            (
+                "already_observed",
+                "missing_proof_already_observed",
+                "already observes",
+            ),
+            (
+                "no_related_test",
+                "related_python_test_not_found",
+                "No related Python test",
+            ),
+            (
+                "heuristic_only",
+                "related_test_link_uncertain",
+                "Only heuristic Python related-test proximity",
+            ),
+        ];
+        for (result, (kind, stop_condition, reason_text)) in results.iter().zip(expected) {
+            let no_action = &result["properties"]["python_no_action"];
+            assert!(result["properties"].get("python_repair_card").is_none());
+            assert_eq!(no_action["authority_boundary"], "preview_advisory_only");
+            assert_eq!(no_action["repairability"], "no_action");
+            assert_eq!(no_action["repair_packet_ready"], false);
+            assert_eq!(no_action["repair_card_present"], false);
+            assert_eq!(no_action["gap_state"], kind);
+            assert_eq!(no_action["no_action_kind"], kind);
+            assert_eq!(
+                no_action["changed_owner"],
+                "python:src/pricing.py::discount"
+            );
+            assert!(
+                no_action["why_not_actionable"]
+                    .as_str()
+                    .is_some_and(|detail| detail.contains(reason_text)),
+                "expected reason containing {reason_text:?}, got {no_action:?}"
+            );
+            assert_eq!(no_action["verify"]["command"], Value::Null);
+            assert_eq!(no_action["verify"]["status"], "not_applicable_no_action");
+            assert_eq!(no_action["receipt"]["command"], Value::Null);
+            assert_eq!(no_action["receipt"]["status"], "not_applicable_no_action");
+            assert_eq!(no_action["stop_conditions"][0], stop_condition);
+        }
         Ok(())
     }
 
