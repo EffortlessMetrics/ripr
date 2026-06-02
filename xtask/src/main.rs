@@ -8393,8 +8393,10 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
     ("unsupported_syntax_no_packet_eval", "unsupported_syntax"),
 ];
 
-const PYTHON_REAL_REPO_EVAL_REQUIRED_NO_ACTION_CASES: &[(&str, &str)] =
-    &[("no_related_test_no_packet_eval", "no_related_test")];
+const PYTHON_REAL_REPO_EVAL_REQUIRED_NO_ACTION_CASES: &[(&str, &str)] = &[
+    ("no_related_test_no_packet_eval", "no_related_test"),
+    ("already_observed_no_packet_eval", "already_observed"),
+];
 
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typescript_boundary_predicate_proof", "proof_improved"),
@@ -45688,10 +45690,15 @@ fn dogfood_python_no_action_eval_run(
             scenario.changed_owner
         ));
     }
-    if scenario.classification != "no_static_path" {
+    let expected_classification = if scenario.no_action_kind == "already_observed" {
+        "exposed"
+    } else {
+        "no_static_path"
+    };
+    if scenario.classification != expected_classification {
         errors.push(format!(
-            "classification must be no_static_path for no-action evals, got {}",
-            scenario.classification
+            "classification must be {expected_classification} for {} no-action evals, got {}",
+            scenario.no_action_kind, scenario.classification
         ));
     }
     if scenario.no_action_kind.trim().is_empty()
@@ -65015,16 +65022,16 @@ mod tests {
         GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
         Lane1EvidenceAuditRepoExposureGeneration, Lane1EvidenceAuditRepoExposureOutcome,
         LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
-        PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES,
-        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, REAL_REPAIR_ATTEMPTS_CORPUS,
-        REAL_REPAIR_ATTEMPTS_REQUIRED_CASES, REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS,
-        REPO_BADGE_ARTIFACT_TIMEOUT_ENV, REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS,
-        REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV, ReceiptRecord, RepoBadgeArtifactOptions,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact,
-        RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
+        PYTHON_REAL_REPO_EVAL_REQUIRED_CASES, PYTHON_REAL_REPO_EVAL_REQUIRED_NO_ACTION_CASES,
+        PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES, PrTriageCheck, PrTriageFinding,
+        PrTriagePullRequest, REAL_REPAIR_ATTEMPTS_CORPUS, REAL_REPAIR_ATTEMPTS_REQUIRED_CASES,
+        REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV,
+        REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS, REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV,
+        ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
         TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
         WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
@@ -65055,13 +65062,13 @@ mod tests {
         dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
         dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
         dogfood_push_python_quality_ratio_json, dogfood_python_no_action_eval_run,
-        dogfood_python_real_repo_eval_run, dogfood_python_real_repo_eval_scenarios,
-        dogfood_python_repair_routing_quality_summary, dogfood_python_static_limit_eval_run,
-        dogfood_python_static_limit_eval_scenarios, dogfood_real_repair_attempt_run,
-        dogfood_real_repair_attempt_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        dogfood_surface_projection_alignment_run, dogfood_surface_projection_alignment_scenarios,
-        dogfood_typescript_preview_repair_loop_run,
+        dogfood_python_no_action_eval_scenarios, dogfood_python_real_repo_eval_run,
+        dogfood_python_real_repo_eval_scenarios, dogfood_python_repair_routing_quality_summary,
+        dogfood_python_static_limit_eval_run, dogfood_python_static_limit_eval_scenarios,
+        dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
+        dogfood_surface_projection_alignment_scenarios, dogfood_typescript_preview_repair_loop_run,
         dogfood_typescript_preview_repair_loop_scenarios, dogfood_user_surface_projection_run,
         dogfood_user_surface_projection_scenarios, evaluate_semantic_no_panic_policy,
         evidence_health_args, evidence_quality_scorecard_audit_regeneration_failure_audit,
@@ -73447,9 +73454,12 @@ fn exact_owner_call_has_external_expected_value() {
                 &valid_python_unresolved_fixture_static_limit_eval_scenario(),
             ),
         ];
-        let python_no_action_eval_runs = [dogfood_python_no_action_eval_run(
-            &valid_python_no_action_eval_scenario(),
-        )];
+        let python_no_action_eval_runs = [
+            dogfood_python_no_action_eval_run(&valid_python_no_action_eval_scenario()),
+            dogfood_python_no_action_eval_run(
+                &valid_python_already_observed_no_action_eval_scenario(),
+            ),
+        ];
         let typescript_preview_repair_loop_runs = [typescript_preview_repair_loop_run];
         let user_surface_projection_runs = [user_surface_projection_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
@@ -73525,15 +73535,17 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Real Repair Attempt Receipts"));
         assert!(markdown.contains("Python Real-Repo Eval Receipts"));
         assert!(markdown.contains("static-limit no-action cases: 2"));
-        assert!(markdown.contains("ordinary no-action cases: 1"));
+        assert!(markdown.contains("ordinary no-action cases: 2"));
         assert!(markdown.contains("Python Static-Limit Eval Receipts"));
         assert!(markdown.contains("dynamic_dispatch_no_packet_eval"));
         assert!(markdown.contains("unresolved_fixture_no_packet_eval"));
         assert!(markdown.contains("Static-limit no-action cases: 2"));
         assert!(markdown.contains("Python No-Action Eval Receipts"));
         assert!(markdown.contains("no_related_test_no_packet_eval"));
-        assert!(markdown.contains("Ordinary no-action cases: 1"));
+        assert!(markdown.contains("already_observed_no_packet_eval"));
+        assert!(markdown.contains("Ordinary no-action cases: 2"));
         assert!(markdown.contains("no_related_test"));
+        assert!(markdown.contains("already_observed"));
         assert!(markdown.contains("unresolved_pytest_fixture"));
         assert!(markdown.contains("Python Repair-Routing Quality Metrics"));
         assert!(markdown.contains("Top-3 actionable precision: 1 / 1 ranked findings"));
@@ -73760,7 +73772,7 @@ fn exact_owner_call_has_external_expected_value() {
             python_eval_summary
                 .get("no_action_cases")
                 .and_then(Value::as_u64),
-            Some(1)
+            Some(2)
         );
         let python_eval_cases = python_evals
             .get("cases")
@@ -73783,18 +73795,21 @@ fn exact_owner_call_has_external_expected_value() {
             .get("no_action_cases")
             .and_then(Value::as_array)
             .ok_or_else(|| "python_real_repo_evals no_action_cases missing".to_string())?;
-        assert_eq!(python_no_action_cases.len(), 1);
-        assert_eq!(
-            python_no_action_cases[0]
-                .get("no_action_kind")
-                .and_then(Value::as_str),
-            Some("no_related_test")
+        assert_eq!(python_no_action_cases.len(), 2);
+        assert!(
+            python_no_action_cases.iter().any(|case| {
+                case.get("no_action_kind").and_then(Value::as_str) == Some("no_related_test")
+                    && case.get("agent_packet_present").and_then(Value::as_bool) == Some(false)
+            }),
+            "no-related-test no-action case should stay packet-free"
         );
-        assert_eq!(
-            python_no_action_cases[0]
-                .get("agent_packet_present")
-                .and_then(Value::as_bool),
-            Some(false)
+        assert!(
+            python_no_action_cases.iter().any(|case| {
+                case.get("no_action_kind").and_then(Value::as_str) == Some("already_observed")
+                    && case.get("classification").and_then(Value::as_str) == Some("exposed")
+                    && case.get("agent_packet_present").and_then(Value::as_bool) == Some(false)
+            }),
+            "already-observed no-action case should stay exposed but packet-free"
         );
         let python_quality = value
             .get("python_repair_routing_quality")
@@ -73825,7 +73840,7 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_eq!(
             python_quality["summary"]["ordinary_no_action_cases"],
-            serde_json::Value::from(1)
+            serde_json::Value::from(2)
         );
         assert!(
             python_quality["ordinary_no_action_distribution"]
@@ -73833,6 +73848,14 @@ fn exact_owner_call_has_external_expected_value() {
                 .ok_or_else(|| "ordinary_no_action_distribution missing".to_string())?
                 .iter()
                 .any(|entry| entry["kind"].as_str() == Some("no_related_test")
+                    && entry["cases"].as_u64() == Some(1))
+        );
+        assert!(
+            python_quality["ordinary_no_action_distribution"]
+                .as_array()
+                .ok_or_else(|| "ordinary_no_action_distribution missing".to_string())?
+                .iter()
+                .any(|entry| entry["kind"].as_str() == Some("already_observed")
                     && entry["cases"].as_u64() == Some(1))
         );
         let typescript_preview_repair_loop = value
@@ -74608,6 +74631,33 @@ fn exact_owner_call_has_external_expected_value() {
                 );
             }
 
+            let no_action_scenarios = dogfood_python_no_action_eval_scenarios();
+            for required in PYTHON_REAL_REPO_EVAL_REQUIRED_NO_ACTION_CASES {
+                assert!(
+                    no_action_scenarios.iter().any(|scenario| {
+                        scenario.name == required.0 && scenario.no_action_kind == required.1
+                    }),
+                    "{} Python no-action eval should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+            assert!(
+                no_action_scenarios
+                    .iter()
+                    .any(|scenario| !scenario.agent_packet_present && !scenario.repair_card_present),
+                "Python no-action evals should record no-packet/no-card cases"
+            );
+            for scenario in no_action_scenarios {
+                let run = dogfood_python_no_action_eval_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} Python no-action eval should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
             for scenario in scenarios {
                 let run = dogfood_python_real_repo_eval_run(&scenario);
                 assert!(
@@ -74772,6 +74822,17 @@ fn exact_owner_call_has_external_expected_value() {
         let report = dogfood_python_no_action_eval_run(&valid_python_no_action_eval_scenario())
             .errors
             .join("\n");
+
+        assert!(report.is_empty(), "{report}");
+    }
+
+    #[test]
+    fn dogfood_python_no_action_eval_accepts_already_observed() {
+        let report = dogfood_python_no_action_eval_run(
+            &valid_python_already_observed_no_action_eval_scenario(),
+        )
+        .errors
+        .join("\n");
 
         assert!(report.is_empty(), "{report}");
     }
@@ -75043,6 +75104,42 @@ fn exact_owner_call_has_external_expected_value() {
                 "No arbitrary imports or tests were run by RIPR".to_string(),
             ],
             reason: "no-related-test dogfood records an ordinary no-action result instead of a repair card".to_string(),
+        }
+    }
+
+    fn valid_python_already_observed_no_action_eval_scenario() -> DogfoodPythonNoActionEvalScenario
+    {
+        DogfoodPythonNoActionEvalScenario {
+            name: "already_observed_no_packet_eval".to_string(),
+            repo_shape: "strong_pytest_oracle".to_string(),
+            source_kind: "local_repo".to_string(),
+            source_ref: "fixtures/python_strong_oracle".to_string(),
+            command: "ripr check --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --format json".to_string(),
+            runtime_ms: 327,
+            finding_id: "probe:src_discount.py:2:python_preview".to_string(),
+            changed_owner: "python:src/discount.py::apply_discount".to_string(),
+            no_action_kind: "already_observed".to_string(),
+            classification: "exposed".to_string(),
+            stop_reasons: vec!["already_observed_strong_oracle".to_string()],
+            related_test_file: "tests/test_discount.py".to_string(),
+            related_test_name: "test_apply_discount_boundary".to_string(),
+            why_not_actionable: "no_action already_observed prevents bounded repair routing because the related pytest test already carries an exact-value oracle for the changed behavior".to_string(),
+            repair_card_present: false,
+            agent_packet_present: false,
+            verify_command: "not_applicable_no_action".to_string(),
+            verify_result: "not_applicable".to_string(),
+            receipt_command: "not_applicable_no_action".to_string(),
+            receipt_result: "not_applicable".to_string(),
+            gap_movement: "no_receipt".to_string(),
+            false_positive_notes: "none observed".to_string(),
+            limitation_notes: "strong related pytest evidence stays visible as exposed/already-observed with no repair-card, packet, verify success, or receipt movement claim".to_string(),
+            claim_boundary: vec![
+                "Broader Python static facts remain preview/advisory".to_string(),
+                "No repair packet emitted".to_string(),
+                "No support-tier promotion".to_string(),
+                "No arbitrary imports or tests were run by RIPR".to_string(),
+            ],
+            reason: "already-observed dogfood records an ordinary no-action result: exact current test evidence means there is no missing proof to route.".to_string(),
         }
     }
 

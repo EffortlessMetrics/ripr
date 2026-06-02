@@ -1883,6 +1883,40 @@
         "No arbitrary imports or tests were run by RIPR"
       ],
       "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: without a statically related test, RIPR keeps the finding visible but does not route a bounded human or agent test-repair task."
+    },
+    {
+      "id": "already_observed_no_packet_eval",
+      "repo_shape": "strong_pytest_oracle",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_strong_oracle",
+      "command": "ripr check --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --format json",
+      "runtime_ms": 327,
+      "finding_id": "probe:src_discount.py:2:python_preview",
+      "changed_owner": "python:src/discount.py::apply_discount",
+      "no_action_kind": "already_observed",
+      "classification": "exposed",
+      "stop_reasons": [
+        "already_observed_strong_oracle"
+      ],
+      "related_test_file": "tests/test_discount.py",
+      "related_test_name": "test_apply_discount_boundary",
+      "why_not_actionable": "no_action already_observed prevents bounded repair routing because the related pytest test already carries an exact-value oracle for the changed behavior",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports exposed for the changed apply_discount predicate because the related pytest boundary assertion already has an exact-value oracle; no repair card, agent packet, verify success, or receipt movement is claimed because there is no missing proof to route.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: when exact current test evidence already observes the changed behavior, RIPR keeps the finding visible but does not route redundant human or agent test-repair work."
     }
   ]
 }
