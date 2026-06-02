@@ -779,6 +779,27 @@ mod tests {
             "amount",
             "raw_amount"
         ));
+        assert!(body_contains_match_parameter(match_body, "raw_amount"));
+        assert!(body_contains_wrapper_pattern(match_body, "Some", "amount"));
+        assert!(body_contains_direct_local_alias(
+            "let amount = raw_amount;\namount >= threshold",
+            "amount",
+            "raw_amount"
+        ));
+        assert!(!body_contains_match_parameter(
+            "// match raw_amount { Some(amount) => amount >= threshold }",
+            "raw_amount"
+        ));
+        assert!(!body_contains_wrapper_pattern(
+            "// Some(amount) => amount >= threshold",
+            "Some",
+            "amount"
+        ));
+        assert!(!body_contains_direct_local_alias(
+            "let amount = raw_amount_extra;",
+            "amount",
+            "raw_amount"
+        ));
         assert!(starts_with_identifier_token(
             " raw_amount.required_discriminator()",
             "raw_amount"

@@ -587,6 +587,42 @@
       "reason": "A local analyzer test slice covers source-shaped same-file method-chain helper paths while preserving static-limitation routing for unresolved owner-call cases."
     },
     {
+      "id": "activation_body_line_helper_owner_call_tests_improved",
+      "source_ref": "local:activation-body-line-helper-owner-calls-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-body-line-helpers",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_method_chain_missing_owner_call:analysis-same-file-method-chain-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "activation alias helper tests that directly call body_contains_match_parameter, body_contains_wrapper_pattern, and body_contains_direct_local_alias so body.lines() helper seams are observed without broadening short-circuit helper inference",
+      "verify_command": "cargo test -p ripr same_file_method_chain_owner_call_tracing_covers_activation_alias_helpers --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS=240000 cargo xtask lane1-evidence-audit && cargo xtask ripr-swarm plan --top 10 && cargo xtask actionable-gap-outcomes && cargo xtask ripr-swarm attempt-ledger && cargo xtask ripr-swarm readiness",
+      "receipt_path": "target/ripr/reports/lane1-evidence-audit.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Added direct source-shaped activation helper calls for body.lines() scanner helpers instead of teaching the analyzer to treat short-circuit helper calls as unconditional.",
+      "evidence_movement": "improved: sampled 5,000-item Lane 1 audit moved finding_alignment_already_observed_total 3544 -> 3559 and finding_alignment_static_limitation_total 1456 -> 1441; analysis/same-file-method-chain-owner-call-tracing moved 196 -> 190 while remaining method-chain backlog stayed non-actionable analyzer work.",
+      "operator_note": "This is analyzer dogfood. It improves owner-call observability for private helper scanners only; it does not promote static limitations to public repair packets or change badge/gate semantics.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not promote method-chain limitations to public repair packets",
+        "do not infer lazy fallback or short-circuit helper calls as unconditional owner calls",
+        "do not invent observed values for call-presence arguments",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/classify/activation.rs::tests::same_file_method_chain_owner_call_tracing_covers_activation_alias_helpers",
+        "target/ripr/reports/lane1-evidence-audit.json:gap:52d442acc71b3b6c",
+        "target/ripr/reports/lane1-evidence-audit.json:gap:9d436b0f8e639bf9",
+        "target/ripr/reports/lane1-evidence-audit.json:gap:629800064f60d217",
+        "target/ripr/reports/swarm-readiness.json:analysis/same-file-method-chain-owner-call-tracing"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer test slice directly observes activation body-line helper scanner owners while preserving conservative same-file method-chain routing."
+    },
+    {
       "id": "same_file_dotted_non_call_subroute_guard",
       "source_ref": "local:same-file-dotted-non-call-subroute-2026-06-01",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-dotted-non-call",

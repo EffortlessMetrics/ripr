@@ -8224,6 +8224,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "activation_body_line_helper_owner_call_tests_improved",
+        "evidence_improved",
+    ),
+    (
         "call_presence_imported_module_wrapper_route_improved",
         "evidence_improved",
     ),
