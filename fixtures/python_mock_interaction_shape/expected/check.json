@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_callbacks.py:4:python_preview",
+      "canonical_gap_id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+        "language": "python",
+        "file": "src/callbacks.py",
+        "owner": "recording_callback",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "callback=magicmock_name=receipt.sent"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,29 +29,41 @@
         "delta": "effect",
         "file": "src/callbacks.py",
         "line": 4,
-        "expression": "    callback = MagicMock(name=\"receipt.sent\")"
+        "expression": "    callback = MagicMock(name=\"receipt.sent\")",
+        "owner": "python:src/callbacks.py::recording_callback"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `recording_callback`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name=\"receipt.sent\")`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `recording_callback`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `recording_callback`", "infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name=\"receipt.sent\")`", "propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`.", "local flow reaches call effect: callback = MagicMock(name=\"receipt.sent\") (line 4)", "related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()", "missing discriminator call includes \"receipt.sent\": changed Python output/log/call effect at line 4 lacks a concrete repair discriminator"],
       "flow_sinks": [
+        {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
       ],
-      "evidence": ["owner: recording_callback", "owner_kind: function", "test_framework: pytest (test_recording_callback_starts_idle)", "related_test_relation: syntactic_call (test_recording_callback_starts_idle)", "test_oracle: mock_expectation medium (test_recording_callback_starts_idle)"],
-      "missing": ["Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: recording_callback", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_callbacks.py", "suggested_test_name: test_recording_callback_starts_idle", "suggested_test_node_id: tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_recording_callback_starts_idle)", "test_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (test_recording_callback_starts_idle)", "related_test_relation: syntactic_call (test_recording_callback_starts_idle)", "test_oracle: mock_expectation medium (test_recording_callback_starts_idle)", "test_oracle_shape: mock_expectation (test_recording_callback_starts_idle)"],
+      "missing": ["Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "call includes \"receipt.sent\"",
+            "reason": "changed Python output/log/call effect at line 4 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "call includes \"receipt.sent\"",
+          "reason": "changed Python output/log/call effect at line 4 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
+        }
       ],
       "related_tests": [
         {
@@ -51,11 +75,49 @@
           "oracle": "callback.assert_not_called()"
         }
       ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_callbacks.py",
+        "suggested_test_name": "test_recording_callback_starts_idle",
+        "suggested_test_node_id": "tests/test_callbacks.py::test_recording_callback_starts_idle",
+        "verify_command": "pytest tests/test_callbacks.py::test_recording_callback_starts_idle",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "recording_callback",
+        "changed_behavior": "call_or_output_effect changed at src/callbacks.py:4: `callback = MagicMock(name=\"receipt.sent\")`",
+        "current_test_evidence": "tests/test_callbacks.py:4 test_recording_callback_starts_idle currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_not_called()",
+        "missing_discriminator": "call includes \"receipt.sent\"",
+        "recommended_test_shape": "Strengthen the existing pytest output/log/call-effect assertion for `call includes \"receipt.sent\"`.",
+        "suggested_assertion": "Assert the changed output, log text, or call effect for `call includes \"receipt.sent\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_callbacks.py",
+          "test_name": "test_recording_callback_starts_idle",
+          "pytest_node_id": "tests/test_callbacks.py::test_recording_callback_starts_idle"
+         },
+        "verify": {
+          "command": "pytest tests/test_callbacks.py::test_recording_callback_starts_idle",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "mock_expectation",
       "oracle_strength": "medium",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

@@ -1,0 +1,125 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_related_test_matching/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.ts:2:typescript_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_pricing.ts:2:typescript_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 2,
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/pricing.ts::applyDiscount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"2 related test(s) found for owner `applyDiscount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 2 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/pricing.test.ts:7 alias import observes threshold uses strong exact value oracle: expect(...).toBe(...)", "related test tests/pricing.test.ts:11 namespace import observes threshold uses strong exact value oracle: expect(...).toBe(...)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: applyDiscount", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount"],
+      "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "alias import observes threshold",
+          "file": "tests/pricing.test.ts",
+          "line": 7,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(...).toBe(...)"
+        },
+        {
+          "name": "namespace import observes threshold",
+          "file": "tests/pricing.test.ts",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(...).toBe(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/pricing.test.ts",
+          "line": 11,
+          "name": "namespace import observes threshold"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
+      "preview_actionability": {
+        "actionability_category": "strong_oracle_observed",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
+        "gap_state": "already_observed",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "applyDiscount",
+            "raw": "file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount",
+            "source_id": "probe:src_pricing.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

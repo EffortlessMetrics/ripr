@@ -157,6 +157,9 @@ suite('Extension Smoke', () => {
         text.includes('gap:rust:pricing:discount:threshold-boundary')
       );
       assert.notStrictEqual(repairPacket, 'actionable-gap-queue-repair-sentinel');
+      assert.ok(repairPacket.includes('Changed behavior: amount >= threshold'), repairPacket);
+      assert.ok(repairPacket.includes('Missing discriminator: amount == threshold'), repairPacket);
+      assert.ok(repairPacket.includes('Focused proof intent: Add exact assertion for amount == threshold.'), repairPacket);
       assert.ok(repairPacket.includes('Repair kind: add_boundary_assertion'), repairPacket);
       assert.ok(repairPacket.includes('Run: ripr agent verify --root . --json'), repairPacket);
       assert.ok(repairPacket.includes('Record: ripr agent receipt --root . --json'), repairPacket);
@@ -171,6 +174,9 @@ suite('Extension Smoke', () => {
       );
       assert.notStrictEqual(repoMap, 'actionable-gap-queue-map-sentinel');
       assert.ok(repoMap.includes('Canonical gap id: gap:rust:pricing:discount:threshold-boundary'), repoMap);
+      assert.ok(repoMap.includes('Changed behavior: amount >= threshold'), repoMap);
+      assert.ok(repoMap.includes('Missing discriminator: amount == threshold'), repoMap);
+      assert.ok(repoMap.includes('Focused proof intent: Add exact assertion for amount == threshold.'), repoMap);
       assert.ok(repoMap.includes('Movement: improved'), repoMap);
       assert.ok(repoMap.includes('First PR packet state'), repoMap);
       assert.ok(repoMap.includes('This map is read-only orientation.'), repoMap);
@@ -1182,7 +1188,25 @@ suite('Extension Smoke', () => {
     assert.strictEqual(repairable.relativePath, 'target/ripr/first-pr/start-here.json');
     assert.strictEqual(repairable.gapId, 'gap:pr:pricing:threshold-boundary');
     assert.strictEqual(repairable.canonicalGapId, 'gap:rust:pricing:discount:threshold-boundary');
+    assert.strictEqual(repairable.changedBehavior, 'amount >= threshold');
+    assert.strictEqual(
+      repairable.currentEvidenceStrength,
+      'Static evidence found related Rust test context, but the current proof is weak because the discriminator is missing.'
+    );
+    assert.strictEqual(repairable.missingDiscriminator, 'Equality-boundary assertion for the changed behavior.');
+    assert.strictEqual(
+      repairable.focusedProofIntent,
+      'Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).'
+    );
+    assert.strictEqual(
+      repairable.staticEvidenceBoundary,
+      'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.'
+    );
     assert.strictEqual(repairable.verifyCommand, 'cargo xtask fixtures boundary_gap');
+    assert.strictEqual(
+      repairable.receiptPath,
+      'target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json'
+    );
     assert.strictEqual(repairable.relatedTest, 'tests/pricing.rs::premium_customer_gets_discount');
 
     const noAction = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
@@ -1448,8 +1472,14 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
       assert.ok(statusOutput.includes('Packet: target/ripr/first-pr/start-here.md'));
       assert.ok(statusOutput.includes('Gap identity: gap:rust:pricing:discount:threshold-boundary'));
+      assert.ok(statusOutput.includes('Changed behavior: amount >= threshold'));
+      assert.ok(statusOutput.includes('Current evidence strength: Static evidence found related Rust test context'));
+      assert.ok(statusOutput.includes('Missing discriminator: Equality-boundary assertion for the changed behavior.'));
+      assert.ok(statusOutput.includes('Focused proof intent: Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).'));
       assert.ok(statusOutput.includes('Verify: cargo xtask fixtures boundary_gap'));
       assert.ok(statusOutput.includes('Receipt: ripr agent receipt --root . --json'));
+      assert.ok(statusOutput.includes('Receipt path: target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json'));
+      assert.ok(statusOutput.includes('Boundary: static advisory evidence only; not runtime proof'));
       assert.ok(statusOutput.includes('does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'));
       const diagnosis = await diagnoseSetupReport(context);
       assert.ok(diagnosis.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
@@ -1574,24 +1604,53 @@ suite('Extension Smoke', () => {
   });
 
   test('status model projects actionable gap queue state without producing packets', async () => {
-    await withControllerTestContext({
-      files: {
-        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
-      }
-    }, async (context) => {
-      await context.controller.start();
-      const statusOutput = await showStatusReport(context);
-      assertReportIncludes(statusOutput, [
-        'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
-        'Top repair: add_boundary_assertion',
-        'Gap identity: gap:rust:pricing:discount:threshold-boundary',
-        'Related test: tests/pricing.rs::premium_customer_gets_discount',
-        'Verify: ripr agent verify --root . --json',
-        'Receipt: ripr agent receipt --root . --json',
-        'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
-      ]);
-      assert.strictEqual(context.runRiprCalls.length, 0);
-    });
+    const currentFileQueue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    const currentFilePackets = currentFileQueue.packets as Array<Record<string, unknown>>;
+    currentFilePackets[0].source_file = 'src/lib.rs';
+    (currentFilePackets[0].primary_anchor as Record<string, unknown>).file = 'src/lib.rs';
+    ((currentFilePackets[0].raw_findings as Array<Record<string, unknown>>)[0]).file = 'src/lib.rs';
+    const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+    await vscode.window.showTextDocument(document);
+    try {
+      await withControllerTestContext({
+        files: {
+          'target/ripr/reports/actionable-gaps.json': JSON.stringify(currentFileQueue)
+        }
+      }, async (context) => {
+        await context.controller.start();
+        const statusOutput = await showStatusReport(context);
+        assert.ok(
+          statusOutput.indexOf('Editor repair cockpit:') < statusOutput.indexOf('Workspace:'),
+          statusOutput
+        );
+        assertReportIncludes(statusOutput, [
+          'Workspace actionable state: repairable (1 actionable; target/ripr/reports/actionable-gaps.json)',
+          'Current-file actionable state: repairable (src/lib.rs)',
+          'Top repair item: add_boundary_assertion',
+          'Top repair gap: gap:rust:pricing:discount:threshold-boundary',
+          'Related test or target: tests/pricing.rs::premium_customer_gets_discount',
+          'Verify command: ripr agent verify --root . --json',
+          'Receipt state: missing; command available (ripr agent receipt --root . --json)',
+          'Next safe command: run ripr: Start Current Repair, or ripr: Copy Current Repair Packet.'
+        ]);
+        assertReportIncludes(statusOutput, [
+          'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
+          'Top repair: add_boundary_assertion',
+          'Gap identity: gap:rust:pricing:discount:threshold-boundary',
+          'Changed behavior: amount >= threshold',
+          'Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found.',
+          'Missing discriminator: amount == threshold',
+          'Focused proof intent: Add exact assertion for amount == threshold.',
+          'Related test: tests/pricing.rs::premium_customer_gets_discount',
+          'Verify: ripr agent verify --root . --json',
+          'Receipt: ripr agent receipt --root . --json',
+          'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
+        ]);
+        assert.strictEqual(context.runRiprCalls.length, 0);
+      });
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
 
     await withControllerTestContext({
       files: {
@@ -1608,6 +1667,14 @@ suite('Extension Smoke', () => {
     }, async (context) => {
       await context.controller.start();
       const statusOutput = await showStatusReport(context);
+      assertReportIncludes(statusOutput, [
+        'Workspace actionable state: no_action (target/ripr/reports/actionable-gaps.json)',
+        'Current-file actionable state: fail_closed (no active workspace file)',
+        'Top repair item: not_available',
+        'Verify command: not_available',
+        'Receipt state: missing',
+        'Next safe command: ripr actionable gap queue has no actionable gap; no current repair packet is available.'
+      ]);
       assert.ok(statusOutput.includes('Actionable gap queue: no actionable gap; target/ripr/reports/actionable-gaps.json reports zero safe repair packets.'));
       assert.ok(statusOutput.includes('No local queue repair action is projected from this packet.'));
       assert.strictEqual(context.runRiprCalls.length, 0);
@@ -1737,6 +1804,10 @@ suite('Extension Smoke', () => {
       assert.ok(packet.includes('RIPR current repair packet'), packet);
       assert.ok(packet.includes('Repair this one canonical gap: gap:rust:pricing:discount:threshold-boundary.'), packet);
       assert.ok(packet.includes('Language: rust (stable)'), packet);
+      assert.ok(packet.includes('Changed behavior: amount >= threshold'), packet);
+      assert.ok(packet.includes('Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found.'), packet);
+      assert.ok(packet.includes('Missing discriminator: amount == threshold'), packet);
+      assert.ok(packet.includes('Focused proof intent: Add exact assertion for amount == threshold.'), packet);
       assert.ok(packet.includes('Related test: tests/pricing.rs::premium_customer_gets_discount'), packet);
       assert.ok(packet.includes('Repair kind: add_boundary_assertion'), packet);
       assert.ok(packet.includes('Target assertion or output proof: assert_eq!(discount(100, 100), 90)'), packet);
@@ -1961,6 +2032,12 @@ suite('Extension Smoke', () => {
       await context.controller.copyFirstPrSummary();
       assert.ok(context.clipboardWrites.at(-1)?.includes('RIPR first-pr summary'));
       assert.ok(context.clipboardWrites.at(-1)?.includes('Gap identity: gap:rust:pricing:discount:threshold-boundary'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Changed behavior: amount >= threshold'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Current evidence strength: Static evidence found related Rust test context'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Missing discriminator: Equality-boundary assertion for the changed behavior.'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Focused proof intent: Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Receipt path: target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('static advisory evidence only; not runtime proof'));
       assert.ok(context.clipboardWrites.at(-1)?.includes('Does not prove runtime adequacy'));
 
       await withCurrentFirstPrDiagnostic({
@@ -1971,7 +2048,14 @@ suite('Extension Smoke', () => {
         const repairPacket = context.clipboardWrites.at(-1) ?? '';
         assert.ok(repairPacket.includes('RIPR first-pr repair packet'), repairPacket);
         assert.ok(repairPacket.includes('Repair route: AddBoundaryAssertion'), repairPacket);
+        assert.ok(repairPacket.includes('Changed behavior: amount >= threshold'), repairPacket);
+        assert.ok(repairPacket.includes('Current evidence strength: Static evidence found related Rust test context'), repairPacket);
+        assert.ok(repairPacket.includes('Missing discriminator: Equality-boundary assertion for the changed behavior.'), repairPacket);
+        assert.ok(repairPacket.includes('Focused proof intent: Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).'), repairPacket);
         assert.ok(repairPacket.includes('Related test: tests/pricing.rs::premium_customer_gets_discount'), repairPacket);
+        assert.ok(repairPacket.includes('Receipt path:'), repairPacket);
+        assert.ok(repairPacket.includes('target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json'), repairPacket);
+        assert.ok(repairPacket.includes('static advisory evidence only; not runtime proof'), repairPacket);
         assert.ok(repairPacket.includes('Do not broaden scope.'), repairPacket);
 
         await context.controller.copyFirstPrVerifyCommand();
@@ -3140,9 +3224,14 @@ function firstPrPacket(overrides: Record<string, unknown>): string {
       canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
       kind: 'MissingBoundaryAssertion',
       changed_behavior: 'amount >= threshold',
+      current_evidence_strength: 'Static evidence found related Rust test context, but the current proof is weak because the discriminator is missing.',
+      missing_discriminator: 'Equality-boundary assertion for the changed behavior.',
+      focused_proof_intent: 'Add a focused boundary assertion in tests/pricing.rs: assert_eq!(discount(100, 100), 90).',
+      static_evidence_boundary: 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.',
       why: 'A related Rust test reaches this change, but no equality-boundary assertion was found.',
       verify_command: 'cargo xtask fixtures boundary_gap',
       receipt_command: 'ripr agent receipt --root . --json',
+      receipt_path: 'target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json',
       repair: {
         related_test: 'tests/pricing.rs::premium_customer_gets_discount',
         route: 'AddBoundaryAssertion',
@@ -3192,6 +3281,8 @@ function actionableGapsReport(overrides: Record<string, unknown>): string {
         gap_state: 'actionable',
         actionability: 'extend_related_test',
         source_file: 'src/pricing.rs',
+        changed_behavior: 'amount >= threshold',
+        why: 'A related Rust test reaches this change, but no equality-boundary assertion was found.',
         primary_anchor: {
           file: 'src/pricing.rs',
           line: 42
@@ -3200,6 +3291,13 @@ function actionableGapsReport(overrides: Record<string, unknown>): string {
         target_test_type: 'boundary_discriminator',
         target_test: 'tests/pricing.rs::premium_customer_gets_discount',
         assertion_shape: 'assert_eq!(discount(100, 100), 90)',
+        missing_discriminators: [
+          {
+            value: 'amount == threshold',
+            reason: 'observed values do not include the equality-boundary case'
+          }
+        ],
+        recommended_repair: 'Add exact assertion for amount == threshold.',
         related_test_or_observer: {
           file: 'tests/pricing.rs',
           name: 'premium_customer_gets_discount',

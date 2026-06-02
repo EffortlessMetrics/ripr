@@ -3,12 +3,13 @@
 Status: advisory
 State: blocked
 
-## Blocked
+## Start Here
 
-The gap decision ledger is blocked: read missing.json failed: not found. Refresh the first-run evidence before assigning repair work.
-
-Next:
-`ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md`
+- State: `blocked_artifact`
+- Output state: `missing_artifacts`
+- Safe next action: resolve this fail-closed state before assigning repair work.
+- Reason: The gap decision ledger is blocked: read missing.json failed: not found. Refresh the first-run evidence before assigning repair work.
+- Next command: `ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md`
 
 ## Artifacts
 

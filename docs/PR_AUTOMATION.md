@@ -50,6 +50,7 @@ cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask repo-exposure-summary-report
 cargo xtask doctor
 cargo xtask specs next
 cargo xtask check-allow-attributes
@@ -90,7 +91,18 @@ argument-dependent command does not explain when it writes.
 
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
-workflow, extension, and public-contract surfaces.
+workflow, extension, and public-contract surfaces. The first section is an
+advisory actionable repair front panel: when existing
+`target/ripr/reports/actionable-gaps.json`, `actionable-gap-outcomes.json`, or
+`pr-review-front-panel.json` artifacts are present, it names repo and PR-local
+actionable counts, receipt movement state, static-limited counts, and one top
+next repair packet before raw path inventory. When the actionable artifact
+contains an eligible Python preview packet, the same front panel also names the
+top Python repair card with its canonical gap, changed owner, missing
+discriminator, suggested test target, verify command, receipt command, stop
+conditions, and preview/advisory boundary. Missing artifacts stay visible as
+regeneration guidance; the summary does not infer analyzer truth, gate status,
+runtime proof, mutation proof, source edits, or generated tests.
 
 Top-level `plans/` files are documentation evidence and campaign-planning
 inputs. They appear in the docs, evidence/support, and campaign-planning
@@ -149,6 +161,19 @@ generated badge endpoint diffs in ordinary PRs, and `check-generated-clean`,
 which rejects generated target/sample build residue. Before writing the final
 report index, it also refreshes the deterministic suggested-fixes patch under
 `target/ripr/reports/`.
+
+`repo-exposure-summary-report` is the ordinary repo-local summary route. It
+writes `target/ripr/reports/repo-exposure-summary.json` from
+`repo-exposure-summary-json` and avoids the per-seam evidence payloads carried
+by full `repo-exposure-json`. The command is bounded by
+`RIPR_REPO_EXPOSURE_SUMMARY_TIMEOUT_MS` (default: 240000). On timeout or
+incomplete output, it overwrites stale summary JSON with a warning artifact whose
+`runtime_status.downstream_consumable` is `false` and whose `metrics` object does
+not claim a gap count. `cargo xtask ripr-plus --repo-exposure-summary
+target/ripr/reports/repo-exposure-summary.json` may reuse this artifact only
+when it is downstream-consumable; timeout and limited artifacts fail
+deliberately. Use `repo-exposure-report` only when an operator explicitly needs
+the full classified seam inventory for deep inspection.
 
 `fixtures` validates fixture contract shape, runs `ripr check` for fixture
 directories when they exist, writes actual outputs under
@@ -223,7 +248,11 @@ is clean, so release prep can rerun them on the version-bump branch.
 `target/ripr/reports/targeted-test-outcome.json`. It matches seams by
 `seam_id`, summarizes before/after grip-class counts, and reports moved,
 unchanged, new, removed, and regressed seams as an advisory targeted-test
-receipt. It does not run mutation testing and does not block CI.
+receipt. The receipt includes a reviewer-native review receipt that says what
+changed, what RIPR flagged before, which focused proof signals moved outside
+RIPR, what remains weak or unknown, and what reviewers should inspect or avoid
+inferring. It does not run mutation testing, edit source, generate tests, claim
+coverage adequacy or merge approval, or block CI.
 
 The installed CLI exposes the same receipt loop as `ripr outcome --before
 <path> --after <path>` so users do not need this repository checked out. The
@@ -250,6 +279,14 @@ can consume the operating packet as JSON instead of scraping prose. The command
 catalog check packet is included next to the catalog itself so catalog drift is
 visible in the same front-door index.
 
+The index also carries a Lane 1 Evidence Readiness section for the report chain
+that supports actionable canonical-gap counts and badge-readiness decisions:
+`evidence-health`, `lane1-evidence-audit`, `actionable-gaps`,
+`evidence-quality-scorecard`, `evidence-quality-trend`, and `badge-basis`.
+Missing, warning, or failing artifacts keep the index in a warning state and
+add the relevant regeneration command. The index only checks existing artifact
+paths; it does not run those expensive reports or infer evidence from source.
+
 `cockpit` writes `target/ripr/reports/cockpit.md` and
 `target/ripr/reports/cockpit.json`. It is the repo-level maintainer front door:
 it composes worktree doctor, command mutability, command-catalog coverage, spec
@@ -272,32 +309,6 @@ repair one named gap, regenerate missing evidence, or stop on no-action.
 are fail-closed states. `preview-limited evidence` remains syntax-first and
 advisory. `verify command`, `receipt command`, and `receipt path` are the static
 movement proof rail, not runtime adequacy, mutation proof, or gate approval.
-
-### Lane 1 Report Validation
-
-Lane 1 report generators are Cargo-backed and share both Cargo build locks and
-`target/ripr/reports` output paths. Do not launch them concurrently in the same
-worktree with the same target/report directories. Parallel runs can make healthy
-commands appear slow or failed because one command is waiting on another
-command's Cargo lock while both are competing to write report artifacts.
-
-Run live Lane 1 validation sequentially:
-
-```bash
-cargo xtask lane1-evidence-audit
-cargo xtask evidence-health
-cargo xtask evidence-quality-scorecard
-cargo xtask evidence-quality-trend
-cargo xtask ripr-swarm readiness
-```
-
-If parallel validation is necessary, isolate each command with its own
-`CARGO_TARGET_DIR` and report output directory so no process shares Cargo
-artifacts or `target/ripr/reports` files. Limited warning artifacts from
-`lane1-evidence-audit`, `evidence-health`, scorecard, trend, or swarm readiness
-are acceptable bounded diagnostics when they name the limitation, phase/input
-context, and repair route. They are not proof of complete repo truth and should
-not be summarized as passing evidence without the warning state.
 
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,
@@ -416,7 +427,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-supply-chain
 ```
@@ -457,7 +468,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-supply-chain
 ```
@@ -609,7 +620,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
@@ -703,18 +714,59 @@ patches are repair hints, not policy exceptions: they must not carry badge
 counts, golden blessings, baselines, suppressions, dependency exceptions, or
 schema changes.
 
-## Current Automation Queue
+## Current Automation Entry Point
 
-Campaign 1 and Campaign 2 are complete. Campaign 3 is active, and
-`.ripr/goals/active.toml` plus `cargo xtask goals next` are the source of truth
-for product work. The next automation path should improve trusted-change
-evidence without delaying Campaign 3:
+GitHub is the live board for PR automation. Start with open PRs before creating
+new local work:
 
-| Order | PR | Purpose |
-| ---: | --- | --- |
-| 1 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 2 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
-| 3 | `xtask/command-registry` | Make the growing command surface self-describing. |
+```bash
+cargo xtask pr-triage-report
+```
 
-Analyzer work can now move through Codex Goals campaigns. Each campaign may span
-multiple PRs, while each work item should still follow the scoped PR contract.
+If no PR is waiting, read the active execution state:
+
+```bash
+cargo xtask goals next
+```
+
+When the command reports ready work, follow the named work item and keep the PR
+inside the scoped PR contract. When it reports only blocked work, do not infer
+ready work from chat history. Resolve the named blocker, record an accepted
+bounded blocker in the manifest, or choose a separate high-leverage cleanup that
+does not claim the blocked campaign is complete.
+
+For repo-ops automation, use the current mechanical front doors instead of old
+campaign queue names:
+
+```bash
+cargo xtask cockpit
+cargo xtask pr-ready
+cargo xtask first-pr
+```
+
+`cockpit` gives maintainers the repo-level action queue, `pr-ready` checks local
+PR readiness before opening or updating a branch, and `first-pr` writes the
+start-here packet for one safe repair action when validated evidence supports
+one. These commands are advisory;
+they do not close PRs, alter manifests, promote claims, or prove the
+self-hosted routed-runner closeout.
+
+## Source-Of-Truth PR Body Scaffold
+
+Use the active goal manifest to draft a PR body for one bounded work item:
+
+```bash
+cargo xtask pr-body --work-item <id>
+```
+
+The command writes:
+
+```text
+target/ripr/reports/source-of-truth-pr-body.md
+```
+
+The scaffold links the active goal, work item, proposal/spec/plan references
+when present, acceptance text, non-goals, and proof commands. It deliberately
+leaves support-tier and policy impact checkboxes unchecked because those claims
+must be reviewed from the actual diff and proof, not inferred from active-goal
+metadata.

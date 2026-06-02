@@ -1,0 +1,31 @@
+diff --git a/src/context.ts b/src/context.ts
+index 0000000..1111111 100644
+--- a/src/context.ts
++++ b/src/context.ts
+@@ -1,5 +1,5 @@
+ export function thresholdLabel(amount: number): string {
+-    if (amount > 100) {
++    if (amount >= 100) {
+         return "high";
+     }
+     return "low";
+diff --git a/src/observed.ts b/src/observed.ts
+index 0000000..1111111 100644
+--- a/src/observed.ts
++++ b/src/observed.ts
+@@ -1,3 +1,3 @@
+ export function normalizeCount(count: number): number {
+-    return count;
++    return count + 1;
+ }
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 0000000..1111111 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,5 +1,5 @@
+ export function discountedTotal(amount: number, threshold: number): number {
+-    if (amount > threshold) {
++    if (amount >= threshold) {
+         return amount - 10;
+     }
+     return amount;

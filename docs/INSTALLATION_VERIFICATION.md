@@ -19,28 +19,28 @@ first useful CLI, editor, or CI experience.
 
 ## Last Published Release Proof
 
-The `ripr 0.6.0` release was published and verified on 2026-05-18. The
+The `ripr 0.7.0` release was published and verified on 2026-05-20. The
 verified public loop covers `ripr first-pr`, zero-config `ripr pilot`,
 `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, saved-workspace
-editor actions, first-run/start-here guidance, operator cockpit status, and
-generated non-blocking CI artifacts.
+editor actions, first-run/start-here guidance, operator cockpit status,
+swarm repair-loop planning, and generated non-blocking CI artifacts.
 
 Post-publish proof covered:
 
-- crates.io serving `ripr 0.6.0`;
-- public `cargo install ripr --version 0.6.0 --locked`;
+- crates.io serving `ripr 0.7.0`;
+- public `cargo install ripr --version 0.7.0 --locked`;
 - installed CLI smoke for `doctor`, `first-pr --help`, `first-pr`, `pilot`,
   `outcome`, `agent verify`, and `agent receipt`;
-- GitHub Release `v0.6.0` with VSIX, server manifest, checksums, and all
+- GitHub Release `v0.7.0` with VSIX, server manifest, checksums, and all
   supported server archives (Windows, Linux x86_64/aarch64, macOS
   x86_64/aarch64);
-- VS Marketplace serving `EffortlessMetrics.ripr@0.6.0`;
-- Open VSX serving `EffortlessMetrics.ripr@0.6.0`.
+- VS Marketplace serving `EffortlessMetrics.ripr@0.7.0`;
+- Open VSX serving `EffortlessMetrics.ripr@0.7.0`.
 
 Release execution also verified the Windows server archive checksum, the
-downloaded VSIX package version, the Open VSX badge/listing routes, and the
+downloaded VSIX package version, marketplace listing routes, and the
 public-copy boundary. Isolated marketplace install smoke remains useful
-post-release hygiene, but the 0.6.0 public availability claim is already
+post-release hygiene, but the 0.7.0 public availability claim is already
 verified by the release closeout.
 
 ## Next Release-Candidate Proof

@@ -2,10 +2,14 @@
 
 Spec: RIPR-SPEC-0028
 
+Note: the fixture name is historical. It now pins the transition from
+unprojected module-level changes to a durable `<module>` owner.
+
 ## Given
 
-A Python module-level constant changes, but the current preview adapter has no
-projectable owner for that module-scope expression.
+A Python module-level constant changes. The preview adapter should attach the
+change to a durable module-level owner instead of guessing a nearby function
+owner.
 
 The fixture workspace enables the Python preview adapter explicitly:
 
@@ -31,8 +35,9 @@ ripr check \
 
 ## Then
 
-The Python preview adapter emits no finding rather than attaching the changed
-module expression to the wrong owner.
+The Python preview adapter emits a preview finding with
+`probe.owner = "python:src/constants.py::<module>"` and
+`owner_kind = "module_function"`.
 
 ## Must Not
 

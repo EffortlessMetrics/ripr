@@ -1,0 +1,81 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-preview-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 0,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 1,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:app_pricing.py:2:python_preview",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.46,
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "canonical_gap": {
+        "id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+        "language": "python",
+        "file": "app/pricing.py",
+        "owner": "calculate_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+      },
+      "probe": {
+        "id": "probe:app_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "app/pricing.py",
+        "line": 2,
+        "owner": "python:app/pricing.py::calculate_discount",
+        "expression": "if amount >= threshold:"
+      },
+      "ripr": {
+        "reach": {
+          "state": "no",
+          "confidence": "low",
+          "summary": "No related Python test route was found."
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed predicate can alter branch selection."
+        },
+        "propagate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Changed branch can propagate through the return value."
+        },
+        "observe": {
+          "state": "missing",
+          "confidence": "low",
+          "summary": "No related oracle observes the return value."
+        },
+        "discriminate": {
+          "state": "missing",
+          "confidence": "low",
+          "summary": "No equality-boundary discriminator was found."
+        }
+      },
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "equality boundary not observed"
+        }
+      ],
+      "related_tests": [],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

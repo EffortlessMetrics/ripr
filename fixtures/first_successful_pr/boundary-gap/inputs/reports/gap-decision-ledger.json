@@ -11,7 +11,9 @@
       "language": "rust",
       "language_status": "stable",
       "scope": "pr_local",
+      "current_evidence_strength": "weakly_exposed",
       "changed_behavior": "amount >= threshold",
+      "missing_discriminator": "amount == threshold",
       "gap_state": "actionable",
       "policy_state": "new",
       "repairability": "repairable",
@@ -25,7 +27,8 @@
         "route_kind": "AddBoundaryAssertion",
         "target_file": "tests/pricing.rs",
         "related_test": "tests/pricing.rs::premium_customer_gets_discount",
-        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+        "proof_intent": "Add a focused equality-boundary assertion in `tests/pricing.rs` for the threshold edge."
       },
       "verification_commands": [
         "cargo xtask fixtures boundary_gap"

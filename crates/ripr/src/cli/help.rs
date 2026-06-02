@@ -4,6 +4,7 @@ mod overview;
 mod policy;
 mod pr;
 mod reports;
+mod swarm;
 
 use agent::*;
 use core::*;
@@ -11,6 +12,7 @@ use overview::*;
 use policy::*;
 use pr::*;
 use reports::*;
+use swarm::*;
 
 pub(super) fn print_help() {
     println!("{HELP}");
@@ -120,6 +122,18 @@ pub(super) fn print_agent_review_summary_help() {
     println!("{AGENT_REVIEW_SUMMARY_HELP}");
 }
 
+pub(super) fn print_swarm_help() {
+    println!("{SWARM_HELP}");
+}
+
+pub(super) fn print_swarm_queue_help() {
+    println!("{SWARM_QUEUE_HELP}");
+}
+
+pub(super) fn print_swarm_ingest_help() {
+    println!("{SWARM_INGEST_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -145,15 +159,16 @@ mod tests {
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
         GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, POLICY_HELP,
         PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP,
-        ZERO_HELP, print_agent_brief_help, print_agent_help, print_agent_packet_help,
-        print_agent_receipt_help, print_agent_review_summary_help, print_agent_start_help,
-        print_agent_status_help, print_agent_verify_help, print_assistant_loop_help,
-        print_baseline_help, print_calibrate_help, print_check_help, print_context_help,
-        print_coverage_grip_help, print_doctor_help, print_evidence_health_help,
-        print_explain_help, print_first_action_help, print_gate_help, print_help, print_init_help,
-        print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
-        print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
-        print_review_comments_help, print_zero_help,
+        SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help,
+        print_agent_help, print_agent_packet_help, print_agent_receipt_help,
+        print_agent_review_summary_help, print_agent_start_help, print_agent_status_help,
+        print_agent_verify_help, print_assistant_loop_help, print_baseline_help,
+        print_calibrate_help, print_check_help, print_context_help, print_coverage_grip_help,
+        print_doctor_help, print_evidence_health_help, print_explain_help, print_first_action_help,
+        print_gate_help, print_help, print_init_help, print_lsp_help, print_outcome_help,
+        print_pilot_help, print_policy_help, print_pr_comments_help, print_pr_ledger_help,
+        print_pr_review_help, print_reports_help, print_review_comments_help, print_swarm_help,
+        print_swarm_ingest_help, print_swarm_queue_help, print_zero_help,
     };
 
     #[test]
@@ -181,6 +196,7 @@ mod tests {
         assert!(HELP.contains("ripr assistant-loop proof"));
         assert!(HELP.contains("ripr assistant-loop health"));
         assert!(HELP.contains("ripr first-pr"));
+        assert!(HELP.contains("ripr start-here"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr reports index"));
         assert!(HELP.contains("ripr reports gap-ledger"));
@@ -192,12 +208,15 @@ mod tests {
         assert!(HELP.contains("ripr agent receipt"));
         assert!(HELP.contains("ripr agent status"));
         assert!(HELP.contains("ripr agent review-summary"));
+        assert!(HELP.contains("ripr swarm queue"));
+        assert!(HELP.contains("ripr swarm ingest"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
         assert!(HELP.contains("ripr doctor"));
         assert!(HELP.contains("Start-here path:"));
         assert!(HELP.contains("Safe next action means repair one named gap"));
+        assert!(HELP.contains("Missing artifact, stale evidence, wrong root"));
         assert!(HELP.contains("Verify command, receipt command, and receipt path"));
         assert!(HELP.contains("Preview-limited evidence stays syntax-first"));
     }
@@ -206,9 +225,11 @@ mod tests {
     fn check_help_mentions_repo_badge_formats_and_examples() {
         assert!(CHECK_HELP.contains("repo-badge-plus-shields"));
         assert!(CHECK_HELP.contains("repo-exposure-json"));
+        assert!(CHECK_HELP.contains("repo-exposure-summary-json"));
         assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
-        assert!(CHECK_HELP.contains("test-efficiency-report"));
+        assert!(CHECK_HELP.contains("needs test-efficiency"));
+        assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
     }
 
@@ -299,6 +320,9 @@ mod tests {
         assert!(FIRST_ACTION_HELP.contains("--gap-ledger PATH"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
+        assert!(FIRST_ACTION_HELP.contains("safe next action"));
+        assert!(FIRST_ACTION_HELP.contains("verify command, receipt command, and receipt path"));
+        assert!(FIRST_ACTION_HELP.contains("preview-limited evidence"));
         assert!(REPORTS_HELP.starts_with("Write reviewer-first report projections"));
         assert!(REPORTS_HELP.contains("Usage:"));
         assert!(REPORTS_HELP.contains("ripr reports index"));
@@ -333,6 +357,14 @@ mod tests {
         assert!(AGENT_REVIEW_SUMMARY_HELP.starts_with("Summarize agent-loop artifacts"));
         assert!(AGENT_REVIEW_SUMMARY_HELP.contains("Usage: ripr agent review-summary"));
         assert!(AGENT_REVIEW_SUMMARY_HELP.contains("Human Markdown is the default"));
+        assert!(SWARM_HELP.starts_with("Queue bounded repair work"));
+        assert!(SWARM_HELP.contains("Usage: ripr swarm <subcommand>"));
+        assert!(SWARM_QUEUE_HELP.starts_with("Queue GapRecord-backed repair packets"));
+        assert!(SWARM_QUEUE_HELP.contains("Usage: ripr swarm queue"));
+        assert!(SWARM_QUEUE_HELP.contains("allowed_edit_surface"));
+        assert!(SWARM_INGEST_HELP.starts_with("Classify one external agent result"));
+        assert!(SWARM_INGEST_HELP.contains("Usage: ripr swarm ingest"));
+        assert!(SWARM_INGEST_HELP.contains("edited_forbidden_file"));
         assert!(EXPLAIN_HELP.starts_with("Print why ripr flagged"));
         assert!(EXPLAIN_HELP.contains("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Print the per-change context packet"));
@@ -341,7 +373,10 @@ mod tests {
         assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
         assert!(DOCTOR_HELP.contains("Start-here next step:"));
+        assert!(DOCTOR_HELP.contains("ripr start-here --root . --base origin/main --head HEAD"));
+        assert!(DOCTOR_HELP.contains("safe next action means repair one named gap"));
         assert!(DOCTOR_HELP.contains("missing artifact, stale evidence, wrong root"));
+        assert!(DOCTOR_HELP.contains("verify command, receipt command, and receipt path"));
         assert!(LSP_HELP.starts_with("Start the experimental ripr LSP server"));
         assert!(LSP_HELP.contains("--stdio"));
         assert!(LSP_HELP.contains("--version"));
@@ -379,6 +414,9 @@ mod tests {
         print_agent_receipt_help();
         print_agent_status_help();
         print_agent_review_summary_help();
+        print_swarm_help();
+        print_swarm_queue_help();
+        print_swarm_ingest_help();
         print_check_help();
         print_explain_help();
         print_context_help();

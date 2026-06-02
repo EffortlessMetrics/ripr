@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_unresolved_fixture_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/pricing.py:2
+
+Changed
+  after:      if amount >= threshold:
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/pricing.py::apply_discount
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply_discount`
+  - infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python propagation claim.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python discriminator claim.
+  - related test tests/test_pricing.py:11 test_apply_discount_fixture_case uses strong exact value oracle: assert apply_discount(discount_case["amount"], discount_case["threshold"]) == discount_case[
+        "expected"
+    ]
+
+Weakness
+  - Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the changed discriminator or expected value.
+
+Stop reasons:
+  - static_probe_unknown

@@ -59,9 +59,10 @@ that lets agents read only what is relevant.
 ## RIPR-native proof stack
 
 External planning language often uses words like PRD, proof stack, source of
-truth, policy ledger, or closeout. In this repo those ideas already have
-specific homes. Do not add a second operating model when a plan uses generic
-terms; translate it into the existing RIPR graph:
+truth, policy ledger, or closeout. In this repo those ideas have specific
+homes. Do not add a second operating model when a plan uses generic terms;
+translate it into the existing RIPR graph and the accepted
+[`docs/source-of-truth/`](../source-of-truth/) stack:
 
 | Generic plan term | RIPR-native source |
 | --- | --- |
@@ -75,12 +76,12 @@ terms; translate it into the existing RIPR graph:
 | Closeout | `docs/handoffs/` |
 | Durable learning | `docs/LEARNINGS.md` |
 
-The rule is substitution, not duplication. If a handoff asks for a source of
-truth stack, use proposals, specs, ADRs, campaign docs, the active manifest,
-traceability, capability metadata, and handoffs. If a field is missing from
-that graph, add it to the appropriate existing artifact or validator instead
-of creating a runner-specific goals tree, a new source-of-truth directory, or
-another status ledger.
+The rule is substitution, not duplication. If a handoff asks for a proof stack
+or source-of-truth stack, use the existing source-of-truth docs, proposals,
+specs, ADRs, campaign docs, the active manifest, traceability, capability
+metadata, and handoffs. If a field is missing from that graph, add it to the
+appropriate existing artifact or validator instead of creating a runner-specific
+goals tree or another status ledger.
 
 ## Typed nodes
 
@@ -260,7 +261,9 @@ with a successor or explicit idle marker?" wants the active manifest.
 ## PR alignment cadence
 
 Every PR should leave enough repo state for the next agent or maintainer to
-continue without chat history. A PR should answer:
+continue without chat history. This is the self-aligning repo invariant: one
+bounded capability moves, its proof and claim boundary are visible, and the next
+slice can be chosen from repo artifacts rather than memory. A PR should answer:
 
 ```text
 1. What product or repo capability moves?

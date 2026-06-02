@@ -11,7 +11,9 @@
       "language": "rust",
       "language_status": "stable",
       "scope": "pr_local",
+      "current_evidence_strength": "reachable_unrevealed",
       "changed_behavior": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+      "missing_discriminator": "APPLE_M3_AIR_DEVICE_LABELS_TEXT appears in golden output",
       "gap_state": "actionable",
       "policy_state": "new",
       "repairability": "repairable",
@@ -25,7 +27,8 @@
         "route_kind": "AddOutputGolden",
         "target_file": "fixtures/device-labels/expected/human.txt",
         "related_test": "fixtures/device-labels",
-        "assertion_shape": "golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+        "assertion_shape": "golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+        "proof_intent": "Add or update the device-label golden output so the visible label is checked."
       },
       "verification_commands": [
         "cargo xtask goldens check"

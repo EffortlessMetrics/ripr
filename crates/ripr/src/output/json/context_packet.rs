@@ -19,6 +19,9 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     out.push_str("{\n");
     field(&mut out, 1, "version", packet.version, true);
     field(&mut out, 1, "tool", packet.tool, true);
+    if let Some(canonical_gap_id) = &packet.canonical_gap_id {
+        field(&mut out, 1, "canonical_gap_id", canonical_gap_id, true);
+    }
     out.push_str("  \"probe\": {\n");
     field(&mut out, 2, "id", &packet.probe.id, true);
     field(&mut out, 2, "family", &packet.probe.family, true);
@@ -118,7 +121,7 @@ fn discriminator_array(
 mod tests {
     use super::render_context_packet;
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
         MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
         RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
         SymbolId, ValueContext, ValueFact,
@@ -161,9 +164,31 @@ mod tests {
         assert!(packet.contains("No test checks \\\"boundary\\\"\\ncase"));
     }
 
+    #[test]
+    fn context_packet_renders_canonical_gap_id_when_present() {
+        let mut finding = sample_finding();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let packet = render_context_packet(&finding, 5);
+
+        assert!(packet.contains(
+            "\"canonical_gap_id\": \"gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold\""
+        ));
+    }
+
     fn sample_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:9:error_path".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:9:error_path".to_string()),
                 location: SourceLocation::new("src/lib.rs", 9, 1),

@@ -400,6 +400,13 @@ cannot safely name a placement. `canonical_item.raw_spans[]` preserves every
 contributing raw source span as supporting evidence; consumers must not treat
 those spans as separate user-facing actions.
 
+`canonical_item.static_limitations[]` mirrors the record-level named static
+limitations for canonical-item consumers. Each row carries the limitation
+`stage`, `state`, `reason`, normalized `category`, and `repair_route`.
+Downstream surfaces may use these rows to explain why a canonical item is
+blocked by analyzer work, but must not count them as user test debt or infer a
+focused repair action from a raw `static_unknown` finding.
+
 When `canonical_item.gap_state` is `actionable`, `canonical_item.repair_route`
 must be a structured object with:
 

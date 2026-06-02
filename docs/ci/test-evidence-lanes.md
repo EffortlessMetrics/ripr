@@ -128,8 +128,8 @@ See `docs/ci/ripr-mutation-boundary.md` for the full boundary doctrine.
 ## LEM budget bands
 
 See `docs/ci/lem-budgeting.md` for the Local Evidence Minutes planning unit and band
-definitions. The default PR lane targets the `standard` band. Release-surface lanes target the
-`elevated` band and require `full-ci` or `release-check` label acknowledgement.
+definitions. The default PR lane targets the `medium` band. Release-surface lanes target the
+`release` band and require `full-ci` or `release-check` label acknowledgement.
 
 ## See also
 

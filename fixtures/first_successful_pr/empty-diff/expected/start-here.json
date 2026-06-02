@@ -68,7 +68,8 @@
   "selected": {
     "reason": "The PR diff is empty, so no repairable Rust gap was selected.",
     "records_total": 0,
-    "state": "empty_diff"
+    "state": "empty_diff",
+    "output_state": "clean"
   },
   "status": "no_action",
   "tool": "ripr",

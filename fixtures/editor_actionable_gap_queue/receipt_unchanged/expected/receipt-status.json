@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1",
   "fixture": "editor_actionable_gap_queue/receipt_unchanged",
-  "receipt_state": "found",
+  "receipt_state": "receipt_movement_unchanged",
   "movement": "unchanged",
   "runtime_adequacy_claim": false,
   "mutation_proof_claim": false,

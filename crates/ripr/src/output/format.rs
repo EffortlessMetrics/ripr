@@ -21,8 +21,8 @@ pub enum OutputFormat {
     BadgeShields,
     /// Native `ripr+` badge JSON. Sums unsuppressed exposure gaps and
     /// unsuppressed actionable test-efficiency findings, excluding
-    /// declared intent. Requires `target/ripr/reports/test-efficiency.json`
-    /// produced by `cargo xtask test-efficiency-report`.
+    /// declared intent. When `target/ripr/reports/test-efficiency.json`
+    /// is missing, renders a neutral badge-generator-safe response.
     BadgePlusJson,
     /// Shields-compatible projection for the `ripr+` badge.
     BadgePlusShields,
@@ -36,10 +36,11 @@ pub enum OutputFormat {
     /// fields as the diff-scoped Shields shape; native-only fields like
     /// `scope` and `basis` do not leak into Shields.
     RepoBadgeShields,
-    /// Repo-scoped native `ripr+` badge JSON. Same disk requirement as
-    /// `BadgePlusJson` (the test-efficiency report), but raw test-efficiency
-    /// debt does not move the repo headline until it is lifted into the same
-    /// actionable repair / verify / receipt model as canonical gaps.
+    /// Repo-scoped native `ripr+` badge JSON. Uses the same
+    /// test-efficiency report as `BadgePlusJson` when present, but raw
+    /// test-efficiency debt does not move the repo headline until it is
+    /// lifted into the same actionable repair / verify / receipt model as
+    /// canonical gaps.
     RepoBadgePlusJson,
     /// Repo-scoped Shields projection for the `ripr+` badge.
     RepoBadgePlusShields,
@@ -56,6 +57,10 @@ pub enum OutputFormat {
     /// of the seam inventory. Schema in `docs/OUTPUT_SCHEMA.md` under
     /// `repo-exposure.json`.
     RepoExposureJson,
+    /// Bounded repo exposure summary rendered as JSON. Emits aggregate
+    /// canonical actionable gap counts, reason breakdowns, and a capped
+    /// top-file summary without per-seam evidence payloads.
+    RepoExposureSummaryJson,
     /// Repo exposure report rendered as Markdown for human review.
     RepoExposureMd,
     /// SARIF 2.1.0 report for repo-scoped classified seam evidence.
@@ -150,6 +155,11 @@ const FORMAT_SPECS: &[OutputFormatSpec] = &[
     OutputFormatSpec {
         format: OutputFormat::RepoExposureJson,
         cli_names: &["repo-exposure-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoExposureSummaryJson,
+        cli_names: &["repo-exposure-summary-json"],
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {

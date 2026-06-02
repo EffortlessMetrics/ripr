@@ -61,11 +61,16 @@ mod tests {
         std::fs::write(path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
-    fn write_complete_artifacts(root: &Path) -> Result<(), String> {
+    fn write_common_workflow_artifacts(root: &Path) -> Result<(), String> {
         write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        Ok(())
+    }
+
+    fn write_complete_artifacts(root: &Path) -> Result<(), String> {
+        write_common_workflow_artifacts(root)?;
         write_file(
             &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             r#"{"changed_seams":[{"seam_id":"seam-a"}],"unchanged_seams":[],"new_gaps":[],"resolved_gaps":[]}"#,
@@ -139,10 +144,7 @@ mod tests {
         root: &Path,
         case: &ReviewFixtureCase<'_>,
     ) -> Result<(), String> {
-        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
-        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
-        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
-        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_common_workflow_artifacts(root)?;
         write_file(
             &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             &serde_json::to_string_pretty(&serde_json::json!({

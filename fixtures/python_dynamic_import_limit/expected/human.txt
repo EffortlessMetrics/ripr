@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_dynamic_import_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/plugin_loader.py:4
+
+Changed
+  after:      return importlib.import_module(module_name).handle(payload, strict=True)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/plugin_loader.py::run_plugin
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `run_plugin`
+  - infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.
+  - related test tests/test_plugin_loader.py:4 test_run_plugin_returns_payload_status uses strong exact value oracle: assert run_plugin("plugins.invoice", {"id": "inv_123"}) == "ok"
+
+Weakness
+  - Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not build an import graph or resolve imported implementation semantics.
+
+Stop reasons:
+  - static_probe_unknown

@@ -12,8 +12,8 @@ id = "release_proof_still_in_primary_ci"
 kind = "legacy_posture"
 paths = [".github/workflows/ci.yml"]
 lanes = ["release-package", "publish-dry-run"]
-current_behavior = "cargo package and cargo publish dry-run run inside the primary rust job on ordinary pull requests."
-target_behavior = "Run release-bearing proof on main, workflow_dispatch, release-check, or full-ci."
+current_behavior = "cargo package and cargo publish dry-run run inside the primary rust job on pushes to main or master and on pull requests labeled release-check or full-ci."
+target_behavior = "Keep release-bearing proof out of ordinary pull requests; run each release lane only from its explicitly wired main, workflow_dispatch, release-check, or full-ci trigger."
 review_note = "Keep visible until the release-surface gate PR moves these steps."
 
 [[exception]]
@@ -21,7 +21,7 @@ id = "vscode_runs_on_all_primary_prs"
 kind = "legacy_posture"
 paths = [".github/workflows/ci.yml"]
 lanes = ["vscode-compile", "vscode-e2e"]
-current_behavior = "The vscode job runs on every pull request and push."
+current_behavior = "The vscode job runs on pushes to main or master, workflow_dispatch, and pull requests labeled full-ci; it is not yet path-gated or wired to the vscode label."
 target_behavior = "Run editor lanes for editor path changes, main, vscode label, or full-ci."
 review_note = "Do not add more editor checks to the default front door before path gating."
 
@@ -55,8 +55,8 @@ review_note = "Do not treat LGTM as a sufficient review record; inspect posted f
 [[exception]]
 id = "ci_plan_and_actuals_not_yet_generated"
 kind = "planned_artifact"
-paths = ["policy/ci-budget.toml", "policy/ci-lane-whitelist.toml", "policy/ci-risk-packs.toml"]
+paths = [".github/workflows/pr-plan.yml", "policy/ci-budget.toml", "policy/ci-lane-whitelist.toml", "policy/ci-risk-packs.toml"]
 artifact_families = ["ci-plan"]
-current_behavior = "The policy files describe planned ci-plan and ci-actuals artifacts, but no workflow or xtask command emits them yet."
-target_behavior = "A follow-up PR should add a structural checker, then an advisory PR Plan workflow."
-review_note = "This exception should disappear after the plan and actuals lanes exist."
+current_behavior = "The structural PR Plan workflow exists and emits a changed-file advisory artifact, but no workflow or xtask command emits numeric target/ci/ci-plan.json or target/ci/ci-actuals.json yet."
+target_behavior = "A follow-up PR should add the numeric planner that emits target/ci/ci-plan.json, then wire per-lane target/ci/ci-actuals.json telemetry."
+review_note = "This exception should disappear after the numeric plan and actuals lanes exist."

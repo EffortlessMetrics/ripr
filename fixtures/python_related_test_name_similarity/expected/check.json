@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_related_test_name_similarity/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+        "language": "python",
+        "file": "src/pricing.py",
+        "owner": "apply_discount",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount-10"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    return amount - 10",
+        "owner": "python:src/pricing.py::apply_discount"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount - 10`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount - 10 (line 2)", "related test tests/test_checkout.py:1 test_apply_discount_boundary_case uses unknown unknown oracle"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount - 10","line":2}
+      ],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary_case)", "test_verify_command: pytest tests/test_checkout.py::test_apply_discount_boundary_case (test_apply_discount_boundary_case)", "related_test_relation: test_name_similarity (test_apply_discount_boundary_case)", "related_test_uncertain: test_name_similarity (test_apply_discount_boundary_case)"],
+      "missing": ["Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_apply_discount_boundary_case",
+          "file": "tests/test_checkout.py",
+          "line": 1,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

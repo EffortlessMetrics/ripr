@@ -1,4 +1,5 @@
 # Documentation index
+- [source-of-truth/README.md](source-of-truth/README.md) - control-plane doctrine for proposals, specs, ADRs, plans, active goals, support tiers, policy ledgers, proof, and closeouts
 - [SPEC_PROPOSAL_SYSTEM.md](SPEC_PROPOSAL_SYSTEM.md) - companion guide to the repo tracking model for proposals, specs, ADRs, plans, goals, policy ledgers, and closeouts
 
 - [status/SUPPORT_TIERS.md](status/SUPPORT_TIERS.md) - buyer-readable support, preview, advisory, blocked, and proof boundaries

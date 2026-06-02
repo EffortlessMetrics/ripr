@@ -25,6 +25,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "title": "Revise the focused test for unchanged static movement",

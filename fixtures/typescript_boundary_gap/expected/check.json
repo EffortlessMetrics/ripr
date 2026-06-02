@@ -17,29 +17,40 @@
         "delta": "control",
         "file": "src/discount.ts",
         "line": 2,
-        "expression": "    if (amount >= threshold) {"
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/discount.ts::applyDiscount"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"2 related test(s) found for owner `applyDiscount`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
        },
-      "evidence_path": ["reach yes: 2 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/discount.test.ts:4 below threshold has no discount uses unknown unknown oracle", "related test tests/discount.test.ts:11 far above threshold discounts uses unknown unknown oracle"],
+      "evidence_path": ["reach yes: 2 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "related test tests/discount.test.ts:4 below threshold has no discount uses unknown unknown oracle", "related test tests/discount.test.ts:11 far above threshold discounts uses unknown unknown oracle", "missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: applyDiscount"],
-      "missing": ["Related test reaches `applyDiscount` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence": ["owner: applyDiscount", "missing_discriminator: amount == threshold", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount"],
+      "missing": ["Related test reaches `applyDiscount` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+            "flow_sink": null
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+          "flow_sink": null
+        }
       ],
       "related_tests": [
         {
@@ -59,13 +70,76 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "amount == threshold",
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/discount.test.ts",
+          "line": 11,
+          "name": "far above threshold discounts"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for `amount == threshold`.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "preview_actionability": {
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/discount.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "applyDiscount",
+            "raw": "file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount",
+            "source_id": "probe:src_discount.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

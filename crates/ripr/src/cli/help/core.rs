@@ -55,14 +55,19 @@ pub(super) const OUTCOME_HELP: &str = r#"Compare before/after static evidence af
 Usage: ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
 
 Options:
-  --before PATH    Repo-exposure JSON snapshot before the focused test.
-  --after PATH     Repo-exposure JSON snapshot after the focused test.
+  --before PATH    Static snapshot before the focused test: repo exposure or check JSON.
+  --after PATH     Static snapshot after the focused test: repo exposure or check JSON.
   --format FORMAT  md, markdown, text, or json. Defaults to md.
   --out PATH       Write the rendered receipt to a file instead of stdout.
 
 The outcome receipt is advisory. It compares static repo-exposure snapshots by
-seam_id and reports moved, unchanged, regressed, new, and removed seams; it
-does not run analysis, mutation testing, or CI policy.
+seam_id and check-output snapshots by canonical_gap_id, then reports moved,
+unchanged, regressed, new, and removed gaps or seams. Its
+review receipt summarizes what changed, what RIPR flagged before, which focused
+proof signals moved, what remains weak or unknown, and what reviewers should
+inspect or avoid inferring. It does not run analysis, edit source, generate
+tests, run mutation testing, claim runtime correctness or coverage adequacy,
+approve merges, or decide CI policy.
 "#;
 pub(super) const CHECK_HELP: &str = r#"Analyze a diff or workspace and emit findings in human, JSON, SARIF, or badge form.
 
@@ -77,11 +82,13 @@ Options:
                            badge-plus-json, badge-plus-shields, repo-badge-json,
                            repo-badge-shields, repo-badge-plus-json,
                            repo-badge-plus-shields, repo-seams-json,
-                           repo-seams-md, repo-exposure-json, repo-exposure-md,
+                           repo-seams-md, repo-exposure-json,
+                           repo-exposure-summary-json, repo-exposure-md,
                            repo-sarif, agent-seam-packets-json. Defaults to human.
-                           badge-plus-* and repo-badge-plus-* formats require
-                           target/ripr/reports/test-efficiency.json (run
-                           `cargo xtask test-efficiency-report` first).
+                           badge-plus-* and repo-badge-plus-* formats read
+                           target/ripr/reports/test-efficiency.json when present;
+                           missing input renders a neutral "needs test-efficiency"
+                           badge and warns on stderr. See docs/BADGE_ADOPTION.md.
                            repo-* and agent-seam-packets-json formats render
                            against the full repo baseline; the non-repo badge-*
                            formats remain diff-scoped.
@@ -117,11 +124,16 @@ Checks:
 
 Start-here next step:
   - after setup is valid, run `ripr first-pr --root . --base origin/main --head HEAD`
+    or `ripr start-here --root . --base origin/main --head HEAD`
     or this repo's `cargo xtask first-pr` wrapper
   - open `target/ripr/reports/start-here.md` first when it exists
+  - safe next action means repair one named gap, regenerate missing or malformed
+    evidence, refresh stale evidence, fix wrong-root setup, or stop on no-action
   - treat missing artifact, stale evidence, wrong root, malformed artifact,
     no actionable gap, and preview-limited evidence as explicit stop or
     regeneration states, not hidden success
+  - verify command, receipt command, and receipt path are the static proof rail;
+    receipts stay advisory and do not prove runtime adequacy or gate approval
 "#;
 pub(super) const LSP_HELP: &str = r#"Start the experimental ripr LSP server over stdio.
 

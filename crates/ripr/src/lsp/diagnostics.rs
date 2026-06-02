@@ -14,6 +14,9 @@ use crate::domain::{Finding, LanguageId, RelatedTest};
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
 };
+use crate::output::preview_actionability::{
+    preview_actionability_for, preview_actionability_json_value,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -532,6 +535,12 @@ pub(super) fn diagnostic_for_finding_with_config(
                 serde_json::Value::String(language.as_str().to_string()),
             );
         }
+        if let Some(gap) = &finding.canonical_gap {
+            obj.insert(
+                "canonical_gap_id".to_string(),
+                serde_json::Value::String(gap.id.clone()),
+            );
+        }
         if let Some(status) = &finding.language_status {
             obj.insert(
                 "language_status".to_string(),
@@ -548,6 +557,12 @@ pub(super) fn diagnostic_for_finding_with_config(
             obj.insert(
                 "static_limit_kind".to_string(),
                 serde_json::Value::String(static_limit_kind.as_str().to_string()),
+            );
+        }
+        if let Some(actionability) = preview_actionability_for(finding) {
+            obj.insert(
+                "preview_actionability".to_string(),
+                preview_actionability_json_value(&actionability),
             );
         }
     }
@@ -1132,6 +1147,7 @@ mod seam_diagnostic_tests {
                 target_line: Some(33),
                 related_test: Some("tests/pricing.rs::discount_threshold".to_string()),
                 assertion_shape: Some("assert_eq!(price(threshold), expected)".to_string()),
+                missing_discriminator: Some("amount == threshold".to_string()),
                 changed_behavior: Some("amount >= threshold".to_string()),
                 stop_conditions: vec!["Stop if the target owner moved.".to_string()],
             }),

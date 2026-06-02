@@ -21,11 +21,26 @@ fast` against checked fixture diffs, writes actual outputs under
 `target/ripr/reports/dogfood.json`. It also checks repo-local finding-alignment
 receipts under `fixtures/finding-alignment-dogfood/` so real RIPR PR examples
 preserve the Lane 1 split between raw findings, canonical evidence items, and
-actionable canonical gaps.
+actionable canonical gaps. Python repair-routing eval receipts live under
+`fixtures/python-real-repo-evals/`; they record curated scratch or real-repo
+repair-card, verify, and outcome evidence without promoting Python beyond its
+preview/advisory boundary.
 
 ## Dogfooding Rules
 
 - Prefer sample diffs and fixtures over broad repository scans.
+- Treat repo-wide RIPR refreshes as build-heavy on this repo. Use
+  `repo-badge-json`, generated receipts, or an explicit gap ledger for ordinary
+  summary counts. Use `cargo xtask repo-exposure-summary-report` when local
+  planning needs bounded repo exposure counts, and run only one no-ledger repo
+  scan at a time. If it emits `basis: "limited_runtime_status"` with
+  `runtime_status.downstream_consumable: false`, do not use that artifact as a
+  repair queue or badge basis.
+- Do not use full `repo-exposure-json` as the normal badge, receipt, top-file,
+  or packet-queue input. Full exposure dumps require explicit operator intent
+  and cleanup after inspection.
+- Raise `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` only for the command that needs
+  a large-repo cache write, after checking disk headroom.
 - When `ripr` finds a real gap in its own code, add a fixture or regression
   test before changing the analyzer.
 - Do not use `ripr` findings as blocking CI until the SARIF policy and

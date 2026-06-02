@@ -4,33 +4,34 @@
   "mode": "fast",
   "root": "fixtures/python_missing_import_graph_limit/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
       "id": "probe:src_totals.py:4:python_preview",
-      "classification": "exposed",
-      "severity": "info",
-      "confidence": 0.60,
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
       "probe": {
         "id": "probe:src_totals.py:4:python_preview",
         "family": "return_value",
         "delta": "value",
         "file": "src/totals.py",
         "line": 4,
-        "expression": "    return remote_total(client, include_tax=True)"
+        "expression": "    return remote_total(client, include_tax=True)",
+        "owner": "python:src/totals.py::total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `total`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python propagation claim."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
-        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python discriminator claim."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `total`", "infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.", "propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.", "related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: total", "owner_kind: function", "static_limit missing_import_graph: changed line calls an imported symbol", "test_framework: pytest (test_total_includes_tax)", "related_test_relation: syntactic_call (test_total_includes_tax)", "test_oracle: exact_value strong (test_total_includes_tax)"],
-      "missing": ["Related Python test reaches `total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
+      "evidence": ["owner: total", "owner_kind: function", "static_limit missing_import_graph: changed line calls an imported symbol", "test_framework: pytest (test_total_includes_tax)", "test_fixtures: client (test_total_includes_tax)", "test_verify_command: pytest tests/test_totals.py::test_total_includes_tax (test_total_includes_tax)", "related_test_relation: syntactic_call (test_total_includes_tax)", "test_oracle: exact_value strong (test_total_includes_tax)"],
+      "missing": ["Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
       "activation": {
         "observed_values": [
         ],
@@ -51,11 +52,11 @@
           "oracle": "assert total(client) == 12"
         }
       ],
-      "stop_reasons": [],
+      "stop_reasons": ["static_probe_unknown"],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

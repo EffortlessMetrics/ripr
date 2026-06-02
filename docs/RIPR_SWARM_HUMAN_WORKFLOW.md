@@ -24,9 +24,19 @@ supporting evidence only.
 Generate or refresh Lane 1 evidence first:
 
 ```bash
-cargo xtask lane1-evidence-audit
-cargo xtask ripr-swarm plan --top 10
+rtk cargo xtask lane1-evidence-audit
+rtk cargo xtask evidence-health
+rtk cargo xtask evidence-quality-scorecard
+rtk cargo xtask evidence-quality-trend
+rtk cargo xtask ripr-swarm plan --top 10
+rtk cargo xtask actionable-gap-outcomes
+rtk cargo xtask ripr-swarm readiness
 ```
+
+Run these Cargo-backed report commands sequentially in one worktree. They share
+the Cargo target directory and `target/ripr/reports`; overlapping runs can cause
+lock contention or stale report reads. If parallel validation is necessary,
+isolate both `CARGO_TARGET_DIR` and report output paths.
 
 The workflow reads these artifacts:
 
@@ -38,9 +48,15 @@ The workflow reads these artifacts:
 | `target/ripr/reports/swarm-plan.md` | Human-readable top-N repair plan. |
 | `target/ripr/reports/actionable-gap-outcomes.json` | Receipt and evidence-movement join. |
 | `target/ripr/reports/actionable-gap-outcomes.md` | Human-readable attempt outcomes. |
+| `target/ripr/reports/swarm-attempt-ledger.json` | Durable attempt history and route-quality source. |
+| `target/ripr/reports/swarm-readiness.json` | Coarse `readiness_state` plus detailed runtime status and next action. |
 
 Do not use raw `raw_findings[]` as a work queue. They exist to explain and
 audit the canonical packet.
+
+Read `readiness_state` first: `full` can route canonical repair work,
+`limited` and `stale` require the named runtime repair route, and `blocked`
+means required swarm inputs are unavailable or malformed.
 
 ## 1. Pick One Packet
 
@@ -51,6 +67,8 @@ Prefer packets with:
 
 - `swarm_state = queued`;
 - a concrete `repair_kind`;
+- confidence stronger than `static_only` for predicate-boundary assertion
+  packets;
 - a related test or observer;
 - `verify_command`;
 - `receipt_command` or `receipt_command_or_path`;
@@ -61,6 +79,7 @@ Do not attempt packets marked:
 
 - `blocked_by_missing_context`;
 - `blocked_by_static_limitation`;
+- `blocked_by_operator_judgment`;
 - missing verify command;
 - missing receipt command;
 - missing must-not-change boundaries.
@@ -72,13 +91,13 @@ Blocked packets are still useful evidence. They are not repair-ready work.
 Run the attempt dry-run for the selected packet:
 
 ```bash
-cargo xtask ripr-swarm attempt --packet <packet_id> --dry-run
+rtk cargo xtask ripr-swarm attempt --packet <packet_id> --dry-run
 ```
 
 If you are using a non-default packet file:
 
 ```bash
-cargo xtask ripr-swarm attempt \
+rtk cargo xtask ripr-swarm attempt \
   --packet <packet_id> \
   --dry-run \
   --actionable-gaps target/ripr/reports/actionable-gaps.json
@@ -127,6 +146,8 @@ reviewed work item.
 ## 4. Using An External Agent Safely
 
 Give the agent the dry-run output and the matching packet only.
+The full handoff contract is defined by
+[`RIPR-SPEC-0058`](specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md).
 
 The agent may:
 
@@ -155,9 +176,9 @@ chooses a narrower local equivalent and records that choice in the PR.
 Examples:
 
 ```bash
-cargo test -p ripr <related_test_name>
-cargo xtask evidence-quality-scorecard
-cargo xtask lane1-evidence-audit
+rtk cargo test -p ripr <related_test_name>
+rtk cargo xtask evidence-quality-scorecard
+rtk cargo xtask lane1-evidence-audit
 ```
 
 A passing verify command means the repository accepted the attempted change. It
@@ -180,7 +201,7 @@ instead of retrying silently.
 Refresh the outcome report:
 
 ```bash
-cargo xtask actionable-gap-outcomes
+rtk cargo xtask actionable-gap-outcomes
 ```
 
 Read:

@@ -85,15 +85,6 @@ instead of claiming improvement. When comparable history exists, the trend
 report must distinguish improvement, regression, unchanged, and unknown
 metrics. It must not redefine RIPR scores or change analyzer, gate, CI, PR,
 editor, source-edit, generated-test, provider, or runtime-execution behavior.
-When the current scorecard is itself a bounded diagnostic because its Lane 1
-audit input was limited or audit regeneration failed, the trend report must
-carry that current scorecard unknown forward and mark metric/category movement
-as `unknown` instead of comparing partial or zeroed current counts.
-When the current scorecard path is missing, malformed, or cannot be regenerated,
-the trend command must still write bounded JSON and Markdown artifacts with the
-named `evidence_quality_trend_current_scorecard_unavailable` unknown. It must
-not exit before producing a report artifact that explains why movement is
-unavailable.
 
 ## Required Evidence
 
@@ -113,6 +104,9 @@ Each scorecard must include:
 - top actionable canonical gap lists copied from the Lane 1 audit so the
   scorecard shows the live shape of user work without reconstructing it from
   raw findings;
+- audit-derived evidence-class work queue rows promoted into recommended
+  repairs before generic roadmap risks, so the first repair class reflects live
+  unaligned, actionable, duplicate, unknown, or named-limitation pressure;
 - actionable-gap packet public-projection readiness copied from the Lane 1
   audit so badge-readiness work can trend packet completeness without changing
   public badge behavior;
@@ -149,11 +143,6 @@ names the fixture or runtime evidence that supports that scope.
 `evidence-quality-trend` additionally accepts optional `--current <path>` and
 `--previous <path>` arguments so maintainers can compare checked scorecard or
 audit snapshots without inventing a new source of truth.
-If an explicit previous artifact path is missing or malformed, the trend
-command must still write bounded JSON/Markdown with
-`unknowns[].kind = "evidence_quality_trend_previous_artifact_unavailable"`,
-mark the previous input status as `missing` or `malformed`, and avoid movement
-or badge-readiness delta claims.
 
 Missing optional inputs must be reported as unknown or unavailable. Missing
 required audit input may be repaired by regenerating the audit; if regeneration
@@ -161,28 +150,38 @@ fails before a complete audit artifact exists, the command must write a bounded
 diagnostic scorecard with
 `unknowns[].kind = "evidence_quality_scorecard_audit_regeneration_failed"` and
 a matching audit `run_limitations[]` category. That limited scorecard must not
-claim complete repo truth, public badge readiness, or user test debt. If the
-required audit input exists but is malformed or unreadable, the command must
-overwrite the stale audit with a bounded audit artifact, write scorecard
-JSON/Markdown, and add
-`unknowns[].kind = "evidence_quality_scorecard_audit_input_unavailable"`. If
-the audit or evidence-health artifact exists but carries `run_limitations[]`,
-the scorecard must surface that as an unknown and must not let the limited
-artifact's zero or partial counts masquerade as complete repo truth.
-If optional `evidence-health.json` exists but is malformed or unreadable, the
-scorecard must still write JSON/Markdown, mark
-`inputs.evidence_health.status = "malformed"`, and add
-`unknowns[].kind =
-"evidence_quality_scorecard_evidence_health_input_unavailable"` so health-only
-fields are visibly unavailable instead of silently blocking scorecard output.
+claim complete repo truth, public badge readiness, or user test debt.
+Completeness-affecting audit limitations such as
+`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`,
+`lane1_repo_exposure_large_cache_preflight_skip`, and audit regeneration failure
+must surface as unknowns and must not let zero or partial counts masquerade as
+complete repo truth. Completed-audit run limitations such as
+`lane1_repo_exposure_cache_store_skipped_large_entry` remain visible as named
+static limitations without marking the audit input limited. Named audit run
+limitations that appear in `static_limitations.by_category` must contribute to
+the scorecard static-limitation headline even when an older or partial audit
+summary left `summary.static_limitations_total` at zero.
+If the current scorecard carries limited-input unknowns such as
+`lane1_evidence_audit_limited`, `evidence_health_limited`, or
+`evidence_quality_scorecard_audit_regeneration_failed`,
+`evidence-quality-trend` must keep metric rows visible for diagnostics but mark
+their directions unknown, leave deltas null, and emit
+`unknowns[].kind = "current_scorecard_limited"` instead of claiming
+improvement or regression.
 
-Operators must run live Lane 1 report validation sequentially in a shared
-worktree. `cargo xtask evidence-quality-scorecard` and
-`cargo xtask evidence-quality-trend` should not run concurrently with
-`lane1-evidence-audit`, `evidence-health`, or `ripr-swarm readiness` unless
-each process has an isolated `CARGO_TARGET_DIR` and isolated report output
-paths. The operational runbook is documented in
-[PR_AUTOMATION.md](../PR_AUTOMATION.md#lane-1-report-validation).
+Scorecard and trend outputs must also preserve the shared Lane 1 runtime status
+contract. A full report emits `run_status = "full"`. A limited audit,
+evidence-health input, audit regeneration failure, limited current scorecard, or
+explicit malformed/missing previous artifact emits the matching limited state
+and a `runtime_status` object with phase, input kind or path, limitation
+category, repair route, timing fields when available, and
+`downstream_consumable`.
+
+If an explicit previous artifact path is missing or malformed, the trend command
+must still write bounded JSON/Markdown with
+`unknowns[].kind = "evidence_quality_trend_previous_artifact_unavailable"`,
+mark the previous input status as `missing` or `malformed`, and avoid movement
+or badge-readiness delta claims.
 
 ## Outputs
 
@@ -217,9 +216,10 @@ The Markdown output includes bounded sections for the same areas:
 - maturity by class;
 - actionable canonical gap top lists;
 - actionable-gap packet public-projection readiness;
-- evidence-class work queue;
-- top evidence-quality risks;
-- recommended Lane 1 repairs;
+- evidence-class work queue, including dominant static limitation category and
+  repair route for static-dominated rows;
+- top evidence-quality risks and recommended Lane 1 repairs led by
+  audit-derived evidence-class work queue rows before generic scorecard risks;
 - duplicate-looking and canonical group signals;
 - static limitations and missing discriminators;
 - static limitation categories and repair routes;
@@ -242,10 +242,12 @@ The evidence-quality trend JSON includes:
 - `summary`;
 - `metric_trends`;
 - `static_limitation_category_trends`;
+- `runtime_confidence_static_only_class_trends`;
 - `unknowns`.
 
 The trend Markdown output includes bounded sections for summary, metric trends,
-static limitation category trends, and unknowns.
+static limitation category trends, runtime confidence static-only class trends,
+and unknowns.
 
 ## Non-Goals
 
@@ -316,46 +318,36 @@ actionable/static-limitation/unknown/unaligned/duplicate signals instead of a
 static roadmap guess. This queue does not change public badge semantics.
 
 Given a Lane 1 audit artifact with completeness-affecting limitations such as
-`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`,
-`evidence_quality_scorecard_audit_regeneration_failed`, or
-`evidence_quality_scorecard_audit_input_unavailable`, the scorecard adds
+`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`, or
+`evidence_quality_scorecard_audit_regeneration_failed`, the scorecard adds
 `lane1_evidence_audit_limited` to `unknowns` so downstream users can see that
-the report is bounded diagnostic evidence rather than complete repo truth.
+the report is bounded diagnostic evidence rather than complete repo truth. It
+also preserves the limited input in `run_status` and `runtime_status`.
 Non-completeness audit limitations, such as skipped full-cache storage after a
 complete repo-exposure run, remain audit-visible but do not make scorecard
-counts partial.
+counts partial; they report `limited_large_cache_skip` with downstream
+consumption allowed. Cache preflight skips happen before repo-exposure evidence
+exists, so they also report `limited_large_cache_skip` but keep
+`downstream_consumable = false`.
 
 Given an evidence-health artifact with `run_limitations[]`, the scorecard adds
 `evidence_health_limited` to `unknowns` because evidence-health warning
 artifacts are intentionally diagnostic-only.
-
-Given a malformed evidence-health artifact, the scorecard emits bounded
-scorecard artifacts with
-`evidence_quality_scorecard_evidence_health_input_unavailable` instead of
-failing before scorecard evidence is written.
 
 Given a failed attempt to regenerate a missing Lane 1 audit, the scorecard
 emits a bounded diagnostic scorecard and adds
 `evidence_quality_scorecard_audit_regeneration_failed` to `unknowns` instead of
 silently dropping the report.
 
-Given a malformed existing Lane 1 audit input, the scorecard emits bounded
-diagnostic audit and scorecard artifacts and adds
-`evidence_quality_scorecard_audit_input_unavailable` to `unknowns` instead of
-exiting before report evidence is written.
-
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
-Given a current scorecard with `lane1_evidence_audit_limited` or
-`evidence_quality_scorecard_audit_regeneration_failed`, the trend report carries
-the current scorecard unknown forward and marks movement unknown even when a
-previous scorecard exists.
-
-Given a missing or malformed current scorecard input, the trend report emits a
-bounded diagnostic artifact with
-`evidence_quality_trend_current_scorecard_unavailable` instead of leaving stale
-or missing trend output.
+Given a current scorecard with `lane1_evidence_audit_limited`,
+`evidence_health_limited`, or
+`evidence_quality_scorecard_audit_regeneration_failed`, the trend report keeps
+metric and static-limitation rows visible for diagnostics, leaves deltas null,
+marks direction `unknown`, and emits `current_scorecard_limited` rather than
+claiming improvement or regression.
 
 Given a missing or malformed explicit previous artifact input, the trend report
 emits a bounded diagnostic artifact with
@@ -369,6 +361,12 @@ duplicate-looking groups as improvement.
 Given a previous scorecard with fewer static limitations than the current
 scorecard, the trend report marks that metric as regression without changing
 any gate behavior.
+
+Given a current scorecard with runtime confidence by-class rows, the trend
+report emits a bounded `runtime_confidence_static_only_class_trends` list so the
+top static-only canonical evidence classes stay visible as calibration
+expansion targets. These rows are advisory and do not imply mutation execution,
+badge movement, or gate authority.
 
 ## Test Mapping
 
@@ -392,23 +390,15 @@ any gate behavior.
 - `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
   pins scorecard unknowns for bounded audit and evidence-health input
   limitations.
-- `xtask::tests::evidence_quality_scorecard_malformed_evidence_health_stays_bounded`
-  pins bounded scorecard artifacts when optional evidence-health input is stale
-  or malformed.
 - `xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure`
   pins the bounded diagnostic scorecard for failed missing-audit regeneration.
-- `xtask::tests::evidence_quality_scorecard_malformed_audit_writes_limited_reports`
-  pins bounded audit and scorecard artifacts when the required audit input is
-  stale or malformed.
 - `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
   no-history state.
-- `xtask::tests::evidence_quality_trend_missing_current_writes_limited_report`
-  and
-  `xtask::tests::evidence_quality_trend_malformed_current_writes_limited_report`
-  pin bounded diagnostic trend artifacts for unavailable current scorecard
-  inputs.
+- `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_unknown`
+  pins the current-limited scorecard state so bounded diagnostic scorecards do
+  not produce improvement or regression claims.
 - `xtask::tests::evidence_quality_trend_missing_previous_writes_limited_report`
   and
   `xtask::tests::evidence_quality_trend_malformed_previous_writes_limited_report`
@@ -416,11 +406,10 @@ any gate behavior.
   artifacts.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
   pins metric direction semantics.
-- `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_movement_unknown`
-  pins current-scorecard bounded diagnostic propagation into trend unknowns and
-  prevents partial current counts from claiming movement.
 - `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
   pins normalized static-limitation category deltas.
+- `xtask::tests::evidence_quality_trend_reports_runtime_confidence_static_only_classes`
+  pins runtime-confidence static-only class trend rows.
 - `xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas`
   pins finding-alignment and packet-readiness metric deltas.
 
@@ -437,8 +426,6 @@ any gate behavior.
 - `docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md` records the scorecard as
   the first implementation slice and the trend report as the audit-delta slice
   when those tracker updates land.
-- `docs/PR_AUTOMATION.md` defines the sequential live-report validation
-  runbook for shared Cargo target and report directories.
 
 ## Metrics
 
@@ -458,12 +445,14 @@ The scorecard feeds these Lane 1 metrics:
 
 The trend report feeds these Lane 1 metrics:
 
+- `lane1_evidence_trend_actionable_canonical_gaps`;
 - `lane1_evidence_trend_compared_metrics`;
 - `lane1_evidence_trend_improved_metrics`;
 - `lane1_evidence_trend_regressed_metrics`;
 - `lane1_evidence_trend_unchanged_metrics`;
 - `lane1_evidence_trend_unknown_metrics`;
 - `lane1_evidence_trend_no_history`;
+- `lane1_evidence_trend_current_scorecard_limited`;
 - `lane1_evidence_trend_static_limitation_category_rows`.
 - `lane1_evidence_trend_actionable_packet_projection_eligible`;
 - `lane1_evidence_trend_actionable_packet_projection_excluded`.
@@ -481,8 +470,3 @@ The implementation must be pinned by:
 - `cargo xtask check-traceability`;
 - `cargo xtask check-capabilities`;
 - `cargo xtask check-pr`.
-
-Live validation should run the Lane 1 report commands sequentially in the order
-documented by [PR automation](../PR_AUTOMATION.md#lane-1-report-validation) so
-Cargo locks and shared report outputs do not create false timeout/failure
-signals.

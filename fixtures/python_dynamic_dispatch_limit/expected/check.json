@@ -4,33 +4,34 @@
   "mode": "fast",
   "root": "fixtures/python_dynamic_dispatch_limit/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
       "id": "probe:src_dispatch.py:2:python_preview",
-      "classification": "exposed",
-      "severity": "info",
-      "confidence": 0.60,
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
       "probe": {
         "id": "probe:src_dispatch.py:2:python_preview",
         "family": "return_value",
         "delta": "value",
         "file": "src/dispatch.py",
         "line": 2,
-        "expression": "    return getattr(client, method_name)()"
+        "expression": "    return getattr(client, method_name)()",
+        "owner": "python:src/dispatch.py::call_named"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `call_named`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python propagation claim."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
-        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python discriminator claim."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `call_named`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_dispatch.py:4 test_call_named_dispatches_total uses strong exact value oracle: assert call_named(client, \"total\") == 10"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `call_named`", "infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.", "propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `dynamic_dispatch` prevents a safe Python discriminator claim.", "related test tests/test_dispatch.py:4 test_call_named_dispatches_total uses strong exact value oracle: assert call_named(client, \"total\") == 10"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_dispatches_total)", "related_test_relation: syntactic_call (test_call_named_dispatches_total)", "test_oracle: exact_value strong (test_call_named_dispatches_total)"],
-      "missing": ["Related Python test reaches `call_named` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
+      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_dispatches_total)", "test_fixtures: client (test_call_named_dispatches_total)", "test_verify_command: pytest tests/test_dispatch.py::test_call_named_dispatches_total (test_call_named_dispatches_total)", "related_test_relation: syntactic_call (test_call_named_dispatches_total)", "test_oracle: exact_value strong (test_call_named_dispatches_total)"],
+      "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
       "activation": {
         "observed_values": [
         ],
@@ -51,11 +52,11 @@
           "oracle": "assert call_named(client, \"total\") == 10"
         }
       ],
-      "stop_reasons": [],
+      "stop_reasons": ["dynamic_dispatch_unresolved"],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

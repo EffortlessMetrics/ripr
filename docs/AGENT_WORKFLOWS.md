@@ -32,21 +32,26 @@ expires, but repository artifacts remain.
 
 ## Starting Work
 
-1. Read [Roadmap](ROADMAP.md) for sequence.
-2. Read [Implementation plan](IMPLEMENTATION_PLAN.md) for the next scoped PR.
-3. Read [Capability matrix](CAPABILITY_MATRIX.md) for current status.
-4. Read [PR automation](PR_AUTOMATION.md) for the local shape/check/report loop.
-5. Read [Codex Goals](CODEX_GOALS.md) and
+1. Check the live GitHub board first: open PRs, open issues, required checks,
+   bot comments, linked plans/specs, and current branch state.
+2. Read [Roadmap](ROADMAP.md) for sequence.
+3. Read [Implementation plan](IMPLEMENTATION_PLAN.md) for the next scoped PR.
+4. Read [Capability matrix](CAPABILITY_MATRIX.md) for current status.
+5. Read [PR automation](PR_AUTOMATION.md) for the local shape/check/report loop.
+6. Read [Codex Goals](CODEX_GOALS.md) and
    [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) when the task is part
    of a long implementation campaign.
-6. Run `cargo xtask goals next` when choosing campaign work; the active
-   manifest is the source of truth for current ready items.
-7. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
+7. Run `cargo xtask goals next` when choosing campaign work; the active
+   manifest is the source of truth for current ready items inside that campaign.
+   If the manifest has only blocked work, treat that as a stop sign for the
+   blocked goal, not as a claim that no useful PR or issue exists elsewhere on
+   the live board.
+8. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
    evidence bar.
-8. Read the relevant spec in [Specs](specs/README.md).
-9. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
+9. Read the relevant spec in [Specs](specs/README.md).
+10. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
    `.ripr/traceability.toml`.
-10. Inspect existing tests, fixtures, and goldens before editing code.
+11. Inspect existing tests, fixtures, and goldens before editing code.
 
 When the work is to add a focused test from RIPR evidence, use the
 [LLM operator guide](LLM_OPERATOR_GUIDE.md). It defines the source-edit-free

@@ -74,6 +74,16 @@
     "mocha": "^10.8.2",
     "typescript": "^6.0.3"
   },
+  "overrides": {
+    "glob": {
+      "minimatch": {
+        "brace-expansion": "^5.0.6"
+      }
+    },
+    "mocha": {
+      "serialize-javascript": "^7.0.5"
+    }
+  },
   "contributes": {
     "configuration": {
       "title": "ripr",

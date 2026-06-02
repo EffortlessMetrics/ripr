@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "records": [
+    {
+      "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "kind": "MissingBoundaryAssertion",
+      "language": "python",
+      "language_status": "preview",
+      "scope": "pr_local",
+      "current_evidence_strength": "weakly_exposed",
+      "changed_behavior": "if amount >= threshold:",
+      "missing_discriminator": "amount == threshold",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "static_limit_kind": "python_preview",
+      "static_limit_detail": "Python repair cards are preview advisory evidence.",
+      "anchor": {
+        "file": "app/pricing.py",
+        "line": 2,
+        "owner": "python:app/pricing.py::calculate_discount",
+        "dedupe_fingerprint": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold"
+      },
+      "repair_route": {
+        "route_kind": "StrengthenExistingTest",
+        "target_file": "tests/test_pricing.py",
+        "related_test": "test_calculate_discount_smoke",
+        "assertion_shape": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "missing_discriminator": "amount == threshold",
+        "changed_behavior": "if amount >= threshold:",
+        "stop_conditions": [
+          "import cannot be resolved",
+          "expected value is ambiguous",
+          "production code edit appears necessary"
+        ]
+      },
+      "verification_commands": [
+        "pytest tests/test_pricing.py::test_calculate_discount_smoke"
+      ],
+      "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json"
+    }
+  ]
+}

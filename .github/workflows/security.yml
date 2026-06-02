@@ -11,18 +11,26 @@ permissions:
 jobs:
   cargo-deny:
     name: cargo-deny
-    runs-on: ubuntu-latest
+    runs-on:
+      group: em-ci-tiny
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-tiny]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories licenses bans sources
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@cargo-deny
+
+      - run: cargo-deny check advisories licenses bans sources
 
   dependency-review:
     name: dependency-review
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on:
+      group: em-ci-nano
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, policy-nano]
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read

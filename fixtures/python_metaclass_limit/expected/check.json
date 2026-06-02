@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_metaclass_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_models.py:6:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_models.py:6:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/models.py",
+        "line": 6,
+        "expression": "class InvoiceRecord(metaclass=AuditMeta):",
+        "owner": "python:src/models.py::InvoiceRecord"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 heuristic Python test link(s) found for owner `InvoiceRecord`; relation is uncertain"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `metaprogramming` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `metaprogramming` prevents a safe Python propagation claim."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `metaprogramming` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `InvoiceRecord`; relation is uncertain", "infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.", "propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator unknown: Static limit `metaprogramming` prevents a safe Python discriminator claim.", "related test tests/test_models.py:4 test_invoice_record_status uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: InvoiceRecord", "owner_kind: class", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_invoice_record_status)", "test_verify_command: pytest tests/test_models.py::test_invoice_record_status (test_invoice_record_status)", "related_test_relation: same_stem (test_invoice_record_status)", "related_test_uncertain: same_stem (test_invoice_record_status)"],
+      "missing": ["Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_invoice_record_status",
+          "file": "tests/test_models.py",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "static_limit_kind": "metaprogramming"
+    }
+  ]
+}

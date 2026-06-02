@@ -12,6 +12,8 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/pricing.py::calculate_total
+  canonical gap: gap:python:src/pricing.py:calculate_total:return_value:return_value:amount+7
 
 Language
   language: python
@@ -23,15 +25,11 @@ Static exposure
 
 Evidence
   - reach no: 0 related Python test(s) found for owner `calculate_total`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)
-  - discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
-  - owner: calculate_total
-  - owner_kind: function
+  - discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - local flow reaches returned value: return amount + 7 (line 2)
 
 Weakness
   - No Python test references `calculate_total(`; add a pytest or unittest test that calls the changed owner.
-
-Next step
-  Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.

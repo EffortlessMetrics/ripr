@@ -12,6 +12,8 @@ Changed
 Probe
   family: side_effect
   delta:  effect
+  owner:  python:src/callbacks.py::recording_callback
+  canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
 
 Language
   language: python
@@ -23,14 +25,42 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `recording_callback`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
+  - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
   - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes "receipt.sent"`.
+  - local flow reaches call effect: callback = MagicMock(name="receipt.sent") (line 4)
   - related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()
 
 Weakness
-  - Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
+  - missing discriminator call includes "receipt.sent": changed Python output/log/call effect at line 4 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: recording_callback
+  changed behavior: call_or_output_effect changed at src/callbacks.py:4: `callback = MagicMock(name="receipt.sent")`
+  current test evidence: tests/test_callbacks.py:4 test_recording_callback_starts_idle currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_not_called()
+  missing discriminator: call includes "receipt.sent"
+  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
+  suggested assertion: Assert the changed output, log text, or call effect for `call includes "receipt.sent"`.
+  suggested file: tests/test_callbacks.py
+  suggested test: test_recording_callback_starts_idle
+  pytest node: tests/test_callbacks.py::test_recording_callback_starts_idle
+  verify: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.

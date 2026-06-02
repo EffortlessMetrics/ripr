@@ -7,6 +7,8 @@
 
 use serde_json::Value;
 
+use super::receipt_lifecycle::receipt_lifecycle_state_from_movement;
+
 pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.3";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -70,6 +72,7 @@ pub(crate) fn render_agent_receipt_json(
     let input_paths = agent_receipt_input_paths_from_value(&verify)?;
     let seam = find_receipt_seam(&verify, seam_id)?;
     let guidance = receipt_guidance(&seam.change);
+    let receipt_state = receipt_lifecycle_state_from_movement(Some(seam.change.as_str()));
     let provenance = provenance_json(&provenance, &seam);
 
     let value = serde_json::json!({
@@ -98,6 +101,7 @@ pub(crate) fn render_agent_receipt_json(
             "commands_run": commands_run
         },
         "summary": {
+            "receipt_state": receipt_state,
             "remaining_gap": guidance.remaining_gap,
             "next_recommendation": guidance.next_recommendation,
             "next_action": {
@@ -516,6 +520,10 @@ mod tests {
                 .contains("attach this receipt")
         );
         assert_eq!(value["summary"]["next_action"]["kind"], "improved");
+        assert_eq!(
+            value["summary"]["receipt_state"],
+            "receipt_movement_improved"
+        );
         assert_eq!(value["summary"]["next_action"]["safe_to_merge"], false);
         Ok(())
     }

@@ -1,0 +1,48 @@
+name: Source of Truth
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  source-of-truth:
+    name: source-of-truth
+    runs-on:
+      group: em-ci-tiny
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-tiny]
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check document artifacts
+        run: cargo xtask check-doc-artifacts
+
+      - name: Check active goals
+        run: cargo xtask check-goals
+
+      - name: Check support tiers
+        run: cargo xtask check-support-tiers
+
+      - name: Write advisory summary
+        if: always()
+        run: |
+          {
+            echo "## Source of Truth (advisory)"
+            echo ""
+            echo "- document artifacts: \`cargo xtask check-doc-artifacts\`"
+            echo "- active goals: \`cargo xtask check-goals\`"
+            echo "- support tiers: \`cargo xtask check-support-tiers\`"
+            echo ""
+            echo "This workflow is advisory and is not a branch-protection gate."
+          } >> "$GITHUB_STEP_SUMMARY"

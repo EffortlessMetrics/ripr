@@ -16,6 +16,7 @@
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
+    "call_presence",
     "runtime_only_signal",
     "ambiguous_runtime_join"
   ],
@@ -464,6 +465,269 @@
       "repair_route": "analysis/value-resolution-audit-fixes"
     },
     {
+      "id": "same_line_struct_literal_before_owner_call_resolves_activation_values",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-line struct literal field projection is a concrete activation value when the literal binding appears before the owner call on that line.",
+      "fixture_reference": "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_is_column_scoped_on_same_line",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 }; assert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-struct-literal-same-line-before-call",
+          "canonical_gap_id": "gap:bench-activation-struct-literal-same-line-before-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 1,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Column-scoped same-line struct literal fields can resolve activation values when the literal binding appears before the owner call.",
+      "must_not_claim": [
+        "Do not resolve same-line struct literal fields that appear after the owner call.",
+        "Do not ignore source-order when a binding and owner call share a line.",
+        "Do not claim strong grip from activation-value resolution alone."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "same_line_struct_literal_after_owner_call_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-line struct literal field projection remains unresolved when the literal binding appears after the owner call on that line.",
+      "fixture_reference": "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_is_column_scoped_on_same_line",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "assert_eq!(discounted_total(case.amount, case.threshold), 90); let case = DiscountCase { amount: 100, threshold: 100 };"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-struct-literal-same-line-after-call",
+          "canonical_gap_id": "gap:bench-activation-struct-literal-same-line-after-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Same-line struct literal fields that appear after the owner call remain named static limitations.",
+      "must_not_claim": [
+        "Do not use later same-line literals to explain earlier owner-call projections.",
+        "Do not treat same-line source order as irrelevant.",
+        "Do not invent activation values from code that has not executed before the call."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "later_struct_literal_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A struct literal introduced after the owner call remains unresolved because it cannot explain the earlier field projection arguments.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_struct_literal_after_owner_call_then_projection_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "assert_eq!(discounted_total(case.amount, case.threshold), 90);\nlet case = DiscountCase { amount: 100, threshold: 100 };\nlet _ = case;"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-late-struct-literal",
+          "canonical_gap_id": "gap:bench-activation-late-struct-literal",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Late same-test struct literals remain named static limitations because source order must prove value visibility before activation values move.",
+      "must_not_claim": [
+        "Do not resolve field projections from literals introduced after the owner call.",
+        "Do not backfill activation values from later setup code.",
+        "Do not count late-literal limitations as missing user assertions."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "mutated_struct_literal_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains unresolved after the binding is mutated before the owner call.",
+      "fixture_reference": "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_is_mutation_scoped",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let mut case = DiscountCase { amount: 100, threshold: 100 };\ncase.amount = helper_amount();\nassert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-struct-literal-mutated-before-call",
+          "canonical_gap_id": "gap:bench-activation-struct-literal-mutated-before-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Struct field projections after a mutation remain named static limitations because the earlier literal value may be stale.",
+      "must_not_claim": [
+        "Do not reuse literal struct fields after field assignment or mutation.",
+        "Do not treat mutation-scoped values as observed activation values.",
+        "Do not infer concrete values from helper mutation expressions."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "later_mutated_struct_literal_projection_resolves_before_mutation",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains a concrete activation value when the owner call happens before a later field mutation.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_struct_literal_field_mutated_after_owner_call_then_values_are_recorded",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nassert_eq!(discounted_total(case.amount, case.threshold), 90);\ncase.amount = make_amount();"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-mutated-after-call-struct",
+          "canonical_gap_id": "gap:bench-activation-mutated-after-call-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 1,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Source-order-scoped same-test struct literal fields can resolve activation values for owner calls before a later field mutation.",
+      "must_not_claim": [
+        "Do not reuse literal field values for owner calls at or after a field mutation.",
+        "Do not infer the replacement value from an opaque mutation expression.",
+        "Do not claim strong grip from activation-value resolution alone."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
       "id": "no_arg_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "activation_value_resolution",
@@ -514,6 +778,2289 @@
         "Do not treat same-file, owner-named, or fixture-affinity relations as activation without a direct owner call."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "multiline_no_arg_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A multiline direct no-argument owner call activates value-insensitive seams without requiring same-line argument parsing.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_multiline_no_arg_owner_call_reaches_return_seam_then_activation_is_yes",
+      "sample": {
+        "file": "tests/labels_tests.rs",
+        "source": "let labels = device_labels(\\n);\\nassert!(labels.is_empty());"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-multiline-no-arg-owner-call",
+          "canonical_gap_id": "gap:bench-activation-multiline-no-arg-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "labels::device_labels",
+          "location": {
+            "file": "src/labels.rs",
+            "line": 3
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Multiline direct no-argument owner calls can satisfy activation for value-insensitive seams without requiring concrete activation values or same-line argument parsing.",
+      "must_not_claim": [
+        "Do not invent synthetic observed values for multiline no-argument calls.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not treat assertion-target affinity or owner-name mentions as activation without a direct owner call.",
+        "Do not treat macro invocations with the same name as direct function owner calls."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_generic_assertion_token_not_related",
+      "case_kind": "negative_guard",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A call-presence seam whose call expression only shares a generic argument, field, common method, enum-field, or match-arm token with an unrelated assertion must not gain assertion-target affinity.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity",
+      "sample": {
+        "file": "tests/unrelated.rs",
+        "source": "let path = \"target/ripr\";\nassert_eq!(path, \"target/ripr\");\nlet description = \"target/ripr\";\nassert!(!description.is_empty());\nlet variant = \"NotFound\";\nlet arm = \"fallback\";\nassert_eq!(variant, \"NotFound\");\nassert_eq!(arm, \"fallback\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-generic-assertion-token",
+          "canonical_gap_id": "gap:bench-call-presence-generic-assertion-token",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "agent_paths::zq_call_presence_owner",
+          "location": {
+            "file": "src/agent_paths.rs",
+            "line": 1
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "ungripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "no",
+              "confidence": "medium"
+            },
+            "activate": {
+              "state": "no",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "related_tests": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Generic call argument, field, common method, enum-field, and match-arm tokens such as path, description, is_empty, variant, and arm are insufficient to relate a test to a call-presence seam; RIPR should keep raw findings as evidence instead of manufacturing an affinity-only activation limitation.",
+      "must_not_claim": [
+        "Do not treat generic argument tokens such as path, value, text, line, or file as call-presence assertion-target affinity.",
+        "Do not treat generic field or common method tokens such as description, field, sink, or is_empty as call-presence assertion-target affinity.",
+        "Do not treat generic enum-field or match-arm tokens such as variant or arm as call-presence assertion-target affinity.",
+        "Do not turn generic token affinity into activation for value-insensitive call-presence seams.",
+        "Do not drop specific call-target tokens such as zq_quote_target_token or zq_render_target_token when an assertion actually mentions them."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_direct_owner_call_with_mock_expectation_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A direct owner call plus an explicit mock expectation can activate and observe a call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_mock_expectation_then_activation_is_yes",
+      "sample": {
+        "file": "tests/receipt_tests.rs",
+        "source": "let value = receipt_payload();\nemit_receipt(&mut recorder, &value);\nmock_recorder.expect_send().times(1);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-owner-mock-expectation",
+          "canonical_gap_id": "gap:bench-call-presence-direct-owner-mock-expectation",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "receipt::emit_receipt",
+          "location": {
+            "file": "src/receipt.rs",
+            "line": 8
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For call-presence seams, a related test that directly calls the owner and carries an explicit mock expectation can satisfy activation without observed activation values.",
+      "must_not_claim": [
+        "Do not infer call-presence activation without a direct owner call.",
+        "Do not invent synthetic observed values for opaque call-presence arguments.",
+        "Do not treat activation alone as strong exposure without matching side-effect observation and discrimination.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_direct_turbofish_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A direct generic owner call using turbofish syntax can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let rendered = render_pipeline::<String>(\"alpha\".to_string());\nassert_eq!(rendered, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-turbofish-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-direct-turbofish-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For call-presence seams, a related test that directly calls the owner through turbofish syntax can satisfy activation without observed activation values.",
+      "must_not_claim": [
+        "Do not infer call-presence activation without a direct owner call.",
+        "Do not invent synthetic observed values for opaque call-presence arguments.",
+        "Do not treat activation alone as strong exposure without matching observation and discrimination.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_direct_spaced_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A direct owner call with whitespace before the call delimiter can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_space_before_paren_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let rendered = render_pipeline (\"alpha\".to_string());\nassert_eq!(rendered, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-spaced-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-direct-spaced-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For call-presence seams, a related test that directly calls the owner with whitespace before the call delimiter can satisfy activation without observed activation values.",
+      "must_not_claim": [
+        "Do not infer call-presence activation without a direct owner call.",
+        "Do not invent synthetic observed values for opaque call-presence arguments.",
+        "Do not treat activation alone as strong exposure without matching observation and discrimination.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_same_file_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file one-hop helper that directly calls the owner can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_directly_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "let output = exercise_pipeline();\nassert_eq!(output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a same-file one-hop helper can satisfy activation when that helper directly calls the owner.",
+      "must_not_claim": [
+        "Do not treat two-hop helper chains as direct owner-call activation.",
+        "Do not treat test-local helper functions as owner-call activation without a separate helper/test identity guard.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_assertion_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a recognized assertion macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assertion_helper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn assert_pipeline_output() {\n    assert_eq!(render_pipeline(\"alpha\"), \"alpha\");\n}\n\n#[test]\nfn helper_asserts_pipeline_output() {\n    assert_pipeline_output();\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-assertion-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-assertion-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test helper can satisfy activation when it directly calls the owner inside a recognized assertion macro.",
+      "must_not_claim": [
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_assert_macro_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a recognized assert! macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assert_macro_helper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn assert_pipeline_output() {\n    assert!(render_pipeline(\"alpha\") == \"alpha\");\n}\n\n#[test]\nfn helper_asserts_pipeline_output() {\n    assert_pipeline_output();\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-assert-macro-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-assert-macro-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a recognized assert! macro.",
+      "must_not_claim": [
+        "Do not treat short-circuiting assert! predicates as guaranteed owner-call activation.",
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_equality_macro_later_arg_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that calls the owner as a later top-level argument to a recognized equality macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_equality_helper_calls_owner_as_later_arg_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn assert_pipeline_output(expected: &str) {\n    assert_eq!(expected, render_pipeline(\"alpha\"));\n}\n\n#[test]\nfn helper_asserts_pipeline_output() {\n    assert_pipeline_output(\"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-equality-macro-later-arg-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-equality-macro-later-arg-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it calls the owner as a later top-level argument to a recognized equality macro.",
+      "must_not_claim": [
+        "Do not treat assert! message arguments as guaranteed owner-call activation.",
+        "Do not treat arbitrary later macro arguments as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_assert_message_arg_helper_stays_named_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that mentions the owner only in an assert! message argument remains a named owner-call limitation because the owner call is not unconditional activation proof.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assert_message_arg_calls_owner_then_activation_stays_unknown",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn assert_pipeline_output() {\n    assert!(true, \"{}\", render_pipeline(\"alpha\"));\n}\n\n#[test]\nfn helper_asserts_pipeline_output() {\n    assert_pipeline_output();\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-assert-message-arg-helper",
+          "canonical_gap_id": "gap:bench-call-presence-assert-message-arg-helper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_same_file_only",
+              "repair_route": "analysis/same-file-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_same_file_only",
+      "expected_claim": "Owner calls that appear only in assert! message arguments do not prove unconditional activation.",
+      "must_not_claim": [
+        "Do not treat assert! message arguments as guaranteed owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_matches_macro_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a recognized matches! macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_matches_macro_helper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> bool {\n    matches!(render_pipeline(\"alpha\"), true)\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    assert!(exercise_pipeline());\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-matches-macro-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-matches-macro-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a recognized matches! macro.",
+      "must_not_claim": [
+        "Do not treat short-circuiting matches! predicates as guaranteed owner-call activation.",
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_trim_chain_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner and then applies a simple trim/to_string normalization can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_trims_owner_call_result_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> String {\n    render_pipeline(\" alpha \").trim().to_string()\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output, \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-trim-chain-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-trim-chain-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner and applies a simple trim/to_string normalization to the result.",
+      "must_not_claim": [
+        "Do not treat arbitrary post-owner method chains as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_as_ref_chain_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner and then applies a bounded as_ref/unwrap/clone borrow chain can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> String {\n    render_pipeline(\"alpha\").as_ref().unwrap().clone()\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output, \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-as-ref-chain-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-as-ref-chain-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner and applies a bounded as_ref/unwrap/clone borrow chain to the result.",
+      "must_not_claim": [
+        "Do not treat arbitrary post-owner method chains as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_format_macro_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a standard format! macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_format_macro_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> String {\n    format!(\"pipeline={}\", render_pipeline(\"alpha\"))\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output, \"pipeline=alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-format-macro-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-format-macro-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a standard format! macro.",
+      "must_not_claim": [
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_block_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a simple block expression can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_block_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> String {\n    { render_pipeline(\"alpha\") }\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output, \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-block-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-block-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a simple block expression.",
+      "must_not_claim": [
+        "Do not treat conditional blocks as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_vec_macro_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a standard vec! container macro can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_vec_macro_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> Vec<String> {\n    vec![render_pipeline(\"alpha\")]\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output[0], \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-vec-macro-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-vec-macro-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a standard vec! container macro.",
+      "must_not_claim": [
+        "Do not treat arbitrary macro wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_array_literal_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a fixed-size array literal can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_array_literal_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> [String; 1] {\n    [render_pipeline(\"alpha\")]\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output[0], \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-array-literal-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-array-literal-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a fixed-size array literal.",
+      "must_not_claim": [
+        "Do not treat arbitrary function wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_tuple_literal_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local helper that directly calls the owner inside a tuple literal can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_tuple_literal_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> (String, bool) {\n    (render_pipeline(\"alpha\"), true)\n}\n\n#[test]\nfn helper_exercises_pipeline() {\n    let output = exercise_pipeline();\n    assert_eq!(output.0, \"alpha\");\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-tuple-literal-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-tuple-literal-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local helper can satisfy activation when it directly calls the owner inside a tuple literal.",
+      "must_not_claim": [
+        "Do not treat arbitrary function wrappers as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_unit_parent_qualified_helper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-source-file unit test that explicitly calls a parent-module production helper can activate a value-insensitive call-presence seam when that helper directly calls the owner, without treating bare shadowed helper names as proof.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_parent_qualified_wrapper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "#[cfg(test)]\nmod tests {\n    #[test]\n    fn parent_qualified_wrapper_reaches_pipeline() {\n        let output = super::exercise_pipeline();\n        assert_eq!(output, \"alpha\");\n    }\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-unit-parent-qualified-helper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-unit-parent-qualified-helper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a same-source-file unit test can satisfy activation when it explicitly calls a parent-module production helper that directly calls the owner.",
+      "must_not_claim": [
+        "Do not treat bare test-local helper shadows as production helper calls.",
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_unit_shadow_helper_stays_named_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-source-file unit test with a bare call to a test-local helper that shadows a production wrapper remains a named owner-call limitation for the production owner.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_shadow_calls_wrapper_name_then_activation_stays_unknown",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "#[cfg(test)]\nmod tests {\n    fn exercise_pipeline() -> String {\n        \"shadow\".to_string()\n    }\n\n    #[test]\n    fn bare_shadowed_wrapper_name_does_not_reach_pipeline() {\n        let output = exercise_pipeline();\n        assert_eq!(output, \"shadow\");\n    }\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-unit-shadow-helper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-unit-shadow-helper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_same_file_only",
+              "repair_route": "analysis/same-file-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_same_file_only",
+      "expected_claim": "Bare calls to test-local helpers that shadow production wrapper names do not prove the production wrapper or owner is exercised.",
+      "must_not_claim": [
+        "Do not treat bare shadowed helper names as production helper calls.",
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not classify test-local shadow calls as user test debt.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_test_local_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local one-hop helper that directly calls a production owner can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_directly_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let output = exercise_pipeline();\nassert_eq!(output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-test-local-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-test-local-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local one-hop helper can satisfy activation when that helper directly calls the production owner.",
+      "must_not_claim": [
+        "Do not treat two-hop test-local helper chains as direct owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "call_presence_production_wrapper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "An integration test that calls an unambiguous production one-hop wrapper can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_integration_test_calls_production_wrapper_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let output = exercise_pipeline();\nassert_eq!(output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-production-wrapper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-production-wrapper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an integration test that calls an unambiguous production one-hop wrapper can satisfy activation when that wrapper directly calls the owner.",
+      "must_not_claim": [
+        "Do not treat ambiguous production wrapper names as direct owner-call activation.",
+        "Do not let a test-local helper with the same name inherit production wrapper activation.",
+        "Do not treat two-hop production wrapper chains as direct owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_production_wrapper_same_owner_multi_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "An integration test that calls an unambiguous production command wrapper can activate a value-insensitive call-presence seam when the wrapper calls the same specific owner helper multiple times.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_production_wrapper_calls_same_owner_multiple_times_then_activation_is_yes",
+      "sample": {
+        "file": "tests/loop_commands_tests.rs",
+        "source": "let command = agent_start_command(\"tmp root\", \"gap 1\");\nassert_eq!(command, \"ripr agent start --root tmp\\\\ root --packet gap\\\\ 1\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-production-wrapper-same-owner-multi-call",
+          "canonical_gap_id": "gap:bench-call-presence-production-wrapper-same-owner-multi-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "loop_commands::shell_arg",
+          "location": {
+            "file": "src/loop_commands.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an integration test that calls an unambiguous production one-hop wrapper can satisfy activation when every supported owner call in the wrapper targets the same owner.",
+      "must_not_claim": [
+        "Do not treat mixed-owner production wrappers as direct owner-call activation.",
+        "Do not treat ambiguous production wrapper names as direct owner-call activation.",
+        "Do not let a test-local helper with the same name inherit production wrapper activation.",
+        "Do not treat two-hop production wrapper chains as direct owner-call activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_fanout_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file unit test that calls a production fan-out wrapper can activate a value-insensitive call-presence seam when that wrapper directly calls the owner along an unconditional same-file path.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_same_file_fanout_wrapper_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "fn build_pipeline_report() -> String {\n    let context = collect_pipeline_context();\n    let output = render_pipeline(\"alpha\");\n    format!(\"{context}:{output}\")\n}\n\n#[test]\nfn fanout_wrapper_reaches_pipeline_indirectly() {\n    let output = build_pipeline_report();\n    assert!(output.ends_with(\":alpha\"));\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-fanout-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-fanout-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an embedded same-file unit test can satisfy activation by calling a fan-out production wrapper that directly and unconditionally calls the owner.",
+      "must_not_claim": [
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not export relaxed fan-out matching to tests/*.rs helpers without target affinity.",
+        "Do not export mixed-owner production wrappers to cross-file integration tests without target affinity.",
+        "Do not accept conditional owner-call paths as guaranteed activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_three_hop_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file unit test that calls a bounded three-hop helper chain can activate a value-insensitive call-presence seam when every hop delegates to a same-file helper and the final helper calls the owner.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_three_hop_helper_reaches_owner_then_activation_is_yes",
+      "sample": {
+        "file": "src/activation.rs",
+        "source": "pub fn activation_evidence(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {\n    missing_discriminator_facts(rows, parameter)\n}\n\nfn missing_discriminator_facts(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {\n    missing_boundary_discriminator(rows, parameter)\n}\n\nfn missing_boundary_discriminator(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {\n    parameter_value_set(rows, parameter)\n}\n\nfn parameter_value_set(rows: &[Vec<String>], parameter: &str) -> Option<Vec<String>> {\n    let values = observed_parameter_values(rows, parameter);\n    if values.is_empty() { None } else { Some(values) }\n}\n\n#[test]\nfn activation_evidence_reports_parameter_value_set() {\n    let rows = vec![vec![\"amount\".to_string()]];\n    let values = activation_evidence(&rows, \"amount\");\n    assert_eq!(values, Some(vec![\"amount\".to_string()]));\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-three-hop-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-three-hop-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "activation::parameter_value_set",
+          "location": {
+            "file": "src/activation.rs",
+            "line": 11
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an embedded same-file unit test can satisfy activation through a bounded three-hop helper chain when each hop delegates to a same-file helper and the final helper calls the owner.",
+      "must_not_claim": [
+        "Do not treat same-file proximity alone as owner-call activation.",
+        "Do not follow arbitrary helper graphs beyond the bounded three-hop same-file route.",
+        "Do not accept dynamic method receivers or unknown macro wrappers as owner-call proof.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not emit public repair packets from static-limitation backlog."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_test_local_err_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A test-local one-hop helper that wraps a production owner call in Err(...) can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "fn exercise_pipeline() -> Result<(), String> { Err(render_pipeline(\"alpha\")) }\nlet format_output = exercise_pipeline().unwrap_err();\nassert_eq!(format_output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-test-local-err-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-test-local-err-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a test-local one-hop helper can satisfy activation when it wraps the production owner call in an Err(...) constructor.",
+      "must_not_claim": [
+        "Do not treat arbitrary Result wrappers as multi-hop helper tracing.",
+        "Do not treat assertion-target affinity alone as activation without a helper or direct owner call.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not treat Err(...) without a production owner call as activation."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_specific_call_target_affinity_stays_named_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A specific call-target token can relate a test to a call-presence seam, but target-token affinity alone must remain a named activation owner-call limitation.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains",
+      "sample": {
+        "file": "tests/target_affinity.rs",
+        "source": "let observed = \"zq_render_target_token\";\nassert_eq!(observed, \"zq_render_target_token\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-specific-target-affinity",
+          "canonical_gap_id": "gap:bench-call-presence-specific-target-affinity",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "agent_paths::zq_call_presence_owner",
+          "location": {
+            "file": "src/agent_paths.rs",
+            "line": 1
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "related_tests": 1,
+            "observed_values": 0,
+            "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_call_presence_target_affinity",
+              "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_call_presence_target_affinity",
+      "expected_claim": "Specific call-target affinity is medium-confidence relation evidence only; without an owner call it remains a named activation limitation and not user test debt.",
+      "must_not_claim": [
+        "Do not turn call-target token affinity into activation.",
+        "Do not infer an owner call from assertion text alone.",
+        "Do not invent observed values for call-presence target-token affinity.",
+        "Do not classify affinity-only call-presence seams as user test debt."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_target_affinity_multi_owner_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A call-presence target token can disambiguate a same-package production wrapper that directly calls multiple owners, allowing value-insensitive activation for the matching owner without inventing observed values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_multi_owner_production_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let rendered = exercise_both(\"alpha\");\nassert!(rendered.contains(\"format_output\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-target-affinity-multi-owner-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-target-affinity-multi-owner-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, target-token affinity can disambiguate a same-package production wrapper that directly calls multiple owners when the wrapper directly calls the matching owner.",
+      "must_not_claim": [
+        "Do not treat call-target token affinity alone as activation without a direct production wrapper-to-owner call.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_same_file_unit_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-source-file unit test can call a production wrapper imported from the parent module that directly calls multiple owners, allowing call-presence target-affinity activation for the matching owner without inventing observed values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_unit_test_calls_same_file_target_affinity_wrapper_then_activation_is_yes",
+      "sample": {
+        "file": "src/pipeline.rs",
+        "source": "use super::*;\nlet rendered = exercise_both(\"alpha\");\nassert!(rendered.contains(\"format_output\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-same-file-unit-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-same-file-unit-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a same-file unit-test wrapper call can establish activation when it resolves to a production wrapper that directly calls the matching owner and the assertion mentions that call target.",
+      "must_not_claim": [
+        "Do not treat unqualified test-local helper shadows as activation.",
+        "Do not treat call-target token affinity alone as activation without a direct production wrapper-to-owner call.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_module_qualified_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A module-qualified call can disambiguate duplicate production wrapper names for a call-presence target-affinity seam, allowing value-insensitive activation for the matching owner without inventing observed values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_module_qualified_ambiguous_production_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/contract_tests.rs",
+        "source": "let format_output = pipeline::exercise_pipeline();\nassert_eq!(format_output, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-module-qualified-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-module-qualified-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an explicit module-qualified wrapper call can disambiguate duplicate wrapper names when the wrapper directly calls the matching owner and the assertion mentions that call target.",
+      "must_not_claim": [
+        "Do not treat an unqualified duplicate wrapper name as activation.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_imported_module_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "An imported module-qualified production wrapper call can disambiguate a call-presence target-affinity seam when the wrapper directly calls the matching owner and the assertion mentions the call target.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_imported_module_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pilot_commands_tests.rs",
+        "source": "let rendered = pilot_paths(Path::new(\".\"), Path::new(\"target/out file.json\"));\nassert!(rendered.contains(\"shell_arg=\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-imported-module-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-imported-module-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "agent::loop_commands::shell_path",
+          "location": {
+            "file": "src/agent/loop_commands.rs",
+            "line": 7
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an imported module-qualified production wrapper can establish owner-call activation when the import resolves to the owner module and assertion tokens match the call target.",
+      "must_not_claim": [
+        "Do not treat imported module target affinity as activation without a direct wrapper-to-owner call.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not resolve arbitrary cross-module calls without an imported module alias.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_direct_import_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A production wrapper can call a directly imported crate-local owner function through an alias, allowing call-presence target-affinity activation when the import path resolves to an indexed module, the imported owner name is unambiguous, and the assertion mentions the call target.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/classifier_evidence_tests.rs",
+        "source": "let rendered = gather(\"alpha\");\nassert!(rendered.contains(\"format_marker\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-direct-import-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-direct-import-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "analysis::classify::reach_evidence",
+          "location": {
+            "file": "src/analysis/classify.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a crate-local directly imported owner call inside a production wrapper can establish owner-call activation when the import path resolves to an indexed module, the imported owner name is unambiguous, and assertion tokens match the call target.",
+      "must_not_claim": [
+        "Do not treat directly imported target affinity as activation without a direct wrapper-to-owner call.",
+        "Do not treat external or bare direct imports as local owner-call evidence.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not resolve ambiguous imported owner names.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_crate_qualified_target_affinity_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A production wrapper can call a crate-local owner through an explicit crate-qualified path, allowing call-presence target-affinity activation when the path resolves to an indexed module and the assertion mentions the call target.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_crate_qualified_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/classifier_evidence_tests.rs",
+        "source": "let rendered = gather(\"alpha\");\nassert!(rendered.contains(\"format_marker\"));"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-crate-qualified-target-affinity-wrapper",
+          "canonical_gap_id": "gap:bench-call-presence-crate-qualified-target-affinity-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "analysis::classify::reach_evidence",
+          "location": {
+            "file": "src/analysis/classify.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_call_presence_target_affinity",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, an explicit crate-qualified owner call inside a production wrapper can establish owner-call activation when the module path resolves to indexed crate-local code and assertion tokens match the call target.",
+      "must_not_claim": [
+        "Do not treat crate-qualified target affinity as activation without a direct wrapper-to-owner call.",
+        "Do not treat bare or external qualified paths as local owner-call evidence.",
+        "Do not infer activation for another owner when the assertion mentions a different call target.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/call-presence-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "call_presence_super_qualified_support_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "call_presence",
+      "maturity_scope": "fixture_backed",
+      "description": "A super-qualified test-support helper that directly calls a production owner can activate a value-insensitive call-presence seam without requiring concrete activation values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_super_qualified_support_helper_calls_owner_then_activation_is_yes",
+      "sample": {
+        "file": "tests/pipeline_tests.rs",
+        "source": "let rendered = super::support_a::exercise_pipeline();\nassert_eq!(rendered, \"alpha\");"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-call-presence-super-qualified-support-helper-owner-call",
+          "canonical_gap_id": "gap:bench-call-presence-super-qualified-support-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pipeline::render_pipeline",
+          "location": {
+            "file": "src/pipeline.rs",
+            "line": 2
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "propagate": {
+              "state": "unknown",
+              "confidence": "low"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "For value-insensitive call-presence seams, a super-qualified test-support helper can satisfy activation when that helper directly calls the production owner.",
+      "must_not_claim": [
+        "Do not infer activation from an unqualified ambiguous helper name.",
+        "Do not treat a super-qualified helper for another owner as activation.",
+        "Do not infer activation values for opaque call-presence arguments.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not turn assertion-target affinity alone into activation."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "one_hop_helper_owner_call_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file one-hop helper that directly calls the owner activates value-insensitive seams without inventing observed values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_one_hop_helper_calls_owner_then_value_insensitive_activation_is_yes",
+      "sample": {
+        "file": "src/labels.rs",
+        "source": "fn exercise_device_labels() -> Vec<&'static str> { device_labels() }\n#[test] fn helper_reaches_device_labels() { let labels = exercise_device_labels(); assert!(labels.is_empty()); }"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-one-hop-helper-owner-call",
+          "canonical_gap_id": "gap:bench-activation-one-hop-helper-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "labels::device_labels",
+          "location": {
+            "file": "src/labels.rs",
+            "line": 3
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "A one-hop same-file helper that directly calls the owner can satisfy activation for value-insensitive seams without requiring concrete activation values.",
+      "must_not_claim": [
+        "Do not follow multi-hop helpers.",
+        "Do not use a helper unless it is in the same file as the test and directly calls the owner.",
+        "Do not invent synthetic observed values for helper owner calls.",
+        "Do not apply this route to predicate-boundary value checks.",
+        "Do not treat helper name affinity alone as activation without a direct owner call inside the helper."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "one_hop_helper_without_owner_call_stays_named_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-file helper whose name mentions the owner but does not call the owner remains a named activation-owner-call limitation.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown",
+      "sample": {
+        "file": "src/labels.rs",
+        "source": "fn exercise_device_labels() -> Vec<&'static str> { Vec::new() }\n#[test] fn return_value_contract_mentions_empty_output() { let return_value = exercise_device_labels(); assert!(return_value.is_empty()); }"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-one-hop-helper-without-owner-call",
+          "canonical_gap_id": "gap:bench-activation-one-hop-helper-without-owner-call",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "labels::device_labels",
+          "location": {
+            "file": "src/labels.rs",
+            "line": 3
+          },
+          "seam_kind": "return_value",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_same_file_only",
+              "repair_route": "analysis/same-file-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_same_file_only",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_same_file_only",
+      "expected_claim": "Same-file helper name affinity without a direct owner call remains a routed static limitation, not activation or user test debt.",
+      "must_not_claim": [
+        "Do not treat helper name affinity alone as activation.",
+        "Do not treat a helper-local Vec::new return as activation for the production owner.",
+        "Do not invent observed values from helper return values.",
+        "Do not classify helper-name-only value-insensitive seams as user test debt."
+      ],
+      "repair_route": "analysis/same-file-owner-call-tracing"
     },
     {
       "id": "value_insensitive_owner_call_with_opaque_args_activation_values_not_required",
@@ -577,7 +3124,7 @@
       "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_only_affinity_related_then_activation_names_owner_call_limitation",
       "sample": {
         "file": "tests/contract_tests.rs",
-        "source": "let return_value = Vec::<&str>::new();\nassert!(return_value.is_empty());"
+        "source": "// Text mentions like `device_labels(` are not owner calls.\nlet note = \"device_labels(\";\nlet return_value = Vec::<&str>::new();\nassert!(!note.is_empty());\nassert!(return_value.is_empty());"
       },
       "expected_repo_exposure": {
         "static_gap_created": true,
@@ -604,23 +3151,86 @@
           "counts": {
             "observed_values": 0,
             "static_limitations": 1
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "category": "activation_owner_call_absent_assertion_target_affinity",
+              "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "value": 1
+      },
+      "static_limitation_category": "activation_owner_call_absent_assertion_target_affinity",
+      "expected_claim": "Assertion-target affinity for value-insensitive seams remains a routed static limitation until RIPR sees a direct owner call or stronger reach proof.",
+      "must_not_claim": [
+        "Do not treat assertion-target affinity as activation without a direct owner call.",
+        "Do not treat owner-call text inside comments or strings as a direct owner call.",
+        "Do not invent observed values for value-insensitive seams.",
+        "Do not classify affinity-only value-insensitive seams as user test debt.",
+        "Do not apply this owner-call limitation route to predicate-boundary value checks."
+      ],
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
+    },
+    {
+      "id": "value_insensitive_target_affinity_multi_owner_wrapper_activation_values_not_required",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A value-insensitive return seam can use assertion-target affinity to disambiguate a same-package production wrapper that directly calls multiple owners, without inventing observed values.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_has_target_affinity_then_activation_is_yes",
+      "sample": {
+        "file": "tests/status_contract.rs",
+        "source": "let (return_value, _) = exercise_statuses();\nassert_eq!(return_value, DEVICE_LABELS_EMPTY);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-value-insensitive-target-affinity-multi-owner-wrapper",
+          "canonical_gap_id": "gap:bench-activation-value-insensitive-target-affinity-multi-owner-wrapper",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "labels::device_label_status",
+          "location": {
+            "file": "src/labels.rs",
+            "line": 5
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 0
           }
         }
       },
       "expected_audit_signal": {
         "section": "static_limitation_categories",
-        "metric": "activation_owner_call_unresolved",
-        "value": 1
+        "metric": "activation_owner_call_absent_assertion_target_affinity",
+        "direction": "decrease"
       },
-      "static_limitation_category": "activation_owner_call_unresolved",
-      "expected_claim": "Affinity-only related tests for value-insensitive seams remain named static limitations until RIPR sees a direct owner call or stronger reach proof.",
+      "expected_claim": "For value-insensitive seams, assertion-target affinity can disambiguate a same-package production wrapper that directly calls multiple owners when the wrapper directly calls the matching owner and the assertion mentions the matching target token.",
       "must_not_claim": [
-        "Do not treat assertion-target affinity as activation without a direct owner call.",
-        "Do not invent observed values for value-insensitive seams.",
-        "Do not classify affinity-only value-insensitive seams as user test debt.",
-        "Do not apply this owner-call limitation route to predicate-boundary value checks."
+        "Do not treat assertion-target affinity alone as activation without a direct production wrapper-to-owner call.",
+        "Do not infer activation for another owner when the assertion mentions a different target token.",
+        "Do not follow multi-hop wrappers.",
+        "Do not invent observed values for opaque value-insensitive owner-call arguments.",
+        "Do not apply this route to predicate-boundary value checks."
       ],
-      "repair_route": "analysis/related-test-ranking-audit-fixes"
+      "repair_route": "analysis/assertion-target-affinity-owner-call-tracing"
     },
     {
       "id": "helper_built_struct_projection_stays_activation_limitation",
@@ -1826,6 +4436,88 @@
       "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },
     {
+      "id": "config_policy_opaque_lookup_report_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A report label routed through the selected opaque lookup shape becomes an actionable output-observer gap when no observer is found.",
+      "fixture_reference": "crates/ripr/src/output/json/finding_alignment.rs::tests::fixture_backed_opaque_report_lookup_with_supported_signal_becomes_actionable",
+      "sample": {
+        "file": "src/report_lookup.rs",
+        "declaration_line": 62,
+        "literal_line": 63,
+        "sink_line": 64,
+        "constant": "OPAQUE_REPORT_LABEL",
+        "lookup_owner": "lookup_report_label",
+        "sink": "fixture_backed_lookup_report_output",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-opaque-report-lookup",
+          "canonical_gap_id": "config_or_policy_constant::OPAQUE_REPORT_LABEL",
+          "canonical_gap_group_size": 3,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "OPAQUE_REPORT_LABEL",
+          "location": {
+            "file": "src/report_lookup.rs",
+            "line": 62
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed config or policy constant flows to fixture-backed opaque lookup report output and no supported observer or discriminator is found.",
+          "recommended_repair": "Add or update a report-render or golden-output test for OPAQUE_REPORT_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report_lookup.rs",
+              "line": 62,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report_lookup.rs",
+              "line": 63,
+              "kind": "static_unknown"
+            },
+            {
+              "file": "src/report_lookup.rs",
+              "line": 64,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "OPAQUE_REPORT_LABEL",
+            "role": "rendered_policy_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "repair_kind": "output_observer",
+            "target_test_type": "report_render_or_golden",
+            "suggested_assertion": "Assert the rendered report output reached through the lookup includes the OPAQUE_REPORT_LABEL value or selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_output_observer",
+        "value": 1
+      },
+      "expected_claim": "Fixture-backed opaque report lookups can become actionable output-observer gaps without widening generic lookup support.",
+      "must_not_claim": [
+        "Do not infer user-visible output from helper names alone.",
+        "Do not apply this route to registry, macro-generated, dynamic-dispatch, or cross-file lookup shapes.",
+        "Do not treat the actionable gap as runtime mutation proof."
+      ],
+      "repair_route": "analysis/config-policy-unsupported-flow-support"
+    },
+    {
       "id": "config_policy_opaque_lookup_unknown",
       "case_kind": "static_limitation",
       "evidence_class": "config_or_policy_constant",
@@ -1902,6 +4594,166 @@
         "Do not infer user-visible output from helper names alone.",
         "Do not call an opaque lookup an actionable output-observer gap.",
         "Do not suppress the raw findings."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_macro_generated_schema_output_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config or schema label emitted through macro-generated output remains a named limitation until the generated path is fixture-backed.",
+      "fixture_reference": "RIPR-SPEC-0048 macro-generated config or schema output",
+      "sample": {
+        "file": "src/generated_schema.rs",
+        "declaration_line": 72,
+        "literal_line": 73,
+        "constant": "GENERATED_SCHEMA_LABEL",
+        "sink": "macro_generated_schema_output",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-macro-generated-schema",
+          "canonical_gap_id": "config_or_policy_constant::GENERATED_SCHEMA_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "GENERATED_SCHEMA_LABEL",
+          "location": {
+            "file": "src/generated_schema.rs",
+            "line": 72
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed schema label may be emitted through macro-generated output, but RIPR cannot trace the generated output path in supported scope.",
+          "recommended_repair": "Add fixture-backed support for the generated schema output path before claiming visibility or observer debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/generated_schema.rs",
+              "line": 72,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/generated_schema.rs",
+              "line": 73,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "GENERATED_SCHEMA_LABEL",
+            "role": "schema_field_label",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Add generated-output fixture support before recommending schema or golden observer work."
+          },
+          "static_limitation": {
+            "repair_route": "add_fixture_backed_support_for_generated_config_schema_output",
+            "user_actionability": "unknown_until_generated_output_supported"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "macro_generated_config_output",
+        "value": 1
+      },
+      "static_limitation_category": "macro_generated_config_output",
+      "expected_claim": "Macro-generated config or schema output stays a named limitation until generated output tracing is fixture-backed.",
+      "must_not_claim": [
+        "Do not infer schema visibility from generated macro output alone.",
+        "Do not treat generated prose or macro names as observer authority.",
+        "Do not create user test debt until the generated output sink is supported."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_dynamic_dispatch_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config selector routed through dynamic dispatch remains a named limitation until the dispatch target and sink are fixture-backed.",
+      "fixture_reference": "RIPR-SPEC-0048 dynamic config dispatch",
+      "sample": {
+        "file": "src/config_dispatch.rs",
+        "declaration_line": 86,
+        "literal_line": 87,
+        "constant": "DYNAMIC_CONFIG_SELECTOR",
+        "sink": "dynamic_dispatch_registry",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-dynamic-dispatch",
+          "canonical_gap_id": "config_or_policy_constant::DYNAMIC_CONFIG_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "DYNAMIC_CONFIG_SELECTOR",
+          "location": {
+            "file": "src/config_dispatch.rs",
+            "line": 86
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed config selector is routed through dynamic dispatch, but RIPR cannot resolve the target or output sink in supported scope.",
+          "recommended_repair": "Add fixture-backed support for the dispatch shape before claiming visibility or behavior-observer debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/config_dispatch.rs",
+              "line": 86,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/config_dispatch.rs",
+              "line": 87,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "DYNAMIC_CONFIG_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Resolve the dispatch target and supported sink before recommending behavior-discriminator tests."
+          },
+          "static_limitation": {
+            "repair_route": "add_fixture_backed_support_for_dynamic_config_dispatch",
+            "user_actionability": "unknown_until_dispatch_supported"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "dynamic_config_dispatch",
+        "value": 1
+      },
+      "static_limitation_category": "dynamic_config_dispatch",
+      "expected_claim": "Dynamic config dispatch stays a named limitation until the dispatch target and supported sink are fixture-backed.",
+      "must_not_claim": [
+        "Do not infer behavior visibility from registry or dispatch naming alone.",
+        "Do not recommend behavior-discriminator tests until the selected target is statically supported.",
+        "Do not treat dynamic dispatch as runtime mutation proof."
       ],
       "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },

@@ -12,6 +12,8 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/quantity.py::normalize_quantity
+  canonical gap: gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0
 
 Language
   language: python
@@ -23,14 +25,43 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `normalize_quantity`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python predicate can alter branch selection: `if value <= 0:`
+  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
   - observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `value == 0`.
+  - local flow reaches unknown sink: if value <= 0: (line 2)
   - related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)
 
 Weakness
-  - Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the changed boundary.
+  - missing discriminator value == 0: changed Python equality-boundary at line 2 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: normalize_quantity
+  changed behavior: predicate_boundary changed at src/quantity.py:2: `if value <= 0:`
+  current test evidence: tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)
+  missing discriminator: value == 0
+  recommended test shape: Strengthen the existing pytest boundary assertion for `value == 0`. Keep the equality case as the minimum repair; optional pytest parameterization can add `-1`, `0`, and `1` rows when expected values are clear.
+  suggested assertion: Assert the owner result or effect at `value == 0` first. Optional pytest shape: @pytest.mark.parametrize("value, expected", [(-1, ...), (0, ...), (1, ...)]); fill expected values from domain behavior only.
+  suggested file: tests/test_quantity.py
+  suggested test: test_rejects_zero_quantity
+  pytest node: tests/test_quantity.py::test_rejects_zero_quantity
+  verify: pytest tests/test_quantity.py::test_rejects_zero_quantity (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+    - Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.

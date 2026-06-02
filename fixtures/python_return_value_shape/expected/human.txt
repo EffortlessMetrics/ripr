@@ -12,6 +12,8 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/price.py::final_price
+  canonical gap: gap:python:src/price.py:final_price:return_value:return_value:amount-12
 
 Language
   language: python
@@ -23,14 +25,15 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `final_price`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount - 12`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches returned value: return amount - 12 (line 2)
   - related test tests/test_price.py:4 test_final_price_discount uses strong exact value oracle: assert final_price(100) == 88
 
 Weakness
   - Related Python test reaches `final_price` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
 
 Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.

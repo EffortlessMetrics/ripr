@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_catalog.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7",
+        "language": "python",
+        "file": "src/catalog.py",
+        "owner": "calculate_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount+7"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
@@ -17,19 +29,21 @@
         "delta": "value",
         "file": "src/catalog.py",
         "line": 2,
-        "expression": "    return amount + 7"
+        "expression": "    return amount + 7",
+        "owner": "python:src/catalog.py::calculate_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `calculate_total`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount + 7`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `calculate_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_checkout.py:4 test_checkout_total_includes_fee uses strong exact value oracle: assert calculate_total(10) == 17"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `calculate_total`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return amount + 7 (line 2)", "related test tests/test_checkout.py:4 test_checkout_total_includes_fee uses strong exact value oracle: assert calculate_total(10) == 17"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return amount + 7","line":2}
       ],
-      "evidence": ["owner: calculate_total", "owner_kind: function", "test_framework: pytest (test_checkout_total_includes_fee)", "related_test_relation: syntactic_call (test_checkout_total_includes_fee)", "test_oracle: exact_value strong (test_checkout_total_includes_fee)"],
+      "evidence": ["owner: calculate_total", "owner_kind: function", "test_framework: pytest (test_checkout_total_includes_fee)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_total_includes_fee (test_checkout_total_includes_fee)", "related_test_relation: syntactic_call (test_checkout_total_includes_fee)", "test_oracle: exact_value strong (test_checkout_total_includes_fee)"],
       "missing": ["Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -54,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

@@ -2,7 +2,10 @@
 
 Status: advisory
 
-Next: no actionable PR-local RIPR guidance is available.
+Start here:
+- State: no actionable PR-local RIPR guidance
+- Safe next action: inspect supporting evidence or regenerate inputs after a relevant change.
+- Boundary: no actionable gap is not a coverage, runtime, mutation, gate, or merge-readiness claim.
 
 Movement:
 - New policy-eligible gaps: 0

@@ -1,4 +1,4 @@
-use crate::domain::{ExposureClass, Finding, Summary};
+use crate::domain::{Finding, Summary};
 
 pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]) -> Summary {
     let mut summary = Summary {
@@ -9,15 +9,7 @@ pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]
     };
 
     for finding in findings {
-        match finding.class {
-            ExposureClass::Exposed => summary.exposed += 1,
-            ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
+        summary.increment_exposure_class(&finding.class);
     }
 
     summary
@@ -26,6 +18,7 @@ pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ExposureClass;
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, Probe, ProbeFamily, ProbeId, RevealEvidence,
         RiprEvidence, SourceLocation, StageEvidence, StageState,
@@ -38,6 +31,7 @@ mod tests {
     fn finding(class: ExposureClass) -> Finding {
         Finding {
             id: format!("finding-{}", class.as_str()),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId(format!("probe-{}", class.as_str())),
                 location: SourceLocation::new("src/lib.rs", 1, 1),
@@ -110,5 +104,28 @@ mod tests {
         assert_eq!(summary.infection_unknown, 1);
         assert_eq!(summary.propagation_unknown, 1);
         assert_eq!(summary.static_unknown, 1);
+    }
+    #[test]
+    fn summarize_findings_accumulates_repeated_classes() {
+        let findings = [
+            finding(ExposureClass::Exposed),
+            finding(ExposureClass::Exposed),
+            finding(ExposureClass::NoStaticPath),
+            finding(ExposureClass::NoStaticPath),
+            finding(ExposureClass::NoStaticPath),
+        ];
+
+        let summary = summarize_findings(1, &findings);
+
+        assert_eq!(summary.changed_rust_files, 1);
+        assert_eq!(summary.probes, 5);
+        assert_eq!(summary.findings, 5);
+        assert_eq!(summary.exposed, 2);
+        assert_eq!(summary.no_static_path, 3);
+        assert_eq!(summary.weakly_exposed, 0);
+        assert_eq!(summary.reachable_unrevealed, 0);
+        assert_eq!(summary.infection_unknown, 0);
+        assert_eq!(summary.propagation_unknown, 0);
+        assert_eq!(summary.static_unknown, 0);
     }
 }

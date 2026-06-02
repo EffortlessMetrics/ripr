@@ -71,6 +71,7 @@ const RIPR_FIRST_PR_PACKET_ARTIFACTS = [
   }
 ];
 const ACTIONABLE_GAP_QUEUE_RELATIVE_PATH = 'target/ripr/reports/actionable-gaps.json';
+const FIRST_PR_STATIC_EVIDENCE_BOUNDARY = 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.';
 
 export interface RiprContextTarget {
   uri?: string;
@@ -1019,6 +1020,7 @@ export class RiprClientController {
       workspaceTrusted: this.runtime.isWorkspaceTrusted(),
       workspaceRootState: this.workspaceRootState,
       workspaceRoot: this.workspaceRoot,
+      activeDocumentRelativePath: activeDocumentRelativePath(this.workspaceRoot),
       server: this.server,
       documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language),
       setupStatus: this.setupStatus
@@ -1088,6 +1090,7 @@ interface RiprStatusContext {
   workspaceTrusted: boolean;
   workspaceRootState: RiprWorkspaceRootState;
   workspaceRoot?: string;
+  activeDocumentRelativePath?: string;
   server?: ResolvedServer;
   documentLanguages: string[];
   setupStatus: RiprSetupStatus;
@@ -1140,6 +1143,10 @@ export interface RiprActionableGapQueueStatus {
   sourceFile?: string;
   evidenceClass?: string;
   actionability?: string;
+  changedBehavior?: string;
+  missingDiscriminator?: string;
+  focusedProofIntent?: string;
+  why?: string;
   canonicalGapId?: string;
   seamId?: string;
   findingId?: string;
@@ -1179,6 +1186,10 @@ export interface RiprFirstPrPacketStatus {
   selectedState?: string;
   selectedKind?: string;
   changedBehavior?: string;
+  currentEvidenceStrength?: string;
+  missingDiscriminator?: string;
+  focusedProofIntent?: string;
+  staticEvidenceBoundary?: string;
   why?: string;
   gapId?: string;
   canonicalGapId?: string;
@@ -1186,6 +1197,7 @@ export interface RiprFirstPrPacketStatus {
   suggestedAssertion?: string;
   verifyCommand?: string;
   receiptCommand?: string;
+  receiptPath?: string;
   relatedTest?: string;
   repairTarget?: string;
   repoRoot?: string;
@@ -1304,6 +1316,9 @@ function statusTooltip(
   context?: RiprStatusContext
 ): string {
   const lines = [status.summary];
+  if (context) {
+    lines.push('', ...repairFirstStatusLines(status, firstAction, context));
+  }
   if (status.detail) {
     lines.push(status.detail);
   }
@@ -1695,6 +1710,115 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   return lines;
 }
 
+function repairFirstStatusLines(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string[] {
+  const queue = context.setupStatus.actionableQueue;
+  const lines = ['Editor repair cockpit:'];
+  lines.push(`Workspace actionable state: ${workspaceActionableState(queue)}`);
+  lines.push(`Current-file actionable state: ${currentFileActionableState(queue, context.activeDocumentRelativePath)}`);
+  if (queue.state === 'topActionableGap') {
+    lines.push(`Top repair item: ${queue.topRepair ?? 'not_available'}`);
+    const identity = queue.canonicalGapId ?? queue.seamId ?? queue.findingId;
+    if (identity) {
+      lines.push(`Top repair gap: ${identity}`);
+    }
+    lines.push(`Related test or target: ${queue.relatedTest ?? queue.sourceFile ?? 'not_available'}`);
+    lines.push(`Verify command: ${queue.verifyCommand ?? 'not_available'}`);
+    lines.push(`Receipt state: ${receiptStateForRepairFirst(context.setupStatus.receipt, firstAction, queue)}`);
+    lines.push('Next safe command: run ripr: Start Current Repair, or ripr: Copy Current Repair Packet.');
+  } else {
+    lines.push('Top repair item: not_available');
+    lines.push('Related test or target: not_available');
+    lines.push('Verify command: not_available');
+    lines.push(`Receipt state: ${receiptStateForRepairFirst(context.setupStatus.receipt, firstAction, queue)}`);
+    lines.push(`Next safe command: ${repairFirstFailClosedCommand(status, queue, context)}`);
+  }
+  lines.push('Boundary: advisory static projection only; no source edits, generated tests, provider calls, mutation execution, gate decision, or merge approval.');
+  return lines;
+}
+
+function workspaceActionableState(queue: RiprActionableGapQueueStatus): string {
+  switch (queue.state) {
+    case 'topActionableGap':
+      return `repairable (${queue.actionableGaps ?? 1} actionable; ${queue.relativePath})`;
+    case 'noAction':
+      return `no_action (${queue.relativePath})`;
+    case 'reportOnly':
+      return `report_only (${queue.reportOnlyGaps ?? 0} report-only; ${queue.relativePath})`;
+    case 'staticLimitOnly':
+      return `static_limit_only (${queue.staticLimitOnlyGaps ?? 0} static-limited; ${queue.relativePath})`;
+    case 'blocked':
+    case 'missing':
+    case 'malformed':
+    case 'unsupportedSchema':
+    case 'wrongRoot':
+    case 'stale':
+    case 'unsafePath':
+    case 'unsafeCommand':
+      return `fail_closed (${queue.state}; ${queue.relativePath})`;
+    case 'noWorkspace':
+      return 'fail_closed (no workspace)';
+  }
+}
+
+function currentFileActionableState(
+  queue: RiprActionableGapQueueStatus,
+  activeRelativePath: string | undefined
+): string {
+  if (!activeRelativePath) {
+    return 'fail_closed (no active workspace file)';
+  }
+  if (queue.state !== 'topActionableGap') {
+    return `fail_closed (${queue.state}; ${activeRelativePath})`;
+  }
+  if (queue.sourceFile && sameWorkspaceRelativePath(activeRelativePath, queue.sourceFile)) {
+    return `repairable (${activeRelativePath})`;
+  }
+  return `no_matching_gap (${activeRelativePath}; top repair source ${queue.sourceFile ?? 'not_available'})`;
+}
+
+function receiptStateForRepairFirst(
+  receipt: RiprReceiptArtifactStatus,
+  firstAction: FirstUsefulActionStatus | undefined,
+  queue: RiprActionableGapQueueStatus
+): string {
+  if (receipt.state === 'found' && receipt.movement) {
+    return `found (${receipt.movement})`;
+  }
+  if (receipt.state !== 'missing' && receipt.state !== 'noWorkspace') {
+    return receipt.state;
+  }
+  if (queue.receiptCommandOrPath) {
+    return `missing; command available (${queue.receiptCommandOrPath})`;
+  }
+  if (firstAction?.receiptCommand) {
+    return `missing; command available (${firstAction.receiptCommand})`;
+  }
+  return receipt.state;
+}
+
+function repairFirstFailClosedCommand(
+  status: RiprStatusState,
+  queue: RiprActionableGapQueueStatus,
+  context: RiprStatusContext
+): string {
+  const setupBlocker = setupRepairBlocker(context);
+  if (setupBlocker) {
+    return setupBlocker;
+  }
+  if (status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {
+    return 'Save the file or refresh saved-workspace evidence before acting on repair packets.';
+  }
+  return actionableGapQueueSuppressedMessage(queue);
+}
+
+function sameWorkspaceRelativePath(left: string, right: string): boolean {
+  return normalizePath(left) === normalizePath(right);
+}
+
 function actionableGapQueueStatusLines(
   status: RiprStatusState,
   context: RiprStatusContext
@@ -1793,6 +1917,18 @@ function actionableGapQueueTopLines(queue: RiprActionableGapQueueStatus): string
   if (identity) {
     lines.push(`Gap identity: ${identity}`);
   }
+  if (queue.changedBehavior) {
+    lines.push(`Changed behavior: ${queue.changedBehavior}`);
+  }
+  if (queue.why) {
+    lines.push(`Why this matters: ${queue.why}`);
+  }
+  if (queue.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${queue.missingDiscriminator}`);
+  }
+  if (queue.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${queue.focusedProofIntent}`);
+  }
   if (queue.language) {
     lines.push(`Language: ${queue.language}${queue.languageStatus ? ` (${queue.languageStatus})` : ''}`);
   }
@@ -1875,6 +2011,10 @@ function currentRepairPacket(queue: RiprActionableGapQueueStatus): string {
   pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
   pushOptionalLine(lines, 'Evidence class', queue.evidenceClass);
   pushOptionalLine(lines, 'Actionability', queue.actionability);
+  pushOptionalLine(lines, 'Changed behavior', queue.changedBehavior);
+  pushOptionalLine(lines, 'Why this matters', queue.why);
+  pushOptionalLine(lines, 'Missing discriminator', queue.missingDiscriminator);
+  pushOptionalLine(lines, 'Focused proof intent', queue.focusedProofIntent);
   pushOptionalLine(lines, 'Confidence basis', queue.confidenceBasis);
   lines.push(`Related test: ${queue.relatedTest ?? 'not provided by typed queue artifact'}`);
   lines.push('');
@@ -1956,7 +2096,11 @@ function repoGapMap(
   ];
   if (queue.state === 'topActionableGap') {
     pushOptionalLine(lines, 'Canonical gap id', queue.canonicalGapId);
+    pushOptionalLine(lines, 'Changed behavior', queue.changedBehavior);
+    pushOptionalLine(lines, 'Why this matters', queue.why);
     pushOptionalLine(lines, 'Repair kind', queue.topRepair);
+    pushOptionalLine(lines, 'Missing discriminator', queue.missingDiscriminator);
+    pushOptionalLine(lines, 'Focused proof intent', queue.focusedProofIntent);
     pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
     pushOptionalLine(lines, 'Related test', queue.relatedTest);
     pushOptionalLine(lines, 'Verify', queue.verifyCommand);
@@ -2153,6 +2297,15 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
   }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
+  }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
+  }
   if (packet.why) {
     lines.push(`Why this matters: ${packet.why}`);
   }
@@ -2168,10 +2321,13 @@ function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
   if (packet.receiptCommand) {
     lines.push(`Receipt command: ${packet.receiptCommand}`);
   }
+  if (packet.receiptPath) {
+    lines.push(`Receipt path: ${packet.receiptPath}`);
+  }
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
   lines.push('');
   lines.push('Limits and non-claims:');
-  lines.push('- Advisory static evidence only.');
+  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
   return lines.join('\n');
@@ -2189,6 +2345,15 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   }
   if (packet.changedBehavior) {
     lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
+  }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
   }
   if (packet.why) {
     lines.push(`Why this matters: ${packet.why}`);
@@ -2211,6 +2376,11 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   lines.push('');
   lines.push('Receipt command:');
   lines.push(packet.receiptCommand ?? 'not available');
+  if (packet.receiptPath) {
+    lines.push('');
+    lines.push('Receipt path:');
+    lines.push(packet.receiptPath);
+  }
   lines.push('');
   lines.push('Instructions:');
   lines.push('- Add one focused test for this gap.');
@@ -2219,7 +2389,7 @@ function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
   lines.push('- Return the receipt path and result.');
   lines.push('');
   lines.push('Limits and non-claims:');
-  lines.push('- Static editor evidence only.');
+  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
   return lines.join('\n');
@@ -2285,6 +2455,18 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
   if (packet.canonicalGapId ?? packet.gapId) {
     lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
   }
+  if (packet.changedBehavior) {
+    lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.currentEvidenceStrength) {
+    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
+  }
+  if (packet.missingDiscriminator) {
+    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
+  }
+  if (packet.focusedProofIntent) {
+    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
+  }
   if (packet.relatedTest) {
     lines.push(`Related test: ${packet.relatedTest}`);
   }
@@ -2297,7 +2479,11 @@ function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[]
   if (packet.receiptCommand) {
     lines.push(`Receipt: ${packet.receiptCommand}`);
   }
+  if (packet.receiptPath) {
+    lines.push(`Receipt path: ${packet.receiptPath}`);
+  }
   lines.push(`Warnings: ${packet.warningCount ?? 0}`);
+  lines.push(`Boundary: ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
   lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
   return lines;
 }
@@ -3009,6 +3195,10 @@ function validateActionableGapQueue(
     sourceFile: stringField(topActionable, 'source_file'),
     evidenceClass: stringField(topActionable, 'evidence_class'),
     actionability: stringField(topActionable, 'actionability'),
+    changedBehavior: stringField(topActionable, 'changed_behavior'),
+    missingDiscriminator: actionableGapPacketMissingDiscriminator(topActionable),
+    focusedProofIntent: actionableGapPacketFocusedProofIntent(topActionable),
+    why: stringField(topActionable, 'why'),
     canonicalGapId,
     seamId: stringField(topActionable, 'seam_id'),
     findingId: stringField(topActionable, 'finding_id'),
@@ -3021,6 +3211,36 @@ function validateActionableGapQueue(
     receiptCommandOrPath,
     confidenceBasis: stringField(topActionable, 'confidence_basis')
   };
+}
+
+function actionableGapPacketMissingDiscriminator(packet: Record<string, unknown>): string | undefined {
+  return stringField(packet, 'missing_discriminator')
+    ?? firstMissingDiscriminatorValue(packet)
+    ?? stringField(packet, 'candidate_value_or_observer')
+    ?? stringField(packet, 'assertion_shape');
+}
+
+function firstMissingDiscriminatorValue(packet: Record<string, unknown>): string | undefined {
+  const discriminators = packet.missing_discriminators;
+  if (!Array.isArray(discriminators)) {
+    return undefined;
+  }
+  const first = discriminators[0];
+  if (!first || typeof first !== 'object' || Array.isArray(first)) {
+    return undefined;
+  }
+  return stringField(first as Record<string, unknown>, 'value');
+}
+
+function actionableGapPacketFocusedProofIntent(packet: Record<string, unknown>): string | undefined {
+  return stringField(packet, 'focused_proof_intent')
+    ?? stringField(packet, 'recommended_repair')
+    ?? assertionShapeFocusedProofIntent(packet);
+}
+
+function assertionShapeFocusedProofIntent(packet: Record<string, unknown>): string | undefined {
+  const assertionShape = stringField(packet, 'assertion_shape');
+  return assertionShape ? `Add or strengthen \`${assertionShape}\`.` : undefined;
 }
 
 export async function readFirstPrPacketStatus(
@@ -3182,7 +3402,8 @@ function validateFirstPrPacket(
     relatedTest,
     repairTarget,
     anchor ? stringField(anchor, 'file') : undefined,
-    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined
+    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined,
+    stringField(selected, 'receipt_path')
   ].filter((value): value is string => value !== undefined);
   if (packetPaths.some((packetPath) => !firstPrPathIsWorkspaceLocal(packetPath))) {
     return {
@@ -3197,6 +3418,10 @@ function validateFirstPrPacket(
     selectedState,
     selectedKind: stringField(selected, 'kind'),
     changedBehavior: stringField(selected, 'changed_behavior'),
+    currentEvidenceStrength: stringField(selected, 'current_evidence_strength'),
+    missingDiscriminator: stringField(selected, 'missing_discriminator'),
+    focusedProofIntent: stringField(selected, 'focused_proof_intent'),
+    staticEvidenceBoundary: stringField(selected, 'static_evidence_boundary'),
     why: stringField(selected, 'why'),
     gapId: stringField(selected, 'gap_id'),
     canonicalGapId: stringField(selected, 'canonical_gap_id'),
@@ -3204,6 +3429,7 @@ function validateFirstPrPacket(
     suggestedAssertion: repair ? stringField(repair, 'suggested_assertion') : undefined,
     verifyCommand: stringField(selected, 'verify_command'),
     receiptCommand: stringField(selected, 'receipt_command'),
+    receiptPath: stringField(selected, 'receipt_path'),
     relatedTest,
     repairTarget,
     repoRoot,
@@ -3828,24 +4054,30 @@ function startRepairActionPriority(title: string, command: vscode.Command): numb
   }
   if (
     command.command === 'ripr.copyContext' &&
-    (title === 'Inspect gap: copy repair packet' || firstArgumentLabelIs(command, 'gap_repair_packet'))
+    (title === 'Agent handoff: copy Python packet' || firstArgumentLabelIs(command, 'python_agent_packet'))
   ) {
     return 1;
   }
-  if (command.command === 'ripr.openRelatedTest') {
+  if (
+    command.command === 'ripr.copyContext' &&
+    (title === 'Inspect gap: copy repair packet' || firstArgumentLabelIs(command, 'gap_repair_packet'))
+  ) {
     return 2;
   }
-  if (command.command === 'ripr.copyAgentVerifyCommand' && firstArgumentLabelIs(command, 'gap_verify')) {
+  if (command.command === 'ripr.openRelatedTest') {
     return 3;
   }
-  if (command.command === 'ripr.copyAgentReceiptCommand' && firstArgumentLabelIs(command, 'gap_receipt')) {
+  if (command.command === 'ripr.copyAgentVerifyCommand' && firstArgumentLabelIs(command, 'gap_verify')) {
     return 4;
+  }
+  if (command.command === 'ripr.copyAgentReceiptCommand' && firstArgumentLabelIs(command, 'gap_receipt')) {
+    return 5;
   }
   if (
     command.command === 'ripr.copyContext' &&
     (title === 'Inspect gap: copy static-limit note' || firstArgumentLabelIs(command, 'static_limit_note'))
   ) {
-    return 5;
+    return 6;
   }
   return undefined;
 }
@@ -3876,9 +4108,13 @@ async function pickStartRepairAction(actions: StartRepairAction[]): Promise<Star
 function startRepairActionDescription(command: vscode.Command): string | undefined {
   switch (command.command) {
     case 'ripr.copyContext':
-      return firstArgumentLabelIs(command, 'first_repair_packet')
-        ? 'Copy the bounded packet'
-        : 'Copy the gap context';
+      if (firstArgumentLabelIs(command, 'first_repair_packet')) {
+        return 'Copy the bounded packet';
+      }
+      if (firstArgumentLabelIs(command, 'python_agent_packet')) {
+        return 'Copy the bounded Python agent packet';
+      }
+      return 'Copy the gap context';
     case 'ripr.openRelatedTest':
       return 'Open the likely repair target';
     case 'ripr.copyAgentVerifyCommand':
@@ -3911,6 +4147,18 @@ function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): 
 
 function sameWorkspaceRoot(left: string, right: string): boolean {
   return normalizePath(path.resolve(left)) === normalizePath(path.resolve(right));
+}
+
+function activeDocumentRelativePath(workspaceRoot: string | undefined): string | undefined {
+  const document = vscode.window.activeTextEditor?.document;
+  if (!workspaceRoot || !document || !isRiprFileDocument(document) || document.uri.scheme !== 'file') {
+    return undefined;
+  }
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!workspaceFolder || !sameWorkspaceRoot(workspaceFolder.uri.fsPath, workspaceRoot)) {
+    return undefined;
+  }
+  return relativeWorkspacePath(workspaceRoot, document.uri.fsPath);
 }
 
 function relativeWorkspacePath(workspaceRoot: string, filePath: string): string {

@@ -1,0 +1,65 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_related_test_matching/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/pricing.ts:2
+
+Changed
+  after:      if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::applyDiscount
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: already_observed
+  category: strong_oracle_observed
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:2:typescript_preview owner=applyDiscount
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 2 related test(s) found for owner `applyDiscount`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/pricing.test.ts:7 alias import observes threshold uses strong exact value oracle: expect(...).toBe(...)
+  - related test tests/pricing.test.ts:11 namespace import observes threshold uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`
+  related test: tests/pricing.test.ts:11 namespace import observes threshold
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

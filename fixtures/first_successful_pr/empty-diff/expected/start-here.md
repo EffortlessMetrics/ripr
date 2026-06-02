@@ -3,11 +3,13 @@
 Status: advisory
 State: no_action
 
-## No Action
+## Start Here
 
-The PR diff is empty, so no repairable Rust gap was selected.
-
-No-action is not a runtime, coverage, or mutation adequacy claim.
+- State: `empty_diff`
+- Output state: `clean`
+- Safe next action: stop on no-action; refresh evidence only after relevant PR changes.
+- Reason: The PR diff is empty, so no repairable Rust gap was selected.
+- Boundary: no actionable gap is not runtime, coverage, or mutation adequacy.
 
 ## Artifacts
 

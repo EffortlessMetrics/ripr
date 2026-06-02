@@ -7,6 +7,7 @@ use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
+use crate::output::preview_actionability::{PreviewActionability, preview_actionability_for};
 use serde_json::Value;
 use std::path::Path;
 use tower_lsp_server::ls_types::{
@@ -125,37 +126,60 @@ fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
         if let Some(probe_id) = data.get("probe_id").and_then(|value| value.as_str()) {
             lines.push(format!("Probe: `{probe_id}`"));
         }
+        if let Some(gap_id) = data
+            .get("canonical_gap_id")
+            .and_then(|value| value.as_str())
+        {
+            lines.push(format!("Canonical gap: `{gap_id}`"));
+        }
     }
     lines.join("\n")
 }
 
 fn gap_diagnostic_hover_markdown(diagnostic: &Diagnostic, data: &Value) -> String {
-    let mut lines = vec!["**ripr** gap decision".to_string(), String::new()];
-    push_gap_evidence_boundary(&mut lines, data);
-    lines.extend([
-        diagnostic.message.clone(),
-        String::new(),
-        "## Gap state".to_string(),
-    ]);
-    push_optional_data_line(&mut lines, "canonical gap", data, &["canonical_gap_id"]);
-    push_optional_data_line(&mut lines, "gap", data, &["gap_id"]);
-    push_optional_data_line(&mut lines, "kind", data, &["gap_kind"]);
-    push_optional_data_line(&mut lines, "state", data, &["gap_state"]);
-    push_optional_data_line(&mut lines, "policy", data, &["policy_state"]);
-    push_optional_data_line(&mut lines, "repairability", data, &["repairability"]);
-    push_optional_data_line(&mut lines, "authority", data, &["authority_boundary"]);
+    gap_hover::render(diagnostic, data)
+}
 
-    lines.push(String::new());
-    lines.push("## Why this matters".to_string());
-    lines.push(
-        "This diagnostic maps to a validated gap-decision ledger record. Use the bounded route below as local repair guidance; the editor is projecting existing RIPR artifacts."
-            .to_string(),
-    );
+mod gap_hover {
+    use super::{
+        Diagnostic, Value, push_gap_evidence_boundary, push_gap_hover_limits,
+        push_gap_repair_route, push_gap_verify_and_receipt, push_optional_data_line,
+    };
 
-    push_gap_repair_route(&mut lines, data);
-    push_gap_verify_and_receipt(&mut lines, data);
-    push_gap_hover_limits(&mut lines);
-    lines.join("\n")
+    pub(super) fn render(diagnostic: &Diagnostic, data: &Value) -> String {
+        let mut lines = vec!["**ripr** gap decision".to_string(), String::new()];
+        push_gap_evidence_boundary(&mut lines, data);
+        push_state_section(&mut lines, diagnostic, data);
+        push_why_this_matters(&mut lines);
+        push_gap_repair_route(&mut lines, data);
+        push_gap_verify_and_receipt(&mut lines, data);
+        push_gap_hover_limits(&mut lines);
+        lines.join("\n")
+    }
+
+    fn push_state_section(lines: &mut Vec<String>, diagnostic: &Diagnostic, data: &Value) {
+        lines.extend([
+            diagnostic.message.clone(),
+            String::new(),
+            "## Gap state".to_string(),
+        ]);
+        push_optional_data_line(lines, "canonical gap", data, &["canonical_gap_id"]);
+        push_optional_data_line(lines, "gap", data, &["gap_id"]);
+        push_optional_data_line(lines, "kind", data, &["gap_kind"]);
+        push_optional_data_line(lines, "state", data, &["gap_state"]);
+        push_optional_data_line(lines, "policy", data, &["policy_state"]);
+        push_optional_data_line(lines, "repairability", data, &["repairability"]);
+        push_optional_data_line(lines, "authority", data, &["authority_boundary"]);
+    }
+
+    fn push_why_this_matters(lines: &mut Vec<String>) {
+        lines.push(String::new());
+        lines.push("## Why this matters".to_string());
+        lines.push(
+            "This diagnostic maps to a validated gap-decision ledger record. Use the bounded route below as local repair guidance; the editor is projecting existing RIPR artifacts."
+                .to_string(),
+        );
+    }
 }
 
 fn push_gap_evidence_boundary(lines: &mut Vec<String>, data: &Value) {
@@ -316,6 +340,7 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         .unwrap_or_else(|| "static exposure".to_string());
     let mut lines = vec![format!("**ripr** `{classification}`"), String::new()];
     push_preview_boundary(&mut lines, finding);
+    push_preview_actionability(&mut lines, finding);
     lines.extend([
         diagnostic.message.clone(),
         String::new(),
@@ -326,6 +351,11 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         stage_line("observation", &finding.ripr.reveal.observe),
         stage_line("discriminator", &finding.ripr.reveal.discriminate),
     ]);
+    if let Some(gap) = &finding.canonical_gap {
+        lines.push(String::new());
+        lines.push("## Canonical Gap".to_string());
+        lines.push(format!("ID: `{}`", gap.id));
+    }
 
     if !finding.related_tests.is_empty() {
         lines.push(String::new());
@@ -382,6 +412,51 @@ fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
         lines.push("Action: advisory only".to_string());
     }
     lines.push(String::new());
+}
+
+fn push_preview_actionability(lines: &mut Vec<String>, finding: &Finding) {
+    let Some(actionability) = preview_actionability_for(finding) else {
+        return;
+    };
+    lines.push("## Preview Actionability".to_string());
+    lines.push(format!("State: {}", actionability.gap_state));
+    lines.push(format!(
+        "Category: {}",
+        actionability.actionability_category
+    ));
+    lines.push(format!(
+        "Repair packet: {}",
+        if actionability.repair_packet_ready {
+            "ready"
+        } else {
+            "not ready"
+        }
+    ));
+    lines.push(format!(
+        "Why not actionable: {}",
+        actionability.why_not_actionable
+    ));
+    lines.push(format!("Repair route: {}", actionability.repair_route));
+    push_missing_actionability_fields(lines, &actionability);
+    lines.push(format!(
+        "Evidence needed: {}",
+        actionability.evidence_needed_to_promote
+    ));
+    lines.push("Authority: preview advisory only".to_string());
+    lines.push(String::new());
+}
+
+fn push_missing_actionability_fields(
+    lines: &mut Vec<String>,
+    actionability: &PreviewActionability,
+) {
+    if actionability.missing_actionability_fields.is_empty() {
+        return;
+    }
+    lines.push(format!(
+        "Missing fields: {}",
+        actionability.missing_actionability_fields.join(", ")
+    ));
 }
 
 fn stage_line(name: &str, stage: &StageEvidence) -> String {

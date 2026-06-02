@@ -1,0 +1,124 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_unittest_oracle_shapes/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_notifications.py:3:python_preview",
+      "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+        "language": "python",
+        "file": "src/notifications.py",
+        "owner": "warn_coupon",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "coupon_expired"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_notifications.py:3:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/notifications.py",
+        "line": 3,
+        "expression": "        return \"coupon expired\"",
+        "owner": "python:src/notifications.py::warn_coupon"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `warn_coupon`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return \"coupon expired\"`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `relational_check` (rank 3)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == \"coupon expired\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `warn_coupon`", "infection yes: Changed Python return expression can alter the owner return value: `return \"coupon expired\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == \"coupon expired\"`.", "local flow reaches returned value: return \"coupon expired\" (line 3)", "related test tests/test_notifications.py:7 test_warn_coupon_output_message uses weak relational check oracle: self.assertIn(\"coupon expired\", result.output)", "missing discriminator return value == \"coupon expired\": changed Python returned-value at line 3 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return \"coupon expired\"","line":3}
+      ],
+      "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: return value == \"coupon expired\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifications.py", "suggested_test_name: test_warn_coupon_output_message", "suggested_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
+      "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == \"coupon expired\"",
+            "reason": "changed Python returned-value at line 3 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return \"coupon expired\"","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == \"coupon expired\"",
+          "reason": "changed Python returned-value at line 3 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return \"coupon expired\"","line":3}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_warn_coupon_output_message",
+          "file": "tests/test_notifications.py",
+          "line": 7,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "self.assertIn(\"coupon expired\", result.output)"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_notifications.py",
+        "suggested_test_name": "test_warn_coupon_output_message",
+        "verify_command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:return_value:return_value:coupon_expired",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "warn_coupon",
+        "changed_behavior": "return_value changed at src/notifications.py:3: `return \"coupon expired\"`",
+        "current_test_evidence": "tests/test_notifications.py:7 test_warn_coupon_output_message currently has oracle_strength=weak, oracle_kind=relational_check: self.assertIn(\"coupon expired\", result.output)",
+        "missing_discriminator": "return value == \"coupon expired\"",
+        "recommended_test_shape": "Strengthen the existing unittest exact return-value assertion for `return value == \"coupon expired\"`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_notifications.py",
+          "test_name": "test_warn_coupon_output_message"
+         },
+        "verify": {
+          "command": "python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == \"coupon expired\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

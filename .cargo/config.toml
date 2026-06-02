@@ -1,2 +1,7 @@
 [alias]
 xtask = "run -p xtask --"
+
+[env]
+TEMP = { value = "target", relative = true, force = true }
+TMP = { value = "target", relative = true, force = true }
+TMPDIR = { value = "target", relative = true, force = true }

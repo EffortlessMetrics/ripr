@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_related_test_name_similarity/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/pricing.py:2
+
+Changed
+  after:      return amount - 10
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/pricing.py::apply_discount
+  canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - local flow reaches returned value: return amount - 10 (line 2)
+  - related test tests/test_checkout.py:1 test_apply_discount_boundary_case uses unknown unknown oracle
+
+Weakness
+  - Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.

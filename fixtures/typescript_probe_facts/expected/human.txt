@@ -1,0 +1,629 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_probe_facts/input
+
+Summary: 10 probe(s), 0 exposed, 10 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/ambiguous.ts:4
+
+Changed
+  after:      const total = applyDiscount(amount, threshold);
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/ambiguous.ts::summarize
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: missing_target_shape
+  repair packet ready: false
+  why not actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  repair route: add probe-specific discriminator extraction for this expression before repair packet projection
+  missing fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries
+  raw evidence: src/ambiguous.ts:4 (typescript_preview_probe) source=probe:src_ambiguous.ts:4:typescript_preview owner=summarize
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `summarize`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: summarize
+  owner kind: function
+  changed behavior: predicate changed at src/ambiguous.ts:4: `const total = applyDiscount(amount, threshold);`
+  related test: tests/ambiguous.test.ts:1 summarize smoke
+  oracle: smoke_only (smoke)
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  repair route: add probe-specific discriminator extraction for this expression before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.
+
+WARNING src/ambiguous.ts:5
+
+Changed
+  after:      handlers[name](total);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  typescript:src/ambiguous.ts::summarize
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: static_limitation
+  category: dynamic_dispatch
+  repair packet ready: false
+  why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
+  repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
+  evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+  raw evidence: src/ambiguous.ts:5 (typescript_preview_probe) source=probe:src_ambiguous.ts:5:typescript_preview owner=summarize
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `summarize`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/ambiguous.test.ts:1 summarize smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: summarize
+  owner kind: function
+  changed behavior: side_effect changed at src/ambiguous.ts:5: `handlers[name](total);`
+  related test: tests/ambiguous.test.ts:1 summarize smoke
+  oracle: smoke_only (smoke)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: dynamic_dispatch
+  repair packet ready: false
+  why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
+  repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.
+
+WARNING src/errors.ts:3
+
+Changed
+  after:          throw new RangeError("missing token");
+
+Probe
+  family: error_path
+  delta:  control
+  owner:  typescript:src/errors.ts::parseToken
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/errors.ts:3 (typescript_preview_probe) source=probe:src_errors.ts:3:typescript_preview owner=parseToken
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `parseToken`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `throws RangeError matching "missing token"`.
+  - local flow reaches error variant: throw new RangeError("missing token"); (line 3)
+  - related test tests/errors.test.ts:1 parseToken smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `parseToken` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator throws RangeError matching "missing token": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: parseToken
+  owner kind: function
+  changed behavior: error_path changed at src/errors.ts:3: `throw new RangeError("missing token");`
+  related test: tests/errors.test.ts:1 parseToken smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: throws RangeError matching "missing token"
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `throws RangeError matching "missing token"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/notify.js:2
+
+Changed
+  after:      mockSend(payload);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  javascript:src/notify.js::notify
+
+Language
+  language: javascript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/notify.js:2 (typescript_preview_probe) source=probe:src_notify.js:2:typescript_preview owner=notify
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `notify`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `mock interaction mockSend called with payload`.
+  - local flow reaches call effect: mockSend(payload); (line 2)
+  - related test tests/notify.test.js:1 notify smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `notify` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator mock interaction mockSend called with payload: changed TypeScript call side effect at line 2 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (javascript/preview)
+  owner: notify
+  owner kind: function
+  changed behavior: side_effect changed at src/notify.js:2: `mockSend(payload);`
+  related test: tests/notify.test.js:1 notify smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: mock interaction mockSend called with payload
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `mock interaction mockSend called with payload`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/pricing.ts:2
+
+Changed
+  after:      if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::discountedTotal
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:2:typescript_preview owner=discountedTotal
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `discountedTotal`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.
+  - related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: discountedTotal
+  owner kind: function
+  changed behavior: predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`
+  related test: tests/pricing.test.ts:1 discountedTotal smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: amount == threshold
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/pricing.ts:3
+
+Changed
+  after:          return amount - discount;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/pricing.ts::discountedTotal
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/pricing.ts:3 (typescript_preview_probe) source=probe:src_pricing.ts:3:typescript_preview owner=discountedTotal
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `discountedTotal`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == amount - discount`.
+  - local flow reaches returned value: return amount - discount; (line 3)
+  - related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator return value == amount - discount: changed TypeScript returned-value at line 3 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: discountedTotal
+  owner kind: function
+  changed behavior: return_value changed at src/pricing.ts:3: `return amount - discount;`
+  related test: tests/pricing.test.ts:1 discountedTotal smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: return value == amount - discount
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == amount - discount`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/profile.ts:4
+
+Changed
+  after:      profile.status = status;
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  typescript:src/profile.ts::updateProfile
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/profile.ts:4 (typescript_preview_probe) source=probe:src_profile.ts:4:typescript_preview owner=updateProfile
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `updateProfile`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`.
+  - local flow reaches constructed field: profile.status = status; (line 4)
+  - related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `updateProfile` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: updateProfile
+  owner kind: function
+  changed behavior: field_construction changed at src/profile.ts:4: `profile.status = status;`
+  related test: tests/profile.test.ts:1 updateProfile smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: profile.status == status
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `profile.status == status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/profile.ts:5
+
+Changed
+  after:      audit.record(status);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  typescript:src/profile.ts::updateProfile
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/profile.ts:5 (typescript_preview_probe) source=probe:src_profile.ts:5:typescript_preview owner=updateProfile
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `updateProfile`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`.
+  - local flow reaches call effect: audit.record(status); (line 5)
+  - related test tests/profile.test.ts:1 updateProfile smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `updateProfile` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: updateProfile
+  owner kind: function
+  changed behavior: side_effect changed at src/profile.ts:5: `audit.record(status);`
+  related test: tests/profile.test.ts:1 updateProfile smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: call audit.record includes status
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `call audit.record includes status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/view.jsx:2
+
+Changed
+  after:      console.log("status-ready");
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  javascript:src/view.jsx::StatusView
+
+Language
+  language: javascript
+  status: preview
+  owner kind: component
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/view.jsx:2 (typescript_preview_probe) source=probe:src_view.jsx:2:typescript_preview owner=StatusView
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `StatusView`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `log contains "status-ready"`.
+  - local flow reaches call effect: console.log("status-ready"); (line 2)
+  - related test tests/view.test.jsx:1 StatusView smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `StatusView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator log contains "status-ready": changed TypeScript call side effect at line 2 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (javascript/preview)
+  owner: StatusView
+  owner kind: component
+  changed behavior: side_effect changed at src/view.jsx:2: `console.log("status-ready");`
+  related test: tests/view.test.jsx:1 StatusView smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: log contains "status-ready"
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `log contains "status-ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+WARNING src/widget.tsx:4
+
+Changed
+  after:      return { status: "ready", label, amount };
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  typescript:src/widget.tsx::PriceBadge
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/widget.tsx:4 (typescript_preview_probe) source=probe:src_widget.tsx:4:typescript_preview owner=PriceBadge
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `PriceBadge`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `status == "ready"`.
+  - local flow reaches constructed field: return { status: "ready", label, amount }; (line 4)
+  - related test tests/widget.test.tsx:1 PriceBadge smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)
+
+Weakness
+  - Related test reaches `PriceBadge` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
+  - missing discriminator status == "ready": changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: PriceBadge
+  owner kind: function
+  changed behavior: field_construction changed at src/widget.tsx:4: `return { status: "ready", label, amount };`
+  related test: tests/widget.test.tsx:1 PriceBadge smoke
+  oracle: smoke_only (smoke)
+  missing discriminator: status == "ready"
+  suggested assertion shape: Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `status == "ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

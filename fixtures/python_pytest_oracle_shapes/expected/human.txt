@@ -1,0 +1,66 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_pytest_oracle_shapes/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/notifications.py:6
+
+Changed
+  after:          logger.warning("coupon expired")
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  python:src/notifications.py::warn_coupon
+  canonical gap: gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `warn_coupon`
+  - infection yes: Changed Python call or output effect can alter observable side effects: `logger.warning("coupon expired")`
+  - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
+  - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `log contains "coupon expired"`.
+  - local flow reaches call effect: logger.warning("coupon expired") (line 6)
+  - related test tests/test_notifications.py:4 test_warn_coupon_logs_expired_message uses weak relational check oracle: assert "coupon expired" in caplog.text
+
+Weakness
+  - Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the changed output/log/call effect.
+  - missing discriminator log contains "coupon expired": changed Python output/log/call effect at line 6 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: warn_coupon
+  changed behavior: call_or_output_effect changed at src/notifications.py:6: `logger.warning("coupon expired")`
+  current test evidence: tests/test_notifications.py:4 test_warn_coupon_logs_expired_message currently has oracle_strength=weak, oracle_kind=relational_check: assert "coupon expired" in caplog.text
+  missing discriminator: log contains "coupon expired"
+  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `log contains "coupon expired"`.
+  suggested assertion: Assert the changed output, log text, or call effect for `log contains "coupon expired"`.
+  suggested file: tests/test_notifications.py
+  suggested test: test_warn_coupon_logs_expired_message
+  pytest node: tests/test_notifications.py::test_warn_coupon_logs_expired_message
+  verify: pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `log contains "coupon expired"`.

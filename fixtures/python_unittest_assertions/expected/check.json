@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_risk.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "file": "src/risk.py",
+        "owner": "risk_score",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=100"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
@@ -17,19 +29,21 @@
         "delta": "control",
         "file": "src/risk.py",
         "line": 2,
-        "expression": "    if amount >= 100:"
+        "expression": "    if amount >= 100:",
+        "owner": "python:src/risk.py::risk_score"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `risk_score`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= 100:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), \"high\")"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), \"high\")"],
       "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
-      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_high_risk_score)", "related_test_relation: syntactic_call (test_high_risk_score)", "test_oracle: exact_value strong (test_high_risk_score)"],
+      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_high_risk_score)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_high_risk_score (test_high_risk_score)", "related_test_relation: syntactic_call (test_high_risk_score)", "test_oracle: exact_value strong (test_high_risk_score)"],
       "missing": ["Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -54,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

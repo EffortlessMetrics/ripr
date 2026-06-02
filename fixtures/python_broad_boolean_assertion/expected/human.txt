@@ -12,6 +12,8 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/priority.py::is_priority
+  canonical gap: gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100
 
 Language
   language: python
@@ -23,14 +25,42 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `is_priority`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == amount >= 100`.
+  - local flow reaches returned value: return amount >= 100 (line 2)
   - related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)
 
 Weakness
-  - Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.
+  - missing discriminator return value == amount >= 100: changed Python returned-value at line 2 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: is_priority
+  changed behavior: return_value changed at src/priority.py:2: `return amount >= 100`
+  current test evidence: tests/test_priority.py:4 test_priority_amount currently has oracle_strength=smoke, oracle_kind=smoke_only: assert is_priority(100)
+  missing discriminator: return value == amount >= 100
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == amount >= 100`.
+  suggested assertion: Assert the returned value equals the expected value for the changed inputs.
+  suggested file: tests/test_priority.py
+  suggested test: test_priority_amount
+  pytest node: tests/test_priority.py::test_priority_amount
+  verify: pytest tests/test_priority.py::test_priority_amount (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.

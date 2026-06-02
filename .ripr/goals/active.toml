@@ -1,168 +1,127 @@
-id = "first-useful-pr-loop"
-title = "First Useful PR Loop"
+id = "self-hosted-routed-runner-proof"
+title = "Self-Hosted Routed Runner Proof"
 status = "active"
+lane = "repo-ops"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/34"
 
-# This is Campaign 28 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 27 closed Language Adapter Preview and remains archived under
-# `.ripr/goals/archive/2026-05-13-language-adapter-preview.toml`.
-# This campaign makes the front-door RIPR product loop boringly useful:
-# one changed Rust behavior, one clear weak-oracle gap, one focused repair
-# intent, one verification command, and one receipt that users, reviewers, CI,
-# and agents can all understand.
+# This repo-ops goal is selected after First Useful PR Loop Continuation closed
+# with `no_current_goal = true`. It does not reopen product or analyzer work.
+# It records the only live repo-owned successor surfaced by the current issue
+# board: prove the CX53/CX43 self-hosted routed Rust path, or keep the runner
+# image-readiness blocker explicit while the protected hosted fallback remains
+# healthy.
 
 objective = """
-Make a new user, reviewer, or coding agent get from one changed Rust behavior
-to one trustworthy repair receipt with almost no interpretation burden. The
-front door is `ripr first-pr --root . --base origin/main --head HEAD`; it must
-name the top repairable gap or a clear no-action state, explain the missing
-discriminator in reviewer-readable language, give one focused test or output
-proof intent, provide exact verify and receipt commands, and preserve the
-static-advisory boundary. RIPR still does not edit source, generate tests, call
-providers, run mutation, prove runtime or coverage adequacy, or enable default
-blocking gates.
+Restore and prove the self-hosted routed Rust path for ripr-swarm while keeping
+the normalized Ripr Rust Small Result gate and GitHub-hosted fallback as the
+branch-protection-facing proof.
 """
 
 end_state = [
-  "`ripr first-pr --root . --base origin/main --head HEAD` is the obvious front door for one changed Rust PR",
-  "the first screen names one top repairable gap or a clear no-action state without making users open secondary reports",
-  "the recommendation explains changed behavior, current proof weakness, missing discriminator, repair intent, verify command, receipt command, and static-evidence boundary",
-  "`ripr outcome` receipts are reviewer-native and explain before/after movement without claiming mutation, runtime, or coverage proof",
-  "a tiny fixture or demo story proves the before -> recommendation -> focused repair -> outcome -> receipt loop",
-  "generated CI, editor, and agent packet surfaces mirror the same one-screen repair story instead of inventing parallel wording",
-  "support/status claims remain mapped to proof and preserve advisory/static boundaries",
+  "issue #34 records CX53 primary proof with target=cx53, reason=cx53_idle, and Ripr Rust Small Result success, or a current bounded image-readiness/runner-visibility blocker",
+  "issue #34 records CX43 fallback proof with target=cx43, reason=cx43_idle, and Ripr Rust Small Result success, or a current bounded image-readiness/runner-visibility blocker",
+  "issue #24 records the same cutover disposition and does not claim machine cutover completion before self-hosted proof or accepted blocker",
+  "branch protection remains strict and requires only Ripr Rust Small Result",
+  "conditional CX53/CX43/GitHub-hosted implementation jobs remain unrequired",
+  "normal feature, docs, spec, analyzer, editor, badge, and repo-ops work stays routed to ripr-swarm while source ripr remains release/distribution authority",
+]
+
+hard_rules = [
+  "start from open PRs and required checks before touching docs or goals",
+  "the normalized Ripr Rust Small Result is the only branch-protection-facing check",
+  "self-hosted implementation jobs are conditional proof jobs, not required status checks",
+  "GitHub-hosted fallback is a valid protected-path success while CX53/CX43 proof is unavailable",
+  "runner-image or runner-visibility blockers must be recorded explicitly instead of treated as successful self-hosted proof",
+  "source ripr remains release, security, promotion, and publish/distribution authority",
+]
+
+non_goals = [
+  "no analyzer truth changes",
+  "no output schema or product surface changes",
+  "no source repo promotion",
+  "no release, publish, signing, marketplace, or badge endpoint refresh work",
+  "no release/publish/signing secrets in ripr-swarm",
+  "no fork PRs on self-hosted runners",
+  "no branch-protection expansion beyond Ripr Rust Small Result",
+  "no default CI blocking changes beyond the normalized routed result",
+  "no provider/model calls",
+  "no source edits or generated tests",
+  "no mutation execution",
+  "no runtime adequacy, coverage adequacy, proof-of-correctness, policy eligibility, gate pass/fail, or merge-readiness claim",
 ]
 
 [[work_item]]
-id = "context/proof-stack-reconciliation"
+id = "goals/self-hosted-routed-runner-proof-activation"
 status = "done"
-branch = "context-proof-stack-reconciliation"
+branch = "goals-self-hosted-runner-proof"
 stackable = false
-acceptance = "Reconcile the proof-stack language into RIPR's existing context system without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. `docs/agent-context/CONTEXT_SYSTEM.md` maps proposal, spec, ADR, implementation plan, active manifest, support tiers, policy ledgers, and closeouts to the repo-native files users and agents already consume, and `docs/ROADMAP.md` states the product/control-plane end goal."
+acceptance = "Select the self-hosted routed runner proof issue as the active repo-owned successor after no-current-goal, without changing analyzer, product, release, badge, or branch-protection behavior."
 commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "ops/current-routed-proof-refresh"
+status = "done"
+branch = "ops-current-routed-proof-refresh"
+stackable = false
+acceptance = "Refresh current-main routed proof on #34 and #24, recording whether CX53/CX43 self-hosted execution is validated or whether the bounded blocker remains runner image readiness or runner visibility."
+# Refreshed with issue-ledger routed proof comments. Treat #34 and #24 as the
+# current proof ledger instead of requiring this manifest to change after every
+# hosted-fallback merge.
+# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526148362
+# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526189830
+# - #34 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526512428
+# - #34 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526754297
+# - #34 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526808720
+# - #34 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526860777
+# - #34 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526898495
+# - #34 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527749965
+# - #34 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527818659
+# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526148678
+# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526190172
+# - #24 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526512895
+# - #24 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526754568
+# - #24 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526808969
+# - #24 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526861154
+# - #24 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526898494
+# - #24 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527750005
+# - #24 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527819086
+# Current issue-ledger disposition remains GitHub-hosted fallback success with
+# target=github and CX53/CX43 skipped. Recent receipts record both a
+# runner visibility/API blocker shape (reason=runner_api_failed with
+# runner_query=not_attempted) and a runner-readiness blocker shape
+# (reason=no_idle_runner with runner_query=ok, visible CX53/CX43 runners, and
+# zero idle image-ready CX53/CX43 capacity). Neither shape is CX53/CX43
+# execution proof.
+commands = [
+  "cargo xtask check-goals",
   "cargo xtask goals next",
+  "cargo xtask check-workflows",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "goals/active-freshness-validation"
-status = "done"
-branch = "goals-active-freshness-validation"
+id = "ops/cx53-cx43-proof-closeout"
+status = "blocked"
+branch = "ops-cx53-cx43-proof-closeout"
 stackable = false
+acceptance = "Close the routed-runner proof only after #34 records CX53 primary and CX43 fallback proof, or after an org-visible operator records the accepted runner image-readiness or visibility blocker."
+blocked_reason = "Issue #34 currently records GitHub-hosted fallback proof with target=github and CX53/CX43 skipped; recent receipts alternate between runner visibility/API failure and no idle image-ready CX53/CX43 runner availability, but no CX53/CX43 execution proof or org-visible accepted blocker is recorded."
+
+[[work_item]]
+id = "campaign/self-hosted-routed-runner-proof-closeout"
+status = "blocked"
+branch = "campaign-self-hosted-routed-runner-proof-closeout"
+stackable = false
+acceptance = "Close this repo-ops goal with issue-linked proof, branch-protection status, source/swarm authority boundary, and remaining operational follow-ups."
 blocked_by = [
-  "context/proof-stack-reconciliation",
+  "ops/cx53-cx43-proof-closeout",
 ]
-acceptance = "Add or extend the goal validation path so a closed active campaign without a successor or explicit no-current-goal marker is reported as stale execution state. The check also catches missing work-item commands, missing paths, done items without proof commands, blocked items without blocked_by or blocked_reason, invented policy fields, and stale branch references where those signals are available."
-commands = [
-  "cargo test -p xtask goals",
-  "cargo xtask goals next",
-  "cargo xtask check-campaign",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "first-pr/front-door-polish"
-status = "done"
-branch = "first-pr-front-door-polish"
-stackable = false
-blocked_by = [
-  "goals/active-freshness-validation",
-]
-acceptance = "Make `ripr first-pr --root . --base origin/main --head HEAD` the product front door: preflight git, diff, base/head, Cargo workspace, config/defaults, writable artifacts, mode, and next command; expected missing inputs return clear recovery packets instead of raw internal errors."
-commands = [
-  "cargo test -p ripr --lib first_pr",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "first-pr/one-screen-recommendation"
-status = "done"
-branch = "first-pr-one-screen-recommendation"
-stackable = false
-blocked_by = [
-  "first-pr/front-door-polish",
-]
-acceptance = "Stabilize a golden-backed first screen that always includes top actionable gap or no-action state, changed behavior, current evidence strength, missing discriminator, focused test or output-proof intent, exact verify command, receipt command, and the static-advisory boundary without banned mutation-proof vocabulary."
-commands = [
-  "cargo test -p ripr --lib first_pr",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "outcome/reviewer-native-receipts"
-status = "done"
-branch = "outcome-reviewer-native-receipts"
-stackable = false
-blocked_by = [
-  "first-pr/one-screen-recommendation",
-]
-acceptance = "`ripr outcome` receipts answer what changed, what RIPR flagged before, what focused proof was added outside RIPR, what moved after verification, what remains weak or unknown, and what reviewers should and should not believe. Receipts stay usable from CLI, PR summary, editor handoff, and agent packet surfaces."
-commands = [
-  "cargo test -p ripr --lib outcome",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "fixtures/first-pr-boundary-gap-demo"
-status = "done"
-branch = "fixtures-first-pr-boundary-gap-demo"
-stackable = false
-blocked_by = [
-  "outcome/reviewer-native-receipts",
-]
-acceptance = "Add a tiny canonical ten-minute demo or fixture story that proves before -> `ripr first-pr` -> top gap -> focused external test/output proof -> `ripr outcome` -> receipt. The story doubles as documentation, smoke coverage, release demo, and agent training path."
-commands = [
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "surfaces/one-screen-loop-convergence"
-status = "done"
-branch = "surfaces-one-screen-loop-convergence"
-stackable = false
-blocked_by = [
-  "fixtures/first-pr-boundary-gap-demo",
-]
-acceptance = "Make generated CI, VS Code/editor handoff, and agent packet surfaces mirror the same first-useful-pr wording and repair unit: changed behavior, missing discriminator, focused proof intent, verify command, receipt command, artifacts, and static-advisory boundary. Do not add default blocking, source edits, generated tests, providers, mutation execution, or a second mental model."
-commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo xtask lsp-cockpit-report",
-  "npm --prefix editors/vscode run compile",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "campaign/first-useful-pr-loop-closeout"
-status = "ready"
-branch = "campaign-first-useful-pr-loop-closeout"
-stackable = false
-acceptance = "Close Campaign 28 only after one command, one top gap or no-action state, one focused repair intent, one verification command, one receipt, one demo, one generated-CI summary, one editor handoff, and one agent packet tell the same static-advisory repair story with proof and remaining limits recorded."
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-traceability",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-]
+blocked_reason = "Closeout depends on the self-hosted route proof or an explicitly accepted bounded blocker."

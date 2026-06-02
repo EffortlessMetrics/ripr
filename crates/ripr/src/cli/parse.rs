@@ -1,5 +1,12 @@
-use crate::app::{Mode, OutputFormat};
+mod format;
+mod mode;
+mod value;
+
 use crate::cli::command::CliCommand;
+
+pub(crate) use format::parse_format;
+pub(crate) use mode::parse_mode;
+pub(crate) use value::expect_value;
 
 pub(super) fn parse_args(args: Vec<String>) -> Result<CliCommand, String> {
     let command = args.get(1).map(|s| s.as_str());
@@ -7,34 +14,10 @@ pub(super) fn parse_args(args: Vec<String>) -> Result<CliCommand, String> {
     CliCommand::from_parts(command, command_args)
 }
 
-pub(super) fn parse_mode(value: &str) -> Result<Mode, String> {
-    match value {
-        "instant" => Ok(Mode::Instant),
-        "draft" => Ok(Mode::Draft),
-        "fast" => Ok(Mode::Fast),
-        "deep" => Ok(Mode::Deep),
-        "ready" => Ok(Mode::Ready),
-        _ => Err(format!("unknown mode {value:?}")),
-    }
-}
-
-pub(super) fn parse_format(value: &str) -> Result<OutputFormat, String> {
-    OutputFormat::parse_cli_name(value).ok_or_else(|| format!("unknown format {value:?}"))
-}
-
-pub(super) fn expect_value<'a>(
-    args: &'a [String],
-    idx: usize,
-    flag: &str,
-) -> Result<&'a str, String> {
-    args.get(idx)
-        .map(|s| s.as_str())
-        .ok_or_else(|| format!("missing value for {flag}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{Mode, OutputFormat};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -99,6 +82,24 @@ mod tests {
             parse_args(args(&["ripr", "agent", "brief", "--json"])),
             Ok(CliCommand::Agent(args(&["brief", "--json"])))
         );
+        assert_eq!(
+            parse_args(args(&["ripr", "swarm", "queue", "--language", "python"])),
+            Ok(CliCommand::Swarm(args(&["queue", "--language", "python"])))
+        );
+        assert_eq!(
+            parse_args(args(&[
+                "ripr",
+                "swarm",
+                "ingest",
+                "--result",
+                "agent-result.json"
+            ])),
+            Ok(CliCommand::Swarm(args(&[
+                "ingest",
+                "--result",
+                "agent-result.json"
+            ])))
+        );
     }
 
     #[test]
@@ -161,6 +162,10 @@ mod tests {
         assert_eq!(
             parse_format("agent-seam-packets-json"),
             Ok(OutputFormat::AgentSeamPacketsJson)
+        );
+        assert_eq!(
+            parse_format("repo-exposure-summary-json"),
+            Ok(OutputFormat::RepoExposureSummaryJson)
         );
         assert_eq!(
             parse_format("xml"),

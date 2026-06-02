@@ -5,15 +5,18 @@
 //! These are pure-data enums shared between the analysis adapter layer and
 //! the output renderers that emit additive optional language metadata fields.
 
-/// The set of source languages an adapter can identify itself as.
+/// The set of source languages an adapter can report.
 ///
-/// `Rust` is the reference language. `TypeScript` and `Python` are preview
-/// adapters added in later work items in Campaign 27. Adding a new variant
-/// here is a deliberate contract change and must update RIPR-SPEC-0026.
+/// `Rust` is the reference language. `TypeScript`, `JavaScript`, and
+/// `Python` are preview surfaces added in later work items in Campaign 27.
+/// JavaScript is implemented by the TypeScript-family adapter and remains
+/// separately labeled in output. Adding a new variant here is a deliberate
+/// contract change and must update RIPR-SPEC-0026.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LanguageId {
     Rust,
     TypeScript,
+    JavaScript,
     Python,
 }
 
@@ -24,6 +27,7 @@ impl LanguageId {
         match self {
             LanguageId::Rust => "rust",
             LanguageId::TypeScript => "typescript",
+            LanguageId::JavaScript => "javascript",
             LanguageId::Python => "python",
         }
     }
@@ -32,6 +36,7 @@ impl LanguageId {
         match self {
             LanguageId::Rust => cfg!(feature = "lang-rust"),
             LanguageId::TypeScript => cfg!(feature = "lang-typescript"),
+            LanguageId::JavaScript => cfg!(feature = "lang-typescript"),
             LanguageId::Python => cfg!(feature = "lang-python"),
         }
     }
@@ -40,6 +45,7 @@ impl LanguageId {
         match self {
             LanguageId::Rust => "lang-rust",
             LanguageId::TypeScript => "lang-typescript",
+            LanguageId::JavaScript => "lang-typescript",
             LanguageId::Python => "lang-python",
         }
     }
@@ -111,6 +117,9 @@ pub enum StaticLimitKind {
     MissingImportGraph,
     DecoratorIndirection,
     MockedModule,
+    OpaqueCustomAssertionHelper,
+    PropertyBasedTest,
+    UnresolvedPytestFixture,
     UnsupportedSyntax,
 }
 
@@ -124,6 +133,9 @@ impl StaticLimitKind {
             StaticLimitKind::MissingImportGraph => "missing_import_graph",
             StaticLimitKind::DecoratorIndirection => "decorator_indirection",
             StaticLimitKind::MockedModule => "mocked_module",
+            StaticLimitKind::OpaqueCustomAssertionHelper => "opaque_custom_assertion_helper",
+            StaticLimitKind::PropertyBasedTest => "property_based_test",
+            StaticLimitKind::UnresolvedPytestFixture => "unresolved_pytest_fixture",
             StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
         }
     }
@@ -137,6 +149,7 @@ mod tests {
     fn language_id_wire_strings_are_stable() {
         assert_eq!(LanguageId::Rust.as_str(), "rust");
         assert_eq!(LanguageId::TypeScript.as_str(), "typescript");
+        assert_eq!(LanguageId::JavaScript.as_str(), "javascript");
         assert_eq!(LanguageId::Python.as_str(), "python");
     }
 
@@ -148,9 +161,14 @@ mod tests {
             cfg!(feature = "lang-typescript")
         );
         assert_eq!(
+            LanguageId::JavaScript.is_available(),
+            cfg!(feature = "lang-typescript")
+        );
+        assert_eq!(
             LanguageId::Python.is_available(),
             cfg!(feature = "lang-python")
         );
+        assert_eq!(LanguageId::JavaScript.required_feature(), "lang-typescript");
         assert_eq!(LanguageId::Python.required_feature(), "lang-python");
     }
 
@@ -189,6 +207,18 @@ mod tests {
         assert_eq!(
             StaticLimitKind::UnsupportedSyntax.as_str(),
             "unsupported_syntax"
+        );
+        assert_eq!(
+            StaticLimitKind::OpaqueCustomAssertionHelper.as_str(),
+            "opaque_custom_assertion_helper"
+        );
+        assert_eq!(
+            StaticLimitKind::PropertyBasedTest.as_str(),
+            "property_based_test"
+        );
+        assert_eq!(
+            StaticLimitKind::UnresolvedPytestFixture.as_str(),
+            "unresolved_pytest_fixture"
         );
     }
 }

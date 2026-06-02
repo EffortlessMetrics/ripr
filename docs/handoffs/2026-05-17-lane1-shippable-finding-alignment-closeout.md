@@ -44,6 +44,13 @@ The result is a shippable 0.6.x evidence contract: raw findings remain
 supporting evidence, canonical items carry the Lane 1 evidence state, and
 actionable canonical gaps carry concrete repair and verification guidance.
 
+Post-closeout update: later swarm burn-down work kept the same contract while
+adding fixture-backed support for one opaque config report lookup shape and
+refreshing dogfood receipts for the material #252/#266/#272 deltas. Supported
+opaque report lookups can now become actionable output-observer evidence;
+unsupported opaque lookup, generated config, macro, dynamic-dispatch, and
+cross-file flows still remain named static limitations.
+
 ## Audit snapshot
 
 The clean `origin/main` audit snapshot generated
@@ -174,8 +181,10 @@ Canonical items without verify command: 0
 - Explicit `primary_anchor` and `raw_spans[]` fields remain a documented
   projection contract, not a completed public field on every evidence record.
 - Config/policy constant alignment is heuristic and supported-sink scoped;
-  opaque lookup, generated config, macros, and unsupported cross-file flows
-  stay named limitations until fixture-first analyzer work expands them.
+  only the fixture-backed opaque report lookup shape is promoted out of
+  limitation. Unsupported opaque lookup, generated config, macros, dynamic
+  dispatch, and unsupported cross-file flows stay named limitations until
+  fixture-first analyzer work expands them.
 - Runtime calibration is imported when supplied; this lane does not run
   mutation testing or promote static evidence to runtime proof.
 - Scorecard and audit counters are advisory evidence-quality reports. They do

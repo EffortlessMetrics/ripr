@@ -12,6 +12,8 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/pricing.py::apply_discount
+  canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
 
 Language
   language: python
@@ -23,15 +25,11 @@ Static exposure
 
 Evidence
   - reach no: 0 related Python test(s) found for owner `apply_discount`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)
-  - discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
-  - owner: apply_discount
-  - owner_kind: function
+  - discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - local flow reaches returned value: return amount - 10 (line 2)
 
 Weakness
   - No Python test references `apply_discount(`; add a pytest or unittest test that calls the changed owner.
-
-Next step
-  Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.

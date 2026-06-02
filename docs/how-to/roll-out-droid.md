@@ -171,6 +171,11 @@ Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows until
 upstream exposes a debug-artifact disable input and `ripr`'s checker allowlist
 is updated.
 
+Self-hosted runners must make GitHub CLI available on `PATH` before the Droid
+action starts. The baseline workflow installs the pinned Linux amd64 `gh`
+archive and verifies its SHA256 before appending its `bin` directory to
+`$GITHUB_PATH`; keep that step unless the runner image already provides `gh`.
+
 Start with this model baseline:
 
 ```yaml

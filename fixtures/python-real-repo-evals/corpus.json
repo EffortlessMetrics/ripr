@@ -1,0 +1,1956 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_real_repo_eval_corpus",
+  "spec": "RIPR-SPEC-0028",
+  "related_spec": "RIPR-SPEC-0057",
+  "description": "Checked dogfood records for Python repair-routing runs outside analyzer fixture goldens.",
+  "limits": [
+    "static preview evidence only",
+    "advisory dogfood receipts only",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "no CI gate or support-tier promotion"
+  ],
+  "cases": [
+    {
+      "id": "tiny_controlled_pytest_boundary_receipt",
+      "repo_shape": "tiny_controlled_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json",
+      "runtime_ms": 114,
+      "top_finding_summary": "Python predicate-boundary repair card for calculate_discount amount >= threshold",
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_pricing.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/pricing.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/pricing.py::calculate_discount",
+      "missing_discriminator": "amount == threshold",
+      "suggested_test_file": "tests/test_pricing.py",
+      "suggested_test_name": "test_calculate_discount_smoke",
+      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.30s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/tiny-controlled-pytest-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 58,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "tiny controlled scratch repo only; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_pricing.py",
+          "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves one non-fixture Python PR shape can produce a bounded repair card, pass the verify command, and close the canonical gap through an outcome receipt."
+    },
+    {
+      "id": "normal_pytest_app_boundary_receipt",
+      "repo_shape": "normal_pytest_app",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/normal-pytest-app-boundary-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/normal-pytest-app-boundary-receipt --base HEAD~1 --format json",
+      "runtime_ms": 47,
+      "top_finding_summary": "Python predicate-boundary repair card for free_shipping_offer subtotal >= free_shipping_minimum",
+      "canonical_gap_id": "gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for subtotal == free_shipping_minimum.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/normal-pytest-app-boundary-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum --json",
+      "agent_packet_allowed_files": [
+        "tests/test_shipping.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/shipping.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/shipping.py::free_shipping_offer",
+      "missing_discriminator": "subtotal == free_shipping_minimum",
+      "suggested_test_file": "tests/test_shipping.py",
+      "suggested_test_name": "test_free_shipping_high_value_smoke",
+      "verify_command": "pytest tests/test_shipping.py::test_free_shipping_high_value_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.40s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/normal-pytest-app-boundary-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 313,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "normal pytest app scratch repo with explicit Python preview config; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/shipping.py:free_shipping_offer:predicate_boundary:predicate:subtotal>=free_shipping_minimum",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "subtotal == free_shipping_minimum",
+          "suggested_test_file": "tests/test_shipping.py",
+          "verify_command": "pytest tests/test_shipping.py::test_free_shipping_high_value_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a pyproject-based pytest app can produce a bounded strengthen-existing-test repair card, pass the verify command, and close the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "async_return_pytest_receipt",
+      "repo_shape": "async_return_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/async-return-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/async-return-receipt --base HEAD~1 --format json",
+      "runtime_ms": 481,
+      "top_finding_summary": "Python async return-value repair card for load_total await client.total() + 2",
+      "canonical_gap_id": "gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest async-return test with an exact return-value assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/async-return-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_loading.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/loading.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected async return value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/loading.py::load_total",
+      "missing_discriminator": "return value == await client.total() + 2",
+      "suggested_test_file": "tests/test_loading.py",
+      "suggested_test_name": "test_load_total_smoke",
+      "verify_command": "pytest tests/test_loading.py::test_load_total_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.56s; scratch verification used asyncio.run in a normal pytest test instead of requiring pytest-asyncio",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/async-return-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 4084,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "async-return scratch repo keeps RIPR static/advisory: the human-run pytest command used asyncio.run for verification, while RIPR did not execute imports, tests, or event-loop behavior",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "return value == await client.total() + 2",
+          "suggested_test_file": "tests/test_loading.py",
+          "verify_command": "pytest tests/test_loading.py::test_load_total_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python async return-value receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused async-return eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used asyncio.run in a normal pytest test instead of requiring pytest-asyncio",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to an async Python owner: RIPR detects the async return-value change, routes a weak asyncio.run pytest smoke assertion to a bounded strengthen-existing-test packet, verifies with focused pytest, and closes the canonical Python return-value gap through an outcome receipt."
+    },
+    {
+      "id": "parametrized_boundary_pytest_receipt",
+      "repo_shape": "parametrized_boundary_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/parametrized-boundary-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1979,
+      "top_finding_summary": "Python parametrized boundary repair card for tax_band amount >= threshold",
+      "canonical_gap_id": "gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest parametrized boundary test for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_tax.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/tax.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary",
+        "below/above parameterized row expected values are unclear"
+      ],
+      "changed_owner": "python:app/tax.py::tax_band",
+      "missing_discriminator": "amount == threshold",
+      "suggested_test_file": "tests/test_tax.py",
+      "suggested_test_name": "test_tax_band_tiers",
+      "verify_command": "pytest tests/test_tax.py::test_tax_band_tiers",
+      "verify_result": "pass",
+      "verify_summary": "3 passed in 0.49s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/parametrized-boundary-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 235,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "parametrized-boundary scratch repo records optional pytest parameterized shape; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/tax.py:tax_band:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_tax.py",
+          "verify_command": "pytest tests/test_tax.py::test_tax_band_tiers",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python parametrized-boundary receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused parametrized-boundary eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a native pytest parameterized boundary repair: RIPR routes the equality-boundary discriminator to one existing parameterized test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "cli_output_pytest_receipt",
+      "repo_shape": "cli_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/cli-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/cli-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 82,
+      "top_finding_summary": "Python output/call-effect repair card for notify_shipment priority shipping output",
+      "canonical_gap_id": "gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest CLI/output test with an exact priority-shipping output assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id --json",
+      "agent_packet_allowed_files": [
+        "tests/test_notify.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/notify.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/notify.py::notify_shipment",
+      "missing_discriminator": "output contains \"priority shipping for {order_id}\"",
+      "suggested_test_file": "tests/test_notify.py",
+      "suggested_test_name": "test_notify_expedited_smoke",
+      "verify_command": "pytest tests/test_notify.py::test_notify_expedited_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.34s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/cli-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 54,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "simple pytest CLI/output scratch repo with capsys evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/notify.py:notify_shipment:call_or_output_effect:side_effect:print_f_priority_shipping_for_order_id",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"priority shipping for {order_id}\"",
+          "suggested_test_file": "tests/test_notify.py",
+          "verify_command": "pytest tests/test_notify.py::test_notify_expedited_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a Python CLI/output-style change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "log_output_pytest_receipt",
+      "repo_shape": "log_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/log-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/log-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 900,
+      "top_finding_summary": "Python log-output repair card for warn_coupon coupon-expired warning",
+      "canonical_gap_id": "gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest caplog assertion for log contains \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/log-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_notifications.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/notifications.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected log text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/notifications.py::warn_coupon",
+      "missing_discriminator": "log contains \"coupon expired\"",
+      "suggested_test_file": "tests/test_notifications.py",
+      "suggested_test_name": "test_warn_coupon_logs_expired_message",
+      "verify_command": "pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 2.87s; scratch verification set the caplog handler formatter in the test so exact static log evidence matched pytest runtime output without editing production code",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/log-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 900,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "pytest caplog scratch repo with a logging.warning side effect; RIPR did not import logging, execute tests, or format runtime logs during analysis",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "log contains \"coupon expired\"",
+          "suggested_test_file": "tests/test_notifications.py",
+          "verify_command": "pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python log-output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused log-output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Human-run pytest configured caplog formatting in the test; RIPR did not execute logging",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a pytest caplog repair: RIPR routes the changed logger.warning output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
+      "id": "argparse_cli_output_pytest_receipt",
+      "repo_shape": "argparse_cli_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/argparse-cli-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/argparse-cli-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1100,
+      "top_finding_summary": "Python argparse CLI output repair card for main command output",
+      "canonical_gap_id": "gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest argparse CLI output assertion for output contains \"shipment queued\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/argparse-cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::main",
+      "missing_discriminator": "output contains \"shipment queued\"",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_main_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_main_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.63s; scratch verification used stdlib argparse through the focused test while RIPR itself did not import argparse or execute command parsing",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/argparse-cli-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 900,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "argparse-shaped pytest CLI output scratch repo with capsys evidence; RIPR did not import argparse, execute parser setup, or require external dependencies",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"shipment queued\"",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_main_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python argparse CLI output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused argparse CLI output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Human-run pytest exercised stdlib argparse; RIPR did not import argparse or execute command parsing",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to an argparse-shaped Python CLI output repair: RIPR routes the changed print output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
+      "id": "click_cli_output_pytest_receipt",
+      "repo_shape": "click_cli_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/click-cli-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/click-cli-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 809,
+      "top_finding_summary": "Python Click CLI output repair card for ship command output",
+      "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest Click CLI output assertion for output contains \"shipment queued\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/click-cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::ship",
+      "missing_discriminator": "output contains \"shipment queued\"",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_ship_output_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.37s; scratch verification set PYTHONPATH=. and used a local click.py stub instead of installing Click",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/click-cli-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 522,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Click-shaped pytest CLI output scratch repo with a local click.py stub for verification; RIPR did not import Click, execute command decorators, or require external dependencies",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"shipment queued\"",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python Click CLI output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused Click CLI output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used a local Click-shaped stub instead of adding a dependency",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Click-shaped Python CLI output repair: RIPR routes the changed click.echo output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
+      "id": "typer_cli_output_pytest_receipt",
+      "repo_shape": "typer_cli_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/typer-cli-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/typer-cli-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 174,
+      "top_finding_summary": "Python Typer CLI output repair card for ship command output",
+      "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:typer.echo_shipment_queued",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest Typer CLI output assertion for output contains \"shipment queued\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/typer-cli-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:ship:call_or_output_effect:side_effect:typer.echo_shipment_queued --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected output text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::ship",
+      "missing_discriminator": "output contains \"shipment queued\"",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_ship_output_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.49s; scratch verification set PYTHONPATH=. and used a local typer.py stub instead of installing Typer",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/typer-cli-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 1426,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Typer-shaped pytest CLI output scratch repo with a local typer.py stub for verification; RIPR did not import Typer, execute app.command decorators, or require external dependencies",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:typer.echo_shipment_queued",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "output contains \"shipment queued\"",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_ship_output_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python Typer CLI output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused Typer CLI output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used a local Typer-shaped stub instead of adding a dependency",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Typer-shaped Python CLI output repair: RIPR routes the changed typer.echo output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
+      "id": "cli_exit_code_pytest_receipt",
+      "repo_shape": "cli_exit_code_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/cli-exit-code-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1376,
+      "top_finding_summary": "Python CLI exit-code repair card for ship failure exit status",
+      "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest CLI exit-code assertion for exit_code == 2.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_commands.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/commands.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exit code is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/commands.py::ship",
+      "missing_discriminator": "exit_code == 2",
+      "suggested_test_file": "tests/test_commands.py",
+      "suggested_test_name": "test_ship_failure_smoke",
+      "verify_command": "pytest tests/test_commands.py::test_ship_failure_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.38s; scratch verification set PYTHONPATH=. so pytest could import the local src namespace",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/cli-exit-code-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 313,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "simple pytest CLI exit-code scratch repo with broad SystemExit evidence; focused verify needed PYTHONPATH=. for the scratch src namespace, while the analyzer-suggested command remains the same bounded pytest node",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:sys.exit_2",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "exit_code == 2",
+          "suggested_test_file": "tests/test_commands.py",
+          "verify_command": "pytest tests/test_commands.py::test_ship_failure_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a Python CLI exit-code change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "exception_path_pytest_receipt",
+      "repo_shape": "exception_path_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/exception-path-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/exception-path-receipt --base HEAD~1 --format json",
+      "runtime_ms": 94,
+      "top_finding_summary": "Python exception-path repair card for require_positive ValueError message",
+      "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest exception test with pytest.raises(ValueError, match=\"positive required\").",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/exception-path-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required --json",
+      "agent_packet_allowed_files": [
+        "tests/test_validation.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/validation.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exception message is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/validation.py::require_positive",
+      "missing_discriminator": "raises ValueError matching \"positive required\"",
+      "suggested_test_file": "tests/test_validation.py",
+      "suggested_test_name": "test_rejects_zero_value",
+      "verify_command": "pytest tests/test_validation.py::test_rejects_zero_value",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.29s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/exception-path-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 61,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "lightweight pytest exception-path scratch repo with exact pytest.raises match evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "raises ValueError matching \"positive required\"",
+          "suggested_test_file": "tests/test_validation.py",
+          "verify_command": "pytest tests/test_validation.py::test_rejects_zero_value",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python exception-path receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused exception-path eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Python exception-path repair: RIPR routes the missing exact ValueError message discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "custom_exception_pytest_receipt",
+      "repo_shape": "custom_exception_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/custom-exception-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/custom-exception-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1000,
+      "top_finding_summary": "Python custom exception-path repair card for apply_coupon ExpiredCouponError message",
+      "canonical_gap_id": "gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest custom-exception test with pytest.raises(ExpiredCouponError, match=\"coupon expired\").",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/custom-exception-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_coupons.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/coupons.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exception message is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/coupons.py::apply_coupon",
+      "missing_discriminator": "raises ExpiredCouponError matching \"coupon expired\"",
+      "suggested_test_file": "tests/test_coupons.py",
+      "suggested_test_name": "test_expired_coupon_rejected",
+      "verify_command": "pytest tests/test_coupons.py::test_expired_coupon_rejected",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.33s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/custom-exception-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 800,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "custom exception-path scratch repo includes baseline pytest import setup; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "raises ExpiredCouponError matching \"coupon expired\"",
+          "suggested_test_file": "tests/test_coupons.py",
+          "verify_command": "pytest tests/test_coupons.py::test_expired_coupon_rejected",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python custom-exception receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused custom-exception eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a custom Python exception type: RIPR routes the missing exact ExpiredCouponError message discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "unittest_exception_path_receipt",
+      "repo_shape": "unittest_exception_path",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unittest-exception-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unittest-exception-receipt --base HEAD~1 --format json",
+      "runtime_ms": 118,
+      "top_finding_summary": "Python unittest exception-path repair card for require_positive ValueError message",
+      "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing unittest exception test with self.assertRaisesRegex(ValueError, \"positive required\").",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/unittest-exception-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required --json",
+      "agent_packet_allowed_files": [
+        "tests/test_validation.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/validation.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exception message is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/validation.py::require_positive",
+      "missing_discriminator": "raises ValueError matching \"positive required\"",
+      "suggested_test_file": "tests/test_validation.py",
+      "suggested_test_name": "test_rejects_zero_value",
+      "verify_command": "python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value",
+      "verify_result": "pass",
+      "verify_summary": "1 unittest test passed in 0.00s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/unittest-exception-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 74,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "lightweight unittest exception-path scratch repo with exact assertRaisesRegex evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "raises ValueError matching \"positive required\"",
+          "suggested_test_file": "tests/test_validation.py",
+          "verify_command": "python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python unittest exception-path receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused unittest exception-path eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run unittest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Python unittest exception-path repair: RIPR routes the missing exact ValueError message discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python exception gap through an outcome receipt."
+    },
+    {
+      "id": "api_status_pytest_receipt",
+      "repo_shape": "api_status_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/api-status-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/api-status-receipt --base HEAD~1 --format json",
+      "runtime_ms": 270,
+      "top_finding_summary": "Python API response status repair card for checkout expired coupon status_code",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest API-status test with response.status_code == 422.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/api-status-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected status code is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.status_code == 422",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.33s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/api-status-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 296,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response.status_code evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.status_code == 422",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a Python API-style status-code change can produce a bounded field/object repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "api_json_detail_pytest_receipt",
+      "repo_shape": "api_json_field_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/api-json-detail-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/api-json-detail-receipt --base HEAD~1 --format json",
+      "runtime_ms": 249,
+      "top_finding_summary": "Python API response JSON field repair card for checkout expired coupon detail",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest API JSON test with response.json()[\"detail\"] == \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/api-json-detail-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected response JSON field is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.34s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/api-json-detail-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 286,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with response JSON field evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python API JSON receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to an API response JSON repair: RIPR routes the missing response detail discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "flask_route_json_detail_pytest_receipt",
+      "repo_shape": "flask_route_json_field_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/flask-route-json-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/flask-route-json-receipt --base HEAD~1 --format json",
+      "runtime_ms": 55,
+      "top_finding_summary": "Python Flask-style route JSON field repair card for checkout expired coupon detail",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest Flask-style API JSON test with response.json()[\"detail\"] == \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/flask-route-json-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected response JSON field is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.48s; scratch verification set PYTHONPATH=. and used a local Flask-shaped stub instead of installing Flask",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/flask-route-json-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 820,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Flask-style route decorator scratch repo with a local Flask-shaped stub; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python Flask-style API JSON receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a Flask-style route decorator with a response JSON repair: RIPR treats @app.route(\"/checkout\", methods=[\"POST\"]) as static route metadata, links the client.post route test, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python field/object gap through an outcome receipt."
+    },
+    {
+      "id": "fastapi_route_json_detail_pytest_receipt",
+      "repo_shape": "fastapi_route_json_field_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/fastapi-route-json-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/fastapi-route-json-receipt --base HEAD~1 --format json",
+      "runtime_ms": 206,
+      "top_finding_summary": "Python FastAPI-style route JSON field repair card for checkout expired coupon detail",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest FastAPI-style API JSON test with response.json()[\"detail\"] == \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/fastapi-route-json-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected response JSON field is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.35s; scratch verification used a local FastAPI-shaped stub instead of installing FastAPI",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/fastapi-route-json-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 387,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "FastAPI-style route decorator scratch repo with a local FastAPI-shaped stub; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python FastAPI-style API JSON receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused FastAPI-style API JSON eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used a local FastAPI-shaped stub instead of adding a dependency",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a FastAPI-style route decorator with a response JSON repair: RIPR treats @app.post(\"/checkout\") as static route metadata, links the client.post route test, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python field/object gap through an outcome receipt."
+    },
+    {
+      "id": "api_exception_response_pytest_receipt",
+      "repo_shape": "api_exception_response_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/api-exception-response-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/api-exception-response-receipt --base HEAD~1 --format json",
+      "runtime_ms": 748,
+      "top_finding_summary": "Python API exception-to-response repair card for checkout expired coupon status_code",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response=response_status_code=422_detail=coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest API exception-response test with response.status_code == 422.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/api-exception-response-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response=response_status_code=422_detail=coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected status code is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.status_code == 422",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.52s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/api-exception-response-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 430,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 2,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "lightweight pytest API-handler scratch repo with exception-to-response constructor evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response=response_status_code=422_detail=coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.status_code == 422",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python API exception-to-response receipt."
+        },
+        {
+          "rank": 2,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:return_value:return_value:response",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "return value == response",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 2 return-value card closed after the same focused response status assertion made the returned object observable."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused API exception-to-response eval emitted two Python repair cards; no rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends framework-shaped Python repair routing to a route that catches an application exception and constructs a response object: RIPR routes the missing status-code discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python field/object gap through an outcome receipt."
+    },
+    {
+      "id": "mixed_rust_python_pytest_receipt",
+      "repo_shape": "mixed_rust_python_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/mixed-rust-python-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/mixed-rust-python-receipt --base HEAD~1 --format json",
+      "runtime_ms": 361,
+      "top_finding_summary": "Python predicate-boundary repair card in a mixed Rust/Python repo for mixed_repo_discount amount >= threshold",
+      "canonical_gap_id": "gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test in the mixed repo for amount == threshold.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/mixed-rust-python-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_pricing.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/pricing.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/pricing.py::mixed_repo_discount",
+      "missing_discriminator": "amount == threshold",
+      "suggested_test_file": "tests/test_pricing.py",
+      "suggested_test_name": "test_mixed_repo_discount_smoke",
+      "verify_command": "pytest tests/test_pricing.py::test_mixed_repo_discount_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.75s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/mixed-rust-python-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 299,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "mixed Rust/Python scratch repo with Cargo and pyproject metadata; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/pricing.py:mixed_repo_discount:predicate_boundary:predicate:amount>=threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "amount == threshold",
+          "suggested_test_file": "tests/test_pricing.py",
+          "verify_command": "pytest tests/test_pricing.py::test_mixed_repo_discount_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a mixed Rust/Python repo can route a changed Python predicate boundary to a bounded repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt without colliding with Cargo/Rust project metadata."
+    },
+    {
+      "id": "decorated_route_status_pytest_receipt",
+      "repo_shape": "decorated_route_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/decorated-route-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/decorated-route-receipt --base HEAD~1 --format json",
+      "runtime_ms": 605,
+      "top_finding_summary": "Python decorated route status-code repair card for checkout expired coupon response.status_code",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing decorated-route pytest test with response.status_code == 422.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/decorated-route-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_checkout.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/checkout.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected status code is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/checkout.py::checkout",
+      "missing_discriminator": "response.status_code == 422",
+      "suggested_test_file": "tests/test_checkout.py",
+      "suggested_test_name": "test_expired_coupon_response_smoke",
+      "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.32s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/decorated-route-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 1116,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "simple FastAPI/Flask-shaped route decorator scratch repo; dynamic route registration remains unsupported, scoped repair routing is usable alpha, and broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [
+        "dynamic_route_registration"
+      ],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "response.status_code == 422",
+          "suggested_test_file": "tests/test_checkout.py",
+          "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a simple decorated Python route can route a changed status-code assignment to a bounded field/object repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt without treating arbitrary decorators as transparent."
+    },
+    {
+      "id": "unittest_return_value_receipt",
+      "repo_shape": "unittest_service",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unittest-return-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unittest-return-receipt --base HEAD~1 --format json",
+      "runtime_ms": 184,
+      "top_finding_summary": "Python unittest return-value repair card for invoice_total subtotal + tax + service_fee",
+      "canonical_gap_id": "gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing unittest return-value test with an exact invoice_total assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/unittest-return-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee --json",
+      "agent_packet_allowed_files": [
+        "tests/test_invoice.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/invoice.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected return value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/invoice.py::invoice_total",
+      "missing_discriminator": "return value == subtotal + tax + service_fee",
+      "suggested_test_file": "tests/test_invoice.py",
+      "suggested_test_name": "TestInvoiceTotals.test_invoice_total_smoke",
+      "verify_command": "python -m unittest tests.test_invoice.TestInvoiceTotals.test_invoice_total_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 unittest test passed in 0.01s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/unittest-return-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 91,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "unittest scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "return value == subtotal + tax + service_fee",
+          "suggested_test_file": "tests/test_invoice.py",
+          "verify_command": "python -m unittest tests.test_invoice.TestInvoiceTotals.test_invoice_total_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python unittest receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused unittest eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run unittest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a unittest return-value repair: RIPR routes the missing exact return discriminator to one existing unittest method, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "unittest_dict_field_receipt",
+      "repo_shape": "unittest_service",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unittest-field-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unittest-field-receipt --base HEAD~1 --format json",
+      "runtime_ms": 210,
+      "top_finding_summary": "Python unittest returned-dict field repair card for build_profile status field",
+      "canonical_gap_id": "gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing unittest returned-dict field test with an exact status assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/unittest-field-receipt --gap-ledger gap-ledger.json --gap-id gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active --json",
+      "agent_packet_allowed_files": [
+        "tests/test_profiles.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/profiles.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected field value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/profiles.py::build_profile",
+      "missing_discriminator": "status == \"active\"",
+      "suggested_test_file": "tests/test_profiles.py",
+      "suggested_test_name": "test_build_profile_status",
+      "verify_command": "python -m unittest tests.test_profiles.TestBuildProfile.test_build_profile_status",
+      "verify_result": "pass",
+      "verify_summary": "1 unittest test passed in 0.00s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/unittest-field-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 210,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "unittest returned-dict field scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/profiles.py:build_profile:field_value:field_construction:return_name_name_status_active",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "status == \"active\"",
+          "suggested_test_file": "tests/test_profiles.py",
+          "verify_command": "python -m unittest tests.test_profiles.TestBuildProfile.test_build_profile_status",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python unittest returned-dict field receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused unittest dict-field eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run unittest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a unittest returned-dict field repair: RIPR routes the changed literal field to the missing discriminator `status == \"active\"`, exports a bounded test-only packet, verifies with python -m unittest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
+      "id": "model_field_pytest_receipt",
+      "repo_shape": "dataclass_model_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/model-field-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/model-field-receipt --base HEAD~1 --format json",
+      "runtime_ms": 290,
+      "top_finding_summary": "Python dataclass model field repair card for build_user active field",
+      "canonical_gap_id": "gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest model field test with an exact active-field assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/model-field-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true --json",
+      "agent_packet_allowed_files": [
+        "tests/test_users.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/users.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected field value is ambiguous",
+        "production code edit appears necessary",
+        "returned object does not expose the constructor keyword as a public field or attribute"
+      ],
+      "changed_owner": "python:app/users.py::build_user",
+      "missing_discriminator": "result.active == True",
+      "suggested_test_file": "tests/test_users.py",
+      "suggested_test_name": "test_build_user_smoke",
+      "verify_command": "pytest tests/test_users.py::test_build_user_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 pytest test passed in 0.46s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/model-field-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 18,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "dataclass model-field scratch repo adds post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/users.py:build_user:field_value:field_construction:return_user_active=true",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "result.active == True",
+          "suggested_test_file": "tests/test_users.py",
+          "verify_command": "pytest tests/test_users.py::test_build_user_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python dataclass model-field receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused model-field eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a dataclass/model field repair: RIPR routes the missing exact field discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
+    }
+  ],
+  "static_limit_cases": [
+    {
+      "id": "dynamic_dispatch_no_packet_eval",
+      "repo_shape": "dynamic_dispatch_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/dynamic-dispatch-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/dynamic-dispatch-limit --base HEAD~1 --format json",
+      "runtime_ms": 230,
+      "finding_id": "probe:src_runtime.py:2:python_preview",
+      "changed_owner": "python:src/runtime.py::dispatch",
+      "static_limit_kind": "dynamic_dispatch",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "dynamic_dispatch_unresolved"
+      ],
+      "related_test_file": "tests/test_runtime.py",
+      "related_test_name": "test_dispatch_total",
+      "why_not_actionable": "static limit dynamic_dispatch prevents bounded repair routing from a dynamic registry call to a safe test input",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed line uses registry[key]() dynamic dispatch; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records the fail-closed side of Python repair routing: a dynamic-dispatch Python change stays visible as a static limitation with a related test but does not enter the repair queue."
+    },
+    {
+      "id": "decorator_indirection_no_packet_eval",
+      "repo_shape": "decorator_indirection_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/decorator-indirection-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/decorator-indirection-limit --base HEAD~1 --format json",
+      "runtime_ms": 247,
+      "finding_id": "probe:src_retry_total.py:3:python_preview",
+      "changed_owner": "python:src/retry_total.py::fetch_total",
+      "static_limit_kind": "decorator_indirection",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_retry_total.py",
+      "related_test_name": "test_fetch_total_uses_retry_path",
+      "why_not_actionable": "static limit decorator_indirection prevents bounded repair routing because the changed owner is wrapped by a runtime decorator whose call behavior is not resolved",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed owner is decorated with retry; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: decorator-modified call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "missing_import_graph_no_packet_eval",
+      "repo_shape": "missing_import_graph_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/missing-import-graph-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/missing-import-graph-limit --base HEAD~1 --format json",
+      "runtime_ms": 85,
+      "finding_id": "probe:src_totals.py:4:python_preview",
+      "changed_owner": "python:src/totals.py::total",
+      "static_limit_kind": "missing_import_graph",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_totals.py",
+      "related_test_name": "test_total_includes_tax",
+      "why_not_actionable": "static limit missing_import_graph prevents bounded repair routing because the changed behavior depends on an imported implementation whose semantics are not resolved",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed call targets an imported remote_total implementation outside the static preview import graph; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: unresolved imported-call behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "metaprogramming_no_packet_eval",
+      "repo_shape": "metaprogramming_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/metaprogramming-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/metaprogramming-limit --base HEAD~1 --format json",
+      "runtime_ms": 280,
+      "finding_id": "probe:src_models.py:2:python_preview",
+      "changed_owner": "python:src/models.py::build_model",
+      "static_limit_kind": "metaprogramming",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_models.py",
+      "related_test_name": "test_build_model_sets_name",
+      "why_not_actionable": "static limit metaprogramming prevents bounded repair routing because the changed behavior depends on runtime-created class semantics",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because runtime-created class behavior is outside the static preview model; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: runtime-created class behavior stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "mocked_module_no_packet_eval",
+      "repo_shape": "mocked_module_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/mocked-module-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/mocked-module-limit --base HEAD~1 --format json",
+      "runtime_ms": 125,
+      "finding_id": "probe:src_service.py:2:python_preview",
+      "changed_owner": "python:src/service.py::fetch_total",
+      "static_limit_kind": "mocked_module",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_service.py",
+      "related_test_name": "test_fetch_total_uses_client_total",
+      "why_not_actionable": "static limit mocked_module prevents bounded repair routing because the related pytest test uses patch/mock/monkeypatch module substitution",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the test depends on unittest.mock.patch runtime substitution; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: mocked-module pytest evidence stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "opaque_custom_helper_no_packet_eval",
+      "repo_shape": "opaque_custom_helper_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/opaque-helper-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/opaque-helper-limit --base HEAD~1 --format json",
+      "runtime_ms": 1456,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "static_limit_kind": "opaque_custom_assertion_helper",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_pricing.py",
+      "related_test_name": "test_apply_discount_custom_helper",
+      "why_not_actionable": "static limit opaque_custom_assertion_helper prevents bounded repair routing because the related pytest test observes behavior through an assert_* helper whose body is not inspected",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and opaque custom helper oracle but emitted no repair card or agent packet because the helper body may or may not observe the changed discriminator; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: opaque custom assertion helpers stay visible as static limitations while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "property_based_no_packet_eval",
+      "repo_shape": "property_based_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/property-based-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/property-based-limit --base HEAD~1 --format json",
+      "runtime_ms": 399,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "static_limit_kind": "property_based_test",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_pricing.py",
+      "related_test_name": "test_apply_discount_property",
+      "why_not_actionable": "static limit property_based_test prevents bounded repair routing because the related pytest test uses generated inputs whose discriminator coverage cannot be determined statically",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and weak relational oracle but emitted no repair card or agent packet because the Hypothesis-style generated inputs may or may not include the changed discriminator; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: property-based generated inputs stay visible as static limitations while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "unresolved_fixture_no_packet_eval",
+      "repo_shape": "fixture_sourced_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unresolved-fixture-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unresolved-fixture-limit --base HEAD~1 --format json",
+      "runtime_ms": 7700,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "static_limit_kind": "unresolved_pytest_fixture",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_pricing.py",
+      "related_test_name": "test_apply_discount_fixture_case",
+      "why_not_actionable": "static limit unresolved_pytest_fixture prevents bounded repair routing because the related pytest test depends on fixture-sourced input and expected values",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the test obtains the changed discriminator and expected value from a pytest fixture; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records a second fail-closed Python repair-routing shape: fixture-sourced pytest values keep the static limitation visible while excluding the finding from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "generated_file_no_packet_eval",
+      "repo_shape": "generated_python_file",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/generated-file-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/generated-file-limit --base HEAD~1 --format json",
+      "runtime_ms": 4513,
+      "finding_id": "excluded:src/schema_pb2.py:generated_file",
+      "changed_owner": "python:src/schema_pb2.py::<generated>",
+      "static_limit_kind": "generated_file",
+      "classification": "excluded",
+      "stop_reasons": [
+        "generated_file_excluded"
+      ],
+      "related_test_file": "tests/test_schema.py",
+      "related_test_name": "test_status_generated_value",
+      "why_not_actionable": "static limit generated_file prevents bounded repair routing because the changed file is detectable generated Python code",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR excluded the generated src/schema_pb2.py diff before repair routing, so no repair card, agent packet, verify success, or receipt movement is claimed even though a related pytest import exists.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records the generated-code fail-closed side of Python repair routing: detectable generated Python files stay out of repair-card, packet, verify, and receipt success metrics instead of becoming noisy work."
+    },
+    {
+      "id": "unsupported_syntax_no_packet_eval",
+      "repo_shape": "lambda_return_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/unsupported-syntax-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/unsupported-syntax-limit --base HEAD~1 --format json",
+      "runtime_ms": 663,
+      "finding_id": "probe:src_mapper.py:2:python_preview",
+      "changed_owner": "python:src/mapper.py::make_mapper",
+      "static_limit_kind": "unsupported_syntax",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/test_mapper.py",
+      "related_test_name": "test_make_mapper_adds_two",
+      "why_not_actionable": "static limit unsupported_syntax prevents bounded repair routing because the changed lambda-return expression is outside the preview adapter's precise syntax model",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR found the related pytest method and exact oracle but emitted no repair card or agent packet because the changed lambda-return syntax is intentionally outside the preview adapter's safe repair-routing model; no human or agent test-repair task is routed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records another fail-closed Python repair-routing shape: unsupported lambda-return syntax stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    }
+  ],
+  "no_action_cases": [
+    {
+      "id": "no_related_test_no_packet_eval",
+      "repo_shape": "unrelated_pytest_text_mention",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_unrelated_test_mention",
+      "command": "ripr check --root fixtures/python_unrelated_test_mention/input --diff fixtures/python_unrelated_test_mention/diff.patch --format json",
+      "runtime_ms": 7181,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "no_action_kind": "no_related_test",
+      "classification": "no_static_path",
+      "stop_reasons": [
+        "no_related_test"
+      ],
+      "related_test_file": "not_applicable_no_related_test",
+      "related_test_name": "not_applicable_no_related_test",
+      "why_not_actionable": "no_action no_related_test prevents bounded repair routing because no related pytest or unittest test statically calls the changed owner",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports no_static_path for the changed apply_discount return because the only pytest text mention is unrelated; no repair card, agent packet, verify success, or receipt movement is claimed.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: without a statically related test, RIPR keeps the finding visible but does not route a bounded human or agent test-repair task."
+    },
+    {
+      "id": "already_observed_no_packet_eval",
+      "repo_shape": "strong_pytest_oracle",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_strong_oracle",
+      "command": "ripr check --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --format json",
+      "runtime_ms": 327,
+      "finding_id": "probe:src_discount.py:2:python_preview",
+      "changed_owner": "python:src/discount.py::apply_discount",
+      "no_action_kind": "already_observed",
+      "classification": "exposed",
+      "stop_reasons": [
+        "already_observed_strong_oracle"
+      ],
+      "related_test_file": "tests/test_discount.py",
+      "related_test_name": "test_apply_discount_boundary",
+      "why_not_actionable": "no_action already_observed prevents bounded repair routing because the related pytest test already carries an exact-value oracle for the changed behavior",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports exposed for the changed apply_discount predicate because the related pytest boundary assertion already has an exact-value oracle; no repair card, agent packet, verify success, or receipt movement is claimed because there is no missing proof to route.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: when exact current test evidence already observes the changed behavior, RIPR keeps the finding visible but does not route redundant human or agent test-repair work."
+    },
+    {
+      "id": "heuristic_only_no_packet_eval",
+      "repo_shape": "pytest_test_name_similarity",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_related_test_name_similarity",
+      "command": "ripr check --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --format json",
+      "runtime_ms": 361,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "no_action_kind": "heuristic_only",
+      "classification": "weakly_exposed",
+      "stop_reasons": [
+        "heuristic_only_related_test_link"
+      ],
+      "related_test_file": "tests/test_checkout.py",
+      "related_test_name": "test_apply_discount_boundary_case",
+      "why_not_actionable": "no_action heuristic_only prevents bounded repair routing because the related pytest test is linked only by test-name similarity and does not statically call the changed owner",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports weakly_exposed for the changed apply_discount return because only heuristic pytest test-name similarity links the test file; no repair card, agent packet, verify success, or receipt movement is claimed because the relation is not safe enough to route.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: heuristic-only related-test proximity stays visible as weak evidence but does not route bounded human or agent test-repair work."
+    }
+  ]
+}

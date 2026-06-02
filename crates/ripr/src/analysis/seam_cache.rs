@@ -72,6 +72,39 @@ const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// remaining audit budget on full-evidence JSON serialization.
 pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 20_000;
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str =
+    "RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS";
+
+pub(crate) fn compact_classified_seam_cache_store_limit() -> Result<usize, String> {
+    compact_classified_seam_cache_store_limit_from_env(std::env::var(
+        COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV,
+    ))
+}
+
+fn compact_classified_seam_cache_store_limit_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    match value {
+        Ok(value) => parse_compact_classified_seam_cache_store_limit(&value),
+        Err(std::env::VarError::NotPresent) => Ok(COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
+            "{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be valid UTF-8"
+        )),
+    }
+}
+
+fn parse_compact_classified_seam_cache_store_limit(value: &str) -> Result<usize, String> {
+    let trimmed = value.trim();
+    let parsed = trimmed.parse::<usize>().map_err(|err| {
+        format!("{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be a positive integer: {err}")
+    })?;
+    if parsed == 0 {
+        return Err(format!(
+            "{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be a positive integer"
+        ));
+    }
+    Ok(parsed)
+}
 
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.
@@ -294,16 +327,13 @@ impl RepoSeamFactCache {
         self.store_classified_seams_with_limit(key, seams, CLASSIFIED_SEAM_CACHE_STORE_LIMIT)
     }
 
-    pub(crate) fn store_compact_classified_seams(
+    pub(crate) fn store_compact_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
+        store_limit: usize,
     ) -> Result<(), String> {
-        self.store_classified_seams_with_limit(
-            key,
-            seams,
-            COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
-        )
+        self.store_classified_seams_with_limit(key, seams, store_limit)
     }
 
     fn store_classified_seams_with_limit(
@@ -778,6 +808,102 @@ mod tests {
             !cache.entry_path(&key).exists(),
             "skipped cache store should not write a classified seam entry"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn compact_cache_store_limit_defaults_to_100k_when_env_missing() -> Result<(), String> {
+        let limit = compact_classified_seam_cache_store_limit_from_env(Err(
+            std::env::VarError::NotPresent,
+        ))?;
+
+        assert_eq!(limit, COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT);
+        Ok(())
+    }
+
+    #[test]
+    fn compact_cache_store_limit_accepts_positive_env_override() -> Result<(), String> {
+        let limit = compact_classified_seam_cache_store_limit_from_env(Ok("200000".to_string()))?;
+
+        assert_eq!(limit, 200_000);
+        Ok(())
+    }
+
+    #[test]
+    fn compact_cache_store_limit_rejects_invalid_env_override() -> Result<(), String> {
+        for value in ["", "0", "not-a-number"] {
+            let err = match compact_classified_seam_cache_store_limit_from_env(
+                Ok(value.to_string()),
+            ) {
+                Ok(limit) => {
+                    return Err(format!(
+                        "invalid compact cache env value {value:?} should fail, got limit {limit}"
+                    ));
+                }
+                Err(err) => err,
+            };
+            assert!(
+                err.contains(COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV),
+                "diagnostic should name env var for {value:?}: {err}"
+            );
+            assert!(
+                err.contains("positive integer"),
+                "diagnostic should describe expected value for {value:?}: {err}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn compact_cache_store_limit_controls_skip_reason() -> Result<(), String> {
+        let dir = isolated_dir("compact-large-skip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified(); 2];
+
+        let err = match cache.store_compact_classified_seams_with_limit(&key, &seams, 1) {
+            Ok(()) => {
+                return Err("configured compact cache limit should skip oversized entry".into());
+            }
+            Err(err) => err,
+        };
+
+        assert!(
+            err.contains("skipped_large_entry_seams_2_limit_1"),
+            "skip reason should carry configured limit: {err}"
+        );
+        assert!(
+            !cache.entry_path(&key).exists(),
+            "skipped compact cache store should not write an entry"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn compact_cache_store_limit_can_be_raised_for_large_entries() -> Result<(), String> {
+        let dir = isolated_dir("compact-raised-limit");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified(); 2];
+
+        cache
+            .store_compact_classified_seams_with_limit(&key, &seams, 2)
+            .map_err(|err| format!("raised compact cache limit should allow store: {err}"))?;
+
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            other => {
+                return Err(format!(
+                    "expected compact cache hit after raised limit: {other:?}"
+                ));
+            }
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())

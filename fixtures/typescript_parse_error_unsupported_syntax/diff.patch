@@ -1,0 +1,10 @@
+diff --git a/src/broken.ts b/src/broken.ts
+index 0000000..1111111 100644
+--- a/src/broken.ts
++++ b/src/broken.ts
+@@ -1,5 +1,5 @@
+ export function broken(value: number): number {
+-  const next = value + 1;
++  const next = ;
+   return next;
+ }

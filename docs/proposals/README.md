@@ -86,7 +86,10 @@ Start new proposals from
 | [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | accepted | Editor first-run usability |
 | [RIPR-PROP-0009](RIPR-PROP-0009-first-run-ux-adoption-hardening.md) | accepted | First-run UX and adoption hardening |
 | [RIPR-PROP-0010](RIPR-PROP-0010-editor-first-pr-bridge.md) | accepted | Editor first-pr bridge |
-| [RIPR-PROP-0011](RIPR-PROP-0011-start-here-surface-convergence.md) | proposed | Start-here surface convergence |
+| [RIPR-PROP-0011](RIPR-PROP-0011-start-here-surface-convergence.md) | accepted | Start-here surface convergence |
 | [RIPR-PROP-0012](RIPR-PROP-0012-editor-adoption-assurance.md) | accepted | Editor adoption assurance |
 | [RIPR-PROP-0013](RIPR-PROP-0013-editor-actionable-gap-queue.md) | accepted | Editor actionable gap queue |
-| [RIPR-PROP-0014](RIPR-PROP-0014-ripr-swarm-repair-loop.md) | proposed | RIPR swarm repair loop |
+| [RIPR-PROP-0014](RIPR-PROP-0014-ripr-swarm-repair-loop.md) | accepted | RIPR swarm repair loop |
+| [RIPR-PROP-0015](RIPR-PROP-0015-source-of-truth-control-plane.md) | accepted | Source-of-truth control plane |
+| [RIPR-PROP-0016](RIPR-PROP-0016-actionable-surface-translation.md) | accepted | Actionable surface translation |
+| [RIPR-PROP-0017](RIPR-PROP-0017-python-repair-routing-lane.md) | accepted | Python repair routing lane |

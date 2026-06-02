@@ -1,0 +1,75 @@
+name: Policy exception
+description: Request a ledgered exception for CI, lint, file, package, process, network, or no-panic policy.
+title: "policy: "
+labels: ["policy-exception"]
+body:
+  - type: dropdown
+    id: policy_area
+    attributes:
+      label: Policy area
+      options:
+        - CI lane
+        - doc artifacts
+        - package boundary
+        - lint / Clippy
+        - no-panic
+        - file policy
+        - generated artifact
+        - dependency
+        - process/network
+    validations:
+      required: true
+  - type: input
+    id: ledger
+    attributes:
+      label: Policy ledger
+      description: File that should own the exception.
+      placeholder: "policy/no-panic-allowlist.toml"
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Owner
+      description: Person, team, or repo role responsible for review.
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason
+      description: Why is the exception necessary and why is a narrower alternative insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Exact files, commands, workflows, crates, or selectors covered by the exception.
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Proof and guardrail
+      description: What command proves the exception is still bounded?
+      value: |
+        ```bash
+        cargo xtask check-pr
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: review_posture
+    attributes:
+      label: Review posture
+      description: Review date, expiration, removal condition, or reason no expiration applies.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback
+      description: How should the exception be removed safely?
+    validations:
+      required: true

@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_reconcile.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2",
+        "language": "python",
+        "file": "src/reconcile.py",
+        "owner": "reconcile_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount-2"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,20 +29,22 @@
         "delta": "value",
         "file": "src/reconcile.py",
         "line": 2,
-        "expression": "    return amount - 2"
+        "expression": "    return amount - 2",
+        "owner": "python:src/reconcile.py::reconcile_total"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `reconcile_total`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "reach": {"state":"weak","confidence":"low","summary":"1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount - 2`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `reconcile_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_reconcile.py:1 test_reconcile_fixture_contract uses unknown unknown oracle"],
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount - 2 (line 2)", "related test tests/test_reconcile.py:1 test_reconcile_fixture_contract uses unknown unknown oracle"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return amount - 2","line":2}
       ],
-      "evidence": ["owner: reconcile_total", "owner_kind: function", "test_framework: pytest (test_reconcile_fixture_contract)", "related_test_relation: same_stem (test_reconcile_fixture_contract)"],
-      "missing": ["Related Python test reaches `reconcile_total` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: reconcile_total", "owner_kind: function", "test_framework: pytest (test_reconcile_fixture_contract)", "test_verify_command: pytest tests/test_reconcile.py::test_reconcile_fixture_contract (test_reconcile_fixture_contract)", "related_test_relation: same_stem (test_reconcile_fixture_contract)", "related_test_uncertain: same_stem (test_reconcile_fixture_contract)"],
+      "missing": ["Only heuristic Python test links were found for `reconcile_total`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
       "activation": {
         "observed_values": [
         ],
@@ -54,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

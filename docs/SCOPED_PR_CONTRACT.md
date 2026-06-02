@@ -18,6 +18,8 @@ Each work item or PR should define:
 - evidence/support delta
 - single acceptance criterion
 - required commands
+- claim boundary or support-tier impact
+- next recommended PR or explicit no-successor state
 - non-goals
 
 The task should not say "make the analyzer better." It should name one
@@ -44,6 +46,12 @@ Evidence/support delta:
 
 Acceptance:
 <single reviewable claim>
+
+Claim boundary/support-tier impact:
+<what users may believe after this PR, or "none">
+
+Next recommended PR:
+<the next smallest slice, or "none selected">
 
 Required commands:
 cargo xtask shape
@@ -82,6 +90,9 @@ A scoped PR is done when:
 - expected evidence artifacts are present
 - required commands pass or the remaining blocker is documented
 - the PR summary explains reviewer focus
+- claim-boundary and support-tier impact are explicit
+- the next recommended PR is named, or the PR states that no successor is
+  selected
 - non-goals remain out of scope
 
 If the work item cannot be completed cleanly, stop by writing a blocked report

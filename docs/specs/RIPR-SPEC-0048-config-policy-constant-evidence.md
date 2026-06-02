@@ -160,6 +160,55 @@ These categories are Lane 1 maintenance signals. They should not be rendered as
 user failures unless a supported evidence class later turns them into
 actionable canonical gaps.
 
+### Unsupported-Flow Expansion Criteria
+
+Unsupported-flow work must be selected from audit data, then narrowed by
+fixture coverage before analyzer support changes. The next selected expansion
+target is `opaque_config_lookup`.
+
+| Flow | Current state | Expansion rule |
+| --- | --- | --- |
+| `opaque_config_lookup` | Selected next. | May move out of limitation only for a fixture-backed lookup shape that identifies the changed constant, the lookup owner, a supported output/schema/validation sink, and the observer or missing observer for that sink. |
+| generated config or schema output | Limitation. | Remains `macro_generated_config_output` or `config_policy_flow_unknown` until generated output has a fixture-backed source-to-render path and a stable observer shape. |
+| macro output | Limitation. | Remains `macro_generated_config_output` until macro expansion or a fixture-backed macro wrapper gives a stable constant owner and sink without reading generated prose as authority. |
+| dynamic dispatch or registry lookup | Limitation. | Remains `dynamic_config_dispatch` unless the dispatch target is statically resolved by a fixture-backed registry shape and the selected sink is supported. |
+| unsupported cross-file flow | Limitation. | Remains `config_policy_flow_unknown` unless the cross-file edge, sink owner, and observer candidate are fixture-backed and stable across file movement. |
+
+The first implementation slice after this spec should target only the
+`opaque_config_lookup` row. Generated output, macro output, dynamic dispatch,
+and unsupported cross-file flow must stay named static limitations unless a
+later spec or fixture PR selects one of those rows explicitly.
+
+Before analyzer changes, the fixture and benchmark PR must add:
+
+- a positive `opaque_config_lookup` case with a directly supported lookup shape;
+- a must-not-claim `opaque_config_lookup` case where helper or registry naming
+  alone is insufficient;
+- limitation cases for generated config/schema output, macro output, dynamic
+  dispatch, and unsupported cross-file flow;
+- an internal-policy/config metadata guard proving metadata alone remains
+  `internal_only` / `no_action_internal`;
+- expected audit signals for `opaque_config_lookup`,
+  `macro_generated_config_output`, `dynamic_config_dispatch`, and
+  `config_policy_flow_unknown`.
+
+The analyzer implementation PR must record before/after audit or scorecard
+movement:
+
+- `opaque_config_lookup` decreases only for the supported fixture-backed lookup
+  shape;
+- `config_policy_static_limitations` decreases only when the selected case moves
+  to `already_observed`, `actionable`, or `internal_only`;
+- `config_policy_repair_route_coverage` and
+  `config_policy_verify_command_coverage` do not regress;
+- generated, macro, dynamic-dispatch, and unsupported cross-file examples remain
+  named limitations with repair routes;
+- internal metadata does not become user test debt.
+
+If those deltas cannot be shown, the implementation must keep the cases in
+`static_limitation` and report the missing proof instead of widening the
+supported scope.
+
 ## Required Evidence
 
 An implemented config/policy evidence item must carry enough evidence for

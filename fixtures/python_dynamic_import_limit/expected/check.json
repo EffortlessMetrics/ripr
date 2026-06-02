@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_dynamic_import_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_plugin_loader.py:4:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_plugin_loader.py:4:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/plugin_loader.py",
+        "line": 4,
+        "expression": "    return importlib.import_module(module_name).handle(payload, strict=True)",
+        "owner": "python:src/plugin_loader.py::run_plugin"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `run_plugin`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `missing_import_graph` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `run_plugin`", "infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.", "propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.", "related test tests/test_plugin_loader.py:4 test_run_plugin_returns_payload_status uses strong exact value oracle: assert run_plugin(\"plugins.invoice\", {\"id\": \"inv_123\"}) == \"ok\""],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: run_plugin", "owner_kind: function", "static_limit missing_import_graph: changed line uses dynamic import syntax", "test_framework: pytest (test_run_plugin_returns_payload_status)", "test_verify_command: pytest tests/test_plugin_loader.py::test_run_plugin_returns_payload_status (test_run_plugin_returns_payload_status)", "related_test_relation: syntactic_call (test_run_plugin_returns_payload_status)", "test_oracle: exact_value strong (test_run_plugin_returns_payload_status)"],
+      "missing": ["Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_run_plugin_returns_payload_status",
+          "file": "tests/test_plugin_loader.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert run_plugin(\"plugins.invoice\", {\"id\": \"inv_123\"}) == \"ok\""
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "missing_import_graph"
+    }
+  ]
+}

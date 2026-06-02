@@ -9,17 +9,19 @@ repo-root `ripr.toml` file. It pairs with:
 
 ## What can be configured today
 
-`ripr` currently reads configuration from five surfaces:
+`ripr` currently reads configuration from six surfaces:
 
 1. **CLI flags** on the `ripr` binary.
 2. **Repo config** in `ripr.toml` at the workspace root.
 3. **LSP `initializationOptions`** sent by an LSP client (e.g. the VS Code extension) on `initialize`.
 4. **VS Code extension settings** under the `ripr.*` namespace, which the extension translates into server arguments and LSP options.
-5. **Repo policy files** under `.ripr/`, including static-language allowlists,
+5. **Environment variables** for narrow runtime tuning of expensive local paths.
+6. **Repo policy files** under `.ripr/`, including static-language allowlists,
    test intent, and suppressions.
 
 `ripr.toml` is repo-root scoped only. `ripr` does not read global user config,
-environment variables, or hidden alternate config files.
+or hidden alternate config files. Environment variables are process-local tuning
+knobs and are documented separately from repo policy.
 
 Configuration is for policy and tuning, not a prerequisite for first value.
 `ripr.toml` is optional, and missing config is the normal first-run state — it
@@ -46,6 +48,7 @@ need to run it.
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
 | Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
+| Cache | Compact repo seam cache stores up to `100000` seams by default; large repos can opt into a higher process-local limit. |
 | CI | Generated GitHub workflows upload advisory pilot/report/agent artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
 
@@ -130,6 +133,24 @@ Runs the static exposure analysis and renders findings.
 | `--format FORMAT` | `human` | One of `human` (alias `text`), `json`, `github`. |
 | `--json` | _(off)_ | Shortcut for `--format json`. |
 | `--no-unchanged-tests` | `ripr.toml` `analysis.include_unchanged_tests`, otherwise tests included | Limits the source index to changed Rust files. By default unchanged tests are part of the index so `Reach` evidence can find them. |
+
+### Environment Variables
+
+Environment variables are process-local tuning knobs. They do not change
+repo-policy defaults in `ripr.toml`, and they should be set only for the command
+that needs the tuning.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count that the compact repo seam cache may store. Raise this for large repos when the machine has enough disk and time budget for the initial cache write. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+
+The compact repo seam cache skip reason includes the active limit, for example
+`skipped_large_entry_seams_135812_limit_100000`. To opt into caching that repo on
+a machine with enough headroom:
+
+```bash
+RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 ripr check --root . --format repo-badge-json
+```
 
 ### `ripr explain`
 

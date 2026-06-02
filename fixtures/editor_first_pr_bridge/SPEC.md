@@ -24,6 +24,9 @@ Each case pins one visible first-pr bridge state with:
 
 The corpus covers setup-ready, packet missing, repairable, no-action, stale,
 wrong-root, malformed, receipt-improved, and receipt-unchanged states.
+Repairable cases also pin the first screen's changed behavior, current evidence
+strength, missing discriminator, focused proof intent, and static evidence
+boundary so editor copy surfaces cannot drift from `ripr first-pr`.
 
 ## Must Not
 

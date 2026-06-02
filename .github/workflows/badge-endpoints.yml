@@ -16,7 +16,10 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: em-ci-tiny
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-tiny]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -27,10 +30,20 @@ jobs:
           cache-on-failure: true
 
       - name: Refresh badge endpoints
+        id: refresh
+        timeout-minutes: 10
+        continue-on-error: true
+        env:
+          RIPR_REPO_BADGE_ARTIFACT_TIMEOUT_MS: "120000"
         run: cargo xtask badges
 
+      - name: Report skipped badge endpoint PR
+        if: steps.refresh.outcome != 'success'
+        run: printf '%s\n' '## Badge endpoint refresh skipped' '' 'The advisory badge endpoint refresh did not produce a complete endpoint update.' 'No public badge endpoint was refreshed and no public badge count is claimed from this run.' '' 'Rerun `cargo xtask badges` in an explicit badge refresh PR, or provide an existing gap decision ledger, when the machine can afford the analysis.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Open badge refresh PR
-        uses: peter-evans/create-pull-request@v7
+        if: steps.refresh.outcome == 'success'
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
           branch: automation/badge-endpoints
           title: "badge: refresh public endpoints"

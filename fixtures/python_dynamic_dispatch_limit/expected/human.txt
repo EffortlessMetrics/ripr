@@ -2,9 +2,9 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_dynamic_dispatch_limit/input
 
-Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-INFO src/dispatch.py:2
+NOTE src/dispatch.py:2
 
 Changed
   after:      return getattr(client, method_name)()
@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/dispatch.py::call_named
 
 Language
   language: python
@@ -19,19 +20,18 @@ Language
   owner kind: function
 
 Static exposure
-  exposed (info, confidence 0.60)
+  static_unknown (note, confidence 0.20)
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `call_named`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator unknown: Static limit `dynamic_dispatch` prevents a safe Python discriminator claim.
   - related test tests/test_dispatch.py:4 test_call_named_dispatches_total uses strong exact value oracle: assert call_named(client, "total") == 10
 
 Weakness
-  - Related Python test reaches `call_named` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   - Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior.
 
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+Stop reasons:
+  - dynamic_dispatch_unresolved

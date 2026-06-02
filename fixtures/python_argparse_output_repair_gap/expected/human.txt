@@ -1,0 +1,66 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_argparse_output_repair_gap/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/commands.py:8
+
+Changed
+  after:      print("shipment queued")
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  python:src/commands.py::main
+  canonical gap: gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `main`
+  - infection yes: Changed Python call or output effect can alter observable side effects: `print("shipment queued")`
+  - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
+  - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `output contains "shipment queued"`.
+  - local flow reaches call effect: print("shipment queued") (line 8)
+  - related test tests/test_commands.py:4 test_main_smoke uses smoke smoke only oracle: assert captured.out
+
+Weakness
+  - Related Python test reaches `main` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed output/log/call effect.
+  - missing discriminator output contains "shipment queued": changed Python output/log/call effect at line 8 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: main
+  changed behavior: call_or_output_effect changed at src/commands.py:8: `print("shipment queued")`
+  current test evidence: tests/test_commands.py:4 test_main_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert captured.out
+  missing discriminator: output contains "shipment queued"
+  recommended test shape: Strengthen the existing pytest CLI output assertion for `output contains "shipment queued"`.
+  suggested assertion: Assert the CLI output satisfies `output contains "shipment queued"`.
+  suggested file: tests/test_commands.py
+  suggested test: test_main_smoke
+  pytest node: tests/test_commands.py::test_main_smoke
+  verify: pytest tests/test_commands.py::test_main_smoke (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains "shipment queued"`.

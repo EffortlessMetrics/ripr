@@ -1,0 +1,85 @@
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 0000000..1111111 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,6 +1,6 @@
+ export function discountedTotal(amount: number, threshold: number, discount: number): number {
+-    if (amount > threshold) {
+-        return amount - (discount / 2);
++    if (amount >= threshold) {
++        return amount - discount;
+     }
+     return amount;
+ }
+diff --git a/src/errors.ts b/src/errors.ts
+index 0000000..1111111 100644
+--- a/src/errors.ts
++++ b/src/errors.ts
+@@ -1,6 +1,6 @@
+ export function parseToken(token: string): string {
+     if (!token) {
+-        throw new Error("missing token");
++        throw new RangeError("missing token");
+     }
+     return token;
+ }
+diff --git a/src/profile.ts b/src/profile.ts
+index 0000000..1111111 100644
+--- a/src/profile.ts
++++ b/src/profile.ts
+@@ -3,5 +3,5 @@
+ export function updateProfile(profile: Profile, status: string, audit: { record(value: string): void }): Profile {
+-    profile.status = "pending";
+-    audit.record("pending");
++    profile.status = status;
++    audit.record(status);
+     return profile;
+ }
+diff --git a/src/widget.tsx b/src/widget.tsx
+index 0000000..1111111 100644
+--- a/src/widget.tsx
++++ b/src/widget.tsx
+@@ -1,5 +1,5 @@
+ type Props = { label: string; amount: number };
+ 
+ export function PriceBadge({ label, amount }: Props) {
+-    return { status: "pending", label, amount };
++    return { status: "ready", label, amount };
+ }
+diff --git a/src/notify.js b/src/notify.js
+index 0000000..1111111 100644
+--- a/src/notify.js
++++ b/src/notify.js
+@@ -1,3 +1,3 @@
+ export function notify(payload, mockSend) {
+-    mockSend({ payload });
++    mockSend(payload);
+ }
+diff --git a/src/view.jsx b/src/view.jsx
+index 0000000..1111111 100644
+--- a/src/view.jsx
++++ b/src/view.jsx
+@@ -1,4 +1,4 @@
+ export function StatusView(props) {
+-    console.log("status-pending");
++    console.log("status-ready");
+     return <span>{props.status}</span>;
+ }
+diff --git a/src/ambiguous.ts b/src/ambiguous.ts
+index 0000000..1111111 100644
+--- a/src/ambiguous.ts
++++ b/src/ambiguous.ts
+@@ -1,10 +1,10 @@
+ type Handler = (value: number) => void;
+ 
+ export function summarize(amount: number, threshold: number, handlers: Record<string, Handler>, name: string): number {
+-    const total = amount;
+-    handlers[name](amount);
++    const total = applyDiscount(amount, threshold);
++    handlers[name](total);
+     return total;
+ }
+ 
+ function applyDiscount(amount: number, threshold: number): number {
+     return amount >= threshold ? amount - 10 : amount;
+ }

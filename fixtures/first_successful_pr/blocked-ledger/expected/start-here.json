@@ -69,7 +69,8 @@
   "selected": {
     "message": "The gap decision ledger is blocked: read missing.json failed: not found. Refresh the first-run evidence before assigning repair work.",
     "next_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
-    "state": "blocked_artifact"
+    "state": "blocked_artifact",
+    "output_state": "missing_artifacts"
   },
   "status": "blocked",
   "tool": "ripr",

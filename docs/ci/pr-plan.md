@@ -29,8 +29,10 @@ This PR ships:
 - This document.
 
 The job currently emits a structural advisory output (changed-file list,
-ledger-presence check, step-summary placeholder). The forecast logic is
-deferred to the follow-up PR that adds `cargo xtask ci plan`.
+ledger-presence check, step-summary placeholder). It uploads the changed-file
+artifact only on failure or when the PR is labeled `full-ci`, so ordinary PRs
+keep the advisory signal without paying for routine artifact retention. The
+forecast logic is deferred to the follow-up PR that adds `cargo xtask ci plan`.
 
 ## Output schema (target)
 
@@ -74,10 +76,11 @@ Labels documented in `docs/CI.md` (labels section):
 
 - `full-ci` expects release-band forecast; the guard suppresses the
   warning.
-- `release-check` uses the same release-band mapping as `full-ci` and runs
-  release readiness lanes.
-- `ci-budget-ack` records that the author acknowledges elevated forecast (no
-  budget effect).
+- `release-check` uses the release-band mapping and runs the release-surface
+  lanes that are currently wired. Today, that is the legacy Rust package list
+  and publish dry-run proof.
+- `ci-budget-ack` records that the author acknowledges an over-budget forecast
+  at the `large` band (no budget effect).
 
 ## Why advisory first
 

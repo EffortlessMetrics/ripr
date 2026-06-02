@@ -89,7 +89,7 @@ premises against current repo state:
 1. `git fetch origin` and check whether `main` has advanced.
 2. `git status` and `git log --oneline origin/main..HEAD` to see what
    is actually on the working branch.
-3. `cargo xtask check-campaign` and `cargo xtask goals next` to see
+3. `cargo xtask check-goals` and `cargo xtask goals next` to see
    the manifest's current "next item" (which may differ from the
    brief).
 4. `gh pr list` to see open PRs that may already do part of the

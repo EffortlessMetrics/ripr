@@ -104,8 +104,8 @@ framing.
 | 07 | policy(clippy): activate AST slicing and indexing rails | 06 |
 | 08 | testing: add fallible test helpers | 05 |
 | 09 | docs(ci): document current PR Plan and budget path | 00 |
-| 10 | ci(plan): implement numeric LEM PR Plan | 09 |
-| 11 | ci(plan): add advisory PR Plan workflow | 10 |
+| 10 | ci(plan): add structural advisory PR Plan workflow | 09 |
+| 11 | ci(plan): implement numeric LEM PR Plan | 10 |
 | 12 | ci(telemetry): emit CI actuals | 11 |
 | 13 | ci(vscode): route extension lane by extension risk | 00 |
 | 14 | ci(ripr): add self-dogfood advisory lane | 00 |

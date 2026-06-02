@@ -25,8 +25,11 @@ Cost: ~0 LEM (local only, no CI runners).
 
 ### Step 2 — PR Plan (advisory, always runs on PR)
 
-Runs the changed-file → risk-pack → lane → LEM forecast. Emits `ci-plan.json`
-and a step summary. Does not block. Does not comment.
+Current behavior: writes the changed-file list to
+`target/ripr/reports/pr-plan-changes.txt`, checks that the CI economics
+ledgers exist, and writes a step-summary placeholder. It does not block and
+does not comment. The numeric changed-file → risk-pack → lane → LEM forecast
+and `target/ci/ci-plan.json` output are target behavior for a follow-up PR.
 
 Cost: 1–2 LEM.
 
@@ -51,15 +54,17 @@ Cost: ~8–18 LEM for a typical Rust PR.
 - Test Analytics baseline delta.
 - SARIF upload.
 
-Cost: variable, captured in `ci-actuals.json`.
+Cost: variable. Target behavior captures observed cost in `ci-actuals.json`.
+Current behavior: advisory lanes run, but per-lane `target/ci/ci-actuals.json`
+emission is not implemented yet.
 
 ### Step 5 — On-demand / release (label or main only)
 
 - `cargo package -p ripr --list`
 - `cargo publish -p ripr --dry-run`
-- VSIX packaging and e2e.
-- Release readiness checks.
-- Server archive checks.
+- VSIX packaging and e2e when the relevant workflow lane is wired.
+- Release readiness checks when the relevant workflow lane is wired.
+- Server archive checks when the relevant workflow lane is wired.
 
 Triggered by: `full-ci`, `release-check`, push to `main`, manual dispatch.
 
@@ -76,19 +81,28 @@ See `docs/ci/ripr-soft-gate.md` for trigger criteria and acknowledgement rules.
 ## VS Code lane
 
 The VS Code e2e lane runs at step 5 posture even though it is not release
-proof. It runs when:
+proof.
+
+Current behavior: the legacy VS Code CI job runs on pushes to `main` or
+`master`, manual dispatches, and pull requests labeled `full-ci`. It is not yet
+path-gated and is not wired to the `vscode` label.
+
+Target behavior: it runs when:
 
 - `editors/vscode/**` changed, or
 - `vscode` or `full-ci` label is applied, or
 - push to `main`.
 
-It does not run for unrelated Rust analysis changes. This keeps the typical
-Rust PR away from Node setup, `xvfb`, and browser e2e overhead.
+In the target model, it does not run for unrelated Rust analysis changes. This
+keeps the typical Rust PR away from Node setup, `xvfb`, and browser e2e
+overhead.
 
 ## Reading the LEM column
 
-Every lane job emits a `ci-actuals.json` record so the forecast can be compared
-against observed cost. Once history accumulates, the PR Plan planner replaces
-static base-LEM estimates with learned p50 actuals.
+Target behavior: every lane job emits a `ci-actuals.json` record so the
+forecast can be compared against observed cost. Once history accumulates, the
+PR Plan planner replaces static base-LEM estimates with learned p50 actuals.
+Today, `ci-actuals.json` is still planned; use
+[`current-state.md`](current-state.md) for the implementation status.
 
 See `docs/ci/lem-budgeting.md` for the LEM definition and band table.

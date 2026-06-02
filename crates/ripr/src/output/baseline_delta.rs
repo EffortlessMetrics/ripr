@@ -417,26 +417,12 @@ pub(crate) fn baseline_delta_item_count(report: &BaselineDeltaReport) -> usize {
 }
 
 fn parse_baseline_records(path: &str, json_text: Result<String, String>) -> BaselineParse {
-    let text = match json_text {
-        Ok(text) => text,
-        Err(error) => {
-            return BaselineParse {
-                unavailable: true,
-                warnings: vec![format!(
-                    "required baseline input {path} is invalid: {error}"
-                )],
-                ..BaselineParse::default()
-            };
-        }
-    };
-    let value = match serde_json::from_str::<Value>(&text) {
+    let value = match parse_required_json_input(path, "baseline", json_text) {
         Ok(value) => value,
-        Err(error) => {
+        Err(warning) => {
             return BaselineParse {
                 unavailable: true,
-                warnings: vec![format!(
-                    "required baseline input {path} is invalid: {error}"
-                )],
+                warnings: vec![warning],
                 ..BaselineParse::default()
             };
         }
@@ -488,26 +474,12 @@ fn parse_baseline_records(path: &str, json_text: Result<String, String>) -> Base
 }
 
 fn parse_current_decisions(path: &str, json_text: Result<String, String>) -> CurrentParse {
-    let text = match json_text {
-        Ok(text) => text,
-        Err(error) => {
-            return CurrentParse {
-                unavailable: true,
-                warnings: vec![format!(
-                    "required current gate-decision input {path} is invalid: {error}"
-                )],
-                ..CurrentParse::default()
-            };
-        }
-    };
-    let value = match serde_json::from_str::<Value>(&text) {
+    let value = match parse_required_json_input(path, "current gate-decision", json_text) {
         Ok(value) => value,
-        Err(error) => {
+        Err(warning) => {
             return CurrentParse {
                 unavailable: true,
-                warnings: vec![format!(
-                    "required current gate-decision input {path} is invalid: {error}"
-                )],
+                warnings: vec![warning],
                 ..CurrentParse::default()
             };
         }
@@ -539,6 +511,17 @@ fn parse_current_decisions(path: &str, json_text: Result<String, String>) -> Cur
         warnings: Vec::new(),
         unavailable: false,
     }
+}
+
+fn parse_required_json_input(
+    path: &str,
+    input_name: &str,
+    json_text: Result<String, String>,
+) -> Result<Value, String> {
+    let text = json_text
+        .map_err(|error| format!("required {input_name} input {path} is invalid: {error}"))?;
+    serde_json::from_str::<Value>(&text)
+        .map_err(|error| format!("required {input_name} input {path} is invalid: {error}"))
 }
 
 fn baseline_record_from_value(value: &Value) -> Option<BaselineRecord> {

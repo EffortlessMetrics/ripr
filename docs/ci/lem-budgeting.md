@@ -15,27 +15,31 @@ proof.
 
 | Band | LEM range | Meaning |
 | --- | ---: | --- |
-| Pennies | 0–12 | Docs, metadata, light policy checks. |
-| Default | 13–35 | Ordinary Rust PR. |
-| Elevated | 36–75 | Risk-expanded PR (multi-surface, broad evidence). |
-| High | 76–125 | Explicitly expensive PR. |
-| Over ceiling | >125 | Requires override label. |
+| `small` | 0-5 | Docs, policy metadata, or focused code checks. |
+| `medium` | 6-20 | Ordinary product PR with Rust and policy gates. |
+| `large` | 21-60 | Multi-surface PR, extension checks, or broad evidence. |
+| `release` | 61+ | Explicit `release-check` or `full-ci` proof. |
 
 Target: ordinary PRs well below $0.50. $1/PR is a hard ceiling, not the design
 center.
 
-The bands above are the **planning vocabulary**. The `policy/ci-budget.toml`
-file defines the currently-active enforcement posture per band. Until enforcement
-is set to anything other than `advisory`, no band triggers a blocking failure.
+The bands above mirror `policy/ci-budget.toml`, which is the machine-readable
+ledger and enforcement authority. Today `policy_state = "advisory-ledger"` and
+`enforcement = "none"`, so no band triggers a blocking failure.
 
 ## LEM estimation
 
-At the time of this document, LEM is estimated statically by the PR Plan
-workflow from the risk-pack / lane mapping in:
+Target behavior: LEM is estimated statically by the PR Plan workflow from the
+risk-pack / lane mapping in:
 
 - `policy/ci-risk-packs.toml` — changed-path → risk-pack mapping
 - `policy/ci-lane-whitelist.toml` — risk-pack → lane mapping with base LEM
 - `policy/ci-budget.toml` — budget band thresholds and enforcement policy
+
+Current behavior: the PR Plan workflow is structural advisory only. It writes
+the changed-file list and ledger-presence summary, but it does not yet emit a
+numeric LEM forecast or `target/ci/ci-plan.json`; see
+[`pr-plan.md`](pr-plan.md) and [`current-state.md`](current-state.md).
 
 Once `ci-actuals.json` data exists, the planner reads observed lane history and
 replaces the static base LEM with learned estimates:

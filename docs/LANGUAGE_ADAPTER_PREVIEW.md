@@ -13,7 +13,7 @@ typechecker or test runner, and they do not make generated CI blocking.
 | --- | --- | --- | --- |
 | Rust | reference path | enabled | Rust static exposure evidence and the existing CLI, CI, editor, report, and gate surfaces. |
 | TypeScript and JavaScript | preview | disabled | Syntax-first owners, tests, assertions, probes, related tests, and visible static limits for `.ts`, `.tsx`, `.js`, and `.jsx`. |
-| Python | preview | disabled | Syntax-first owners, tests, assertions, probes, related tests, and visible static limits for `.py`. |
+| Python | preview static facts; scoped repair routing is `usable alpha` | detected Python projects without `ripr.toml`; otherwise disabled unless configured | Syntax-first owners, tests, assertions, probes, related tests, RIPR-stage evidence, selected repair-class missing discriminators, fail-closed static limits, and bounded repair cards/packets for selected pytest/unittest routes. |
 
 The preview adapters feed the same output schema and review surfaces as Rust.
 Preview findings carry additive metadata such as `language`,
@@ -22,7 +22,8 @@ populate them.
 
 ## Enable Preview Adapters
 
-Add preview languages to the repo-root `ripr.toml`:
+Add preview languages to the repo-root `ripr.toml` when you want explicit
+control:
 
 ```toml
 [languages]
@@ -57,7 +58,19 @@ ripr doctor --root .
 ```
 
 `doctor` should show the loaded config and enabled languages. Missing
-`ripr.toml` remains healthy and means the built-in Rust-only default is active.
+`ripr.toml` remains healthy. With no Python project markers, the built-in
+Rust-only default is active. With Python project markers such as
+`pyproject.toml`, `setup.py`, `requirements.txt`, `pytest.ini`, `tox.ini`,
+`noxfile.py`, or Python files under `src/` or `tests/`, `ripr` enables Python
+preview analysis for that repository root.
+
+An explicit `ripr.toml` remains authoritative. To keep Python preview disabled
+in a Python-shaped repo, add:
+
+```toml
+[languages]
+enabled = ["rust"]
+```
 
 ## Run The Local Preview Loop
 
@@ -80,6 +93,20 @@ Read preview findings as syntax-first advisory evidence:
 - `language_status = "preview"` means the finding is opt-in and advisory.
 - `owner_kind` explains the syntactic owner shape when known.
 - `static_limit_kind` names a known static limitation instead of hiding it.
+- Python `missing_discriminators` are syntax-derived preview repair evidence
+  only. Direct weak findings may name boundary, return, exception, field, or
+  output/log/call-effect discriminators; heuristic, no-path, and static-limit
+  findings do not become safe repair work.
+- Detectable generated Python files such as `*_pb2.py`, `*_pb2_grpc.py`,
+  `*.generated.py`, `*_generated.py`, and `generated_*.py` are excluded from
+  preview diff analysis instead of being routed as repairable behavior changes.
+
+Python repair routing has a separate scoped `usable alpha` support-tier row for
+selected pytest/unittest workflows. That row covers direct weak findings that
+carry a canonical gap, missing discriminator, suggested test target, verify
+command, stop conditions, bounded agent packet, and before/after receipt. It
+does not promote broader Python static facts, static limits, generated CI,
+gates, badges, baselines, or RIPR Zero.
 
 The exposure class still uses RIPR's normal conservative vocabulary:
 `exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,
@@ -97,8 +124,11 @@ interpretation guide and integration rules.
 | `dynamic_dispatch` | The call target is selected dynamically, such as computed member calls (`obj[name]` followed by invocation) or `getattr(obj, name)(...)`. |
 | `metaprogramming` | The code shape can change behavior through metaprogramming, such as decorators, proxies, or metaclasses. |
 | `missing_import_graph` | The adapter did not resolve a full project import graph. |
-| `decorator_indirection` | A Python decorator may change the callable boundary. |
+| `decorator_indirection` | A Python decorator may change the callable boundary. Simple route decorators such as `@api.post(...)` can still be treated as static route metadata when the changed body has a supported repair shape. |
 | `mocked_module` | A test replaces or mocks the module or symbol under review. |
+| `opaque_custom_assertion_helper` | A Python test uses a custom assertion helper whose body is not inspected. |
+| `property_based_test` | A Python test uses generated inputs, such as Hypothesis `@given(...)`, whose concrete cases are not known statically. |
+| `unresolved_pytest_fixture` | A Python pytest test depends on fixture-sourced values whose concrete inputs or expected values are not known statically. |
 | `unsupported_syntax` | The parser or preview adapter found syntax outside the current preview contract. |
 
 A static limit does not automatically erase a useful related test or strong
@@ -114,10 +144,28 @@ In human output, preview language/status and static-limit lines appear before
 the evidence narrative. In review artifacts, preview evidence remains advisory
 unless a later policy explicitly promotes it.
 
+Promotion requires a policy-owned preview promotion packet, not just adapter
+routing. The scoped Python repair-routing support-tier review is limited to
+selected pytest/unittest repair work and keeps broader Python facts advisory.
+Future promotion beyond that scope still requires fixture matrix coverage,
+dogfood receipts, related-test accuracy review, static-limit taxonomy coverage,
+false-positive review, false repair packet review, surface consistency, and
+policy-owner signoff. JavaScript evidence shares the TypeScript-family adapter,
+but it stays JavaScript preview evidence unless a later packet explicitly names
+that scope.
+
 Useful references:
 
 - [Output schema](OUTPUT_SCHEMA.md) for field contracts.
 - [Support tiers](status/SUPPORT_TIERS.md) for maturity and trust boundaries.
+- [Python repair routing proposal](proposals/RIPR-PROP-0017-python-repair-routing-lane.md)
+  for the end-state repair-card and receipt loop and its scoped `usable alpha`
+  support-tier boundary.
+- [Python repair routing usable-alpha closeout](handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md)
+  for the proof and remaining limits behind the scoped support-tier row.
+- [Preview promotion criteria](policy/PREVIEW_PROMOTION_CRITERIA.md) for the
+  proof required before a preview language/class can be reviewed for stronger
+  status.
 - [Capability matrix](CAPABILITY_MATRIX.md) for proof artifacts.
 - [Language adapter preview dogfood receipts](handoffs/2026-05-13-language-adapter-preview-receipts.md)
   for the checked TypeScript/Python preview receipt cases.
@@ -127,9 +175,10 @@ Useful references:
 ## Editor Workflow
 
 The VS Code extension can activate on TypeScript, TSX, JavaScript, JSX, and
-Python files, but analysis still follows repo configuration. If the repo does
-not enable a preview language in `[languages]`, that language should not produce
-preview diagnostics.
+Python files, but analysis still follows repo language selection. TypeScript
+and JavaScript require `[languages]`; Python may be selected by project
+detection when `ripr.toml` is absent. If an explicit repo config does not enable
+a preview language, that language should not produce preview diagnostics.
 
 When preview diagnostics appear:
 
@@ -158,8 +207,14 @@ ripr init --ci github
 
 Generated CI remains advisory by default. When `ripr doctor` reports configured
 preview languages, the job summary adds a `Language preview grouping` section
-for TypeScript and Python evidence. Rust-only configuration keeps that section
-hidden at runtime.
+for TypeScript, JavaScript, and Python evidence. Rust-only configuration keeps
+that section hidden at runtime.
+
+When TypeScript preview is configured, the summary treats TypeScript-family
+adapter output as separately labeled `typescript` and `javascript` preview
+groups. Each group reports advisory artifact counts, preview-status counts,
+static-limit context, actionability state/category counts,
+repair-packet-ready counts, and `gate_impact = none`.
 
 The generated summary may group and summarize preview artifacts, but pass/fail
 authority remains with explicit gate-decision artifacts when a repository has

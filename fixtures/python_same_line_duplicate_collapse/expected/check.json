@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_same_line_duplicate_collapse/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_checkout.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/checkout.py:checkout_payload:field_value:field_construction:return_status_paid_event_receipt.sent_id_order_id",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/checkout.py:checkout_payload:field_value:field_construction:return_status_paid_event_receipt.sent_id_order_id",
+        "language": "python",
+        "file": "src/checkout.py",
+        "owner": "checkout_payload",
+        "behavior_kind": "field_value",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "return_status_paid_event_receipt.sent_id_order_id"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_checkout.py:2:python_preview",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "src/checkout.py",
+        "line": 2,
+        "expression": "    return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}",
+        "owner": "python:src/checkout.py::checkout_payload"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `checkout_payload`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python field or attribute construction can alter object state: `return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `status == \"paid\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `checkout_payload`", "infection yes: Changed Python field or attribute construction can alter object state: `return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}`", "propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `status == \"paid\"`.", "local flow reaches constructed field: return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id} (line 2)", "related test tests/test_checkout.py:4 test_checkout_payload_smoke uses smoke smoke only oracle: assert payload", "missing discriminator status == \"paid\": changed Python field/object value at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}","line":2}
+      ],
+      "evidence": ["owner: checkout_payload", "owner_kind: function", "missing_discriminator: status == \"paid\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checkout.py", "suggested_test_name: test_checkout_payload_smoke", "suggested_test_node_id: tests/test_checkout.py::test_checkout_payload_smoke", "suggested_verify_command: pytest tests/test_checkout.py::test_checkout_payload_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checkout_payload_smoke)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_payload_smoke (test_checkout_payload_smoke)", "related_test_relation: syntactic_call (test_checkout_payload_smoke)", "test_oracle: smoke_only smoke (test_checkout_payload_smoke)", "test_oracle_shape: broad_smoke_assertion (test_checkout_payload_smoke)"],
+      "missing": ["Related Python test reaches `checkout_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "status == \"paid\"",
+            "reason": "changed Python field/object value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"struct_field","text":"return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "status == \"paid\"",
+          "reason": "changed Python field/object value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"struct_field","text":"return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}","line":2}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_checkout_payload_smoke",
+          "file": "tests/test_checkout.py",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert payload"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_checkout.py",
+        "suggested_test_name": "test_checkout_payload_smoke",
+        "suggested_test_node_id": "tests/test_checkout.py::test_checkout_payload_smoke",
+        "verify_command": "pytest tests/test_checkout.py::test_checkout_payload_smoke",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/checkout.py:checkout_payload:field_value:field_construction:return_status_paid_event_receipt.sent_id_order_id",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "checkout_payload",
+        "changed_behavior": "field_value changed at src/checkout.py:2: `return {\"status\": \"paid\", \"event\": \"receipt.sent\", \"id\": order_id}`",
+        "current_test_evidence": "tests/test_checkout.py:4 test_checkout_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload",
+        "missing_discriminator": "status == \"paid\"",
+        "recommended_test_shape": "Strengthen the existing pytest returned mapping field assertion for `status == \"paid\"`.",
+        "suggested_assertion": "Assert the returned mapping field directly, e.g. `assert result[\"status\"] == \"paid\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_checkout.py",
+          "test_name": "test_checkout_payload_smoke",
+          "pytest_node_id": "tests/test_checkout.py::test_checkout_payload_smoke"
+         },
+        "verify": {
+          "command": "pytest tests/test_checkout.py::test_checkout_payload_smoke",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

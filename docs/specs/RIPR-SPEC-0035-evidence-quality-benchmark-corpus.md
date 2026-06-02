@@ -58,6 +58,7 @@ The benchmark corpus must include fixture classes for:
 - side-effect observer;
 - snapshot discriminator;
 - mock expectation;
+- call-presence assertion affinity;
 - runtime-only signal;
 - ambiguous runtime join.
 
@@ -154,6 +155,11 @@ mutation-testing work.
 Given a snapshot oracle with a known discriminating field, the benchmark
 distinguishes field-specific observation from broad snapshot output.
 
+Given a call-presence seam whose call expression shares only a generic argument
+or local token with an unrelated assertion, the benchmark expects no
+assertion-target affinity. Specific call target tokens remain eligible for
+affinity.
+
 ## Test Mapping
 
 - `xtask::tests::evidence_quality_benchmark_corpus_is_valid` validates the
@@ -178,6 +184,109 @@ distinguishes field-specific observation from broad snapshot output.
 - `test_grip_evidence::tests::given_full_evidence_when_owner_call_with_opaque_args_reaches_return_seam_then_activation_is_yes`
   pins value-insensitive owner-call activation without synthetic observed
   values.
+- `test_grip_evidence::tests::given_call_presence_when_direct_owner_call_has_mock_expectation_then_activation_is_yes`
+  pins fixture-backed call-presence activation for a direct owner call plus an
+  explicit mock expectation without synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_only_generic_argument_token_then_no_affinity`
+  pins the negative guard for generic call argument, field, common method,
+  enum-field, and match-arm tokens such as `path`, `description`, `is_empty`,
+  `variant`, and `arm`, plus argument/context tokens such as `source`,
+  `current_owner`, and `out` from full call expressions.
+- `test_grip_evidence::tests::given_call_presence_when_assertion_mentions_short_specific_call_target_then_affinity_remains`
+  pins that specific call targets remain eligible for assertion-target
+  affinity as medium-confidence relation evidence without satisfying activation
+  by themselves. The benchmark records this as
+  `activation_owner_call_absent_call_presence_target_affinity` routed to
+  `analysis/call-presence-target-affinity-owner-call-tracing`, not as public
+  test debt.
+- `test_grip_evidence::tests::given_value_insensitive_seam_when_only_affinity_related_then_activation_names_owner_call_limitation`
+  pins the same assertion-target affinity limitation route for value-insensitive
+  seams: relation evidence alone stays non-actionable and routes to
+  `analysis/assertion-target-affinity-owner-call-tracing`. Comment or string
+  mentions of `owner_name(` do not count as owner-call activation.
+- `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_calls_owner_then_value_insensitive_activation_is_yes`
+  pins same-file one-hop helper owner-call activation for value-insensitive
+  seams without synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_directly_calls_owner_then_activation_is_yes`
+  pins the `call_presence` same-file direct-wrapper activation sub-shape without
+  synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_integration_test_calls_production_wrapper_then_activation_is_yes`
+  pins the `call_presence` production-wrapper activation sub-shape: an
+  integration test can call an unambiguous production one-hop wrapper that
+  directly calls the owner without inventing synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_integration_test_calls_two_hop_production_wrapper_then_activation_is_yes`
+  pins the bounded production call-graph sub-shape: an integration test can
+  call an unambiguous production wrapper that routes through one same-file
+  helper before the owner, without inventing synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_two_hop_production_wrapper_reaches_multiple_owners_then_activation_stays_unknown`
+  pins the mixed-owner graph guard: a production wrapper graph that reaches
+  multiple supported owners stays a static owner-call limitation rather than
+  becoming helper-owner-call activation.
+- `test_grip_evidence::tests::given_call_presence_when_production_wrapper_calls_same_owner_multiple_times_then_activation_is_yes`
+  pins command-builder style production-wrapper activation: a wrapper may call
+  the same specific owner helper more than once and still activate a
+  value-insensitive seam without inventing synthetic observed values.
+- `test_grip_evidence::tests::given_call_presence_when_production_wrapper_calls_multiple_owners_then_activation_stays_unknown`
+  pins the mixed-owner guard: production wrappers that call more than one
+  supported owner helper do not become helper-owner-call activation.
+- `test_grip_evidence::tests::given_call_presence_when_production_wrapper_name_is_ambiguous_then_activation_stays_unknown`
+  pins the production-wrapper ambiguity guard: duplicate production helper
+  names with different owner-call targets do not become helper-owner-call
+  activation.
+- `test_grip_evidence::tests::given_call_presence_when_module_qualified_ambiguous_production_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_module_qualified_wrapper_asserts_other_target_then_activation_stays_unknown`
+  pin the qualified-wrapper exception: an explicit `module::wrapper(...)`
+  call can disambiguate duplicate production wrapper names for value-insensitive
+  `call_presence` target-affinity activation, but only when the related
+  assertion mentions the matching call target and no activation values are
+  invented.
+- `test_grip_evidence::tests::given_call_presence_when_aliased_module_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_bare_aliased_module_wrapper_has_target_affinity_then_activation_stays_unknown`
+  pin the module-alias form of the qualified-wrapper exception: only a
+  crate-local module alias such as `use crate::module as alias` can resolve
+  `alias::wrapper(...)`; bare or external aliases stay limited even when the
+  assertion mentions the matching call target.
+- `test_grip_evidence::tests::given_call_presence_when_direct_imported_wrapper_has_target_affinity_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_external_direct_import_matches_local_owner_name_then_activation_stays_unknown`
+  pin directly imported owner calls inside production wrappers: an explicit
+  crate-local `use crate::module::{owner as alias}` can establish a
+  wrapper-to-owner call only when the import path resolves to an indexed module,
+  the imported owner name is unambiguous, and the assertion mentions the
+  matching call target. External imports and ambiguous imported owner names stay
+  limited.
+- `test_grip_evidence::tests::given_call_presence_when_unit_test_calls_same_file_target_affinity_wrapper_then_activation_is_yes`
+  and `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_target_affinity_wrapper_then_activation_stays_unknown`
+  pin the same-source-file unit-test exception: a call that resolves to a
+  production wrapper imported from the parent module can use production wrapper
+  target affinity, while an unqualified test-local helper shadow does not
+  inherit that production relation.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_helper_shadows_production_wrapper_then_activation_stays_unknown`
+  pins that a test-local helper with the same name as a production wrapper does
+  not inherit the production wrapper's owner-call relation.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_err_then_activation_is_yes`
+  pins that `Err(owner(...))` is a safe one-hop helper constructor for
+  value-insensitive `call_presence` activation when the helper directly calls
+  the owner. The related assertion may still mention the call target, but
+  assertion-target affinity alone remains non-actionable without the helper
+  owner-call proof.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes`
+  pins a bounded post-owner borrow chain: `owner(...).as_ref().unwrap().clone()`
+  can satisfy value-insensitive `call_presence` activation because the helper
+  directly evaluates the owner call, while arbitrary post-owner methods remain
+  limited.
+- `test_grip_evidence::tests::given_full_evidence_when_one_hop_helper_does_not_call_owner_then_activation_stays_unknown`
+  pins the helper-name-only must-not-claim guard as
+  `activation_owner_call_absent_same_file_only` routed to
+  `analysis/same-file-owner-call-tracing`.
+- `test_grip_evidence::tests::given_full_evidence_when_generic_helper_name_mentions_owner_then_activation_stays_unknown`
+  pins the generic-owner helper guard for names such as `parse`.
+- `test_grip_evidence::tests::given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown`
+  pins that wrapper names cannot activate `call_presence` when the wrapper body
+  skips the owner.
+- `test_grip_evidence::tests::given_call_presence_when_test_local_two_hop_helper_calls_owner_then_activation_is_yes`
+  pins the bounded test-local helper graph sub-shape: a test-local helper can
+  route through one same-file helper before the owner for value-insensitive
+  `call_presence` activation, without inventing synthetic observed values.
 
 ## Implementation Mapping
 

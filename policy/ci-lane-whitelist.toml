@@ -25,6 +25,10 @@ paths = ["target/ripr/reports/operator-cockpit.json", "target/ripr/reports/opera
 id = "release-readiness"
 paths = ["target/package/", "editors/vscode/dist/*.vsix", "dist/ripr-server-*", "dist/ripr-server-manifest-*.json"]
 
+[[artifact_family]]
+id = "public-badge-endpoints"
+paths = ["badges/*.json", "target/ripr/reports/repo-ripr-badge*.json", "target/ripr/reports/repo-ripr-badges.md"]
+
 [[lane]]
 id = "docs"
 posture = "required"
@@ -44,6 +48,16 @@ commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo
 estimated_lem = 12
 artifact_families = []
 description = "Primary Rust merge-safety lane."
+
+[[lane]]
+id = "routed-rust-small"
+posture = "required"
+workflow = ".github/workflows/routed-rust.yml"
+jobs = ["Ripr Rust Small Result"]
+commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace", "cargo xtask check-static-language", "cargo xtask check-no-panic-family", "cargo xtask check-allow-attributes", "cargo xtask check-local-context", "cargo xtask check-file-policy", "cargo xtask check-executable-files", "cargo xtask check-workflows", "cargo xtask check-droid-review-config", "cargo xtask check-spec-format", "cargo xtask check-spec-numbering", "cargo xtask check-fixture-contracts", "cargo xtask check-generated", "cargo xtask check-badge-diff-policy", "cargo xtask check-generated-clean", "cargo xtask check-dependencies", "cargo xtask check-process-policy", "cargo xtask check-network-policy"]
+estimated_lem = 12
+artifact_families = ["ripr-evidence"]
+description = "Swarm Rust Small result gate routed through CX53, CX43, or GitHub-hosted fallback."
 
 [[lane]]
 id = "msrv"
@@ -94,6 +108,26 @@ commands = ["cargo xtask check-spec-format", "cargo xtask check-traceability", "
 estimated_lem = 3
 artifact_families = []
 description = "Spec, campaign, capability, and traceability checks."
+
+[[lane]]
+id = "source-of-truth"
+posture = "advisory"
+workflow = ".github/workflows/source-of-truth.yml"
+jobs = ["source-of-truth"]
+commands = ["cargo xtask check-doc-artifacts", "cargo xtask check-goals", "cargo xtask check-support-tiers"]
+estimated_lem = 3
+artifact_families = []
+description = "Proof-stack artifact, active goal, and support-tier claim map checks."
+
+[[lane]]
+id = "badge-endpoints"
+posture = "advisory"
+workflow = ".github/workflows/badge-endpoints.yml"
+jobs = ["refresh"]
+commands = ["cargo xtask badges"]
+estimated_lem = 5
+artifact_families = ["public-badge-endpoints"]
+description = "Generated public badge endpoint refresh, bounded so stale badge generation does not occupy main CI indefinitely."
 
 [[lane]]
 id = "vscode-compile"

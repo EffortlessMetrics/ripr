@@ -68,7 +68,7 @@ If any of those is false, the gate stays green.
 | ---------------------- | ------------------------------------------------------------- |
 | `ripr-waive`           | Acknowledge the finding for this PR. Reviewer must comment.   |
 | `full-ci`              | Run all advisory lanes; demotes `ripr-waive` requirement.     |
-| `ci-budget-ack`        | Acknowledge elevated forecast (does not waive `ripr` itself). |
+| `ci-budget-ack`        | Acknowledge an over-budget forecast at the `large` band (does not waive `ripr` itself). |
 
 Per the doctrine, `ripr-waive` is intentionally noisy in PR summaries so
 reviewers can see when it has been used.

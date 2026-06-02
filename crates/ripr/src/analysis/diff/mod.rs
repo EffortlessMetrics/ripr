@@ -1,6 +1,7 @@
 mod load;
 mod model;
 mod parse;
+mod path;
 
 pub use load::load_diff;
 #[allow(

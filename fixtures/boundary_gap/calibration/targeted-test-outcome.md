@@ -6,23 +6,6 @@ Inputs:
 - before: `fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json`
 - after: `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json`
 
-## Reviewer Receipt
-
-- What changed: Compared `fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json` to `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json`: 0 moved, 1 unchanged, 0 regressed, 0 new, 0 removed.
-- What RIPR flagged before: `67fc764ba37d77bd` at src/lib.rs:2 was `weakly_gripped` before verification.
-- Focused proof observed: The after snapshot shows static evidence movement such as `new observed value: 100`; any test or output proof was added outside RIPR.
-- Static movement: 1 seam(s) stayed in the same static class while rendered evidence changed.
-- What remains weak or unknown:
-  - 1 seam(s) stayed unchanged after the supplied after snapshot.
-- Reviewer should believe:
-  - RIPR compared the two supplied static repo-exposure artifacts.
-  - 1 seam(s) stayed in the same static class while rendered evidence changed.
-  - Evidence deltas describe static movement in rendered artifacts only.
-- Reviewer should not believe:
-  - RIPR did not edit source or generate tests.
-  - This receipt is not runtime confirmation or mutation confirmation.
-  - This receipt is not merge approval, gate authority, or coverage completeness.
-
 ## Summary
 
 | Bucket | Count |
@@ -56,7 +39,7 @@ None.
 
 ## Unchanged
 
-- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> weakly_gripped (unchanged)
+- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> weakly_gripped (unchanged; gap unchanged)
   - new observed value: 100
   - related test count increased by 1
 
@@ -71,5 +54,50 @@ None.
 ## Removed
 
 None.
+
+## Review Receipt
+
+### What changed?
+
+- Compared before snapshot fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json with after snapshot fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
+- Static seam movement: 0 moved, 1 unchanged, 0 regressed, 0 new, 0 removed.
+
+### What RIPR flagged before?
+
+- weakly_gripped before predicate_boundary at src/lib.rs:2.
+
+### What focused proof changed?
+
+- predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: new observed value: 100; related test count increased by 1.
+
+### What moved after verification?
+
+- 0 improved, 0 changed without ranking higher, 0 regressed, 1 unchanged.
+- predicate_boundary at src/lib.rs:2 kept weakly_gripped but evidence changed: new observed value: 100; related test count increased by 1.
+
+### What remains weak or unknown?
+
+- predicate_boundary remains weakly_gripped at src/lib.rs:2.
+
+### Reviewer should inspect
+
+- Open the compared artifacts: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
+- Inspect the focused test or output proof corresponding to each listed evidence delta.
+- Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete.
+
+### Reviewer may believe
+
+- RIPR compared only the listed static snapshots: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
+- The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR.
+- The movement and remaining-weak sections define the static claim boundary for this receipt.
+
+### Reviewer should not believe
+
+- Runtime mutation result.
+- Coverage adequacy.
+- General correctness.
+- Merge approval.
+- That RIPR edited source or generated tests.
+
 
 This report compares two static repo-exposure snapshots. It is advisory and does not run mutation testing.

@@ -211,6 +211,18 @@ Lane 1-owned states:
 | `static_limitation` | RIPR cannot make the stronger claim because a named static limitation blocks it. |
 | `unknown` | RIPR lacks enough evidence to classify actionability or limitation precisely. |
 
+`actionable` means the canonical item has a concrete user repair. Supported
+classes must provide a normalized top-level structured `repair_route` with
+`repair_kind`, `target_test_type`, and `suggested_assertion`; class-local prose
+or repair metadata alone is supporting context, not repair-route coverage.
+Already-observed, internal-only, static-limitation, and unknown states must not
+fake user repair routes.
+
+Supported classes should attach a concrete `verify_command` to actionable
+canonical items when a safe command is known. Empty, `unknown`, and
+`verify_command_unknown` are explicit missing-command sentinels; they must stay
+counted as missing verify-command coverage instead of satisfying coverage.
+
 Policy and adoption lanes may overlay these states:
 
 | Policy state | Owner |
@@ -534,7 +546,9 @@ Planned Lane 1 slices:
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
 - `dogfood/finding-alignment-examples` checks repo-local receipts under
   `fixtures/finding-alignment-dogfood/` so real RIPR PR examples preserve the
-  raw-finding -> canonical-item -> user-outcome split.
+  raw-finding -> canonical-item -> user-outcome split, canonical gap identity,
+  repair or limitation route, concrete verify route, and before/after scorecard
+  or audit context.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
 

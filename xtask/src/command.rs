@@ -20,9 +20,14 @@ pub(crate) enum XtaskCommand {
     BadgeArtifacts,
     RepoBadgeArtifacts(Vec<String>),
     BadgeBasis(Vec<String>),
+    RiprPlus(Vec<String>),
     RepoSeamInventory,
     RepoExposureReport,
+    RepoExposureSummaryReport,
     RepoExposureLatencyReport,
+    RepoContractReport,
+    PrBody(Vec<String>),
+    Closeout(Vec<String>),
     EvidenceHealth,
     Lane1EvidenceAudit,
     EvidenceQualityScorecard,
@@ -52,6 +57,7 @@ pub(crate) enum XtaskCommand {
     Critic,
     Goals(Vec<String>),
     Reports(Vec<String>),
+    Cache(Vec<String>),
     Receipts(Vec<String>),
     Worktree(Vec<String>),
     Specs(Vec<String>),
@@ -76,6 +82,8 @@ pub(crate) enum XtaskCommand {
     CheckArchitecture,
     CheckPublicApi,
     CheckOutputContracts,
+    CheckDocArtifacts,
+    CheckSupportTiers,
     CheckDocIndex,
     CheckReadmeState,
     MarkdownLinks,
@@ -133,9 +141,14 @@ impl XtaskCommand {
             "badge-artifacts" => Self::BadgeArtifacts,
             "repo-badge-artifacts" => Self::RepoBadgeArtifacts(rest),
             "badge-basis" => Self::BadgeBasis(rest),
+            "ripr-plus" => Self::RiprPlus(rest),
             "repo-seam-inventory" => Self::RepoSeamInventory,
             "repo-exposure-report" => Self::RepoExposureReport,
+            "repo-exposure-summary-report" => Self::RepoExposureSummaryReport,
             "repo-exposure-latency-report" => Self::RepoExposureLatencyReport,
+            "repo-contract-report" => Self::RepoContractReport,
+            "pr-body" => Self::PrBody(rest),
+            "closeout" => Self::Closeout(rest),
             "evidence-health" => Self::EvidenceHealth,
             "lane1-evidence-audit" | "evidence-quality-audit" => Self::Lane1EvidenceAudit,
             "evidence-quality-scorecard" => Self::EvidenceQualityScorecard,
@@ -167,6 +180,7 @@ impl XtaskCommand {
             "critic" => Self::Critic,
             "goals" => Self::Goals(rest),
             "reports" => Self::Reports(rest),
+            "cache" => Self::Cache(rest),
             "receipts" => Self::Receipts(rest),
             "doctor" => Self::Worktree(vec!["doctor".to_string()]),
             "worktree" => Self::Worktree(rest),
@@ -194,6 +208,8 @@ impl XtaskCommand {
             "check-architecture" => Self::CheckArchitecture,
             "check-public-api" => Self::CheckPublicApi,
             "check-output-contracts" => Self::CheckOutputContracts,
+            "check-doc-artifacts" => Self::CheckDocArtifacts,
+            "check-support-tiers" => Self::CheckSupportTiers,
             "check-doc-index" => Self::CheckDocIndex,
             "check-readme-state" => Self::CheckReadmeState,
             "markdown-links" => Self::MarkdownLinks,
@@ -232,10 +248,7 @@ pub(crate) fn print_help(args: &[String]) -> Result<(), String> {
 
 pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
     if args.is_empty() {
-        let commands = known_commands().join("\n  ");
-        return Ok(format!(
-            "xtask commands:\n\n  {commands}\n\nCommon starting points:\n  cargo xtask doctor      # setup and worktree hygiene\n  cargo xtask first-pr    # start-here packet with one safe next action\n  cargo xtask pr-ready    # local PR readiness packet\n  cargo xtask cockpit     # repo maintainer front panel\n  cargo xtask check-pr    # review-ready non-release gate\n\nStart-here language uses the same words for safe next action, missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence, verify command, receipt command, and receipt path.\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
-        ));
+        return Ok(format_top_level_help(&known_commands()));
     }
 
     let query = args.join(" ");
@@ -244,17 +257,7 @@ pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
         return Err(unknown_command_message(&query));
     }
 
-    let mut lines = vec![format!("xtask help: `{query}`"), String::new()];
-    for entry in matches {
-        lines.push(format!("Usage: cargo xtask {}", entry.command));
-        lines.push(format!("Mutability: {}", entry.mutability));
-        lines.push(format!("Writes: {}", entry.writes));
-        lines.push(format!("Judgment required: {}", entry.judgment_required));
-        lines.push(format!("Notes: {}", entry.notes));
-        lines.push(String::new());
-    }
-    lines.push("Run `cargo xtask help` for the full command list.".to_string());
-    Ok(lines.join("\n"))
+    Ok(format_help_entries(&query, &matches))
 }
 
 fn help_entries_for_query(query: &str) -> Vec<CommandCatalogEntry> {
@@ -295,9 +298,14 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "badge-artifacts",
         "repo-badge-artifacts [--gap-ledger <path>]",
         "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
+        "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
         "repo-seam-inventory",
         "repo-exposure-report",
+        "repo-exposure-summary-report",
         "repo-exposure-latency-report",
+        "repo-contract-report",
+        "pr-body --work-item <id>",
+        "closeout --goal <goal-id>",
         "evidence-health",
         "lane1-evidence-audit",
         "evidence-quality-audit",
@@ -306,7 +314,9 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]",
         "agent-seam-packets [root]",
         "ripr-swarm plan [--top <n>] [--actionable-gaps <path>]",
-        "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>]",
+        "ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]",
+        "ripr-swarm attempt-ledger [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--previous-ledger <path>]",
+        "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]",
         "lsp-cockpit-report",
         "operator-cockpit",
         "operator-cockpit-report",
@@ -331,6 +341,8 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "critic",
         "goals status|next|report",
         "reports index",
+        "cache report",
+        "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
         "receipts [check]",
         "doctor",
         "worktree doctor",
@@ -357,6 +369,8 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-architecture",
         "check-public-api",
         "check-output-contracts",
+        "check-doc-artifacts",
+        "check-support-tiers",
         "check-doc-index",
         "check-readme-state",
         "markdown-links",
@@ -559,6 +573,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
         ),
         command_entry(
+            "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
+            "report_only",
+            "target/ripr/reports/ripr-plus.{json,md}",
+            false,
+            "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --repo-exposure-summary reuses a downstream-consumable bounded summary artifact, and --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
+        ),
+        command_entry(
             "repo-seam-inventory",
             "report_only",
             "target/ripr/reports/repo-seams.{json,md}",
@@ -570,7 +591,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/repo-exposure.{json,md}",
             false,
-            "Writes repo exposure reports.",
+            "Writes full evidence-heavy repo exposure reports for explicit deep inspection.",
+        ),
+        command_entry(
+            "repo-exposure-summary-report",
+            "report_only",
+            "target/ripr/reports/repo-exposure-summary.json",
+            false,
+            "Writes the bounded repo exposure summary JSON for ordinary local metrics, planning, and CI-safe inspection.",
         ),
         command_entry(
             "repo-exposure-latency-report",
@@ -578,6 +606,27 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/repo-exposure-latency.{json,md}",
             false,
             "Writes repo exposure latency reports.",
+        ),
+        command_entry(
+            "repo-contract-report",
+            "report_only",
+            "target/ripr/reports/source-of-truth-graph.{md,json}",
+            false,
+            "Writes the source-of-truth contract graph report.",
+        ),
+        command_entry(
+            "pr-body --work-item <id>",
+            "report_only",
+            "target/ripr/reports/source-of-truth-pr-body.md",
+            false,
+            "Writes a PR body scaffold from the active goal work item.",
+        ),
+        command_entry(
+            "closeout --goal <goal-id>",
+            "mutating",
+            "docs/handoffs/<date>-<goal-id>-closeout.md and .ripr/goals/archive/<date>-<goal-id>.toml",
+            true,
+            "Writes a closeout scaffold and archived active-goal manifest for maintainer review.",
         ),
         command_entry(
             "evidence-health",
@@ -636,11 +685,25 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Ranks existing actionable canonical gap packets into swarm-ready and blocked repair candidates; does not edit files, run tests, call providers, create receipts, or infer work from raw findings.",
         ),
         command_entry(
-            "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>]",
+            "ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]",
+            "report_only",
+            "stdout",
+            false,
+            "Prints one bounded swarm repair packet for operator handoff without editing files, running tests, calling providers, or creating receipts.",
+        ),
+        command_entry(
+            "ripr-swarm attempt-ledger [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--previous-ledger <path>] [--real-repair-attempts <path>]",
+            "report_only",
+            "target/ripr/reports/swarm-attempt-ledger.{json,md}",
+            false,
+            "Builds durable attempt history from swarm plan, outcome, prior ledger, and real repair attempt artifacts without executing repairs.",
+        ),
+        command_entry(
+            "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]",
             "report_only",
             "target/ripr/reports/swarm-readiness.{json,md}",
             false,
-            "Rolls up swarm plan and actionable-gap outcome artifacts into advisory repair-coordination readiness counts.",
+            "Rolls up swarm plan, actionable-gap outcome, and attempt-ledger artifacts into advisory repair-coordination readiness counts and next actions.",
         ),
         command_entry(
             "lsp-cockpit-report",
@@ -816,6 +879,20 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/index.{md,json}",
             false,
             "Indexes generated report packets under target.",
+        ),
+        command_entry(
+            "cache report",
+            "report_only",
+            "stdout and target/ripr/reports/cache-report.{md,json}",
+            false,
+            "Reports target/ripr/cache families and largest files without reading or deleting source, build, report, receipt, PR, review, workflow, or agent artifacts.",
+        ),
+        command_entry(
+            "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
+            "argument_dependent",
+            "target/ripr/cache and target/ripr/reports/cache-gc.{md,json}",
+            false,
+            "Depending on --dry-run, deletes only selected files under target/ripr/cache or writes the exact deletion plan without deleting files.",
         ),
         command_entry(
             "receipts [check]",
@@ -998,6 +1075,20 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/output-contracts.md",
             false,
             "Checks output contract registry.",
+        ),
+        command_entry(
+            "check-doc-artifacts",
+            "non_mutating_check",
+            "target/ripr/reports/doc-artifacts.md",
+            false,
+            "Checks the source-of-truth document artifact ledger.",
+        ),
+        command_entry(
+            "check-support-tiers",
+            "non_mutating_check",
+            "target/ripr/reports/support-tiers.md",
+            false,
+            "Checks support-tier claim proof mapping.",
         ),
         command_entry(
             "check-doc-index",
@@ -1237,16 +1328,17 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
     let rhs_len = rhs.chars().count();
     let mut previous_row: Vec<usize> = (0..=rhs_len).collect();
+    let mut current_row = vec![0; rhs_len + 1];
 
     for (left_index, left_char) in lhs.chars().enumerate() {
-        let mut current_row = vec![left_index + 1];
+        current_row[0] = left_index + 1;
         for (right_index, right_char) in rhs.chars().enumerate() {
             let insertion = current_row[right_index] + 1;
             let deletion = previous_row[right_index + 1] + 1;
             let substitution = previous_row[right_index] + usize::from(left_char != right_char);
-            current_row.push(insertion.min(deletion).min(substitution));
+            current_row[right_index + 1] = insertion.min(deletion).min(substitution);
         }
-        previous_row = current_row;
+        std::mem::swap(&mut previous_row, &mut current_row);
     }
 
     previous_row[rhs_len]
@@ -1254,7 +1346,7 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_catalog, help_message};
+    use super::{command_catalog, help_message, levenshtein};
 
     #[test]
     fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
@@ -1294,5 +1386,24 @@ mod tests {
             note("badge-basis [--gap-ledger <path>] [--include-seam-classes]")
                 .contains("Audits public badge endpoint counts")
         );
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("canonical actionable gaps")
+        );
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("downstream-consumable bounded summary artifact")
+        );
+    }
+
+    #[test]
+    fn levenshtein_distance_handles_ascii_and_unicode_inputs() {
+        assert_eq!(levenshtein("check-pr", "check-pr"), 0);
+        assert_eq!(levenshtein("chek-pr", "check-pr"), 1);
+        assert_eq!(levenshtein("réport", "report"), 1);
     }
 }
+#[path = "command/help.rs"]
+mod help;
+
+use help::{format_help_entries, format_top_level_help};

@@ -1,0 +1,441 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_static_limit_taxonomy/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":4,"probes":4,"findings":4,"exposed":0,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_decorated.tsx:7:typescript_preview",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_decorated.tsx:7:typescript_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/decorated.tsx",
+        "line": 7,
+        "expression": "        return value.trim();",
+        "owner": "typescript:src/decorated.tsx::save"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related test(s) found for owner `save`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach no: 0 related test(s) found for owner `save`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "local flow reaches returned value: return value.trim(); (line 7)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return value.trim();","line":7}
+      ],
+      "evidence": ["owner: save", "static_limit decorator_indirection: owner `save` uses TypeScript decorators", "gap_state: static_limitation", "actionability_category: decorator_indirection", "why_not_actionable: static limit `decorator_indirection` prevents bounded TypeScript repair guidance", "repair_route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/decorated.tsx;line=7;kind=typescript_preview_probe;source_id=probe:src_decorated.tsx:7:typescript_preview;owner=save"],
+      "missing": ["No trusted TypeScript method receiver relation for `save`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, prototype aliases, and dynamic property access stay ambiguous in preview.", "Static limit `decorator_indirection`: owner `save` uses TypeScript decorators; syntax-first preview evidence does not resolve decorator-modified call behavior. Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `decorator_indirection`: static limit `decorator_indirection` prevents bounded TypeScript repair guidance. Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/decorated.tsx:7: `return value.trim();`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "none",
+        "owner": "save",
+        "owner_kind": "method",
+        "probe_family": "return_value",
+        "related_test": null,
+        "repair_packet_ready": false,
+        "repair_route": "add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "decorator_indirection"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `decorator_indirection` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "decorator_indirection",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/decorated.tsx",
+            "kind": "typescript_preview_probe",
+            "line": 7,
+            "owner": "save",
+            "raw": "file=src/decorated.tsx;line=7;kind=typescript_preview_probe;source_id=probe:src_decorated.tsx:7:typescript_preview;owner=save",
+            "source_id": "probe:src_decorated.tsx:7:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet",
+        "why_not_actionable": "static limit `decorator_indirection` prevents bounded TypeScript repair guidance"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "TypeScript preview advisory: static limit `decorator_indirection`; Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `decorator_indirection`; Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.; no actionable repair packet is emitted.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "method",
+      "static_limit_kind": "decorator_indirection"
+    },
+    {
+      "id": "probe:src_dispatch.ts:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_dispatch.ts:2:typescript_preview",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/dispatch.ts",
+        "line": 2,
+        "expression": "    actions[key]();",
+        "owner": "typescript:src/dispatch.ts::dispatch"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `dispatch`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `dispatch`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/dispatch.test.ts:1 dispatch smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: dispatch", "static_limit dynamic_dispatch: changed line uses computed member invocation", "gap_state: static_limitation", "actionability_category: dynamic_dispatch", "why_not_actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance", "repair_route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/dispatch.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_dispatch.ts:2:typescript_preview;owner=dispatch"],
+      "missing": ["Related test reaches `dispatch` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `dynamic_dispatch`: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "dispatch smoke",
+          "file": "tests/dispatch.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "side_effect changed at src/dispatch.ts:2: `actions[key]();`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "smoke_only",
+        "oracle_strength": "smoke",
+        "owner": "dispatch",
+        "owner_kind": "function",
+        "probe_family": "side_effect",
+        "related_test": {
+          "file": "tests/dispatch.test.ts",
+          "line": 1,
+          "name": "dispatch smoke"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "dynamic_dispatch"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "dynamic_dispatch",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/dispatch.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "dispatch",
+            "raw": "file=src/dispatch.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_dispatch.ts:2:typescript_preview;owner=dispatch",
+            "source_id": "probe:src_dispatch.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet",
+        "why_not_actionable": "static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "dynamic_dispatch"
+    },
+    {
+      "id": "probe:src_label.jsx:3:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_label.jsx:3:typescript_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/label.jsx",
+        "line": 3,
+        "expression": "    return normalizeLabel(props.label);",
+        "owner": "javascript:src/label.jsx::LabelView"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `LabelView`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `LabelView`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "local flow reaches returned value: return normalizeLabel(props.label); (line 3)", "related test tests/label.test.jsx:1 LabelView smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return normalizeLabel(props.label);","line":3}
+      ],
+      "evidence": ["owner: LabelView", "static_limit missing_import_graph: changed line calls imported symbol `normalizeLabel`", "gap_state: static_limitation", "actionability_category: missing_import_graph", "why_not_actionable: static limit `missing_import_graph` prevents bounded TypeScript repair guidance", "repair_route: add import graph support or inspect the imported implementation before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/label.jsx;line=3;kind=typescript_preview_probe;source_id=probe:src_label.jsx:3:typescript_preview;owner=LabelView"],
+      "missing": ["Related test reaches `LabelView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "Static limit `missing_import_graph`: the changed line calls imported symbol `normalizeLabel` from `./labels`; the TypeScript preview adapter does not build a package or import graph for production implementation semantics. Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `missing_import_graph`: static limit `missing_import_graph` prevents bounded TypeScript repair guidance. Repair route: add import graph support or inspect the imported implementation before issuing a repair packet"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "LabelView smoke",
+          "file": "tests/label.test.jsx",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/label.jsx:3: `return normalizeLabel(props.label);`",
+        "language": "javascript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "smoke_only",
+        "oracle_strength": "smoke",
+        "owner": "LabelView",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/label.test.jsx",
+          "line": 1,
+          "name": "LabelView smoke"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add import graph support or inspect the imported implementation before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "missing_import_graph"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `missing_import_graph` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "missing_import_graph",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/label.jsx",
+            "kind": "typescript_preview_probe",
+            "line": 3,
+            "owner": "LabelView",
+            "raw": "file=src/label.jsx;line=3;kind=typescript_preview_probe;source_id=probe:src_label.jsx:3:typescript_preview;owner=LabelView",
+            "source_id": "probe:src_label.jsx:3:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add import graph support or inspect the imported implementation before issuing a repair packet",
+        "why_not_actionable": "static limit `missing_import_graph` prevents bounded TypeScript repair guidance"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview advisory: static limit `missing_import_graph`; Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `missing_import_graph`; Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.; no actionable repair packet is emitted.",
+      "language": "javascript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "missing_import_graph"
+    },
+    {
+      "id": "probe:src_proxy.js:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_proxy.js:2:typescript_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/proxy.js",
+        "line": 2,
+        "expression": "    return new Proxy(target, handler);",
+        "owner": "javascript:src/proxy.js::wrap"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `wrap`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `wrap`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "local flow reaches returned value: return new Proxy(target, handler); (line 2)", "related test tests/proxy.test.js:1 wrap smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return new Proxy(target, handler);","line":2}
+      ],
+      "evidence": ["owner: wrap", "static_limit metaprogramming: changed line uses metaprogramming syntax", "gap_state: static_limitation", "actionability_category: metaprogramming", "why_not_actionable: static limit `metaprogramming` prevents bounded TypeScript repair guidance", "repair_route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/proxy.js;line=2;kind=typescript_preview_probe;source_id=probe:src_proxy.js:2:typescript_preview;owner=wrap"],
+      "missing": ["Related test reaches `wrap` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "Static limit `metaprogramming`: the TypeScript preview adapter saw Proxy, Reflect, or property-definition metaprogramming syntax and does not infer runtime-created behavior. Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `metaprogramming`: static limit `metaprogramming` prevents bounded TypeScript repair guidance. Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "wrap smoke",
+          "file": "tests/proxy.test.js",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/proxy.js:2: `return new Proxy(target, handler);`",
+        "language": "javascript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "smoke_only",
+        "oracle_strength": "smoke",
+        "owner": "wrap",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/proxy.test.js",
+          "line": 1,
+          "name": "wrap smoke"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "metaprogramming"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `metaprogramming` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "metaprogramming",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/proxy.js",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "wrap",
+            "raw": "file=src/proxy.js;line=2;kind=typescript_preview_probe;source_id=probe:src_proxy.js:2:typescript_preview;owner=wrap",
+            "source_id": "probe:src_proxy.js:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet",
+        "why_not_actionable": "static limit `metaprogramming` prevents bounded TypeScript repair guidance"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview advisory: static limit `metaprogramming`; Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `metaprogramming`; Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.; no actionable repair packet is emitted.",
+      "language": "javascript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "metaprogramming"
+    }
+  ]
+}

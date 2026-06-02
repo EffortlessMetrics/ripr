@@ -12,6 +12,8 @@ Changed
 Probe
   family: field_construction
   delta:  value
+  owner:  python:src/invoice.py::Invoice.mark_paid
+  canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
 
 Language
   language: python
@@ -23,14 +25,15 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `mark_paid`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "paid"`
+  - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches constructed field: self.status = "paid" (line 6)
   - related test tests/test_invoice.py:4 test_mark_paid_sets_status uses strong exact value oracle: assert invoice.status == "paid"
 
 Weakness
   - Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
 
 Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.

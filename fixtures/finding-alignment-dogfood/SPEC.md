@@ -6,8 +6,9 @@ Spec: RIPR-SPEC-0045
 
 RIPR has checked finding-alignment examples from real RIPR PR work. Each
 example records raw finding counts, canonical item counts, evidence class,
-gap state, actionability, repair or limitation route, verify command, and
-must-not-claim guards.
+canonical gap identity, raw finding summary, gap state, actionability, repair
+or limitation route, verify command, before/after audit or scorecard context,
+and must-not-claim guards.
 
 ## When
 
@@ -25,6 +26,8 @@ The corpus pins the Lane 1 counting model:
 - actionable canonical gaps are user work;
 - already-observed and internal-only items are no-action;
 - static limitations name analyzer repair routes.
+- runtime-confidence static-only classes stay calibration work, not user test
+  debt.
 
 ## Must Not
 

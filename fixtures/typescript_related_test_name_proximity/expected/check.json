@@ -1,0 +1,140 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_related_test_name_proximity/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.ts:2:typescript_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:2:typescript_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 2,
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/pricing.ts::applyDiscount"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"3 related test(s) found for owner `applyDiscount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 1)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach weak: 3 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/pricing.test.ts:1 threshold documented elsewhere uses unknown unknown oracle", "related test tests/checkout.test.ts:2 applyDiscount threshold documented elsewhere uses unknown unknown oracle", "related test tests/cart.test.ts:1 applyDiscount boundary uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: applyDiscount", "gap_state: advisory", "actionability_category: ambiguous_related_test", "why_not_actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof", "repair_route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection", "missing_actionability_fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount", "related_test_relation: same_file_proximity (threshold documented elsewhere)", "related_test_uncertain: same_file_proximity (threshold documented elsewhere)", "related_test_relation: describe_name (applyDiscount threshold documented elsewhere)", "related_test_uncertain: describe_name (applyDiscount threshold documented elsewhere)", "related_test_relation: test_name (applyDiscount boundary)", "related_test_uncertain: test_name (applyDiscount boundary)"],
+      "missing": ["Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `ambiguous_related_test`: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof. Repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "threshold documented elsewhere",
+          "file": "tests/pricing.test.ts",
+          "line": 1,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        },
+        {
+          "name": "applyDiscount threshold documented elsewhere",
+          "file": "tests/checkout.test.ts",
+          "line": 2,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        },
+        {
+          "name": "applyDiscount boundary",
+          "file": "tests/cart.test.ts",
+          "line": 1,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/cart.test.ts",
+          "line": 1,
+          "name": "applyDiscount boundary"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+      },
+      "preview_actionability": {
+        "actionability_category": "ambiguous_related_test",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "trusted token-aware relation plus complete verify, receipt, and edit-boundary fields",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "applyDiscount",
+            "raw": "file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount",
+            "source_id": "probe:src_pricing.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
+      "suggested_next_action": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

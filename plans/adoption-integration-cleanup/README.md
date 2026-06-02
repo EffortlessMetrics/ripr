@@ -1,11 +1,24 @@
 # Adoption Integration Cleanup Rails
 
+Status: closed as historical cleanup rail.
+
 This plan is the cleanup rail for making the first-run adoption cockpit obvious
 without adding new analyzer truth or duplicate product surfaces.
 
 It connects already-shipped first-run, start-here, editor, badge, PR evidence,
 and repo-ops surfaces to the GitHub issues that should finish or dispose of
 the remaining integration work.
+
+Current disposition:
+
+- The issue-backed source-repo cleanup rail has been reconciled.
+- Source issues #1177, #1182, #1183, #1184, #1185, #1148, #1150, #1151,
+  #1178, #1179, and #1180 were already closed.
+- Source issues #1154, #1156, and #1157 are closed as completed by the
+  `ripr-swarm` Start-Here Surface Convergence PR chain and closeout.
+- This rail is not the active execution manifest and must not be selected as
+  the next campaign without a fresh repo-owned activation.
+- `.ripr/goals/active.toml` remains the machine-readable current goal source.
 
 ## Scope
 
@@ -43,20 +56,20 @@ This rail does not own:
 
 | Order | Issue | Purpose | Done when |
 | ---: | --- | --- | --- |
-| 1 | [#1177](https://github.com/EffortlessMetrics/ripr/issues/1177) | Drain duplicate PR clusters. | Open PRs are grouped by intent and each cluster has merge, close, superseded, review, or owner-decision disposition. |
-| 2 | [#1182](https://github.com/EffortlessMetrics/ripr/issues/1182) | Consolidate extraction coverage PRs. | One keeper captures useful assertions from #1162, #1164, #1165, #1172, #1173, #1175, and #1176. |
-| 3 | [#1183](https://github.com/EffortlessMetrics/ripr/issues/1183) | Disposition first-run DevEx helper PRs. | #1166, #1167, #1171, and #1174 have non-overlapping keeper or close decisions. |
-| 4 | [#1184](https://github.com/EffortlessMetrics/ripr/issues/1184) | Disposition output helper refactor PRs. | Output/helper refactors have keeper, port, or close decisions with output-contract evidence. |
-| 5 | [#1185](https://github.com/EffortlessMetrics/ripr/issues/1185) | Disposition older Claude queue. | Draft and non-draft PRs #1072-#1083 are classified as review now, port unique tests, close stale draft, or keep blocked. |
-| 6 | [#1148](https://github.com/EffortlessMetrics/ripr/issues/1148) | Keep the start-here convergence stack as the source-of-truth umbrella. | The docs/spec/ADR/plan chain remains current and no duplicate start-here truth is introduced. |
-| 7 | [#1150](https://github.com/EffortlessMetrics/ripr/issues/1150) | Align PR and CI first screens on the canonical repair unit. | Generated summaries open with the same start-here repair or no-action state. |
-| 8 | [#1151](https://github.com/EffortlessMetrics/ripr/issues/1151) | Converge public command language for start-here. | CLI help and docs agree on `ripr first-pr` / `ripr start-here` usage and artifact paths. |
-| 9 | [#1178](https://github.com/EffortlessMetrics/ripr/issues/1178) | Converge first-run recovery commands. | `doctor`, worktree guidance, cockpit, pr-ready, and first-pr docs point to one recovery path. |
-| 10 | [#1179](https://github.com/EffortlessMetrics/ripr/issues/1179) | Disposition stale integration worktrees. | Badge, editor, Lane 4, support-tier, and Python worktrees are kept, ported, PR'd, closed, or removed with evidence. |
-| 11 | [#1180](https://github.com/EffortlessMetrics/ripr/issues/1180) | Reconcile landed learning residue. | Root learning diffs and locked learning worktrees are current, PR'd, or explicitly left for operator cleanup. |
-| 12 | [#1154](https://github.com/EffortlessMetrics/ripr/issues/1154) | Standardize no-output and fail-closed states. | Empty, missing, stale, malformed, wrong-root, and blocked states return useful packets. |
-| 13 | [#1156](https://github.com/EffortlessMetrics/ripr/issues/1156) | Record external-style start-here receipts. | Dogfood shows the first outside-user path with receipt evidence. |
-| 14 | [#1157](https://github.com/EffortlessMetrics/ripr/issues/1157) | Close the start-here convergence campaign. | Remaining issues are closed or explicitly deferred with a handoff. |
+| 1 | [#1177](https://github.com/EffortlessMetrics/ripr/issues/1177) | Drain duplicate PR clusters. | Closed in source. |
+| 2 | [#1182](https://github.com/EffortlessMetrics/ripr/issues/1182) | Consolidate extraction coverage PRs. | Closed in source. |
+| 3 | [#1183](https://github.com/EffortlessMetrics/ripr/issues/1183) | Disposition first-run DevEx helper PRs. | Closed in source. |
+| 4 | [#1184](https://github.com/EffortlessMetrics/ripr/issues/1184) | Disposition output helper refactor PRs. | Closed in source. |
+| 5 | [#1185](https://github.com/EffortlessMetrics/ripr/issues/1185) | Disposition older Claude queue. | Closed in source. |
+| 6 | [#1148](https://github.com/EffortlessMetrics/ripr/issues/1148) | Keep the start-here convergence stack as the source-of-truth umbrella. | Closed in source. |
+| 7 | [#1150](https://github.com/EffortlessMetrics/ripr/issues/1150) | Align PR and CI first screens on the canonical repair unit. | Closed in source. |
+| 8 | [#1151](https://github.com/EffortlessMetrics/ripr/issues/1151) | Converge public command language for start-here. | Closed in source. |
+| 9 | [#1178](https://github.com/EffortlessMetrics/ripr/issues/1178) | Converge first-run recovery commands. | Closed in source. |
+| 10 | [#1179](https://github.com/EffortlessMetrics/ripr/issues/1179) | Disposition stale integration worktrees. | Closed in source. |
+| 11 | [#1180](https://github.com/EffortlessMetrics/ripr/issues/1180) | Reconcile landed learning residue. | Closed in source. |
+| 12 | [#1154](https://github.com/EffortlessMetrics/ripr/issues/1154) | Standardize no-output and fail-closed states. | Closed as completed by `ripr-swarm` Start-Here Surface Convergence #220 and closeout. |
+| 13 | [#1156](https://github.com/EffortlessMetrics/ripr/issues/1156) | Record external-style start-here receipts. | Closed as completed by `ripr-swarm` #223 receipts and closeout. |
+| 14 | [#1157](https://github.com/EffortlessMetrics/ripr/issues/1157) | Close the start-here convergence campaign. | Closed as completed by the `ripr-swarm` Start-Here Surface Convergence closeout. |
 
 ## Operating Rules
 

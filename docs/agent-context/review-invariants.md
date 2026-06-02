@@ -111,6 +111,8 @@ For Droid workflows:
 - Keep `show_full_output: false`.
 - Use the approved safe action ref
   `EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec`.
+- Ensure the GitHub CLI is available on `PATH` before the Droid action starts;
+  the safe action uses `gh pr checkout` while preparing PR diffs.
 - Set `upload_debug_artifacts: false`.
 - Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows
   unless a future upstream SHA has an explicit debug-artifact disable input and

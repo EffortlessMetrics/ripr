@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_unresolved_fixture_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    if amount >= threshold:",
+        "owner": "python:src/pricing.py::apply_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `unresolved_pytest_fixture` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `unresolved_pytest_fixture` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.", "propagation unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python discriminator claim.", "related test tests/test_pricing.py:11 test_apply_discount_fixture_case uses strong exact value oracle: assert apply_discount(discount_case[\"amount\"], discount_case[\"threshold\"]) == discount_case[\n        \"expected\"\n    ]"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit unresolved_pytest_fixture: related test uses fixture-sourced values", "test_framework: pytest (test_apply_discount_fixture_case)", "test_fixtures: discount_case (test_apply_discount_fixture_case)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_fixture_case (test_apply_discount_fixture_case)", "related_test_relation: syntactic_call (test_apply_discount_fixture_case)", "test_oracle: exact_value strong (test_apply_discount_fixture_case)", "test_oracle_shape: field_assertion (test_apply_discount_fixture_case)"],
+      "missing": ["Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the changed discriminator or expected value."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_apply_discount_fixture_case",
+          "file": "tests/test_pricing.py",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert apply_discount(discount_case[\"amount\"], discount_case[\"threshold\"]) == discount_case[\n        \"expected\"\n    ]"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "unresolved_pytest_fixture"
+    }
+  ]
+}

@@ -24,9 +24,9 @@ use super::{
 };
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, LanguageStatus, OracleKind,
-    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId, LanguageStatus,
+    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -68,6 +68,26 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
             COLLECT_EVIDENCE_CONTEXT_COMMAND
         ]
     );
+    Ok(())
+}
+
+#[test]
+fn serve_stdio_call_presence_observer() -> Result<(), String> {
+    let source = include_str!("../lsp.rs");
+    let serve_stdio = source
+        .split("async fn serve_stdio()")
+        .nth(1)
+        .ok_or_else(|| "expected serve_stdio implementation in lsp module".to_string())?;
+
+    assert!(
+        serve_stdio.contains("LspService::new(|client| Backend::new(client, root.clone()))"),
+        "serve_stdio should construct the LSP service with the resolved workspace root"
+    );
+    assert!(
+        serve_stdio.contains("Server::new(stdin, stdout, socket).serve(service).await"),
+        "serve_stdio should hand stdin/stdout, the socket, and the service to the tower LSP server"
+    );
+
     Ok(())
 }
 
@@ -608,6 +628,50 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
                     .value
                     .contains("* discriminator weak: boundary value missing")
             );
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let mut finding = sample_finding();
+    finding.canonical_gap = Some(sample_canonical_gap());
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let canonical_gap_id = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("canonical_gap_id"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "expected canonical_gap_id in diagnostic data".to_string())?;
+    assert_eq!(
+        canonical_gap_id,
+        "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+    );
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, 87, 1)) else {
+        return Err("expected finding hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("## Canonical Gap"));
+            assert!(markup.value.contains(
+                "ID: `gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold`"
+            ));
             Ok(())
         }
         _ => Err("expected markup hover".to_string()),
@@ -1470,7 +1534,9 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
             .collect::<Vec<_>>(),
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Agent handoff: copy Python packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (
                 "Write targeted test: open best related test",
                 OPEN_RELATED_TEST_COMMAND
@@ -1525,34 +1591,65 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         static_limit_position < suggested_action_position,
         "static limits must appear before action language:\n{packet}"
     );
-    assert_eq!(commands[1].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[1].2[0]["label"], "python_agent_packet");
     assert_eq!(commands[1].2[0]["canonical_gap_id"], "gap:py:pricing");
     assert_eq!(
-        commands[1].2[0]["repair_route"]["related_test"],
+        commands[1].2[0]["freshness"],
+        "validated_current_gap_record"
+    );
+    assert_eq!(commands[1].2[0]["packet_kind"], "agent_gap_record_packet");
+    assert_eq!(
+        commands[1].2[0]["gap_ledger"],
+        "target/ripr/reports/gap-decision-ledger.json"
+    );
+    assert_eq!(commands[2].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[2].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[2].2[0]["repair_route"]["related_test"],
         "tests/test_pricing.py::test_discount_boundary"
     );
+    assert_eq!(commands[3].2[0]["label"], "python_repair_card");
     assert_eq!(
-        commands[2].2[0]["uri"],
+        commands[3].2[0]["freshness"],
+        "validated_current_gap_record"
+    );
+    let card = commands[3].2[0]["brief"]
+        .as_str()
+        .ok_or_else(|| "missing Python repair-card text".to_string())?;
+    for needle in [
+        "Python repair card (preview/advisory)",
+        "Freshness: current validated GapRecord diagnostic.",
+        "Changed owner:\n  python:app/pricing.py::calculate_discount",
+        "Current test evidence:",
+        "Missing discriminator:\n  assert price(threshold) == expected",
+        "Verify:\n  ripr agent verify --root . --json",
+        "Receipt:\n  ripr agent receipt --root . --json",
+        "Static preview evidence only",
+    ] {
+        assert!(card.contains(needle), "missing {needle:?} in:\n{card}");
+    }
+    assert_eq!(
+        commands[4].2[0]["uri"],
         file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
     );
-    assert_eq!(commands[2].2[0]["line"], 2);
-    assert_eq!(commands[2].2[0]["test_name"], "test_discount_boundary");
-    assert_eq!(commands[3].2[0]["label"], "gap_verify");
+    assert_eq!(commands[4].2[0]["line"], 2);
+    assert_eq!(commands[4].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[5].2[0]["label"], "gap_verify");
     assert_eq!(
-        commands[3].2[0]["command"],
+        commands[5].2[0]["command"],
         "ripr agent verify --root . --json"
     );
-    assert_eq!(commands[4].2[0]["label"], "gap_receipt");
+    assert_eq!(commands[6].2[0]["label"], "gap_receipt");
     assert_eq!(
-        commands[4].2[0]["command"],
+        commands[6].2[0]["command"],
         "ripr agent receipt --root . --json"
     );
     assert!(
-        commands[5].2[0]["note"]
+        commands[7].2[0]["note"]
             .as_str()
             .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
         "expected static-limit note, got {:?}",
-        commands[5].2[0]
+        commands[7].2[0]
     );
     Ok(())
 }
@@ -1595,16 +1692,193 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
         commands
             .iter()
             .all(|(title, _, args)| title != "Copy first repair packet"
+                && title != "Agent handoff: copy Python packet"
                 && args
                     .first()
-                    .is_none_or(|arg| arg["label"] != "first_repair_packet")),
-        "first repair packet must be suppressed when receipt command is missing: {commands:?}"
+                    .is_none_or(|arg| arg["label"] != "first_repair_packet"
+                        && arg["label"] != "python_agent_packet")),
+        "packet actions must be suppressed when receipt command is missing: {commands:?}"
     );
     assert!(
         commands
             .iter()
             .any(|(title, _, _)| title == "Inspect gap: copy repair packet"),
         "existing inspect action should remain available"
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_suppress_python_agent_packet_without_actionable_python_gap_record()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-agent-packet-contract")?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    for (field, value) in [
+        ("source", "repo_exposure"),
+        ("language", "rust"),
+        ("gap_state", "already_observed"),
+        ("repairability", "no_action"),
+    ] {
+        let mut diagnostic = gap_action_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or_else(|| "missing diagnostic data".to_string())?
+            .as_object_mut()
+            .ok_or_else(|| "expected object data".to_string())?;
+        data.insert(field.to_string(), serde_json::json!(value));
+        let mut snapshot = sample_analysis_snapshot(
+            root.path().to_path_buf(),
+            uri.clone(),
+            vec![diagnostic.clone()],
+            Vec::new(),
+        );
+        snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+        let actions = code_action_response(
+            &code_action_params_for(uri.clone(), diagnostic.range.start.line, vec![diagnostic])?,
+            Some(&snapshot),
+        );
+        let commands = code_action_commands(&actions)?;
+
+        assert!(
+            commands.iter().all(
+                |(title, _, args)| title != "Agent handoff: copy Python packet"
+                    && args
+                        .first()
+                        .is_none_or(|arg| arg["label"] != "python_agent_packet")
+            ),
+            "Python agent packet action must be suppressed when {field}={value}: {commands:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-pytest-actions")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_calculate_discount_threshold_boundary():\n    pass\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["repair_route"]["target_file"] = serde_json::json!("tests/test_pricing.py");
+    data["repair_route"]["target_line"] = serde_json::json!(1);
+    data["repair_route"]["related_test"] =
+        serde_json::json!("test_calculate_discount_threshold_boundary");
+    data["repair_route"]["missing_discriminator"] = serde_json::json!("amount == threshold");
+    data["repair_route"]["assertion_shape"] = serde_json::json!(
+        "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount"
+    );
+    data["repair_route"]["changed_behavior"] = serde_json::json!("if amount >= threshold:");
+    data["verification_commands"] = serde_json::json!([
+        "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary"
+    ]);
+    data["receipt_command"] = serde_json::json!(
+        "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/python-pricing-boundary.json"
+    );
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_kind");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_detail");
+    data["static_limits"] = serde_json::json!([]);
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .any(|(title, _, _)| title == "Copy first repair packet"),
+        "pytest verify commands should be safe enough for first repair packets: {commands:?}"
+    );
+    let repair_card = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Copy Python repair card" && command == COPY_TARGETED_TEST_BRIEF_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing Python repair-card action: {commands:?}"))?;
+    assert_eq!(repair_card["label"], "python_repair_card");
+    let card = repair_card["brief"]
+        .as_str()
+        .ok_or_else(|| format!("missing repair-card brief: {repair_card:?}"))?;
+    for needle in [
+        "Python repair card (preview/advisory)",
+        "Freshness: current validated GapRecord diagnostic.",
+        "Changed behavior:\n  if amount >= threshold:",
+        "Missing discriminator:\n  amount == threshold",
+        "Suggested assertion:\n  assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "Verify:\n  pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+    ] {
+        assert!(card.contains(needle), "missing {needle:?} in:\n{card}");
+    }
+    let skeleton = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Write Python test: copy pytest skeleton"
+                && command == COPY_TARGETED_TEST_BRIEF_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing Python pytest skeleton action: {commands:?}"))?;
+    assert_eq!(skeleton["label"], "python_pytest_skeleton");
+    assert_eq!(skeleton["target_file"], "tests/test_pricing.py");
+    assert_eq!(
+        skeleton["test_name"],
+        "test_calculate_discount_threshold_boundary"
+    );
+    let brief = skeleton["brief"]
+        .as_str()
+        .ok_or_else(|| format!("missing skeleton brief: {skeleton:?}"))?;
+    for needle in [
+        "# RIPR Python repair skeleton",
+        "# Missing discriminator: amount == threshold",
+        "# Verify: pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "def test_calculate_discount_threshold_boundary():",
+        "# assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "raise NotImplementedError",
+    ] {
+        assert!(brief.contains(needle), "missing {needle:?} in:\n{brief}");
+    }
+    let open_target = commands
+        .iter()
+        .find(|(title, command, _)| {
+            title == "Write targeted test: open best related test"
+                && command == OPEN_RELATED_TEST_COMMAND
+        })
+        .and_then(|(_, _, args)| args.first())
+        .ok_or_else(|| format!("missing open related test action: {commands:?}"))?;
+    assert_eq!(
+        open_target["uri"],
+        file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
+    );
+    assert_eq!(
+        open_target["test_name"],
+        "test_calculate_discount_threshold_boundary"
     );
     Ok(())
 }
@@ -1682,6 +1956,45 @@ fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), Strin
 }
 
 #[test]
+fn gap_code_actions_suppress_python_repair_card_without_target_file() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-python-card-no-target")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "expected diagnostic data object".to_string())?;
+    let route = data
+        .get_mut("repair_route")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "expected repair_route object".to_string())?;
+    route.remove("target_file");
+    route.remove("related_test");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .all(|(title, _, _)| title != "Copy Python repair card"),
+        "Python repair card must not surface without a bounded target file: {commands:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), String> {
     let root = unique_lsp_test_root("editor-adoption-gap-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
@@ -1720,7 +2033,9 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
             .collect::<Vec<_>>(),
         vec![
             ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Agent handoff: copy Python packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            ("Copy Python repair card", COPY_TARGETED_TEST_BRIEF_COMMAND),
             (
                 "Write targeted test: open best related test",
                 OPEN_RELATED_TEST_COMMAND
@@ -3163,6 +3478,11 @@ fn gap_action_diagnostic() -> tower_lsp_server::ls_types::Diagnostic {
             "repairability": "repairable",
             "static_limit_kind": "missing_import_graph",
             "static_limit_detail": "Imported owner targets were not resolved in preview mode.",
+            "anchor": {
+                "file": "src/pricing.py",
+                "line": 12,
+                "owner": "python:app/pricing.py::calculate_discount"
+            },
             "repair_route": {
                 "route_kind": "AddBoundaryAssertion",
                 "target_file": "tests/test_pricing.py",
@@ -3651,6 +3971,7 @@ fn initialize_params(
 fn sample_finding() -> Finding {
     Finding {
         id: "probe:pricing:88:predicate".to_string(),
+        canonical_gap: None,
         probe: Probe {
             id: ProbeId("probe:pricing:88:predicate".to_string()),
             location: SourceLocation {
@@ -3705,6 +4026,36 @@ fn sample_finding() -> Finding {
         language_status: None,
         owner_kind: None,
         static_limit_kind: None,
+    }
+}
+
+fn sample_typescript_preview_actionability_finding() -> Finding {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::TypeScript);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.evidence = vec![
+        "gap_state: advisory".to_string(),
+        "actionability_category: missing_context".to_string(),
+        "why_not_actionable: verify command and receipt command are not inferred for TypeScript preview".to_string(),
+        "repair_route: add strict TypeScript repair-packet actionability proof".to_string(),
+        "missing_actionability_fields: verify_command, receipt_command, must_not_change".to_string(),
+        "evidence_needed_to_promote: complete repair packet with verify and receipt commands".to_string(),
+        "raw_evidence_ref: file=src/pricing.ts;line=88;kind=probe;source_id=ts-probe-1;owner=discountedTotal".to_string(),
+    ];
+    finding
+}
+
+fn sample_canonical_gap() -> FindingCanonicalGap {
+    FindingCanonicalGap {
+        id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+            .to_string(),
+        language: "python".to_string(),
+        file: "src/pricing.py".to_string(),
+        owner: "apply_discount".to_string(),
+        behavior_kind: "predicate_boundary".to_string(),
+        probe_kind: "predicate".to_string(),
+        normalized_discriminator: "amount>=threshold".to_string(),
     }
 }
 
@@ -3956,6 +4307,52 @@ fn preview_finding_diagnostic_preserves_language_metadata() -> Result<(), String
 }
 
 #[test]
+fn typescript_preview_finding_diagnostic_carries_actionability_context() -> Result<(), String> {
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let data = diagnostic
+        .data
+        .and_then(|value| value.as_object().cloned())
+        .ok_or_else(|| "expected diagnostic data".to_string())?;
+    let actionability = data
+        .get("preview_actionability")
+        .and_then(|value| value.as_object())
+        .ok_or_else(|| "expected preview_actionability data".to_string())?;
+    assert_eq!(
+        actionability
+            .get("gap_state")
+            .and_then(|value| value.as_str()),
+        Some("advisory")
+    );
+    assert_eq!(
+        actionability
+            .get("actionability_category")
+            .and_then(|value| value.as_str()),
+        Some("missing_context")
+    );
+    assert_eq!(
+        actionability
+            .get("repair_packet_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        actionability["missing_actionability_fields"][0].as_str(),
+        Some("verify_command")
+    );
+    assert_eq!(
+        actionability["raw_evidence_refs"][0]["file"].as_str(),
+        Some("src/pricing.ts")
+    );
+    assert_eq!(
+        actionability["raw_evidence_refs"][0]["owner"].as_str(),
+        Some("discountedTotal")
+    );
+    Ok(())
+}
+
+#[test]
 fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> {
     use super::hover::finding_hover_response;
 
@@ -4005,6 +4402,57 @@ fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> 
 }
 
 #[test]
+fn typescript_preview_finding_hover_shows_actionability_before_evidence() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            let boundary_index = markup
+                .value
+                .find("## Preview Boundary")
+                .ok_or_else(|| "expected preview boundary".to_string())?;
+            let actionability_index = markup
+                .value
+                .find("## Preview Actionability")
+                .ok_or_else(|| "expected preview actionability".to_string())?;
+            let evidence_index = markup
+                .value
+                .find("## RIPR Evidence")
+                .ok_or_else(|| "expected RIPR evidence".to_string())?;
+            assert!(
+                boundary_index < actionability_index && actionability_index < evidence_index,
+                "preview actionability must appear before evidence details:\n{}",
+                markup.value
+            );
+            for needle in [
+                "Language: typescript",
+                "Status: preview",
+                "Repair packet: not ready",
+                "State: advisory",
+                "Category: missing_context",
+                "Why not actionable: verify command and receipt command are not inferred for TypeScript preview",
+                "Repair route: add strict TypeScript repair-packet actionability proof",
+                "Missing fields: verify_command, receipt_command, must_not_change",
+                "Evidence needed: complete repair packet with verify and receipt commands",
+                "Authority: preview advisory only",
+            ] {
+                assert!(
+                    markup.value.contains(needle),
+                    "missing {needle:?} in:\n{}",
+                    markup.value
+                );
+            }
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
 fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<(), String> {
     let mut finding = sample_finding();
     finding.language = Some(LanguageId::Python);
@@ -4038,6 +4486,49 @@ fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<
     );
     assert_eq!(commands[0].2[0]["finding_id"], "probe:pricing:88:predicate");
     assert_eq!(commands[0].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
+}
+
+#[test]
+fn typescript_preview_code_action_copies_actionability_without_repair_packet() -> Result<(), String>
+{
+    let finding = sample_typescript_preview_actionability_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.ts")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect finding: copy context packet", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "incomplete TypeScript preview actionability must not expose repair-packet, verify, receipt, or edit actions"
+    );
+    assert_eq!(commands[0].2[0]["language"], "typescript");
+    assert_eq!(commands[0].2[0]["language_status"], "preview");
+    assert_eq!(commands[0].2[0]["owner_kind"], "function");
+    assert_eq!(
+        commands[0].2[0]["preview_actionability"]["repair_packet_ready"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        commands[0].2[0]["preview_actionability"]["repair_route"].as_str(),
+        Some("add strict TypeScript repair-packet actionability proof")
+    );
     Ok(())
 }
 

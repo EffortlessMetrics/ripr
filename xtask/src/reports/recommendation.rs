@@ -184,53 +184,100 @@ pub(crate) fn recommendation_calibration(args: &[String]) -> Result<(), String> 
 fn parse_recommendation_calibration_args(
     args: &[String],
 ) -> Result<RecommendationCalibrationArgs, String> {
-    let mut root = PathBuf::from(".");
-    let mut pr_guidance = Vec::new();
-    let mut expectations = PathBuf::from(DEFAULT_EXPECTATIONS);
-    let mut outcome_receipts = Vec::new();
-    let mut targeted_test_outcome = None;
-    let mut agent_receipt = None;
-    let mut out = PathBuf::from(DEFAULT_OUT);
-    let mut out_md = None;
+    let mut parser = RecommendationCalibrationArgParser::new();
 
     let mut i = 0;
     while i < args.len() {
-        match args[i].as_str() {
+        i = parser.consume(args, i)?;
+        i += 1;
+    }
+
+    let out_md = parser
+        .out_md
+        .unwrap_or_else(|| markdown_path_for(&parser.out));
+    Ok(RecommendationCalibrationArgs {
+        root: parser.root,
+        pr_guidance: parser.pr_guidance,
+        expectations: parser.expectations,
+        outcome_receipts: parser.outcome_receipts,
+        targeted_test_outcome: parser.targeted_test_outcome,
+        agent_receipt: parser.agent_receipt,
+        out: parser.out,
+        out_md,
+    })
+}
+
+#[derive(Debug)]
+struct RecommendationCalibrationArgParser {
+    root: PathBuf,
+    pr_guidance: Vec<PathBuf>,
+    expectations: PathBuf,
+    outcome_receipts: Vec<PathBuf>,
+    targeted_test_outcome: Option<PathBuf>,
+    agent_receipt: Option<PathBuf>,
+    out: PathBuf,
+    out_md: Option<PathBuf>,
+}
+
+impl RecommendationCalibrationArgParser {
+    fn new() -> Self {
+        Self {
+            root: PathBuf::from("."),
+            pr_guidance: Vec::new(),
+            expectations: PathBuf::from(DEFAULT_EXPECTATIONS),
+            outcome_receipts: Vec::new(),
+            targeted_test_outcome: None,
+            agent_receipt: None,
+            out: PathBuf::from(DEFAULT_OUT),
+            out_md: None,
+        }
+    }
+
+    fn consume(&mut self, args: &[String], index: usize) -> Result<usize, String> {
+        let mut next = index;
+        match args[index].as_str() {
             "--root" => {
-                i += 1;
-                root = PathBuf::from(expect_arg(args, i, "--root")?);
+                next += 1;
+                self.root = PathBuf::from(expect_arg(args, next, "--root")?);
             }
             "--pr-guidance" => {
-                i += 1;
-                pr_guidance.push(PathBuf::from(expect_arg(args, i, "--pr-guidance")?));
+                next += 1;
+                self.pr_guidance
+                    .push(PathBuf::from(expect_arg(args, next, "--pr-guidance")?));
             }
             "--calibration-expectations" | "--expectations" => {
-                i += 1;
-                expectations = PathBuf::from(expect_arg(args, i, "--calibration-expectations")?);
+                next += 1;
+                self.expectations =
+                    PathBuf::from(expect_arg(args, next, "--calibration-expectations")?);
             }
             "--outcome-receipts" => {
-                i += 1;
-                outcome_receipts.push(PathBuf::from(expect_arg(args, i, "--outcome-receipts")?));
+                next += 1;
+                self.outcome_receipts.push(PathBuf::from(expect_arg(
+                    args,
+                    next,
+                    "--outcome-receipts",
+                )?));
             }
             "--targeted-test-outcome" => {
-                i += 1;
-                targeted_test_outcome = Some(PathBuf::from(expect_arg(
+                next += 1;
+                self.targeted_test_outcome = Some(PathBuf::from(expect_arg(
                     args,
-                    i,
+                    next,
                     "--targeted-test-outcome",
                 )?));
             }
             "--agent-receipt" => {
-                i += 1;
-                agent_receipt = Some(PathBuf::from(expect_arg(args, i, "--agent-receipt")?));
+                next += 1;
+                self.agent_receipt =
+                    Some(PathBuf::from(expect_arg(args, next, "--agent-receipt")?));
             }
             "--out" => {
-                i += 1;
-                out = PathBuf::from(expect_arg(args, i, "--out")?);
+                next += 1;
+                self.out = PathBuf::from(expect_arg(args, next, "--out")?);
             }
             "--out-md" => {
-                i += 1;
-                out_md = Some(PathBuf::from(expect_arg(args, i, "--out-md")?));
+                next += 1;
+                self.out_md = Some(PathBuf::from(expect_arg(args, next, "--out-md")?));
             }
             "--help" | "-h" => return Err(recommendation_calibration_usage()),
             other => {
@@ -240,20 +287,8 @@ fn parse_recommendation_calibration_args(
                 ));
             }
         }
-        i += 1;
+        Ok(next)
     }
-
-    let out_md = out_md.unwrap_or_else(|| markdown_path_for(&out));
-    Ok(RecommendationCalibrationArgs {
-        root,
-        pr_guidance,
-        expectations,
-        outcome_receipts,
-        targeted_test_outcome,
-        agent_receipt,
-        out,
-        out_md,
-    })
 }
 
 fn expect_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
@@ -1250,6 +1285,40 @@ mod tests {
             parsed.out_md,
             PathBuf::from("target/ripr/reports/recommendation-calibration.md")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn recommendation_calibration_args_report_help_and_unknown_options() -> Result<(), String> {
+        let Err(help) = parse_recommendation_calibration_args(&["--help".to_string()]) else {
+            return Err("help should return usage text".to_string());
+        };
+        assert!(help.starts_with("usage: cargo xtask recommendation-calibration"));
+
+        let Err(unknown) = parse_recommendation_calibration_args(&["--wat".to_string()]) else {
+            return Err("unknown option should fail".to_string());
+        };
+        assert!(unknown.contains("unknown recommendation-calibration option `--wat`"));
+        assert!(unknown.contains("usage: cargo xtask recommendation-calibration"));
+        Ok(())
+    }
+
+    #[test]
+    fn recommendation_calibration_args_reject_missing_and_blank_values() -> Result<(), String> {
+        let Err(missing) = parse_recommendation_calibration_args(&["--root".to_string()]) else {
+            return Err("missing value should fail".to_string());
+        };
+        assert_eq!(
+            missing,
+            "recommendation-calibration --root requires a value"
+        );
+
+        let Err(blank) =
+            parse_recommendation_calibration_args(&["--out".to_string(), "   ".to_string()])
+        else {
+            return Err("blank value should fail".to_string());
+        };
+        assert_eq!(blank, "recommendation-calibration --out requires a value");
         Ok(())
     }
 

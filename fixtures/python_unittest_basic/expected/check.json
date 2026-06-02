@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_risk.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "file": "src/risk.py",
+        "owner": "risk_score",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=100"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,29 +29,41 @@
         "delta": "control",
         "file": "src/risk.py",
         "line": 2,
-        "expression": "    if amount >= 100:"
+        "expression": "    if amount >= 100:",
+        "owner": "python:src/risk.py::risk_score"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `risk_score`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= 100:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `amount == 100`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_risk.py:7 test_risk_score_high uses smoke smoke only oracle: self.assertTrue(value)"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == 100`.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_risk.py:7 test_risk_score_high uses smoke smoke only oracle: self.assertTrue(value)", "missing discriminator amount == 100: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
-      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_risk_score_high)", "related_test_relation: syntactic_call (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)"],
-      "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: risk_score", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_risk.py", "suggested_test_name: test_risk_score_high", "suggested_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_risk_score_high)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high (test_risk_score_high)", "related_test_relation: syntactic_call (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)", "test_oracle_shape: broad_smoke_assertion (test_risk_score_high)"],
+      "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "amount == 100",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if amount >= 100:","line":2}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "amount == 100",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if amount >= 100:","line":2}
+        }
       ],
       "related_tests": [
         {
@@ -51,11 +75,47 @@
           "oracle": "self.assertTrue(value)"
         }
       ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_risk.py",
+        "suggested_test_name": "test_risk_score_high",
+        "verify_command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "risk_score",
+        "changed_behavior": "predicate_boundary changed at src/risk.py:2: `if amount >= 100:`",
+        "current_test_evidence": "tests/test_risk.py:7 test_risk_score_high currently has oracle_strength=smoke, oracle_kind=smoke_only: self.assertTrue(value)",
+        "missing_discriminator": "amount == 100",
+        "recommended_test_shape": "Strengthen the existing unittest boundary assertion for `amount == 100`.",
+        "suggested_assertion": "Assert the owner result or effect at the boundary `amount == 100`.",
+        "suggested_location": {
+          "test_file": "tests/test_risk.py",
+          "test_name": "test_risk_score_high"
+         },
+        "verify": {
+          "command": "python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

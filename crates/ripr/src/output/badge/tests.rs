@@ -22,6 +22,7 @@ use std::path::PathBuf;
 fn finding(class: ExposureClass, related: Vec<RelatedTest>) -> Finding {
     Finding {
         id: "probe:src_lib_rs:1:predicate".to_string(),
+        canonical_gap: None,
         probe: Probe {
             id: ProbeId("probe:src_lib_rs:1:predicate".to_string()),
             family: ProbeFamily::Predicate,
