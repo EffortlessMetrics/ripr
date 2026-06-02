@@ -259,9 +259,9 @@ or same-file-primary context should become
 triage.
 Within call-presence target-token affinity, related-test affinity, and
 same-file owner-call absence, backlog packets may split `limitation_subroute`
-by expression shape, including method-chain, associated-call, and function-call
-missing-owner-call routes. These subroutes are analyzer work queues only and
-must not imply public repair packet eligibility.
+by expression shape, including receiver-method, associated-call, and
+function-call missing-owner-call routes. These subroutes are analyzer work
+queues only and must not imply public repair packet eligibility.
 
 Given a static-unknown or limitation-shaped canonical item, a limitation is
 named only when it carries a non-generic category and repair route. Generic

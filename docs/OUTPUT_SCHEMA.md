@@ -1970,9 +1970,9 @@ Field contract:
   primary non-owner-call relation.
   Call-presence target-affinity, related-test-affinity, and same-file owner-call
   absence backlog packets may further split `limitation_subroute` by expression
-  shape, such as method-chain, associated-call, or function-call
-  missing-owner-call routes, so analyzer work can distinguish local
-  method-chain tracing from free-function call tracing without making the item
+  shape, such as receiver-method, associated-call, or function-call
+  missing-owner-call routes, so analyzer work can distinguish local receiver
+  method evidence from free-function call tracing without making the item
   actionable.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage

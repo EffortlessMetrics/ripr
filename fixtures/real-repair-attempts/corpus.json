@@ -623,6 +623,41 @@
       "reason": "A local analyzer test slice directly observes activation body-line helper scanner owners while preserving conservative same-file method-chain routing."
     },
     {
+      "id": "same_file_receiver_method_backlog_route_split",
+      "source_ref": "local:same-file-receiver-method-backlog-route-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-receiver-method",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_receiver_method_missing_owner_call:analysis-same-file-receiver-method-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "same-file call-presence limitations where the unresolved expression is receiver-method text such as body.lines() rather than observed owner-call evidence",
+      "verify_command": "cargo test -p xtask lane1_static_limitation_backlog_splits_same_file_owner_call_absence_by_expression_shape -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split remaining same-file receiver-method call-presence owner-call limitations away from stale method-chain wording while preserving non-actionable status.",
+      "evidence_movement": "improved: same-file receiver-method call-presence backlog packets now route to analysis/same-file-receiver-method-owner-call-tracing and include a non-claim that receiver method text is not owner-call evidence.",
+      "operator_note": "This is report-route dogfood. It improves analyzer work allocation only; it does not prove owner-call reachability, emit public repair packets, or move badge/gate counters.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not treat receiver method text as owner-call evidence",
+        "do not infer arbitrary receiver value flow",
+        "do not emit public repair packets from static-limitation backlog",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_same_file_receiver_method_owner_call_absence_limitation",
+        "xtask/src/main.rs::tests::lane1_static_limitation_backlog_splits_same_file_owner_call_absence_by_expression_shape",
+        "target/ripr/reports/lane1-evidence-audit.json:gap:52d442acc71b3b6c",
+        "target/ripr/reports/swarm-readiness.json:analysis/same-file-receiver-method-owner-call-tracing"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A report-routing slice makes the remaining same-file receiver-method backlog honest about missing owner-call evidence while keeping it static-limitation analyzer work."
+    },
+    {
       "id": "same_file_dotted_non_call_subroute_guard",
       "source_ref": "local:same-file-dotted-non-call-subroute-2026-06-01",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-dotted-non-call",

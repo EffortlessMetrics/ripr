@@ -1061,7 +1061,7 @@ fn static_limitation_repair_route_for_entry(
     if category == "activation_owner_call_absent_same_file_only"
         && owner_call_absence_same_file_call_presence_is_method_chain(entry)
     {
-        "analysis/same-file-method-chain-owner-call-tracing"
+        "analysis/same-file-receiver-method-owner-call-tracing"
     } else if category == "activation_owner_call_absent_assertion_target_affinity"
         && owner_call_absence_assertion_target_is_return_value(entry)
     {
@@ -2014,7 +2014,7 @@ mod tests {
     }
 
     #[test]
-    fn evidence_record_routes_same_file_method_chain_owner_call_absence_limitation() {
+    fn evidence_record_routes_same_file_receiver_method_owner_call_absence_limitation() {
         let mut entry = sample_call_presence_classified();
         entry.seam = RepoSeam::new(
             "src/canonical_gap.rs",
@@ -2051,11 +2051,11 @@ mod tests {
         );
         assert_eq!(
             json["static_limitations"][0]["repair_route"],
-            "analysis/same-file-method-chain-owner-call-tracing"
+            "analysis/same-file-receiver-method-owner-call-tracing"
         );
         assert_eq!(
             json["canonical_item"]["static_limitations"][0]["repair_route"],
-            "analysis/same-file-method-chain-owner-call-tracing"
+            "analysis/same-file-receiver-method-owner-call-tracing"
         );
     }
 
