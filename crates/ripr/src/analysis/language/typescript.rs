@@ -3304,7 +3304,7 @@ fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
             owner.name
         ),
         OwnerKind::ClassMethod => format!(
-            "No trusted TypeScript class-method relation for `{}`. Static class calls stay missing context until class-method related-test matching lands.",
+            "No trusted TypeScript class-method relation for `{}`. Direct same-file or imported `Class.method(...)` calls are supported, but local shadows, mocked modules, namespace chains, dynamic member access, and missing class-name context stay ambiguous in preview.",
             owner.name
         ),
         OwnerKind::ModuleFunction => format!(
@@ -3324,7 +3324,7 @@ fn no_static_path_recommendation(owner: &TypeScriptOwner) -> String {
             "TypeScript preview advisory: method receiver relation is missing context; use a direct `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection, mocked modules, prototype aliases, and dynamic property access advisory.".to_string()
         }
         OwnerKind::ClassMethod => {
-            "TypeScript preview advisory: class-method relation is missing context; keep the finding advisory until class-method related-test matching lands.".to_string()
+            "TypeScript preview advisory: class-method relation is missing context; use a direct same-file or imported `Class.method(...)` observer when safe, and keep local shadows, mocked modules, namespace chains, dynamic member access, and missing class-name context advisory.".to_string()
         }
         OwnerKind::ModuleFunction => {
             "TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.".to_string()
@@ -3633,6 +3633,29 @@ mod tests {
             mocks_in_file: Vec::new(),
             imports_in_file: Vec::new(),
         }
+    }
+
+    #[test]
+    fn class_method_no_static_path_guidance_names_current_supported_boundary() {
+        let mut owner = test_owner("build", "src/owners.ts");
+        owner.owner_kind = OwnerKind::ClassMethod;
+        owner.class_name = Some("Cart".to_string());
+
+        let missing = no_static_path_missing(&owner);
+        let recommendation = no_static_path_recommendation(&owner);
+
+        assert!(
+            missing
+                .contains("Direct same-file or imported `Class.method(...)` calls are supported")
+        );
+        assert!(missing.contains("local shadows"));
+        assert!(missing.contains("dynamic member access"));
+        assert!(!missing.contains("class-method related-test matching lands"));
+        assert!(
+            recommendation.contains("direct same-file or imported `Class.method(...)` observer")
+        );
+        assert!(recommendation.contains("namespace chains"));
+        assert!(!recommendation.contains("class-method related-test matching lands"));
     }
 
     fn mock_interaction_test_for(owner_name: &str) -> TypeScriptTest {
