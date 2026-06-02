@@ -12418,6 +12418,61 @@ mod tests {
     }
 
     #[test]
+    fn given_boundary_owner_call_when_argument_is_path_constructor_then_observed_values_are_resolved()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/agent/loop_commands.rs");
+        let source_src = r#"
+use std::path::Path;
+
+pub fn workflow_artifact_path(out_dir: &Path, file_name: &str) -> String {
+    let out_dir = display_path(out_dir);
+    if out_dir == "." {
+        file_name.to_string()
+    } else {
+        format!("{}/{}", out_dir.trim_end_matches('/'), file_name)
+    }
+}
+
+pub fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workflow_artifact_path_uses_output_directory() {
+        let path = workflow_artifact_path(Path::new("target/ripr/workflow"), "workflow.json");
+        assert_eq!(path, "target/ripr/workflow/workflow.json");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams =
+            inventory_seams_from_index(&[PathBuf::from("src/agent/loop_commands.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary && s.expression().contains("=="))
+            .ok_or_else(|| "out_dir predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let values: Vec<String> = evidence
+            .observed_values
+            .iter()
+            .map(|value| value.value.clone())
+            .collect();
+
+        assert!(
+            values
+                .iter()
+                .any(|value| value == "\"target/ripr/workflow\""),
+            "Path::new literal should become a concrete observed activation value; got {values:?}"
+        );
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        Ok(())
+    }
+
+    #[test]
     fn given_let_binding_values_when_owner_call_uses_identifiers_then_observed_values_are_resolved()
     -> Result<(), String> {
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \

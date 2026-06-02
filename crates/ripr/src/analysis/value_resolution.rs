@@ -24,7 +24,8 @@
 //! 5. `const NAME: T = LITERAL;` / `static NAME: T = LITERAL;` in the
 //!    same source file
 //! 6. `Some(L)` / `Err(L)` constructor unwrap (one level)
-//! 7. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
+//! 7. `Path::new(L)` / `PathBuf::from(L)` path literal constructors
+//! 8. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
 //!    same test body
 //!
 //! Builder method values (`.amount(100).threshold(100)`) are handled
@@ -156,6 +157,15 @@ impl<'a> ValueEnv<'a> {
                 },
             );
         }
+        if let Some(inner) = unwrap_path_literal_constructor(trimmed) {
+            return self.resolve_identifier_or_literal_at(
+                inner.as_str(),
+                SourcePosition {
+                    line: usize::MAX,
+                    column: usize::MAX,
+                },
+            );
+        }
 
         // Bare identifier: priority 2-5.
         self.resolve_identifier_or_literal_at(
@@ -198,6 +208,9 @@ impl<'a> ValueEnv<'a> {
             return Vec::new();
         }
         if let Some(inner) = unwrap_option_or_result(trimmed) {
+            return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
+        }
+        if let Some(inner) = unwrap_path_literal_constructor(trimmed) {
             return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
         }
         self.resolve_identifier_or_literal_at(trimmed, call_position)
@@ -1018,6 +1031,30 @@ fn unwrap_option_or_result(text: &str) -> Option<String> {
     None
 }
 
+/// Strip simple path literal constructors to the inner expression.
+/// Returns the inner text (trimmed). One level only.
+fn unwrap_path_literal_constructor(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    for ctor in [
+        "Path::new(",
+        "std::path::Path::new(",
+        "::std::path::Path::new(",
+        "PathBuf::from(",
+        "std::path::PathBuf::from(",
+        "::std::path::PathBuf::from(",
+    ] {
+        if let Some(rest) = trimmed.strip_prefix(ctor)
+            && let Some(inner) = rest.strip_suffix(')')
+        {
+            let inner = inner.trim();
+            if looks_like_literal(inner) {
+                return Some(inner.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn looks_like_literal(expr: &str) -> bool {
     let trimmed = expr.trim().trim_end_matches([',', ';']);
     if trimmed.is_empty() {
@@ -1566,6 +1603,31 @@ mod tests {
         assert!(
             env.resolve_at("   ", 1).is_empty(),
             "empty argument text must not produce activation values"
+        );
+    }
+
+    #[test]
+    fn resolve_at_unwraps_literal_path_constructors_only() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert_eq!(
+            env.resolve_at(r#"Path::new("target/ripr/workflow")"#, 1),
+            vec![(
+                r#""target/ripr/workflow""#.to_string(),
+                ValueContext::FunctionArgument
+            )],
+            "Path::new string literals should become concrete activation values"
+        );
+        assert_eq!(
+            env.resolve_at(r#"std::path::PathBuf::from(".")"#, 1),
+            vec![(r#"".""#.to_string(), ValueContext::FunctionArgument)],
+            "PathBuf::from string literals should become concrete activation values"
+        );
+        assert!(
+            env.resolve_at("Path::new(out_dir)", 1).is_empty(),
+            "non-literal path constructors must remain unresolved"
         );
     }
 
