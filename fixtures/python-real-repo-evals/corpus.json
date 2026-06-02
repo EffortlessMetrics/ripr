@@ -1781,6 +1781,40 @@
       "reason": "The run records a second fail-closed Python repair-routing shape: fixture-sourced pytest values keep the static limitation visible while excluding the finding from repair-card, packet, verify, and receipt success metrics."
     },
     {
+      "id": "generated_file_no_packet_eval",
+      "repo_shape": "generated_python_file",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/generated-file-limit",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/generated-file-limit --base HEAD~1 --format json",
+      "runtime_ms": 4513,
+      "finding_id": "excluded:src/schema_pb2.py:generated_file",
+      "changed_owner": "python:src/schema_pb2.py::<generated>",
+      "static_limit_kind": "generated_file",
+      "classification": "excluded",
+      "stop_reasons": [
+        "generated_file_excluded"
+      ],
+      "related_test_file": "tests/test_schema.py",
+      "related_test_name": "test_status_generated_value",
+      "why_not_actionable": "static limit generated_file prevents bounded repair routing because the changed file is detectable generated Python code",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR excluded the generated src/schema_pb2.py diff before repair routing, so no repair card, agent packet, verify success, or receipt movement is claimed even though a related pytest import exists.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records the generated-code fail-closed side of Python repair routing: detectable generated Python files stay out of repair-card, packet, verify, and receipt success metrics instead of becoming noisy work."
+    },
+    {
       "id": "unsupported_syntax_no_packet_eval",
       "repo_shape": "lambda_return_pytest",
       "source_kind": "scratch_repo",

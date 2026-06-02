@@ -1525,6 +1525,11 @@ git diff --check
   exact oracle but refuses to emit a repair card, agent packet, verify success,
   or receipt movement because the changed lambda-return expression is outside
   the preview adapter's precise syntax model.
+- The corpus now records `generated_file_no_packet_eval` as a post-promotion
+  fail-closed stability eval where a detectable generated Python diff such as
+  `src/schema_pb2.py` is excluded before probe generation, so RIPR records no
+  repair card, agent packet, verify success, or receipt movement even when a
+  related pytest import exists.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.

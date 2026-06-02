@@ -8329,6 +8329,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
         "unresolved_fixture_no_packet_eval",
         "unresolved_pytest_fixture",
     ),
+    ("generated_file_no_packet_eval", "generated_file"),
     ("unsupported_syntax_no_packet_eval", "unsupported_syntax"),
 ];
 
@@ -45282,6 +45283,7 @@ fn dogfood_python_static_limit_eval_run(
     scenario: &DogfoodPythonStaticLimitEvalScenario,
 ) -> DogfoodPythonStaticLimitEvalRun {
     let mut errors = Vec::new();
+    let is_generated_file_exclusion = scenario.static_limit_kind == "generated_file";
     for (label, value) in [
         ("case id", &scenario.name),
         ("repo_shape", &scenario.repo_shape),
@@ -45320,7 +45322,14 @@ fn dogfood_python_static_limit_eval_run(
     if scenario.runtime_ms == 0 {
         errors.push("runtime_ms must be greater than zero".to_string());
     }
-    if !scenario.finding_id.starts_with("probe:") {
+    if is_generated_file_exclusion {
+        if !scenario.finding_id.starts_with("excluded:") {
+            errors.push(format!(
+                "generated-file exclusions must use an excluded: identity, got {}",
+                scenario.finding_id
+            ));
+        }
+    } else if !scenario.finding_id.starts_with("probe:") {
         errors.push(format!(
             "finding_id must use the static finding probe identity, got {}",
             scenario.finding_id
@@ -45332,7 +45341,14 @@ fn dogfood_python_static_limit_eval_run(
             scenario.changed_owner
         ));
     }
-    if scenario.classification != "static_unknown" {
+    if is_generated_file_exclusion {
+        if scenario.classification != "excluded" {
+            errors.push(format!(
+                "generated-file exclusions must record classification=excluded, got {}",
+                scenario.classification
+            ));
+        }
+    } else if scenario.classification != "static_unknown" {
         errors.push(format!(
             "classification must be static_unknown for no-action limitation evals, got {}",
             scenario.classification
@@ -74093,6 +74109,32 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(report.contains("gap_movement=no_receipt"));
         assert!(report.contains("stop_reasons must include the static-limit stop reason"));
         assert!(report.contains("claim_boundary must include No repair packet emitted"));
+    }
+
+    #[test]
+    fn dogfood_python_static_limit_eval_accepts_generated_file_exclusion() {
+        let mut scenario = valid_python_static_limit_eval_scenario();
+        scenario.name = "generated_file_no_packet_eval".to_string();
+        scenario.repo_shape = "generated_python_file".to_string();
+        scenario.source_ref = "target/ripr/python-real-repo-evals/generated-file-limit".to_string();
+        scenario.command = "ripr check --root target/ripr/python-real-repo-evals/generated-file-limit --base HEAD~1 --format json".to_string();
+        scenario.runtime_ms = 4513;
+        scenario.finding_id = "excluded:src/schema_pb2.py:generated_file".to_string();
+        scenario.changed_owner = "python:src/schema_pb2.py::<generated>".to_string();
+        scenario.static_limit_kind = "generated_file".to_string();
+        scenario.classification = "excluded".to_string();
+        scenario.stop_reasons = vec!["generated_file_excluded".to_string()];
+        scenario.related_test_file = "tests/test_schema.py".to_string();
+        scenario.related_test_name = "test_status_generated_value".to_string();
+        scenario.why_not_actionable = "static limit generated_file prevents bounded repair routing because the changed file is detectable generated Python code".to_string();
+        scenario.limitation_notes = "generated Python diffs stay out of repair-card, packet, verify, and receipt success metrics".to_string();
+        scenario.reason = "generated-file exclusion dogfood records an honest no-action result instead of a repair card".to_string();
+
+        let report = dogfood_python_static_limit_eval_run(&scenario)
+            .errors
+            .join("\n");
+
+        assert!(report.is_empty(), "{report}");
     }
 
     #[test]
