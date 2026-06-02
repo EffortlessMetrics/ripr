@@ -2112,10 +2112,14 @@ impl OwnerContext {
 /// through `extract_identifier_tokens`, so stop-words and short tokens
 /// are excluded.
 fn assertion_target_tokens(seam: &RepoSeam) -> BTreeSet<String> {
-    let discriminator_tokens = if seam.kind() == SeamKind::CallPresence {
-        call_presence_callee_target_tokens(required_discriminator_text(seam))
-    } else {
-        required_discriminator_tokens(seam)
+    let discriminator_tokens = match seam.required_discriminator() {
+        super::seams::RequiredDiscriminator::MatchArmTaken { arm } => {
+            match_arm_assertion_target_tokens(arm)
+        }
+        _ if seam.kind() == SeamKind::CallPresence => {
+            call_presence_callee_target_tokens(required_discriminator_text(seam))
+        }
+        _ => required_discriminator_tokens(seam),
     };
     let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
     let filters_generic_call_tokens = seam.kind() == SeamKind::CallPresence;
@@ -2127,6 +2131,17 @@ fn assertion_target_tokens(seam: &RepoSeam) -> BTreeSet<String> {
                 || call_presence_assertion_affinity_token_is_specific_enough(token)
         })
         .collect()
+}
+
+fn match_arm_assertion_target_tokens(arm: &str) -> Vec<String> {
+    extract_identifier_tokens(arm)
+        .into_iter()
+        .filter(|token| match_arm_assertion_target_token_is_specific_enough(token))
+        .collect()
+}
+
+fn match_arm_assertion_target_token_is_specific_enough(token: &str) -> bool {
+    token.chars().next().is_some_and(|ch| ch.is_uppercase())
 }
 
 fn call_presence_callee_target_tokens(expression: &str) -> Vec<String> {
@@ -12452,6 +12467,99 @@ mod tests {
             RelationReason::AssertionTargetAffinity
         );
         assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
+        Ok(())
+    }
+
+    #[test]
+    fn given_generic_option_match_arm_binding_when_related_tests_are_ranked_then_assertion_target_affinity_does_not_fire()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub fn outcome_command(out_path: Option<&str>) -> &'static str {
+    match out_path {
+        Some(path) => path,
+        None => "missing",
+    }
+}
+"#;
+        let test = (
+            "tests/status_contract.rs",
+            r#"
+#[test]
+fn path_word_is_not_owner_evidence() {
+    let path = "target/ripr/outcome.json";
+    assert_eq!(path, "target/ripr/outcome.json");
+}
+"#,
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/commands.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/commands.rs")], &index);
+        let some_arm = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::MatchArm && s.expression().contains("Some(path)"))
+            .ok_or_else(|| "expected Some(path) match-arm seam".to_string())?;
+        let evidence = evidence_for_seam(some_arm, &index);
+
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .all(|test| { test.relation_reason != RelationReason::AssertionTargetAffinity }),
+            "generic match-arm binding token should not create assertion-target affinity: {:?}",
+            evidence.related_tests
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_specific_match_arm_variant_when_related_tests_are_ranked_then_assertion_target_affinity_still_fires()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub enum Mode {
+    Json,
+    Text,
+}
+
+pub fn render_mode(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Json => "json",
+        Mode::Text => "text",
+    }
+}
+"#;
+        let test = (
+            "tests/render_contract.rs",
+            r#"
+#[test]
+fn mentions_json_variant() {
+    let rendered = "Json";
+    assert_eq!(rendered, "Json");
+}
+"#,
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/render.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/render.rs")], &index);
+        let json_arm = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::MatchArm && s.expression().contains("Mode::Json"))
+            .ok_or_else(|| "expected Mode::Json match-arm seam".to_string())?;
+        let evidence = evidence_for_seam(json_arm, &index);
+
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity),
+            "specific enum variant should still support assertion-target affinity: {:?}",
+            evidence.related_tests
+        );
         Ok(())
     }
 
