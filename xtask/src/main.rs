@@ -21698,6 +21698,7 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             .iter()
             .map(lane1_evidence_audit_run_limitation_json)
             .collect::<Vec<_>>(),
+        "static_limitation_backlog": lane1_static_limitation_backlog_json(report),
         "summary": {
             "seams_total": report.summary.seams_total,
             "raw_headline_gaps": report.summary.raw_headline_gaps,
@@ -87735,6 +87736,13 @@ covered_by = ["cargo xtask check-file-policy"]
         let actionable_json = lane1_actionable_gap_packets_json(&report)?;
         let value: serde_json::Value =
             serde_json::from_str(&actionable_json).map_err(|err| err.to_string())?;
+        let audit_json = lane1_evidence_audit_json(&report)?;
+        let audit_value: serde_json::Value =
+            serde_json::from_str(&audit_json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            audit_value["static_limitation_backlog"]["limitation_backlog_packets"][0]["packet_id"],
+            "limitation:activation_boundary_input_unresolved:analysis-local-computed-boundary-operand-resolution"
+        );
         let packet = &value["static_limitation_backlog"]["limitation_backlog_packets"][0];
         assert_eq!(
             packet["packet_id"],
