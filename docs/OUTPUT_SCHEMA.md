@@ -23,6 +23,12 @@ standard SARIF `version: "2.1.0"` envelope rather than `schema_version: "0.1"`.
 Adding SARIF must not change the existing human, JSON, GitHub annotation,
 badge, LSP, or context schemas.
 
+`ripr check --format github` emits GitHub Actions workflow-command text rather
+than JSON. For Python preview findings, that message may append either an
+eligible repair-card summary or a no-action/static-limit summary. No-action
+annotation text explicitly says no repair card or agent packet was emitted, and
+remains advisory review context rather than verify, receipt, or gate authority.
+
 ## Check Output
 
 `ripr check --json` emits:

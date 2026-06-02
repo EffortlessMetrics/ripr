@@ -289,8 +289,9 @@ can show:
 - fixtures proving direct weak related pytest and unittest tests are preferred
   as `strengthen_existing_test` repair targets instead of redundant new tests
 - output tests proving eligible Python repair cards are projected into GitHub
-  annotations and diff-scoped SARIF as advisory repair context, not gate or
-  receipt authority
+  annotations and diff-scoped SARIF as advisory repair context, and proving
+  no-action/static-limit Python findings project explicit no-repair-card and
+  no-agent-packet annotation context, not gate or receipt authority
 - a fixture proving `mock.assert_called*` is recognised as a
   side-effect oracle
 - a fixture covering parametrized `pytest` cases

@@ -1,5 +1,6 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
+use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
 use crate::output::typescript_preview_card::typescript_preview_card;
@@ -59,6 +60,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str("`; verify `");
             message.push_str(&card.verify_command);
             message.push_str("` (preview advisory).");
+        } else if let Some(no_action) = python_no_action_annotation(finding) {
+            message.push_str(&no_action);
         }
         if let Some(card) = typescript_preview_card(finding) {
             message.push_str(" TypeScript preview card: owner `");
@@ -85,6 +88,91 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     out
 }
 
+fn python_no_action_annotation(finding: &Finding) -> Option<String> {
+    if finding.language != Some(LanguageId::Python)
+        || finding.language_status != Some(LanguageStatus::Preview)
+    {
+        return None;
+    }
+    if let Some(no_action_kind) = python_ordinary_no_action_kind(finding) {
+        return Some(format!(
+            " Python no-action: {no_action_kind}; {} No repair card or agent packet emitted (preview advisory).",
+            python_ordinary_no_action_reason(no_action_kind)
+        ));
+    }
+
+    let static_limit_kind = finding.static_limit_kind?;
+    let static_limit_kind = static_limit_kind.as_str();
+    Some(format!(
+        " Python no-action: static_limit `{static_limit_kind}`; {} No repair card or agent packet emitted (preview advisory).",
+        python_static_limit_detail(finding, static_limit_kind)
+    ))
+}
+
+fn python_ordinary_no_action_kind(finding: &Finding) -> Option<&'static str> {
+    match &finding.class {
+        ExposureClass::Exposed => Some("already_observed"),
+        ExposureClass::NoStaticPath => Some("no_related_test"),
+        ExposureClass::WeaklyExposed if python_finding_is_heuristic_only(finding) => {
+            Some("heuristic_only")
+        }
+        _ => None,
+    }
+}
+
+fn python_finding_is_heuristic_only(finding: &Finding) -> bool {
+    finding
+        .evidence
+        .iter()
+        .any(|item| item.starts_with("related_test_uncertain:"))
+        || finding
+            .ripr
+            .reach
+            .summary
+            .contains("heuristic Python test link")
+}
+
+fn python_ordinary_no_action_reason(no_action_kind: &str) -> &'static str {
+    match no_action_kind {
+        "already_observed" => {
+            "Current Python test evidence already observes the changed behavior; no missing proof was routed."
+        }
+        "no_related_test" => {
+            "No related Python test was statically linked, so RIPR cannot choose a safe edit target."
+        }
+        "heuristic_only" => {
+            "Only heuristic Python related-test proximity was found, so bounded repair routing would overclaim."
+        }
+        _ => "Python preview did not find a bounded repair route.",
+    }
+}
+
+fn python_static_limit_detail(finding: &Finding, static_limit_kind: &str) -> String {
+    finding
+        .missing
+        .iter()
+        .find_map(|detail| non_empty(detail).map(ToString::to_string))
+        .or_else(|| {
+            finding
+                .evidence
+                .iter()
+                .find(|detail| {
+                    detail.contains("static_limit") || detail.contains(static_limit_kind)
+                })
+                .cloned()
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "Python preview reported static limit `{static_limit_kind}` without a bounded repair route."
+            )
+        })
+}
+
+fn non_empty(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
 fn escape_cmd(value: &str) -> String {
     value
         .replace('%', "%25")
@@ -102,7 +190,7 @@ mod tests {
         Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId,
         LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
         ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, Summary,
+        StageState, StaticLimitKind, StopReason, Summary, SymbolId,
     };
     use std::path::PathBuf;
 
@@ -301,6 +389,57 @@ mod tests {
         assert!(rendered.contains(
             "verify `pytest tests/test_pricing.py%3A%3Atest_calculate_discount_threshold_boundary` (preview advisory)."
         ));
+        assert!(!rendered.contains("Python no-action"));
+    }
+
+    #[test]
+    fn render_includes_python_ordinary_no_action_guidance() {
+        let rendered = render(&output_with_python_no_action_findings());
+
+        assert!(rendered.contains(
+            "Python no-action%3A already_observed; Current Python test evidence already observes"
+        ));
+        assert!(rendered.contains(
+            "Python no-action%3A no_related_test; No related Python test was statically linked"
+        ));
+        assert!(rendered.contains(
+            "Python no-action%3A heuristic_only; Only heuristic Python related-test proximity was found"
+        ));
+        assert_eq!(
+            rendered
+                .matches("No repair card or agent packet emitted")
+                .count(),
+            3
+        );
+        assert!(!rendered.contains("Python repair card"));
+    }
+
+    #[test]
+    fn render_includes_python_static_limit_no_action_guidance() {
+        let rendered = render(&output_with_python_static_limit());
+
+        assert!(rendered.contains(
+            "Python no-action%3A static_limit `dynamic_dispatch`; Static limit `dynamic_dispatch` prevents bounded repair routing"
+        ));
+        assert!(rendered.contains("Stop reason%3A dynamic_dispatch_unresolved"));
+        assert!(rendered.contains("No repair card or agent packet emitted (preview advisory)."));
+        assert!(!rendered.contains("Python repair card"));
+    }
+
+    #[test]
+    fn render_includes_python_static_limit_fallback_no_action_guidance() {
+        let mut output = output_with_python_static_limit();
+        let finding = &mut output.findings[0];
+        finding.missing.clear();
+        finding.evidence.clear();
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains(
+            "Python no-action%3A static_limit `dynamic_dispatch`; Python preview reported static limit `dynamic_dispatch` without a bounded repair route."
+        ));
+        assert!(rendered.contains("No repair card or agent packet emitted (preview advisory)."));
+        assert!(!rendered.contains("Python repair card"));
     }
 
     fn output_with_unknown_finding() -> CheckOutput {
@@ -406,6 +545,75 @@ mod tests {
         finding.language = Some(LanguageId::Python);
         finding.language_status = Some(LanguageStatus::Preview);
         finding.recommended_next_step = Some("Add a Python boundary assertion".to_string());
+        output
+    }
+
+    fn output_with_python_no_action_findings() -> CheckOutput {
+        let base = output_with_unknown_finding();
+        CheckOutput {
+            findings: vec![
+                python_no_action_finding(
+                    "probe:src_pricing.py:2:already_observed",
+                    ExposureClass::Exposed,
+                    2,
+                ),
+                python_no_action_finding(
+                    "probe:src_pricing.py:4:no_related",
+                    ExposureClass::NoStaticPath,
+                    4,
+                ),
+                python_heuristic_only_finding(),
+            ],
+            ..base
+        }
+    }
+
+    fn python_no_action_finding(id: &str, class: ExposureClass, line: usize) -> Finding {
+        let mut finding = output_with_unknown_finding().findings[0].clone();
+        finding.id = id.to_string();
+        finding.probe.id = ProbeId(id.to_string());
+        finding.probe.location = SourceLocation::new("src/pricing.py", line, 1);
+        finding.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+        finding.probe.family = ProbeFamily::Predicate;
+        finding.probe.delta = DeltaKind::Control;
+        finding.probe.expression = "amount >= threshold".to_string();
+        finding.class = class;
+        finding.evidence.clear();
+        finding.missing.clear();
+        finding.related_tests.clear();
+        finding.recommended_next_step = None;
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding
+    }
+
+    fn python_heuristic_only_finding() -> Finding {
+        let mut finding = python_no_action_finding(
+            "probe:src_pricing.py:6:heuristic",
+            ExposureClass::WeaklyExposed,
+            6,
+        );
+        finding.evidence = vec!["related_test_uncertain: test_name_similarity".to_string()];
+        finding.ripr.reach = stage(StageState::Weak, "heuristic Python test link by file name");
+        finding
+    }
+
+    fn output_with_python_static_limit() -> CheckOutput {
+        let mut output = output_with_unknown_finding();
+        let finding = &mut output.findings[0];
+        finding.id = "probe:src_runtime.py:2:python_static_limit".to_string();
+        finding.probe.id = ProbeId("probe:src_runtime.py:2:python_static_limit".to_string());
+        finding.probe.location = SourceLocation::new("src/runtime.py", 2, 1);
+        finding.probe.owner = Some(SymbolId("python:src/runtime.py::dispatch".to_string()));
+        finding.probe.expression = "return getattr(handler, name)(payload)".to_string();
+        finding.class = ExposureClass::StaticUnknown;
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.static_limit_kind = Some(StaticLimitKind::DynamicDispatch);
+        finding.missing = vec![
+            "Static limit `dynamic_dispatch` prevents bounded repair routing because syntax alone cannot resolve runtime getattr dispatch.".to_string(),
+        ];
+        finding.stop_reasons = vec![StopReason::DynamicDispatchUnresolved];
         output
     }
 
