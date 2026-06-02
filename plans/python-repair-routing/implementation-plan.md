@@ -1454,6 +1454,12 @@ git diff --check
   existing test method, verifies with `python -m unittest`, exports a bounded
   test-only packet, and closes the canonical Python field/object gap through
   `ripr outcome`.
+- The corpus now adds `src_layout_pytest_boundary_receipt` as a
+  post-promotion external-repo-style stability eval where a `src/` package
+  pytest app routes a boundary repair to one existing test file, exports a
+  bounded packet that forbids the package production module, verifies with a
+  focused `pytest` command, and closes the canonical Python gap through
+  `ripr outcome`.
 - The corpus now adds `api_json_detail_pytest_receipt` as a post-promotion
   stability eval where an API response JSON detail repair routes to one
   existing pytest method, verifies with a focused `pytest` command, exports a
@@ -1563,9 +1569,10 @@ git diff --check
   pytest exception, custom exception, unittest exception, API JSON detail,
   log output, argparse CLI output, Click CLI output, Typer CLI output,
   CLI exit-code, Flask route JSON detail, FastAPI route JSON detail, API
-  exception-response, unittest return-value, and unittest dict-field eval rows in addition to the original
-  boundary/API/CLI/mixed cases, so those Python closure proofs cannot
-  disappear from the corpus without failing the checked dogfood gate.
+  exception-response, `src/` package-layout boundary, unittest return-value,
+  and unittest dict-field eval rows in addition to the original
+  boundary/API/CLI/mixed cases, so those Python closure proofs cannot disappear
+  from the corpus without failing the checked dogfood gate.
 - The corpus now adds `log_output_pytest_receipt` as a post-promotion
   stability eval where a changed `logger.warning(...)` side effect routes to a
   log-output repair card, exports a bounded test-only packet, verifies with a

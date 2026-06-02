@@ -142,6 +142,70 @@
       "reason": "The run proves a pyproject-based pytest app can produce a bounded strengthen-existing-test repair card, pass the verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "src_layout_pytest_boundary_receipt",
+      "repo_shape": "src_layout_package_pytest",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_src_layout_repair_gap",
+      "command": "ripr check --root fixtures/python_src_layout_repair_gap/input --diff fixtures/python_src_layout_repair_gap/diff.patch --format json",
+      "runtime_ms": 428,
+      "top_finding_summary": "Python src-layout package predicate-boundary repair card for loyalty_discount subtotal >= loyalty_threshold",
+      "canonical_gap_id": "gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for subtotal == loyalty_threshold.",
+      "agent_packet_command": "ripr agent packet --root fixtures/python_src_layout_repair_gap/input --gap-ledger gap-ledger.json --gap-id gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold --json",
+      "agent_packet_allowed_files": [
+        "tests/test_pricing.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/shop_service/pricing.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved through the src-layout package path",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/shop_service/pricing.py::loyalty_discount",
+      "missing_discriminator": "subtotal == loyalty_threshold",
+      "suggested_test_file": "tests/test_pricing.py",
+      "suggested_test_name": "test_loyalty_discount_high_value_smoke",
+      "verify_command": "pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.34s",
+      "after_command": "ripr check --root fixtures/python_src_layout_repair_gap/input --diff fixtures/python_src_layout_repair_gap/diff.patch --format json",
+      "after_runtime_ms": 71,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "src-layout package fixture records external-repo-style post-promotion stability evidence; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "subtotal == loyalty_threshold",
+          "suggested_test_file": "tests/test_pricing.py",
+          "verify_command": "pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card stayed bounded across a src-layout package path with a concrete boundary discriminator and focused pytest verify command."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused src-layout eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to an external-repo-style src-layout package: RIPR routes one bounded test-only repair, verifies it with pytest, and receipts the canonical Python gap as closed."
+    },
+    {
       "id": "multi_card_pytest_top3_receipt",
       "repo_shape": "normal_pytest_app_multi_gap",
       "source_kind": "scratch_repo",
