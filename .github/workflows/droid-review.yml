@@ -12,7 +12,8 @@ jobs:
   droid-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !contains(github.event.pull_request.title, '[skip-review]')
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      !contains(github.event.pull_request.labels.*.name, 'release-check')
 
     runs-on:
       group: em-ci-review

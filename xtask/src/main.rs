@@ -82772,7 +82772,7 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             "schema_version": "0.1",
             "format": "repo-exposure-summary-json",
             "tool": "ripr",
-            "ripr_version": "0.7.0",
+            "ripr_version": "0.8.0",
             "scope": "repo",
             "basis": "canonical_actionable_gap",
             "metadata": {

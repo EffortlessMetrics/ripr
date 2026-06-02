@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+- Aligns the marketplace extension metadata with RIPR 0.8.0's evidence-to-repair
+  foundation release line.
+- Keeps the editor path centered on canonical actionable state, runtime
+  completeness, bounded repair packet status, and limitation-route visibility.
+- Preserves the preview boundary: no mutation execution, no automatic edits, no
+  generated tests, no provider calls, no CI blocking, no gate authority, and no
+  public badge semantic switch.
+
 ## 0.7.0
 
 - Aligns the marketplace extension metadata with RIPR 0.7.0's actionable

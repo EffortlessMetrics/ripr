@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.8.0 - 2026-06-02
+
+- Released the evidence-to-repair foundation: runtime completeness is explicit,
+  public actionability is fail-closed, repair packets carry proof and edit-boundary
+  expectations, blocked states and limitation routes are visible, and cache/runtime
+  hygiene supports reliable report generation. This release does not claim
+  autonomous edits, provider integration, mutation execution, default blocking CI
+  semantics, or public badge semantic changes.
 - Added Python repair-routing quality metrics to `cargo xtask dogfood`. The
   report now derives top-1 repair-card usefulness, verify-command validity,
   concrete-discriminator coverage, suggested test-location coverage,
