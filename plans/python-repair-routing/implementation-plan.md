@@ -818,6 +818,15 @@ Project Python repair cards consistently across output surfaces.
 
 - Eligible `python_repair_card` findings now project into diff-scoped SARIF
   properties with the same advisory card fields as check JSON.
+- Python preview static-limit findings now project explicit diff-scoped SARIF
+  `python_no_action` properties with `repairability = "analyzer_limitation"`,
+  no verify command, no receipt command, no repair card, and no packet-ready
+  authority.
+- Python preview ordinary no-action findings now project explicit diff-scoped
+  SARIF `python_no_action` properties for `already_observed`,
+  `no_related_test`, and `heuristic_only` states with
+  `repairability = "no_action"`, no verify command, no receipt command, no
+  repair card, and no packet-ready authority.
 - GitHub annotation output now includes a concise Python repair-card sentence
   with the missing discriminator, suggested test target, verify command, and
   preview/advisory boundary.
@@ -825,6 +834,11 @@ Project Python repair cards consistently across output surfaces.
   from `actionable-gaps.json` with the canonical gap, changed owner, missing
   discriminator, suggested test target, verify command, receipt command, and
   stop conditions while preserving the static/advisory boundary.
+- Check-output-derived Python `already_observed`, `no_related_test`, and
+  `heuristic_only` findings now materialize as report-only gap-ledger records,
+  and the PR review front panel surfaces the top typed Python no-action or
+  static-limitation record with a `no_repair_packet` route instead of silently
+  falling back to a generic clean state.
 
 ### Work item: ci/python-advisory-mode
 
@@ -1432,6 +1446,10 @@ git diff --check
 - `fixtures/python-real-repo-evals/corpus.json` now records bounded agent
   packet fields for every checked Python dogfood eval: packet command, allowed
   test files, forbidden production files, and stop conditions.
+- The dogfood checker now requires at least one full top-3 Python repair-card
+  capture, and the corpus records `multi_card_pytest_top3_receipt` where three
+  usable repair cards are ranked while only the top packet is delegated and
+  receipted.
 - The corpus now adds `unittest_return_value_receipt` as a post-promotion
   stability eval where a unittest return-value repair routes to one existing
   test method, verifies with `python -m unittest`, exports a bounded test-only
@@ -1445,6 +1463,18 @@ git diff --check
   existing test method, verifies with `python -m unittest`, exports a bounded
   test-only packet, and closes the canonical Python field/object gap through
   `ripr outcome`.
+- The corpus now adds `src_layout_pytest_boundary_receipt` as a
+  post-promotion external-repo-style stability eval where a `src/` package
+  pytest app routes a boundary repair to one existing test file, exports a
+  bounded packet that forbids the package production module, verifies with a
+  focused `pytest` command, and closes the canonical Python gap through
+  `ripr outcome`.
+- The corpus now adds `no_config_pyproject_boundary_receipt` as a
+  post-promotion project-detection stability eval where a pyproject-based
+  Python repo without `ripr.toml` still routes a boundary repair to one
+  existing pytest file, exports a bounded packet that forbids the production
+  module, verifies with a focused `pytest` command, and closes the canonical
+  Python gap through `ripr outcome`.
 - The corpus now adds `api_json_detail_pytest_receipt` as a post-promotion
   stability eval where an API response JSON detail repair routes to one
   existing pytest method, verifies with a focused `pytest` command, exports a
@@ -1550,13 +1580,15 @@ git diff --check
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
-- `cargo xtask dogfood` now requires the receipt-backed async return-value,
+- `cargo xtask dogfood` now requires the receipt-backed no-config pyproject
+  boundary, async return-value,
   pytest exception, custom exception, unittest exception, API JSON detail,
   log output, argparse CLI output, Click CLI output, Typer CLI output,
   CLI exit-code, Flask route JSON detail, FastAPI route JSON detail, API
-  exception-response, unittest return-value, and unittest dict-field eval rows in addition to the original
-  boundary/API/CLI/mixed cases, so those Python closure proofs cannot
-  disappear from the corpus without failing the checked dogfood gate.
+  exception-response, `src/` package-layout boundary, unittest return-value,
+  and unittest dict-field eval rows in addition to the original
+  boundary/API/CLI/mixed cases, so those Python closure proofs cannot disappear
+  from the corpus without failing the checked dogfood gate.
 - The corpus now adds `log_output_pytest_receipt` as a post-promotion
   stability eval where a changed `logger.warning(...)` side effect routes to a
   log-output repair card, exports a bounded test-only packet, verifies with a

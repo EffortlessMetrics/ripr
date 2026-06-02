@@ -419,6 +419,7 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
         for (index, finding) in findings.iter().enumerate() {
             let Some(record) = gap_record_from_python_repair_finding(finding, index)
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
+                .or_else(|| gap_record_from_python_no_action_finding(finding, index))
             else {
                 continue;
             };
@@ -611,7 +612,7 @@ fn repairability_from_evidence(gap_state: &str, actionability: &str) -> &'static
         {
             "repairable"
         }
-        "already_observed" | "internal_only" => "no_action",
+        "already_observed" | "internal_only" | "no_related_test" | "heuristic_only" => "no_action",
         "static_limitation" => "analyzer_limitation",
         _ => "unknown",
     }
@@ -621,6 +622,8 @@ fn gap_kind_from_evidence(gap_state: &str, seam_kind: &str) -> &'static str {
     match gap_state {
         "already_observed" => "NoActionAlreadyObserved",
         "internal_only" => "NoActionInternal",
+        "no_related_test" => "NoActionNoRelatedTest",
+        "heuristic_only" => "NoActionHeuristicOnly",
         "static_limitation" => "StaticLimitation",
         "actionable" => match seam_kind {
             "presentation_text" => "MissingOutputContract",
@@ -826,6 +829,99 @@ fn gap_record_from_python_static_limit_finding(finding: &Value, index: usize) ->
         safe_gate_predicate: None,
         authority_boundary: "preview_advisory_only".to_string(),
     })
+}
+
+fn gap_record_from_python_no_action_finding(finding: &Value, index: usize) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("python") {
+        return None;
+    }
+    if finding.get("python_repair_card").is_some()
+        || string_at(finding, &["static_limit_kind"]).is_some()
+    {
+        return None;
+    }
+
+    let classification = string_at(finding, &["classification"])?;
+    let (gap_state, kind) = match classification {
+        "exposed" => ("already_observed", "NoActionAlreadyObserved"),
+        "no_static_path" => ("no_related_test", "NoActionNoRelatedTest"),
+        "weakly_exposed" if python_finding_is_heuristic_only(finding) => {
+            ("heuristic_only", "NoActionHeuristicOnly")
+        }
+        _ => return None,
+    };
+    let behavior_kind = string_at(finding, &["canonical_gap", "behavior_kind"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("python_no_action");
+    let source_file = string_at(finding, &["canonical_gap", "file"])
+        .or_else(|| string_at(finding, &["probe", "file"]))
+        .map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["canonical_gap", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .or_else(|| string_at(finding, &["canonical_gap", "id"]))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("gap:python:check-output:item_{index}:{gap_state}"));
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        kind: kind.to_string(),
+        language: "python".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: behavior_kind.to_string(),
+        gap_state: gap_state.to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "no_action".to_string(),
+        repair_route: None,
+        static_limit_kind: None,
+        static_limit_detail: None,
+        static_limits: Vec::new(),
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "no_action",
+            false,
+            false,
+            has_local_anchor,
+            gap_state,
+        ),
+        verification_commands: Vec::new(),
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
+    })
+}
+
+fn python_finding_is_heuristic_only(finding: &Value) -> bool {
+    string_array_at(finding, &["evidence"])
+        .into_iter()
+        .any(|item| item.starts_with("related_test_uncertain:"))
+        || finding
+            .get("ripr")
+            .and_then(|ripr| string_at(ripr, &["reach", "summary"]))
+            .is_some_and(|summary| summary.contains("heuristic Python test link"))
 }
 
 fn python_static_limit_gap_id(
@@ -2596,6 +2692,94 @@ mod tests {
         assert_eq!(r.repairability, "analyzer_limitation");
         assert_eq!(r.static_limit_kind.as_deref(), Some("dynamic_text"));
         assert_eq!(r.static_limit_detail.as_deref(), Some("needs_runtime"));
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_python_no_action_findings_become_report_only_records() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "findings": [
+                {
+                    "id": "probe:src_discount.py:2:python_preview",
+                    "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+                    "canonical_gap": {
+                        "language": "python",
+                        "file": "src/discount.py",
+                        "owner": "apply_discount",
+                        "behavior_kind": "predicate_boundary"
+                    },
+                    "classification": "exposed",
+                    "probe": {
+                        "family": "predicate_boundary",
+                        "file": "src/discount.py",
+                        "line": 2,
+                        "owner": "python:src/discount.py::apply_discount"
+                    },
+                    "language": "python",
+                    "language_status": "preview"
+                },
+                {
+                    "id": "probe:src_pricing.py:2:python_preview",
+                    "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
+                    "canonical_gap": {
+                        "language": "python",
+                        "file": "src/pricing.py",
+                        "owner": "apply_discount",
+                        "behavior_kind": "return_value"
+                    },
+                    "classification": "no_static_path",
+                    "probe": {
+                        "family": "return_value",
+                        "file": "src/pricing.py",
+                        "line": 2,
+                        "owner": "python:src/pricing.py::apply_discount"
+                    },
+                    "language": "python",
+                    "language_status": "preview"
+                },
+                {
+                    "id": "probe:src_pricing.py:3:python_preview",
+                    "canonical_gap_id": "gap:python:src/pricing.py:shipping_fee:return_value:return_value:amount+2",
+                    "canonical_gap": {
+                        "language": "python",
+                        "file": "src/pricing.py",
+                        "owner": "shipping_fee",
+                        "behavior_kind": "return_value"
+                    },
+                    "classification": "weakly_exposed",
+                    "probe": {
+                        "family": "return_value",
+                        "file": "src/pricing.py",
+                        "line": 3,
+                        "owner": "python:src/pricing.py::shipping_fee"
+                    },
+                    "evidence": [
+                        "owner: shipping_fee",
+                        "related_test_uncertain: test_name_similarity (test_shipping_fee)"
+                    ],
+                    "language": "python",
+                    "language_status": "preview"
+                }
+            ]
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0].gap_state, "already_observed");
+        assert_eq!(records[0].kind, "NoActionAlreadyObserved");
+        assert_eq!(records[1].gap_state, "no_related_test");
+        assert_eq!(records[1].kind, "NoActionNoRelatedTest");
+        assert_eq!(records[2].gap_state, "heuristic_only");
+        assert_eq!(records[2].kind, "NoActionHeuristicOnly");
+        for record in records {
+            assert_eq!(record.language, "python");
+            assert_eq!(record.language_status, "preview");
+            assert_eq!(record.repairability, "no_action");
+            assert!(record.repair_route.is_none());
+            assert!(record.verification_commands.is_empty());
+            assert!(!projection_eligible(&record, "agent_packet"));
+            assert!(!projection_eligible(&record, "pr_comment"));
+        }
         Ok(())
     }
 

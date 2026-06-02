@@ -240,6 +240,9 @@ Implemented renderer tests:
 - `crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_seam_severity`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata`
+- `crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_repair_card_properties`
+- `crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_static_limit_no_action_properties`
+- `crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_ordinary_no_action_properties`
 
 Implemented policy tests:
 

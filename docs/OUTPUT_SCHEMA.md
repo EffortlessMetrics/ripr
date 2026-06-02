@@ -939,6 +939,18 @@ Every result carries:
   suggested location, verify command, receipt status/guidance, stop
   conditions, and limits. This is code-scanning context only; it does not make
   SARIF a repair executor, receipt authority, or gate.
+- Python preview Findings that are not repair-card eligible because they are
+  already observed, have no safe related-test route, are heuristic-only, or hit
+  a static limit carry additive `properties.python_no_action` in diff-scoped
+  SARIF. The nested object marks `repair_packet_ready = false`,
+  `repair_card_present = false`, `no_action_kind`, null verify/receipt
+  commands, stop conditions, and the `preview_advisory_only` authority
+  boundary. Ordinary no-action states use
+  `repairability = "no_action"` with `not_applicable_no_action` verify/receipt
+  status. Static limits use `repairability = "analyzer_limitation"`, include
+  the typed `static_limit_kind`, and use `not_applicable_static_limit` status.
+  This is fail-closed review context only; it must not be treated as an agent
+  packet or closure receipt.
 
 Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
 when their configured severity is visible. Results whose configured severity is

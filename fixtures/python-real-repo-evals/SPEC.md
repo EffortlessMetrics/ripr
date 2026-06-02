@@ -35,7 +35,10 @@ agent packet, `not_applicable` verify and receipt results, explicit stop
 reasons, `no_receipt` gap movement, and preview/advisory claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
-normal pytest app repo, one parameterized-boundary pytest repo, one
+no-config pyproject pytest repo, one normal pytest app repo, one
+external-repo-style `src/` package pytest repo, one
+multi-gap pytest app with a full top-3 repair-card capture, one
+parameterized-boundary pytest repo, one
 CLI/output-style pytest repo, one Click-shaped CLI output pytest repo, one
 Typer-shaped CLI output pytest repo, one CLI exit-code pytest repo, pytest and
 unittest exception-path repos,
@@ -51,7 +54,9 @@ suggested test-location coverage, false-actionable rate, crash rate, receipt
 closure rate, unsupported limitation distribution, and no-action static-limit
 distribution plus ordinary no-action distribution. Eval cases with fewer than
 three user-facing repair cards must include a ranked top-3 limit reason instead
-of silently passing the metric.
+of silently passing the metric. At least one checked eval must capture all three
+ranked repair cards so top-3 precision is measured directly rather than only
+inferred from focused one-card runs.
 
 Static-limit no-action cases are not counted as successful repair
 recommendations. They exist to keep unsupported Python shapes visible without

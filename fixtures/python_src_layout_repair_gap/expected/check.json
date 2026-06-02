@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_src_layout_repair_gap/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_shop_service_pricing.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold",
+        "language": "python",
+        "file": "src/shop_service/pricing.py",
+        "owner": "loyalty_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "subtotal>=loyalty_threshold"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_shop_service_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/shop_service/pricing.py",
+        "line": 2,
+        "expression": "    if subtotal >= loyalty_threshold:",
+        "owner": "python:src/shop_service/pricing.py::loyalty_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `loyalty_discount`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if subtotal >= loyalty_threshold:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `subtotal == loyalty_threshold`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `loyalty_discount`", "infection yes: Changed Python predicate can alter branch selection: `if subtotal >= loyalty_threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `subtotal == loyalty_threshold`.", "local flow reaches unknown sink: if subtotal >= loyalty_threshold: (line 2)", "related test tests/test_pricing.py:4 test_loyalty_discount_high_value_smoke uses smoke smoke only oracle: assert result", "missing discriminator subtotal == loyalty_threshold: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if subtotal >= loyalty_threshold:","line":2}
+      ],
+      "evidence": ["owner: loyalty_discount", "owner_kind: function", "missing_discriminator: subtotal == loyalty_threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pricing.py", "suggested_test_name: test_loyalty_discount_high_value_smoke", "suggested_test_node_id: tests/test_pricing.py::test_loyalty_discount_high_value_smoke", "suggested_verify_command: pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_loyalty_discount_high_value_smoke)", "test_verify_command: pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke (test_loyalty_discount_high_value_smoke)", "related_test_relation: syntactic_call (test_loyalty_discount_high_value_smoke)", "test_oracle: smoke_only smoke (test_loyalty_discount_high_value_smoke)", "test_oracle_shape: broad_smoke_assertion (test_loyalty_discount_high_value_smoke)"],
+      "missing": ["Related Python test reaches `loyalty_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "subtotal == loyalty_threshold",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if subtotal >= loyalty_threshold:","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "subtotal == loyalty_threshold",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if subtotal >= loyalty_threshold:","line":2}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_loyalty_discount_high_value_smoke",
+          "file": "tests/test_pricing.py",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert result"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_pricing.py",
+        "suggested_test_name": "test_loyalty_discount_high_value_smoke",
+        "suggested_test_node_id": "tests/test_pricing.py::test_loyalty_discount_high_value_smoke",
+        "verify_command": "pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "loyalty_discount",
+        "changed_behavior": "predicate_boundary changed at src/shop_service/pricing.py:2: `if subtotal >= loyalty_threshold:`",
+        "current_test_evidence": "tests/test_pricing.py:4 test_loyalty_discount_high_value_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result",
+        "missing_discriminator": "subtotal == loyalty_threshold",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `subtotal == loyalty_threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `loyalty_threshold - 1`, `loyalty_threshold`, and `loyalty_threshold + 1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `subtotal == loyalty_threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"subtotal, expected\", [(loyalty_threshold - 1, ...), (loyalty_threshold, ...), (loyalty_threshold + 1, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_pricing.py",
+          "test_name": "test_loyalty_discount_high_value_smoke",
+          "pytest_node_id": "tests/test_pricing.py::test_loyalty_discount_high_value_smoke"
+         },
+        "verify": {
+          "command": "pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `subtotal == loyalty_threshold`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `subtotal == loyalty_threshold`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

@@ -11,153 +11,74 @@ are scoped or reviewed.
 
 ## 0.8.0 - 2026-06-02
 
-- Released the evidence-to-repair foundation: runtime completeness is explicit,
-  public actionability is fail-closed, repair packets carry proof and edit-boundary
-  expectations, blocked states and limitation routes are visible, and cache/runtime
-  hygiene supports reliable report generation. This release does not claim
-  autonomous edits, provider integration, mutation execution, default blocking CI
-  semantics, or public badge semantic changes.
-- Added Python repair-routing quality metrics to `cargo xtask dogfood`. The
-  report now derives top-1 repair-card usefulness, verify-command validity,
-  concrete-discriminator coverage, suggested test-location coverage,
-  false-actionable and crash rates, receipt closure, and unsupported limitation
-  distribution from the Python real-repo eval corpus while marking top-3
-  precision as not yet measured. Python remains preview/advisory; support-tier
-  promotion still depends on ranked top-3 evidence and review.
-- Added simple Python route-decorator repair routing for FastAPI/Flask-shaped
-  handlers such as `@api.post(...)`. RIPR now treats those route decorators as
-  static route metadata, still keeps arbitrary decorators fail-closed, and the
-  new fixture plus real-repo eval receipt show a changed
-  `response.status_code` route behavior closing after a focused pytest status
-  assertion. Python remains preview/advisory; support-tier promotion still
-  depends on metrics review.
-- Added a mixed Rust/Python pytest case to the Python real-repo eval corpus.
-  RIPR emits a predicate-boundary repair card for a changed Python behavior in
-  a repo with Cargo and pyproject metadata, the focused pytest verify command
-  passes, and `ripr outcome` records the canonical Python gap closed. Python
-  remains preview/advisory; support-tier promotion still depends on metrics
-  review.
-- Added an API-style status-code pytest case to the Python real-repo eval
-  corpus. RIPR emits a field/object repair card for a changed
-  `response.status_code` behavior, the focused pytest verify command passes,
-  and `ripr outcome` records the canonical Python gap closed. Python remains
-  preview/advisory; support-tier promotion still depends on metrics review.
-- Added a CLI/output-style pytest case to the Python real-repo eval corpus.
-  RIPR emits an output/call-effect repair card for a changed `print(...)`
-  behavior, the focused `capsys` pytest verify command passes, and
-  `ripr outcome` records the canonical Python gap closed. Python remains
-  preview/advisory; support-tier promotion still depends on metrics review.
-- Added a normal pytest app case to the Python real-repo eval corpus. RIPR
-  emits a strengthen-existing-test boundary repair card, the focused pytest
-  verify command passes, and `ripr outcome` records the Python canonical gap
-  closed. Python remains preview/advisory; support-tier promotion still depends
-  on metrics review.
-- Added a Python real-repo eval corpus with a tiny controlled pytest scratch
-  repo receipt: RIPR emits the predicate-boundary repair card, a human-run
-  focused pytest command passes, and `ripr outcome` closes the canonical Python
-  gap. This is still preview/advisory evidence; support-tier promotion still
-  depends on metrics review.
-- Added a repo-local Python repair-routing dogfood receipt row for a
-  test-only packet that strengthens the preview pricing test, forbids the
-  production Python source file, passes the focused pytest verify command, and
-  closes the predicate-boundary canonical gap through `ripr outcome`. Python
-  remains preview/advisory, and broader real-repo dogfood remains the promotion
-  blocker.
-- Added a Python repair-routing noise-control fixture that pins same-line
-  returned-dict return, field, and string-literal signals as one user-facing
-  canonical field/object repair gap. The Python false-positive corpus is now
-  marked complete in the lane plan, leaving real-repo dogfood receipts as the
-  next promotion blocker.
-- Closed Actionable Surface Translation: badge-adjacent copy, PR evidence,
-  editor status, swarm dry-run packets, and outcome/trend reports now lead with
-  the same actionable canonical gap, repair route, verify/receipt, and
-  advisory-boundary framing. This is presentation/projection alignment only; it
-  does not change analyzer truth, badge endpoint semantics, gates, provider
-  behavior, generated tests, source edits, mutation execution, or release
-  publishing.
-- `cargo xtask evidence-quality-scorecard` now promotes the audit-derived
-  evidence-class work queue into `recommended_repairs` before generic roadmap
-  risks. The scorecard's top repair rows now point at the live dominant class
-  and named limitation, such as `call_presence` /
-  `activation_owner_call_unresolved`, instead of leading with stale broad
-  categories.
-- `ripr outcome` receipts now include a reviewer-native `review_receipt`
-  section in JSON and a matching Markdown section that summarizes what changed,
-  what RIPR flagged before, which focused proof signals moved, what remains
-  weak or unknown, and what reviewers should inspect or avoid inferring.
-- `ripr first-pr` start-here packets now make the one-screen recommendation
-  more explicit for repairable top gaps: current static evidence strength,
-  missing discriminator, focused proof intent, receipt command, and receipt path
-  are rendered in JSON and Markdown instead of being implied by prose.
-- `cargo xtask lane1-evidence-audit` now uses a 120-second default
-  repo-exposure generation budget, still configurable through
-  `RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS`, so cold live audits fail closed into a
-  named `lane1_repo_exposure_timeout` artifact before platform abort behavior
-  can leave no Lane 1 report.
-- `cargo xtask lane1-evidence-audit` now samples 5,000 repo-exposure seams by
-  default, records `lane1_repo_exposure_sampled` with the preserved
-  `repo_exposure_seam_limit` trace row, and keeps sampled raw/canonical/actionable
-  counts available as partial work-queue evidence instead of producing an
-  all-zero limited report. Set `RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0` for an
-  unsampled full-repo attempt.
-- Lane 1 repo-exposure capture now streams child stdout through the xtask
-  runner into `lane1-evidence-audit.repo-exposure.json`, counting bytes from the
-  writer path and overwriting stale capture files deterministically. This keeps
-  live `lane1-evidence-audit` generation from depending on direct child file
-  handle behavior for large repo-exposure payloads.
-- `cargo xtask evidence-health` now converts build/report runner failures into
-  bounded warning artifacts instead of returning without
-  `evidence-health.json` / `.md`. These limited reports overwrite stale
-  artifacts, use
-  `run_limitations[].category = "evidence_health_runner_error"`, and record
-  `inputs.generation.status = "runner_error"` with a bounded failure reason.
-- Limited `cargo xtask evidence-health` warning artifacts now expose structured
-  repo-exposure latency diagnostics. Timeout and incomplete reports carry
-  bounded `latency_trace_events_total` and `latency_trace_tail` fields on
-  `inputs.generation` and `run_limitations[]`, and Markdown includes the trace
-  tail so slow live-repo phases are visible without scraping stderr.
-- `cargo xtask evidence-health` now removes stale evidence-health artifacts
-  before running the child report generator and validates zero-exit JSON and
-  Markdown outputs before accepting success. Missing, malformed, or incomplete
-  success-exit artifacts now become bounded `evidence_health_incomplete`
-  warning reports with `inputs.generation.status = "pass_incomplete"` and a
-  diagnostic failure reason.
-- Lane 1 evidence audit now validates zero-exit repo-exposure captures before
-  treating them as complete. A truncated success-exit JSON capture is removed
-  and downgraded to a bounded `lane1_repo_exposure_incomplete` warning artifact
-  instead of leaving only a partial temp artifact.
-- `cargo xtask reports index` now surfaces Lane 1 evidence readiness for
-  evidence-health, Lane 1 audit, actionable-gap, scorecard, trend, and
-  badge-basis artifacts. Missing or limited artifacts warn with regeneration
-  commands instead of letting the index look healthy while the badge-readiness
-  evidence chain is absent.
-- Evidence-quality trend now treats current scorecards with limited input
-  unknowns as `current_scorecard_limited`, preserving rows for diagnostics while
-  refusing improvement or regression claims from bounded diagnostic counts.
-- `cargo xtask evidence-quality-trend --previous <path>` now writes bounded
-  trend JSON/Markdown when the explicit previous artifact is missing or
-  malformed, carrying
-  `evidence_quality_trend_previous_artifact_unavailable` instead of exiting
-  before producing trend evidence.
-- Lane 1 audit run limitations now contribute to static-limitation headline
-  counts. Bounded audit artifacts and scorecards no longer show
-  `Static limitations: 0` while also carrying named timeout or incomplete
-  repo-exposure limitation rows.
-- Evidence-health fallback artifacts now use the current evidence-health schema
-  version and carry explicit generation phase/status plus bounded stdout/stderr
-  excerpts for timeout and nonzero-exit warning reports. The output contract,
-  capability metadata, and traceability now document both
-  `evidence_health_timeout` and `evidence_health_incomplete` limited artifacts.
-- Added `RIPR-SPEC-0058` for the `ripr-swarm` external-agent handoff. The spec
-  defines the packet-only input, operator review boundary, patch and receipt
-  metadata response, outcome join, and hard non-goals for provider SDKs,
-  autonomous merge, production-code edits by default, raw-finding work queues,
-  unbounded retries, generated tests, mutation execution, PR/CI rendering,
-  LSP/editor behavior, gate policy, and public badge changes.
-- Evidence-quality scorecards now reserve the `lane1_evidence_audit_limited`
-  unknown for completeness-affecting audit limitations. A completed audit that
-  only skipped full classified seam cache storage keeps that limitation visible
-  in the audit without marking scorecard counts as partial.
+0.8.0 ships the evidence-to-repair foundation: RIPR now carries static evidence
+farther toward safe repair work while keeping runtime limits, preview surfaces,
+and advisory boundaries explicit.
+
+### Evidence-to-Repair Foundation
+
+- Runtime completeness is explicit across Lane 1 reports. Full, limited,
+  sampled, timed-out, malformed, stale, and warning states are surfaced as
+  named report status instead of being hidden behind success-looking artifacts.
+- Public actionability projection is stricter. Repair-facing packets require
+  actionable gap state, canonical gap identity, proof intent, verify-command
+  context, receipt/output paths, and bounded edit-surface expectations before
+  they can become swarm-ready work.
+- Static limitations now route into analyzer backlog and readiness blockers
+  instead of being presented as fake actionability. Reports preserve the reason
+  work is blocked when a finding has no safe public repair packet.
+- Cache, report, and runtime hygiene improved across evidence-health, Lane 1
+  audit, scorecard, trend, report-index, and `ripr-swarm` planning surfaces.
+  Limited artifacts overwrite stale outputs, carry bounded diagnostics, and
+  avoid claiming improvement or regression from incomplete inputs.
+- `ripr outcome`, `ripr first-pr`, PR evidence, editor status, swarm dry-run
+  packets, scorecards, trends, and reviewer receipts now share the same
+  canonical-gap, repair-route, verify/receipt, and advisory-boundary framing.
+
+### Rust Static Analysis
+
+- Rust call-presence and related-test evidence now handles more real helper
+  shapes, including same-file helper-owner call chains, imported production
+  helper wrappers, negated condition helpers, eager wrapper calls such as
+  `extend`, and `unwrap_or_default` helper paths.
+- Rust false-actionable risk was reduced for generic match-arm and
+  value-insensitive predicate routes. Match-arm assertion affinity now prefers
+  specific variant-like targets, and non-comparison predicates stay out of
+  value-sensitive activation evidence.
+- Rust path-constructor and owner-call argument handling is narrower and better
+  covered by focused regression tests. These changes improve static exposure
+  classification; they do not claim runtime mutation outcomes, killed/survived
+  status, or proof of adequacy.
+
+### Preview Languages and Editor Surfaces
+
+- Python repair routing remains preview/advisory, but 0.8.0 adds stronger
+  bounded evidence: real-repo-style pytest fixtures, no-config and `src/`
+  layout cases, route/status-code and CLI/output cases, no-action/static-limit
+  SARIF projection, and dogfood metrics for repair-card usefulness,
+  verify-command validity, concrete-discriminator coverage, false-actionable
+  rate, crash rate, receipt closure, and unsupported limitation distribution.
+- TypeScript and JavaScript remain preview/advisory. The release improves
+  surfaced limitations and no-action projection without promoting those
+  adapters to stable gate authority.
+- VS Code marketplace metadata is aligned with the 0.8.0 release line while
+  preserving the preview boundary: no mutation execution, no automatic edits,
+  no generated tests, no provider calls, no CI blocking, no gate authority, and
+  no public badge semantic switch.
+
+### Release and Compatibility Notes
+
+- The source `ripr` repository remains the release, publishing, signing,
+  marketplace, badge, and distribution authority. `ripr-swarm` remains the
+  development trunk after this release branch.
+- No configuration migration is required for existing Rust CLI use. Consumers
+  of JSON, Markdown, SARIF, or report artifacts should expect the documented
+  0.8 output fields for runtime status, limitation routes, repair packet
+  metadata, no-action states, and bounded diagnostics.
+- 0.8.0 does not claim autonomous repair, provider integration, mutation
+  execution, default blocking CI or badge semantics, full-run completion for
+  limited/sampled runs, generated tests, runtime adequacy, coverage adequacy, or
+  correctness proof.
 
 ## 0.7.0 - 2026-05-20
 
