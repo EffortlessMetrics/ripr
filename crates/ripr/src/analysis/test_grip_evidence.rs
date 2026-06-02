@@ -2932,7 +2932,7 @@ fn activate_evidence(
 }
 
 fn requires_concrete_activation_values(seam: &RepoSeam) -> bool {
-    matches!(seam.kind(), SeamKind::PredicateBoundary)
+    seam.kind() == SeamKind::PredicateBoundary && comparison_operands(seam.expression()).is_some()
 }
 
 enum ObservedArgumentSelection {
@@ -13051,6 +13051,55 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "computed local boundary operands must not emit exact candidate discriminator; got {:?}",
+            evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_non_comparison_predicate_when_direct_owner_call_exists_then_activation_is_value_insensitive()
+    -> Result<(), String> {
+        let prod_src = "pub fn has_missing(missing: &[String]) -> bool { \
+                            if missing.is_empty() { true } else { false } \
+                        }\n";
+        let test = (
+            "tests/missing_tests.rs",
+            "#[test] fn empty_missing_is_true() { \
+                 assert!(has_missing(&[])); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/missing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/missing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::PredicateBoundary
+                    && s.expression().contains("missing.is_empty()")
+            })
+            .ok_or_else(|| "non-comparison predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("direct owner call for value-insensitive seam"),
+            "non-comparison predicates should not require scalar activation values; got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "non-comparison predicate activation must not invent collection literal values; got {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "non-comparison predicates must not emit exact boundary candidates; got {:?}",
             evidence.missing_discriminators
         );
         Ok(())
