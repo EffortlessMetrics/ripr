@@ -1957,7 +1957,10 @@ Field contract:
   `analysis/call-presence-target-affinity-owner-call-tracing` for call-presence
   target-token affinity,
   `activation_owner_call_absent_assertion_target_affinity` routed to
-  `analysis/assertion-target-affinity-owner-call-tracing`,
+  `analysis/assertion-target-affinity-owner-call-tracing`; return-value
+  assertion-target owner-call absence may route more narrowly to
+  `analysis/assertion-target-return-value-owner-call-tracing` while remaining
+  non-actionable,
   `activation_owner_call_absent_affinity_only` routed to
   `analysis/related-test-affinity-owner-call-tracing`, or
   `activation_owner_call_absent_same_file_only` routed to

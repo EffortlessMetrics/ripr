@@ -1062,6 +1062,10 @@ fn static_limitation_repair_route_for_entry(
         && owner_call_absence_same_file_call_presence_is_method_chain(entry)
     {
         "analysis/same-file-method-chain-owner-call-tracing"
+    } else if category == "activation_owner_call_absent_assertion_target_affinity"
+        && owner_call_absence_assertion_target_is_return_value(entry)
+    {
+        "analysis/assertion-target-return-value-owner-call-tracing"
     } else if matches!(
         category,
         "activation_owner_call_absent_call_presence_target_affinity"
@@ -1106,6 +1110,11 @@ fn owner_call_absence_has_assertion_target_affinity(entry: &ClassifiedSeam) -> b
         .related_tests
         .iter()
         .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity)
+}
+
+fn owner_call_absence_assertion_target_is_return_value(entry: &ClassifiedSeam) -> bool {
+    entry.seam.kind() == SeamKind::ReturnValue
+        && owner_call_absence_has_assertion_target_affinity(entry)
 }
 
 fn owner_call_absence_is_affinity_only(entry: &ClassifiedSeam) -> bool {
@@ -2016,6 +2025,52 @@ mod tests {
         assert_eq!(
             json["canonical_item"]["static_limitations"][0]["repair_route"],
             "analysis/same-file-owner-call-tracing"
+        );
+    }
+
+    #[test]
+    fn evidence_record_routes_assertion_target_return_value_owner_call_absence_limitation() {
+        let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
+        entry.seam = RepoSeam::new(
+            "src/activation.rs",
+            "activation::body_contains_wrapped_local_alias",
+            SeamKind::ReturnValue,
+            431,
+            431,
+            "return Some(parameter.clone())",
+            RequiredDiscriminator::ReturnValue {
+                description: "return Some(parameter.clone())".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "No direct owner call observed for value-insensitive seam `return Some(parameter.clone())`",
+        );
+        entry.evidence.related_tests[0].relation_reason = RelationReason::AssertionTargetAffinity;
+        entry.evidence.related_tests[0].relation_confidence = RelationConfidence::Medium;
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_owner_call_absent_assertion_target_affinity"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/assertion-target-return-value-owner-call-tracing"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/assertion-target-return-value-owner-call-tracing"
         );
     }
 

@@ -585,6 +585,39 @@
       "reason": "A local planning slice prevented dotted non-call text from being routed as method-chain owner-call work while preserving static-limitation status."
     },
     {
+      "id": "assertion_target_return_value_owner_call_route_split",
+      "source_ref": "EffortlessMetrics/ripr-swarm#859",
+      "canonical_gap_id": "gap:activation-owner-call-absent-assertion-target-return-value",
+      "packet_id": "limitation:activation_owner_call_absent_assertion_target_affinity:assertion_target_affinity_return_value_missing_owner_call:analysis-assertion-target-return-value-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "assertion-target-affinity return-value limitation where the related test mentions the returned value but no direct or helper owner call is observed",
+      "verify_command": "cargo test -p ripr evidence_record_routes_assertion_target_return_value_owner_call_absence_limitation --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split assertion-target return-value owner-call limitations into a dedicated analyzer route while preserving non-actionable status.",
+      "evidence_movement": "improved: return-value assertion-target owner-call limitations now route to analysis/assertion-target-return-value-owner-call-tracing instead of blending with the generic assertion-target owner-call route.",
+      "operator_note": "This is analyzer-route dogfood. It improves work allocation only; it does not prove owner-call reachability, emit public repair packets, or move badge/gate counters.",
+      "must_not_change": [
+        "do not treat assertion-target affinity alone as owner-call activation",
+        "do not promote return-value assertion-target limitations to public repair packets",
+        "do not invent observed values for return expressions",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_assertion_target_return_value_owner_call_absence_limitation",
+        "target/ripr/reports/swarm-readiness.json:analysis/assertion-target-affinity-owner-call-tracing",
+        "target/ripr/reports/lane1-evidence-audit.json:assertion_target_affinity_return_value_missing_owner_call"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice made assertion-target return-value owner-call limitations a precise static-limitation route while keeping user repair delegation blocked."
+    },
+    {
       "id": "call_presence_target_affinity_limitation_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#555",
       "canonical_gap_id": "gap:activation-owner-call-absent-call-presence-target-affinity",

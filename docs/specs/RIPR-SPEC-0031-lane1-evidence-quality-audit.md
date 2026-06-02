@@ -248,7 +248,9 @@ become `activation_owner_call_absent_call_presence_target_affinity` routed to
 `analysis/call-presence-target-affinity-owner-call-tracing`, other
 assertion-target affinity should become
 `activation_owner_call_absent_assertion_target_affinity` routed to
-`analysis/assertion-target-affinity-owner-call-tracing`, other affinity-based
+`analysis/assertion-target-affinity-owner-call-tracing`, with return-value
+assertion-target owner-call absence allowed to route more narrowly to
+`analysis/assertion-target-return-value-owner-call-tracing`, other affinity-based
 related tests should become `activation_owner_call_absent_affinity_only` routed
 to `analysis/related-test-affinity-owner-call-tracing`, and same-file-only
 or same-file-primary context should become
