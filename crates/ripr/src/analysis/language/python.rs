@@ -4790,6 +4790,42 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn return_dict_field_parts_handle_nested_segments_and_literal_kinds() {
+        assert_eq!(
+            top_level_python_segments(
+                "\"payload\": {\"status\": \"active, pending\"}, \"note\": \"a,b\""
+            ),
+            vec![
+                "\"payload\": {\"status\": \"active, pending\"}",
+                "\"note\": \"a,b\""
+            ]
+        );
+        assert_eq!(
+            top_level_python_segments("\"label\": \"ready\\\"set\", \"status\": status"),
+            vec!["\"label\": \"ready\\\"set\"", "\"status\": status"]
+        );
+        assert_eq!(
+            python_dict_field_segment_parts("\"url\": \"https://example.test/a:b\""),
+            Some(("url", "\"https://example.test/a:b\""))
+        );
+        assert_eq!(python_dict_field_segment_parts("\"status\""), None);
+        assert!(is_literal_python_model_field_value("True"));
+        assert!(is_literal_python_model_field_value("-1.5"));
+        assert!(!is_literal_python_model_field_value("status"));
+        assert_eq!(
+            python_return_dict_field_parts(
+                "return {\"status\": status, invalid_segment, \"count\": total}"
+            ),
+            Some(("status".to_string(), "status".to_string()))
+        );
+        assert_eq!(
+            python_return_dict_field_parts("return {\"payload\": make_payload(a, b)}"),
+            Some(("payload".to_string(), "make_payload(a, b)".to_string()))
+        );
+        assert_eq!(python_return_dict_field_parts("return {}"), None);
+    }
+
+    #[test]
     fn constructor_keyword_field_parts_accept_simple_model_field_values() {
         assert_eq!(
             python_return_constructor_field_parts("return User(active=True)"),
