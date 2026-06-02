@@ -1460,6 +1460,12 @@ git diff --check
   bounded packet that forbids the package production module, verifies with a
   focused `pytest` command, and closes the canonical Python gap through
   `ripr outcome`.
+- The corpus now adds `no_config_pyproject_boundary_receipt` as a
+  post-promotion project-detection stability eval where a pyproject-based
+  Python repo without `ripr.toml` still routes a boundary repair to one
+  existing pytest file, exports a bounded packet that forbids the production
+  module, verifies with a focused `pytest` command, and closes the canonical
+  Python gap through `ripr outcome`.
 - The corpus now adds `api_json_detail_pytest_receipt` as a post-promotion
   stability eval where an API response JSON detail repair routes to one
   existing pytest method, verifies with a focused `pytest` command, exports a
@@ -1565,7 +1571,8 @@ git diff --check
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
-- `cargo xtask dogfood` now requires the receipt-backed async return-value,
+- `cargo xtask dogfood` now requires the receipt-backed no-config pyproject
+  boundary, async return-value,
   pytest exception, custom exception, unittest exception, API JSON detail,
   log output, argparse CLI output, Click CLI output, Typer CLI output,
   CLI exit-code, Flask route JSON detail, FastAPI route JSON detail, API

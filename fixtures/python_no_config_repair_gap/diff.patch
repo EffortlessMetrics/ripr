@@ -1,0 +1,10 @@
+diff --git a/src/promotions.py b/src/promotions.py
+index 0000000..1111111 100644
+--- a/src/promotions.py
++++ b/src/promotions.py
+@@ -1,4 +1,4 @@
+ def trial_extension(days, minimum_days):
+-    if days > minimum_days:
++    if days >= minimum_days:
+         return days + 7
+     return days

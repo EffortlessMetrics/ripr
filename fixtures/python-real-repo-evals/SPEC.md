@@ -35,7 +35,8 @@ agent packet, `not_applicable` verify and receipt results, explicit stop
 reasons, `no_receipt` gap movement, and preview/advisory claim boundaries.
 
 The checked corpus must include at least one tiny controlled Python repo, one
-normal pytest app repo, one external-repo-style `src/` package pytest repo, one
+no-config pyproject pytest repo, one normal pytest app repo, one
+external-repo-style `src/` package pytest repo, one
 multi-gap pytest app with a full top-3 repair-card capture, one
 parameterized-boundary pytest repo, one
 CLI/output-style pytest repo, one Click-shaped CLI output pytest repo, one

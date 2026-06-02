@@ -8345,6 +8345,7 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
 
 const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("tiny_controlled_pytest_boundary_receipt", "closed"),
+    ("no_config_pyproject_boundary_receipt", "closed"),
     ("normal_pytest_app_boundary_receipt", "closed"),
     ("src_layout_pytest_boundary_receipt", "closed"),
     ("multi_card_pytest_top3_receipt", "closed"),

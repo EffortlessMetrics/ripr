@@ -29,5 +29,6 @@ editors/vscode/test-fixtures/**/Cargo.toml|fixture_input|lsp/editor|VS Code exte
 fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may contain Cargo manifests as analyzed inputs.
 fixtures/first_successful_pr/python-preview-gap/pyproject.toml|fixture_input|analysis-fixtures|First successful PR Python preview fixture needs a project marker as analyzed input.
 fixtures/python/basic/pyproject.toml|fixture_input|analysis-fixtures|Python project detection fixture needs a project marker as analyzed input.
+fixtures/python_no_config_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python no-config repair-routing fixture needs a project marker as analyzed input.
 fixtures/python_src_layout_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python src-layout repair-routing fixture needs a project marker as analyzed input.
 xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.

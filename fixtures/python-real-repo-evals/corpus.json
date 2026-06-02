@@ -78,6 +78,70 @@
       "reason": "The run proves one non-fixture Python PR shape can produce a bounded repair card, pass the verify command, and close the canonical gap through an outcome receipt."
     },
     {
+      "id": "no_config_pyproject_boundary_receipt",
+      "repo_shape": "no_config_pyproject_pytest",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_no_config_repair_gap",
+      "command": "ripr check --root fixtures/python_no_config_repair_gap/input --diff fixtures/python_no_config_repair_gap/diff.patch --format json",
+      "runtime_ms": 64,
+      "top_finding_summary": "Python no-config pyproject predicate-boundary repair card for trial_extension days >= minimum_days",
+      "canonical_gap_id": "gap:python:src/promotions.py:trial_extension:predicate_boundary:predicate:days>=minimum_days",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest boundary test for days == minimum_days.",
+      "agent_packet_command": "ripr agent packet --root fixtures/python_no_config_repair_gap/input --gap-ledger gap-ledger.json --gap-id gap:python:src/promotions.py:trial_extension:predicate_boundary:predicate:days>=minimum_days --json",
+      "agent_packet_allowed_files": [
+        "tests/test_promotions.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "src/promotions.py"
+      ],
+      "agent_packet_stop_if": [
+        "Python project marker cannot be resolved without ripr.toml",
+        "expected boundary value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:src/promotions.py::trial_extension",
+      "missing_discriminator": "days == minimum_days",
+      "suggested_test_file": "tests/test_promotions.py",
+      "suggested_test_name": "test_trial_extension_long_smoke",
+      "verify_command": "pytest tests/test_promotions.py::test_trial_extension_long_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.41s",
+      "after_command": "ripr check --root fixtures/python_no_config_repair_gap/input --diff fixtures/python_no_config_repair_gap/diff.patch --format json",
+      "after_runtime_ms": 72,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "no-config pyproject pytest fixture proves Python project markers can feed scoped repair routing without ripr.toml; broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:src/promotions.py:trial_extension:predicate_boundary:predicate:days>=minimum_days",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "days == minimum_days",
+          "suggested_test_file": "tests/test_promotions.py",
+          "verify_command": "pytest tests/test_promotions.py::test_trial_extension_long_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card stayed bounded without an explicit ripr.toml because pyproject project detection enabled Python preview analysis."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused no-config eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run proves a pyproject-based Python repo without ripr.toml can still route one bounded test-only repair, verify it with pytest, and receipt the canonical Python gap as closed."
+    },
+    {
       "id": "normal_pytest_app_boundary_receipt",
       "repo_shape": "normal_pytest_app",
       "source_kind": "scratch_repo",
