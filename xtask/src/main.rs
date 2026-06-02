@@ -1265,6 +1265,30 @@ struct TypeScriptPreviewFalseActionableAuditCase {
     reason: String,
 }
 
+#[derive(Clone, Debug)]
+struct TypeScriptBunUbCalibrationCase {
+    name: String,
+    language: String,
+    language_status: String,
+    rust_file: String,
+    rust_owner: String,
+    rust_boundary: String,
+    ts_test_file: String,
+    shared_array_buffer: bool,
+    resizable_array_buffer: bool,
+    view_backed_blob_input: bool,
+    stable_byte_copy_oracle: bool,
+    max_byte_length_mention_only: bool,
+    expected_verdict: String,
+    expected_missing_discriminators: Vec<String>,
+    bridge_confidence: String,
+    suggested_test_file: String,
+    repair_packet_ready: bool,
+    authority_boundary: String,
+    non_claims: Vec<String>,
+    reason: String,
+}
+
 #[derive(Debug)]
 struct DogfoodUserSurfaceProjectionScenario {
     name: String,
@@ -5712,6 +5736,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
+                    | "typescript-bun-ub-calibration"
                     | "typescript-preview-false-actionable-audit"
                     | "typescript-preview-repair-loop"
                     | "user-surface-projection-alignment"
@@ -8094,6 +8119,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_real_repair_attempt_fixture_corpus(&mut violations)?;
     validate_python_real_repo_eval_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
+    validate_typescript_bun_ub_calibration_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_typescript_preview_false_actionable_audit_fixture_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
@@ -8280,6 +8306,8 @@ const REAL_REPAIR_ATTEMPTS_CORPUS: &str = "fixtures/real-repair-attempts/corpus.
 const PYTHON_REAL_REPO_EVAL_CORPUS: &str = "fixtures/python-real-repo-evals/corpus.json";
 const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
+const TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS: &str =
+    "fixtures/typescript-bun-ub-calibration/corpus.json";
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
     "fixtures/typescript-preview-repair-loop/corpus.json";
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS: &str =
@@ -8494,6 +8522,21 @@ const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
         "javascript_already_observed_unchanged",
         "already_observed_unchanged",
     ),
+];
+
+const TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES: &[(&str, &str)] = &[
+    ("bun_blob_shared_and_resizable_present", "ts_discriminated"),
+    ("bun_blob_resizable_missing", "ts_missing_resizable"),
+    ("bun_blob_shared_missing", "ts_missing_shared"),
+    (
+        "bun_blob_neither_present",
+        "ts_missing_shared_and_resizable",
+    ),
+    (
+        "bun_blob_max_byte_length_mention_not_observer",
+        "ts_mention_not_observer",
+    ),
+    ("bun_blob_bridge_unknown_without_hint", "bridge_unknown"),
 ];
 
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES: &[(&str, &str)] = &[
@@ -9701,6 +9744,87 @@ fn validate_python_real_repo_eval_fixture_corpus_at(
             None => violations.push(format!(
                 "Python real-repo eval corpus is missing no-action case {case_id}"
             )),
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_typescript_bun_ub_calibration_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/typescript-bun-ub-calibration");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "TypeScript Bun UB calibration fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    validate_typescript_bun_ub_calibration_fixture_corpus_at(
+        Path::new(TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS),
+        violations,
+    )
+}
+
+fn validate_typescript_bun_ub_calibration_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "TypeScript Bun UB calibration corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let cases = typescript_bun_ub_calibration_cases_at(path);
+    let mut seen = BTreeMap::new();
+    let mut verdicts = BTreeSet::<String>::new();
+    for case in &cases {
+        if seen
+            .insert(case.name.clone(), case.expected_verdict.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "TypeScript Bun UB calibration case {} is duplicated",
+                case.name
+            ));
+        }
+        verdicts.insert(case.expected_verdict.clone());
+        for error in typescript_bun_ub_calibration_case_errors(case) {
+            violations.push(format!(
+                "TypeScript Bun UB calibration case {}: {error}",
+                case.name
+            ));
+        }
+    }
+
+    for (case_id, verdict) in TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == verdict => {}
+            Some(actual) => violations.push(format!(
+                "TypeScript Bun UB calibration case {case_id} must have expected_verdict {verdict}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "TypeScript Bun UB calibration corpus is missing case {case_id}"
+            )),
+        }
+    }
+    for required in [
+        "ts_discriminated",
+        "ts_missing_shared",
+        "ts_missing_resizable",
+        "ts_mention_not_observer",
+        "bridge_unknown",
+    ] {
+        if !verdicts.contains(required) {
+            violations.push(format!(
+                "TypeScript Bun UB calibration corpus must include verdict {required}"
+            ));
         }
     }
 
@@ -46226,6 +46350,342 @@ fn dogfood_push_python_ranked_findings_json(
     }
 }
 
+#[cfg(test)]
+fn typescript_bun_ub_calibration_cases() -> Vec<TypeScriptBunUbCalibrationCase> {
+    typescript_bun_ub_calibration_cases_at(Path::new(TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS))
+}
+
+fn typescript_bun_ub_calibration_cases_at(
+    corpus_path: &Path,
+) -> Vec<TypeScriptBunUbCalibrationCase> {
+    let fallback = |reason: String| {
+        vec![TypeScriptBunUbCalibrationCase {
+            name: "corpus".to_string(),
+            language: "unknown".to_string(),
+            language_status: "unknown".to_string(),
+            rust_file: "unknown".to_string(),
+            rust_owner: "unknown".to_string(),
+            rust_boundary: "unknown".to_string(),
+            ts_test_file: "unknown".to_string(),
+            shared_array_buffer: false,
+            resizable_array_buffer: false,
+            view_backed_blob_input: false,
+            stable_byte_copy_oracle: false,
+            max_byte_length_mention_only: false,
+            expected_verdict: "unknown".to_string(),
+            expected_missing_discriminators: Vec::new(),
+            bridge_confidence: "unknown".to_string(),
+            suggested_test_file: "unknown".to_string(),
+            repair_packet_ready: true,
+            authority_boundary: "unknown".to_string(),
+            non_claims: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback(
+            "TypeScript Bun UB calibration corpus schema_version must be 0.1".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "kind").as_deref() != Some("typescript_bun_ub_calibration_corpus")
+    {
+        return fallback(
+            "TypeScript Bun UB calibration corpus kind must be typescript_bun_ub_calibration_corpus"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0027") {
+        return fallback(
+            "TypeScript Bun UB calibration corpus spec must be RIPR-SPEC-0027".to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("TypeScript Bun UB calibration corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let rust_seam = case.get("rust_seam").unwrap_or(&Value::Null);
+            let observed = case.get("observed_ts_facts").unwrap_or(&Value::Null);
+            TypeScriptBunUbCalibrationCase {
+                name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                language: json_string_field(case, "language")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                language_status: json_string_field(case, "language_status")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_file: json_string_field(rust_seam, "file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_owner: json_string_field(rust_seam, "owner")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_boundary: json_string_field(rust_seam, "boundary")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                ts_test_file: json_string_field(case, "ts_test_file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                shared_array_buffer: json_bool_field(observed, "shared_array_buffer")
+                    .unwrap_or(false),
+                resizable_array_buffer: json_bool_field(observed, "resizable_array_buffer")
+                    .unwrap_or(false),
+                view_backed_blob_input: json_bool_field(observed, "view_backed_blob_input")
+                    .unwrap_or(false),
+                stable_byte_copy_oracle: json_bool_field(observed, "stable_byte_copy_oracle")
+                    .unwrap_or(false),
+                max_byte_length_mention_only: json_bool_field(
+                    observed,
+                    "max_byte_length_mention_only",
+                )
+                .unwrap_or(false),
+                expected_verdict: json_string_field(case, "expected_verdict")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                expected_missing_discriminators: json_string_array_field(
+                    case,
+                    "expected_missing_discriminators",
+                ),
+                bridge_confidence: json_string_field(case, "bridge_confidence")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                suggested_test_file: json_string_field(case, "suggested_test_file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                repair_packet_ready: json_bool_field(case, "repair_packet_ready").unwrap_or(true),
+                authority_boundary: json_string_field(case, "authority_boundary")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                non_claims: json_string_array_field(case, "non_claims"),
+                reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                    "TypeScript Bun UB calibration case did not document a reason".to_string()
+                }),
+            }
+        })
+        .collect()
+}
+
+fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCase) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &case.name),
+        ("language", &case.language),
+        ("language_status", &case.language_status),
+        ("rust_file", &case.rust_file),
+        ("rust_owner", &case.rust_owner),
+        ("rust_boundary", &case.rust_boundary),
+        ("ts_test_file", &case.ts_test_file),
+        ("expected_verdict", &case.expected_verdict),
+        ("bridge_confidence", &case.bridge_confidence),
+        ("suggested_test_file", &case.suggested_test_file),
+        ("authority_boundary", &case.authority_boundary),
+        ("reason", &case.reason),
+    ] {
+        let unknown_is_valid_bridge_state =
+            label == "bridge_confidence" && case.expected_verdict == "bridge_unknown";
+        if value.trim().is_empty() || (value == "unknown" && !unknown_is_valid_bridge_state) {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+
+    if case.language != "typescript" {
+        errors.push(format!(
+            "language must be typescript for Bun TS calibration, got {}",
+            case.language
+        ));
+    }
+    if case.language_status != "preview" {
+        errors.push("language_status must be preview".to_string());
+    }
+    if case.authority_boundary != "preview_advisory_only" {
+        errors.push("authority_boundary must be preview_advisory_only".to_string());
+    }
+    if case.repair_packet_ready {
+        errors.push("repair_packet_ready must remain false for calibration cases".to_string());
+    }
+    if !typescript_bun_ub_calibration_allowed_verdicts().contains(&case.expected_verdict.as_str()) {
+        errors.push(format!(
+            "expected_verdict must be a Bun UB calibration verdict, got {}",
+            case.expected_verdict
+        ));
+    }
+    if !matches!(
+        case.bridge_confidence.as_str(),
+        "configured_hint" | "heuristic" | "unknown"
+    ) {
+        errors.push(format!(
+            "bridge_confidence must be configured_hint, heuristic, or unknown, got {}",
+            case.bridge_confidence
+        ));
+    }
+    if !case.rust_file.ends_with("Blob.rs") {
+        errors.push("rust_file must identify the Bun Blob Rust seam".to_string());
+    }
+    if case.rust_owner != "Blob::from_js_without_defer_gc" {
+        errors.push(
+            "rust_owner must pin Blob::from_js_without_defer_gc for the #31648 calibration seam"
+                .to_string(),
+        );
+    }
+    if !case.rust_boundary.contains("array_buffer.shared")
+        || !case.rust_boundary.contains("array_buffer.resizable")
+    {
+        errors.push(
+            "rust_boundary must include array_buffer.shared and array_buffer.resizable".to_string(),
+        );
+    }
+    if !case.ts_test_file.starts_with("test/js/") || !case.ts_test_file.ends_with(".test.ts") {
+        errors.push("ts_test_file must be a Bun test/js TypeScript test path".to_string());
+    }
+    if !case.suggested_test_file.starts_with("test/js/")
+        && case.suggested_test_file != "not_applicable"
+    {
+        errors.push("suggested_test_file must be not_applicable or a Bun test/js path".to_string());
+    }
+    if case.non_claims.is_empty() {
+        errors.push("non_claims must keep preview boundary denials visible".to_string());
+    }
+    for required in typescript_bun_ub_calibration_required_non_claims() {
+        if !case
+            .non_claims
+            .iter()
+            .any(|non_claim| non_claim.contains(required))
+        {
+            errors.push(format!("non_claims must deny {required}"));
+        }
+    }
+
+    match case.expected_verdict.as_str() {
+        "ts_discriminated" => {
+            if !case.shared_array_buffer
+                || !case.resizable_array_buffer
+                || !case.view_backed_blob_input
+                || !case.stable_byte_copy_oracle
+            {
+                errors.push(
+                    "ts_discriminated requires shared, resizable, Blob input, and stable-byte oracle facts"
+                        .to_string(),
+                );
+            }
+            if !case.expected_missing_discriminators.is_empty() {
+                errors.push("ts_discriminated must not name missing discriminators".to_string());
+            }
+            if case.suggested_test_file != "not_applicable" {
+                errors.push("ts_discriminated must not suggest a new test file".to_string());
+            }
+        }
+        "ts_missing_resizable" => {
+            if !case.shared_array_buffer || case.resizable_array_buffer {
+                errors.push(
+                    "ts_missing_resizable requires shared present and resizable absent".to_string(),
+                );
+            }
+            require_typescript_bun_ub_missing(
+                case,
+                "resizable_array_buffer",
+                "test/js/web/fetch/blob.test.ts",
+                &mut errors,
+            );
+        }
+        "ts_missing_shared" => {
+            if case.shared_array_buffer || !case.resizable_array_buffer {
+                errors.push(
+                    "ts_missing_shared requires shared absent and resizable present".to_string(),
+                );
+            }
+            require_typescript_bun_ub_missing(
+                case,
+                "shared_array_buffer",
+                "test/js/web/fetch/blob.test.ts",
+                &mut errors,
+            );
+        }
+        "ts_missing_shared_and_resizable" => {
+            if case.shared_array_buffer || case.resizable_array_buffer {
+                errors.push(
+                    "ts_missing_shared_and_resizable requires both boundary facts absent"
+                        .to_string(),
+                );
+            }
+            for missing in ["shared_array_buffer", "resizable_array_buffer"] {
+                require_typescript_bun_ub_missing(
+                    case,
+                    missing,
+                    "test/js/web/fetch/blob.test.ts",
+                    &mut errors,
+                );
+            }
+        }
+        "ts_mention_not_observer" => {
+            if !case.max_byte_length_mention_only {
+                errors.push(
+                    "ts_mention_not_observer must record max_byte_length_mention_only=true"
+                        .to_string(),
+                );
+            }
+            if case.view_backed_blob_input || case.stable_byte_copy_oracle {
+                errors.push(
+                    "ts_mention_not_observer must not count Blob input or stable-byte oracle facts"
+                        .to_string(),
+                );
+            }
+        }
+        "bridge_unknown" if case.bridge_confidence != "unknown" => {
+            errors.push("bridge_unknown requires bridge_confidence=unknown".to_string());
+        }
+        _ => {}
+    }
+
+    errors
+}
+
+fn require_typescript_bun_ub_missing(
+    case: &TypeScriptBunUbCalibrationCase,
+    missing: &str,
+    suggested_test_file: &str,
+    errors: &mut Vec<String>,
+) {
+    if !case
+        .expected_missing_discriminators
+        .iter()
+        .any(|discriminator| discriminator == missing)
+    {
+        errors.push(format!(
+            "{} must include missing discriminator {}",
+            case.expected_verdict, missing
+        ));
+    }
+    if case.suggested_test_file != suggested_test_file {
+        errors.push(format!(
+            "{} must suggest {}",
+            case.expected_verdict, suggested_test_file
+        ));
+    }
+}
+
+fn typescript_bun_ub_calibration_allowed_verdicts() -> &'static [&'static str] {
+    &[
+        "ts_discriminated",
+        "ts_missing_shared",
+        "ts_missing_resizable",
+        "ts_missing_shared_and_resizable",
+        "ts_mention_not_observer",
+        "bridge_unknown",
+    ]
+}
+
+fn typescript_bun_ub_calibration_required_non_claims() -> &'static [&'static str] {
+    &[
+        "provider",
+        "source edits",
+        "generated tests",
+        "runtime Bun execution",
+        "mutation execution",
+        "default gates",
+        "public badge",
+        "baseline",
+        "RIPR Zero",
+        "support-tier promotion",
+    ]
+}
+
 fn dogfood_typescript_preview_repair_loop_scenarios()
 -> Vec<DogfoodTypescriptPreviewRepairLoopScenario> {
     dogfood_typescript_preview_repair_loop_scenarios_at(Path::new(
@@ -65136,7 +65596,8 @@ mod tests {
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
         SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
+        StaticLanguageMatcher, TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES,
+        TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
         TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
         WorktreeDoctorFinding, WorktreeDoctorSeverity, actionable_gap_outcomes_json,
@@ -75609,6 +76070,422 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(report.contains("ranked_top_3_findings must capture at most three findings"));
         assert!(report.contains("ranked_top_3_findings rank 2 is duplicated"));
         assert!(report.contains("ranked_top_3_findings rank 2 must document a reason"));
+    }
+
+    #[test]
+    fn typescript_bun_ub_calibration_cases_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let cases = super::typescript_bun_ub_calibration_cases();
+            for required in TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES {
+                assert!(
+                    cases.iter().any(|case| {
+                        case.name == required.0 && case.expected_verdict == required.1
+                    }),
+                    "{} TypeScript Bun UB calibration case should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            let verdicts = cases
+                .iter()
+                .map(|case| case.expected_verdict.as_str())
+                .collect::<BTreeSet<_>>();
+            for required in [
+                "ts_discriminated",
+                "ts_missing_shared",
+                "ts_missing_resizable",
+                "ts_mention_not_observer",
+                "bridge_unknown",
+            ] {
+                assert!(
+                    verdicts.contains(required),
+                    "TypeScript Bun UB calibration should include {required}"
+                );
+            }
+
+            for case in cases {
+                let errors = super::typescript_bun_ub_calibration_case_errors(&case);
+                assert!(
+                    errors.is_empty(),
+                    "{} TypeScript Bun UB calibration case should validate: {:?}",
+                    case.name,
+                    errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn typescript_bun_ub_calibration_rejects_malformed_corpus_files() -> Result<(), String> {
+        let root = temp_dir("typescript-bun-ub-calibration-malformed");
+        let missing_path = root.join("missing.json");
+        let mut violations = Vec::new();
+        super::validate_typescript_bun_ub_calibration_fixture_corpus_at(
+            &missing_path,
+            &mut violations,
+        )?;
+        assert_contains_error(
+            &violations,
+            "TypeScript Bun UB calibration corpus is missing",
+        );
+
+        for (name, body, reason) in [
+            (
+                "bad-schema",
+                r#"{"schema_version":"0.2","kind":"typescript_bun_ub_calibration_corpus","spec":"RIPR-SPEC-0027","cases":[]}"#,
+                "schema_version must be 0.1",
+            ),
+            (
+                "bad-kind",
+                r#"{"schema_version":"0.1","kind":"other","spec":"RIPR-SPEC-0027","cases":[]}"#,
+                "kind must be typescript_bun_ub_calibration_corpus",
+            ),
+            (
+                "bad-spec",
+                r#"{"schema_version":"0.1","kind":"typescript_bun_ub_calibration_corpus","spec":"RIPR-SPEC-9999","cases":[]}"#,
+                "spec must be RIPR-SPEC-0027",
+            ),
+            (
+                "missing-cases",
+                r#"{"schema_version":"0.1","kind":"typescript_bun_ub_calibration_corpus","spec":"RIPR-SPEC-0027"}"#,
+                "missing cases array",
+            ),
+        ] {
+            let path = root.join(format!("{name}.json"));
+            write(&path, body);
+            let cases = super::typescript_bun_ub_calibration_cases_at(&path);
+            assert_contains_error(std::slice::from_ref(&cases[0].reason), reason);
+
+            let mut violations = Vec::new();
+            super::validate_typescript_bun_ub_calibration_fixture_corpus_at(
+                &path,
+                &mut violations,
+            )?;
+            assert_contains_error(
+                &violations,
+                "TypeScript Bun UB calibration case corpus: language must be present",
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_bun_ub_calibration_rejects_duplicate_and_required_case_drift()
+    -> Result<(), String> {
+        let root = temp_dir("typescript-bun-ub-calibration-required-cases");
+        let mut duplicate = valid_typescript_bun_ub_calibration_case();
+        duplicate.name = "duplicated".to_string();
+        let duplicate_case = typescript_bun_ub_calibration_case_json(&duplicate);
+        let duplicate_path = root.join("duplicate.json");
+        write(
+            &duplicate_path,
+            &typescript_bun_ub_calibration_corpus_json(&[duplicate_case.clone(), duplicate_case]),
+        );
+
+        let mut violations = Vec::new();
+        super::validate_typescript_bun_ub_calibration_fixture_corpus_at(
+            &duplicate_path,
+            &mut violations,
+        )?;
+        assert_contains_error(&violations, "case duplicated is duplicated");
+        assert_contains_error(
+            &violations,
+            "TypeScript Bun UB calibration corpus is missing case bun_blob_shared_and_resizable_present",
+        );
+        assert_contains_error(
+            &violations,
+            "TypeScript Bun UB calibration corpus must include verdict ts_missing_resizable",
+        );
+
+        let wrong_required_path = root.join("wrong-required.json");
+        let mut wrong_required = valid_typescript_bun_ub_calibration_case();
+        wrong_required.name = "bun_blob_shared_and_resizable_present".to_string();
+        wrong_required.expected_verdict = "ts_missing_resizable".to_string();
+        wrong_required.resizable_array_buffer = false;
+        wrong_required
+            .expected_missing_discriminators
+            .push("resizable_array_buffer".to_string());
+        wrong_required.suggested_test_file = "test/js/web/fetch/blob.test.ts".to_string();
+        write(
+            &wrong_required_path,
+            &typescript_bun_ub_calibration_corpus_json(&[typescript_bun_ub_calibration_case_json(
+                &wrong_required,
+            )]),
+        );
+
+        let mut violations = Vec::new();
+        super::validate_typescript_bun_ub_calibration_fixture_corpus_at(
+            &wrong_required_path,
+            &mut violations,
+        )?;
+        assert_contains_error(
+            &violations,
+            "case bun_blob_shared_and_resizable_present must have expected_verdict ts_discriminated, got ts_missing_resizable",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_bun_ub_calibration_rejects_invalid_case_fields() {
+        let mut case = valid_typescript_bun_ub_calibration_case();
+        case.name = " ".to_string();
+        case.language = "javascript".to_string();
+        case.language_status = "stable".to_string();
+        case.authority_boundary = "gate_ready".to_string();
+        case.repair_packet_ready = true;
+        case.expected_verdict = "not_a_verdict".to_string();
+        case.bridge_confidence = "guessed".to_string();
+        case.rust_file = "src/lib.rs".to_string();
+        case.rust_owner = "Blob::from_js".to_string();
+        case.rust_boundary = "array_buffer.shared".to_string();
+        case.ts_test_file = "test/js/web/fetch/blob.test.js".to_string();
+        case.suggested_test_file = "src/jsc/Blob.rs".to_string();
+        case.reason.clear();
+        case.non_claims.clear();
+
+        let errors = super::typescript_bun_ub_calibration_case_errors(&case);
+        for expected in [
+            "case id must be present",
+            "reason must be present",
+            "language must be typescript",
+            "language_status must be preview",
+            "authority_boundary must be preview_advisory_only",
+            "repair_packet_ready must remain false",
+            "expected_verdict must be a Bun UB calibration verdict",
+            "bridge_confidence must be configured_hint, heuristic, or unknown",
+            "rust_file must identify the Bun Blob Rust seam",
+            "rust_owner must pin Blob::from_js_without_defer_gc",
+            "rust_boundary must include array_buffer.shared and array_buffer.resizable",
+            "ts_test_file must be a Bun test/js TypeScript test path",
+            "suggested_test_file must be not_applicable or a Bun test/js path",
+            "non_claims must keep preview boundary denials visible",
+            "non_claims must deny provider",
+        ] {
+            assert_contains_error(&errors, expected);
+        }
+    }
+
+    #[test]
+    fn typescript_bun_ub_calibration_rejects_invalid_verdict_shapes() {
+        let mut discriminated = valid_typescript_bun_ub_calibration_case();
+        discriminated.shared_array_buffer = false;
+        discriminated
+            .expected_missing_discriminators
+            .push("shared_array_buffer".to_string());
+        discriminated.suggested_test_file = "test/js/web/fetch/blob.test.ts".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&discriminated);
+        assert_contains_error(
+            &errors,
+            "ts_discriminated requires shared, resizable, Blob input, and stable-byte oracle facts",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_discriminated must not name missing discriminators",
+        );
+        assert_contains_error(&errors, "ts_discriminated must not suggest a new test file");
+
+        let mut missing_resizable = valid_typescript_bun_ub_calibration_case();
+        missing_resizable.expected_verdict = "ts_missing_resizable".to_string();
+        missing_resizable.shared_array_buffer = false;
+        missing_resizable.resizable_array_buffer = true;
+        missing_resizable.suggested_test_file = "not_applicable".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&missing_resizable);
+        assert_contains_error(
+            &errors,
+            "ts_missing_resizable requires shared present and resizable absent",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_resizable must include missing discriminator resizable_array_buffer",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_resizable must suggest test/js/web/fetch/blob.test.ts",
+        );
+
+        let mut missing_shared = valid_typescript_bun_ub_calibration_case();
+        missing_shared.expected_verdict = "ts_missing_shared".to_string();
+        missing_shared.shared_array_buffer = true;
+        missing_shared.resizable_array_buffer = false;
+        missing_shared.suggested_test_file = "not_applicable".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&missing_shared);
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared requires shared absent and resizable present",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared must include missing discriminator shared_array_buffer",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared must suggest test/js/web/fetch/blob.test.ts",
+        );
+
+        let mut missing_both = valid_typescript_bun_ub_calibration_case();
+        missing_both.expected_verdict = "ts_missing_shared_and_resizable".to_string();
+        missing_both.shared_array_buffer = true;
+        missing_both.resizable_array_buffer = true;
+        missing_both.suggested_test_file = "not_applicable".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&missing_both);
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared_and_resizable requires both boundary facts absent",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared_and_resizable must include missing discriminator shared_array_buffer",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_shared_and_resizable must include missing discriminator resizable_array_buffer",
+        );
+
+        let mut mention_only = valid_typescript_bun_ub_calibration_case();
+        mention_only.expected_verdict = "ts_mention_not_observer".to_string();
+        mention_only.max_byte_length_mention_only = false;
+        mention_only.view_backed_blob_input = true;
+        mention_only.stable_byte_copy_oracle = true;
+        let errors = super::typescript_bun_ub_calibration_case_errors(&mention_only);
+        assert_contains_error(
+            &errors,
+            "ts_mention_not_observer must record max_byte_length_mention_only=true",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_mention_not_observer must not count Blob input or stable-byte oracle facts",
+        );
+
+        let mut bridge_unknown = valid_typescript_bun_ub_calibration_case();
+        bridge_unknown.expected_verdict = "bridge_unknown".to_string();
+        bridge_unknown.bridge_confidence = "configured_hint".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&bridge_unknown);
+        assert_contains_error(&errors, "bridge_unknown requires bridge_confidence=unknown");
+    }
+
+    fn valid_typescript_bun_ub_calibration_case() -> super::TypeScriptBunUbCalibrationCase {
+        super::TypeScriptBunUbCalibrationCase {
+            name: "valid".to_string(),
+            language: "typescript".to_string(),
+            language_status: "preview".to_string(),
+            rust_file: "src/jsc/Blob.rs".to_string(),
+            rust_owner: "Blob::from_js_without_defer_gc".to_string(),
+            rust_boundary: "array_buffer.shared || array_buffer.resizable".to_string(),
+            ts_test_file: "test/js/web/fetch/blob.test.ts".to_string(),
+            shared_array_buffer: true,
+            resizable_array_buffer: true,
+            view_backed_blob_input: true,
+            stable_byte_copy_oracle: true,
+            max_byte_length_mention_only: false,
+            expected_verdict: "ts_discriminated".to_string(),
+            expected_missing_discriminators: Vec::new(),
+            bridge_confidence: "configured_hint".to_string(),
+            suggested_test_file: "not_applicable".to_string(),
+            repair_packet_ready: false,
+            authority_boundary: "preview_advisory_only".to_string(),
+            non_claims: vec![
+                "provider evidence not asserted".to_string(),
+                "source edits not suggested".to_string(),
+                "generated tests not emitted".to_string(),
+                "runtime Bun execution not required".to_string(),
+                "mutation execution not run".to_string(),
+                "default gates unchanged".to_string(),
+                "public badge unchanged".to_string(),
+                "baseline unchanged".to_string(),
+                "RIPR Zero unchanged".to_string(),
+                "support-tier promotion unchanged".to_string(),
+            ],
+            reason: "valid calibration case".to_string(),
+        }
+    }
+
+    fn assert_contains_error(errors: &[String], expected: &str) {
+        assert!(
+            errors.iter().any(|error| error.contains(expected)),
+            "expected error containing {expected:?}; got {errors:?}"
+        );
+    }
+
+    fn typescript_bun_ub_calibration_corpus_json(cases: &[String]) -> String {
+        format!(
+            r#"{{
+  "schema_version": "0.1",
+  "kind": "typescript_bun_ub_calibration_corpus",
+  "spec": "RIPR-SPEC-0027",
+  "authority_boundary": "preview_advisory_only",
+  "cases": [{}]
+}}"#,
+            cases.join(",")
+        )
+    }
+
+    fn typescript_bun_ub_calibration_case_json(
+        case: &super::TypeScriptBunUbCalibrationCase,
+    ) -> String {
+        let missing_json = case
+            .expected_missing_discriminators
+            .iter()
+            .map(|discriminator| format!(r#""{discriminator}""#))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let non_claims_json = case
+            .non_claims
+            .iter()
+            .map(|non_claim| format!(r#""{non_claim}""#))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            r#"{{
+  "id": "{id}",
+  "language": "{language}",
+  "language_status": "{language_status}",
+  "rust_seam": {{
+    "file": "{rust_file}",
+    "line": 3420,
+    "owner": "{rust_owner}",
+    "boundary": "{rust_boundary}"
+  }},
+  "ts_test_file": "{ts_test_file}",
+  "observed_ts_facts": {{
+    "shared_array_buffer": {shared},
+    "resizable_array_buffer": {resizable},
+    "view_backed_blob_input": {view_backed_blob_input},
+    "stable_byte_copy_oracle": {stable_byte_copy_oracle},
+    "max_byte_length_mention_only": {max_byte_length_mention_only}
+  }},
+  "expected_verdict": "{expected_verdict}",
+  "expected_missing_discriminators": [{missing_json}],
+  "bridge_confidence": "{bridge_confidence}",
+  "suggested_test_file": "{suggested_test_file}",
+  "repair_packet_ready": {repair_packet_ready},
+  "authority_boundary": "{authority_boundary}",
+  "non_claims": [{non_claims_json}],
+  "reason": "{reason}"
+}}"#,
+            id = case.name,
+            language = case.language,
+            language_status = case.language_status,
+            rust_file = case.rust_file,
+            rust_owner = case.rust_owner,
+            rust_boundary = case.rust_boundary,
+            ts_test_file = case.ts_test_file,
+            shared = case.shared_array_buffer,
+            resizable = case.resizable_array_buffer,
+            view_backed_blob_input = case.view_backed_blob_input,
+            stable_byte_copy_oracle = case.stable_byte_copy_oracle,
+            max_byte_length_mention_only = case.max_byte_length_mention_only,
+            expected_verdict = case.expected_verdict,
+            bridge_confidence = case.bridge_confidence,
+            suggested_test_file = case.suggested_test_file,
+            repair_packet_ready = case.repair_packet_ready,
+            authority_boundary = case.authority_boundary,
+            reason = case.reason
+        )
     }
 
     #[test]
