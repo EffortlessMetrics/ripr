@@ -1376,10 +1376,10 @@ mod tests {
             Vec::new(),
         )];
         let report = ReleaseReadinessReport {
-            version: "0.7.0".to_string(),
+            version: "0.8.0".to_string(),
             status: "pass".to_string(),
             checks,
-            next_commands: vec!["cargo xtask release-readiness --version 0.7.0".to_string()],
+            next_commands: vec!["cargo xtask release-readiness --version 0.8.0".to_string()],
         };
         let json_text = release_readiness_json(&report)?;
         let value: Value = serde_json::from_str(&json_text)

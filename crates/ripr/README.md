@@ -13,7 +13,7 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.7.x` line keeps the analyzer,
+This is the product repository for `ripr`. The `0.8.x` line keeps the analyzer,
 editor, CI, and agent loops aligned around static evidence, preview-language
 visibility, and repo-local operating packets for targeted tests.
 
@@ -243,7 +243,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.7.0` is the current public release line for the Rust crate, GitHub Release server assets, VS Code/Open VSX extension metadata, generated CI workflow artifacts, and Rust 1.95 MSRV. `ripr-swarm` remains the development trunk; source `ripr` remains the release/distribution authority. | Promotion and release-maintenance proof. |
+| Distribution | `0.8.0` is the current public release line for the Rust crate, GitHub Release server assets, VS Code/Open VSX extension metadata, generated CI workflow artifacts, and Rust 1.95 MSRV. `ripr-swarm` remains the development trunk; source `ripr` remains the release/distribution authority. | Promotion and release-maintenance proof. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. Public `ripr` badges count unresolved actionable static repair gaps, not coverage, mutation adequacy, all behavior seams, or all untested code. | Output contract maintenance. |

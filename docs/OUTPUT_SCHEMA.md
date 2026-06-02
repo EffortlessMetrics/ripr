@@ -1123,7 +1123,7 @@ full `seams[]` array, per-seam `evidence_record`, `related_tests`,
   "schema_version": "0.1",
   "format": "repo-exposure-summary-json",
   "tool": "ripr",
-  "ripr_version": "0.7.0",
+  "ripr_version": "0.8.0",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
   "metadata": {
@@ -5158,7 +5158,7 @@ JSON shape:
     "after": "target/ripr/workflow/after.repo-exposure.json"
   },
   "provenance": {
-    "ripr_version": "0.7.0",
+    "ripr_version": "0.8.0",
     "repo_root": ".",
     "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
     "command_template_version": "0.1",
@@ -9771,7 +9771,7 @@ JSON shape:
   "schema_version": "0.1",
   "tool": "ripr",
   "report": "release-readiness",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "status": "warn",
   "checks": [
     {
