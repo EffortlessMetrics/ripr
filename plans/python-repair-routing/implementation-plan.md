@@ -825,6 +825,11 @@ Project Python repair cards consistently across output surfaces.
   from `actionable-gaps.json` with the canonical gap, changed owner, missing
   discriminator, suggested test target, verify command, receipt command, and
   stop conditions while preserving the static/advisory boundary.
+- Check-output-derived Python `already_observed`, `no_related_test`, and
+  `heuristic_only` findings now materialize as report-only gap-ledger records,
+  and the PR review front panel surfaces the top typed Python no-action or
+  static-limitation record with a `no_repair_packet` route instead of silently
+  falling back to a generic clean state.
 
 ### Work item: ci/python-advisory-mode
 
