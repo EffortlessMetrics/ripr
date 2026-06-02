@@ -11,9 +11,7 @@ permissions:
 jobs:
   cargo-deny:
     name: cargo-deny
-    runs-on:
-      group: em-ci-tiny
-      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-tiny]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -27,9 +25,7 @@ jobs:
   dependency-review:
     name: dependency-review
     if: github.event_name == 'pull_request'
-    runs-on:
-      group: em-ci-nano
-      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, policy-nano]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
