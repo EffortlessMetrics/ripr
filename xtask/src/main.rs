@@ -8208,6 +8208,10 @@ const REAL_REPAIR_ATTEMPTS_REQUIRED_CASES: &[(&str, &str)] = &[
         "evidence_improved",
     ),
     (
+        "local_member_boundary_operand_route_split",
+        "evidence_improved",
+    ),
+    (
         "same_file_owner_call_route_samples_improved",
         "evidence_improved",
     ),
@@ -22964,7 +22968,7 @@ fn static_limitation_unlock_condition(
     match category {
         "activation_boundary_input_unresolved" => {
             format!(
-                "implement `{repair_route}` so local, iterator, or computed operands can be resolved before candidate values are recommended"
+                "implement `{repair_route}` so local, member-access, iterator, or computed operands can be resolved before candidate values are recommended"
             )
         }
         "activation_owner_call_absent_assertion_target_affinity"
@@ -87929,6 +87933,56 @@ covered_by = ["cargo xtask check-file-policy"]
                       "confidence": {"basis": "static_only", "notes": []}
                     }
                   }
+                },
+                {
+                  "seam_id": "call-name-member",
+                  "headline_eligible": true,
+                  "file": "src/window.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "call-name-member",
+                    "canonical_gap_id": "gap:call-name-member",
+                    "owner": "window::filter_call",
+                    "location": {"file": "src/window.rs", "line": 88},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 1,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "member boundary operand unresolved", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {
+                        "stage": "activate",
+                        "state": "unknown",
+                        "reason": "member boundary operand cannot be mapped to a safe test input",
+                        "category": "activation_boundary_input_unresolved",
+                        "repair_route": "analysis/local-member-boundary-operand-resolution"
+                      }
+                    ],
+                    "raw_findings": [
+                      {"file": "src/window.rs", "line": 88, "kind": "static_unknown", "probe_kind": "predicate_boundary", "expression": "call.name != owner_name"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:call-name-member",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/window.rs", "line": 88, "kind": "static_unknown", "expression": "call.name != owner_name"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "member boundary operand cannot be mapped to a safe test input",
+                      "recommended_repair": "Improve member operand resolution before emitting a repair packet.",
+                      "verify_command": null,
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
                 }
               ]
             }"#,
@@ -87955,14 +88009,25 @@ covered_by = ["cargo xtask check-file-policy"]
                     == "limitation:activation_boundary_input_unresolved:analysis-iterator-boundary-operand-resolution"
             })
             .ok_or_else(|| "missing iterator backlog packet".to_string())?;
+        let member_packet = packets
+            .iter()
+            .find(|packet| {
+                packet["packet_id"]
+                    == "limitation:activation_boundary_input_unresolved:analysis-local-member-boundary-operand-resolution"
+            })
+            .ok_or_else(|| "missing member backlog packet".to_string())?;
 
-        assert_eq!(packets.len(), 2);
+        assert_eq!(packets.len(), 3);
         assert_eq!(
             local_packet["limitation_category"],
             "activation_boundary_input_unresolved"
         );
         assert_eq!(
             iterator_packet["limitation_category"],
+            "activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            member_packet["limitation_category"],
             "activation_boundary_input_unresolved"
         );
         assert_eq!(
@@ -87974,12 +88039,20 @@ covered_by = ["cargo xtask check-file-policy"]
             "analysis/iterator-boundary-operand-resolution"
         );
         assert_eq!(
+            member_packet["repair_route"],
+            "analysis/local-member-boundary-operand-resolution"
+        );
+        assert_eq!(
             local_packet["sample_canonical_gap_ids"][0],
             "gap:idx-offset-local"
         );
         assert_eq!(
             iterator_packet["sample_canonical_gap_ids"][0],
             "gap:idx-offset-iterator"
+        );
+        assert_eq!(
+            member_packet["sample_canonical_gap_ids"][0],
+            "gap:call-name-member"
         );
         assert_eq!(value["packets"].as_array().map(Vec::len), Some(0));
         Ok(())
@@ -92939,7 +93012,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             value["top_limitation_routes"][0]["unlock_condition"],
-            "implement `analysis/local-computed-boundary-operand-resolution` so local, iterator, or computed operands can be resolved before candidate values are recommended"
+            "implement `analysis/local-computed-boundary-operand-resolution` so local, member-access, iterator, or computed operands can be resolved before candidate values are recommended"
         );
         assert_eq!(
             value["top_limitation_routes"][0]["sample_sources"][0]["evidence_class"],

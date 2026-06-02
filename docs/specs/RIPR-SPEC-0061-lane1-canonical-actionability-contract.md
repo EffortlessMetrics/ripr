@@ -219,13 +219,15 @@ That case must become:
 ```text
 gap_state = static_limitation
 category = activation_boundary_input_unresolved
-repair_route = add analyzer support for iterator, local, or computed operand resolution
+repair_route = add analyzer support for iterator, member-access, local, or computed operand resolution
 ```
 
 Iterator-derived operands should route to
-`analysis/iterator-boundary-operand-resolution`; local or computed operands should
-route to `analysis/local-computed-boundary-operand-resolution`. Both remain
-static limitations until the analyzer can safely name activation values.
+`analysis/iterator-boundary-operand-resolution`; member-access operands should
+route to `analysis/local-member-boundary-operand-resolution`; local or computed
+operands should route to
+`analysis/local-computed-boundary-operand-resolution`. All remain static
+limitations until the analyzer can safely name activation values.
 
 The same rule applies to any class where RIPR cannot safely name the activation
 value, observer shape, verify command, or receipt command.
@@ -329,6 +331,9 @@ operands:
 - `crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_computed_boundary_operands_to_local_computed_limitation`
   maps local/computed unresolved boundary operands to
   `analysis/local-computed-boundary-operand-resolution`;
+- `crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_member_boundary_operands_to_local_member_limitation`
+  maps member-access unresolved boundary operands to
+  `analysis/local-member-boundary-operand-resolution`;
 - `crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder`
   preserves the normal parameter/literal boundary path as actionable with
   `repair_kind = add_boundary_assertion`.

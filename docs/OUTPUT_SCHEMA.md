@@ -1650,10 +1650,12 @@ Field contract:
   focused-test instructions. Each entry carries the original `stage`, `state`,
   and `reason` plus a normalized `category` and `repair_route` so Lane 1 can
   group analyzer limits without treating them as user test gaps.
-  Predicate boundaries whose activation operand is local, iterator-derived, or
-  computed use category `activation_boundary_input_unresolved`. Iterator-derived
-  operands route to `analysis/iterator-boundary-operand-resolution`; local or
-  computed operands route to `analysis/local-computed-boundary-operand-resolution`.
+  Predicate boundaries whose activation operand is local, member-access,
+  iterator-derived, or computed use category
+  `activation_boundary_input_unresolved`. Iterator-derived operands route to
+  `analysis/iterator-boundary-operand-resolution`; member-access operands route
+  to `analysis/local-member-boundary-operand-resolution`; local or computed
+  operands route to `analysis/local-computed-boundary-operand-resolution`.
   They must not emit exact boundary candidate values or public repair packets.
 - `seams[].evidence_record.presentation_text` - reserved presentation-text
   evidence-class projection. It is `null` until a fixture-backed presentation
@@ -2747,7 +2749,7 @@ otherwise it uses the category fallback route.
         ],
         "dominant_evidence_class": "predicate_boundary",
         "why_not_actionable": "activation inputs cannot yet be mapped to a safe concrete test value",
-        "unlock_condition": "implement `analysis/local-computed-boundary-operand-resolution` so local, iterator, or computed operands can be resolved before candidate values are recommended",
+        "unlock_condition": "implement `analysis/local-computed-boundary-operand-resolution` so local, member-access, iterator, or computed operands can be resolved before candidate values are recommended",
         "non_claims": [
           "not a public repair packet",
           "not swarm-ready work",

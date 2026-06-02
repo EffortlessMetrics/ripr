@@ -1094,6 +1094,10 @@ fn static_limitation_repair_route_for_entry(
         && boundary_input_limitation_is_closure_derived(entry)
     {
         "analysis/closure-boundary-operand-resolution"
+    } else if category == "activation_boundary_input_unresolved"
+        && boundary_input_limitation_has_member_operand(entry)
+    {
+        "analysis/local-member-boundary-operand-resolution"
     } else {
         static_limitation_repair_route(category)
     }
@@ -1175,6 +1179,54 @@ fn boundary_input_limitation_is_iterator_derived(entry: &ClassifiedSeam) -> bool
 fn boundary_input_limitation_is_closure_derived(entry: &ClassifiedSeam) -> bool {
     let reason = entry.evidence.activate.summary.to_ascii_lowercase();
     reason.contains("boundary activation operand") && reason.contains("closure-derived")
+}
+
+fn boundary_input_limitation_has_member_operand(entry: &ClassifiedSeam) -> bool {
+    entry
+        .seam
+        .expression()
+        .split_whitespace()
+        .any(token_has_member_access)
+}
+
+fn token_has_member_access(token: &str) -> bool {
+    let token = token.trim();
+    let token = if token.starts_with('(') && token.ends_with(')') {
+        let inner = &token[1..token.len().saturating_sub(1)];
+        if inner.contains('(') || inner.contains(')') {
+            return false;
+        }
+        inner
+    } else if token.contains('(') || token.contains(')') {
+        return false;
+    } else {
+        token
+    };
+    let token =
+        token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '.');
+    let mut parts = token.split('.');
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    if !is_member_operand_part(first) {
+        return false;
+    }
+    let mut member_count = 0usize;
+    for part in parts {
+        if !is_member_operand_part(part) {
+            return false;
+        }
+        member_count += 1;
+    }
+    member_count > 0
+}
+
+fn is_member_operand_part(part: &str) -> bool {
+    let mut chars = part.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn observed_value_json(value: &EvidenceRecordObservedValue) -> Value {
@@ -1828,6 +1880,45 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_routes_member_boundary_operands_to_local_member_limitation() {
+        let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
+        entry.seam = RepoSeam::new(
+            "src/activation.rs",
+            "activation::owner_call_parameter_values",
+            SeamKind::PredicateBoundary,
+            58,
+            58,
+            "call.name != owner_name",
+            RequiredDiscriminator::BoundaryValue {
+                description: "call.name != owner_name".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.activate = stage(
+            StageState::Unknown,
+            "Boundary activation operands are local, member-access, or computed for seam `call.name != owner_name`; add analyzer support for member boundary operand resolution before emitting an actionable repair packet",
+        );
+        entry.evidence.observed_values.clear();
+        entry.evidence.missing_discriminators.clear();
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["category"],
+            "activation_boundary_input_unresolved"
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["repair_route"],
+            "analysis/local-member-boundary-operand-resolution"
+        );
+    }
+
+    #[test]
     fn evidence_record_routes_closure_boundary_operands_to_closure_limitation() {
         let mut entry = sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown);
         entry.evidence.activate = stage(
@@ -1863,6 +1954,28 @@ mod tests {
                 .unwrap_or_default()
                 .contains("Add or strengthen")
         );
+    }
+
+    #[test]
+    fn member_boundary_operand_route_requires_identifier_member_tokens() {
+        for token in [
+            "call.name",
+            "left_value.value",
+            "!owner.name",
+            "(row.field)",
+        ] {
+            assert!(
+                token_has_member_access(token),
+                "member operand token should match: {token}"
+            );
+        }
+
+        for token in ["1.0", "call.name()", "owner_name", ".field", "owner."] {
+            assert!(
+                !token_has_member_access(token),
+                "non-member operand token should not match: {token}"
+            );
+        }
     }
 
     #[test]

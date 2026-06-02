@@ -2336,6 +2336,40 @@
       ],
       "missing_receipt_reason": null,
       "reason": "The Python preview loop now has a checked repo-local dogfood receipt showing a safe packet, test-only edit, verify pass, and canonical gap closure without changing production code."
+    },
+    {
+      "id": "local_member_boundary_operand_route_split",
+      "source_ref": "local:local-member-boundary-operands-2026-06-02",
+      "canonical_gap_id": "gap:activation-boundary-input-unresolved-local-member",
+      "packet_id": "limitation:activation_boundary_input_unresolved:local_member:analysis-local-member-boundary-operand-resolution",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "evidence-record assertions that local/computed predicate-boundary operands containing member access, such as call.name != owner_name, route to a precise analyzer backlog bucket while staying static limitations",
+      "verify_command": "cargo test -p ripr evidence_record_routes_member_boundary_operands_to_local_member_limitation --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask dogfood",
+      "receipt_path": "fixtures/real-repair-attempts/corpus.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Split member-access activation-boundary operands out of the generic local/computed boundary limitation route while preserving non-actionable status.",
+      "evidence_movement": "improved: sampled local/member boundary operands now route to analysis/local-member-boundary-operand-resolution with 33 signals, reducing the generic analysis/local-computed-boundary-operand-resolution bucket from 190 to 157 signals.",
+      "operator_note": "This is analyzer-route dogfood. It improves work allocation only; it does not infer member values, emit public repair packets, or move badge/gate counters.",
+      "must_not_change": [
+        "do not invent member or field values",
+        "do not promote local/member boundary operands to public repair packets",
+        "do not change gate or badge semantics",
+        "do not change iterator-derived or closure-derived boundary routes"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_member_boundary_operands_to_local_member_limitation",
+        "crates/ripr/src/output/evidence_record.rs::tests::member_boundary_operand_route_requires_identifier_member_tokens",
+        "target/ripr/reports/swarm-readiness.json:analysis/local-computed-boundary-operand-resolution",
+        "metrics/capabilities.toml:lane1_canonical_actionability_contract"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer slice made member-access boundary operands a precise static-limitation route while keeping candidate-value inference blocked."
     }
   ]
 }
