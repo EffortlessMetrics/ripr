@@ -1310,7 +1310,7 @@ fn direct_call_prefix_is_allowed(prefix: &str) -> bool {
 }
 
 fn direct_delegate_condition_prefix_is_allowed(prefix: &str) -> bool {
-    prefix.trim() == "if"
+    matches!(prefix.trim(), "if" | "if !")
 }
 
 fn direct_delegate_parenthesized_macro_name_before_argument(prefix: &str) -> Option<String> {
@@ -9391,10 +9391,12 @@ mod nested {
     #[test]
     fn direct_delegate_condition_prefix_accepts_only_leading_condition_owner_call() {
         assert!(direct_delegate_condition_prefix_is_allowed("if"));
+        assert!(direct_delegate_condition_prefix_is_allowed("if !"));
         assert!(!direct_delegate_condition_prefix_is_allowed("} else if"));
         assert!(!direct_delegate_condition_prefix_is_allowed(
             "    } else if"
         ));
+        assert!(!direct_delegate_condition_prefix_is_allowed("} else if !"));
         assert!(!direct_delegate_condition_prefix_is_allowed("if ready &&"));
         assert!(!direct_delegate_condition_prefix_is_allowed("while"));
         assert!(!direct_delegate_condition_prefix_is_allowed("match"));
@@ -11496,6 +11498,67 @@ mod tests {
             evidence.missing_discriminators.is_empty(),
             "condition helper activation must not create boundary debt: {:?}",
             evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_negated_condition_helper_calls_owner_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+fn should_skip_pipeline(input: &str) -> bool {
+    if !render_pipeline(input) {
+        return true;
+    }
+    false
+}
+
+fn render_pipeline(input: &str) -> bool {
+    format_output(input).is_empty()
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skip_helper_reaches_pipeline_owner() {
+        assert!(!should_skip_pipeline("alpha"));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::render_pipeline")
+                    && s.expression().contains("format_output")
+            })
+            .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "negated condition helper should get helper-owner relation: {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "negated condition helper route must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
