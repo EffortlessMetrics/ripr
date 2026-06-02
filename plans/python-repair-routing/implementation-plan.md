@@ -1462,6 +1462,12 @@ git diff --check
   strengthens to exact `pytest.raises(..., match=...)` evidence, verifies with
   a focused `pytest` command, exports a bounded test-only packet, and closes
   the canonical Python exception gap through `ripr outcome`.
+- The corpus now adds `custom_exception_pytest_receipt` as a post-promotion
+  stability eval where a broad `pytest.raises(ExpiredCouponError)` observer
+  strengthens to exact `pytest.raises(..., match=...)` evidence for a custom
+  exception type, verifies with a focused `pytest` command, exports a bounded
+  test-only packet, and closes the canonical Python exception gap through
+  `ripr outcome`.
 - The corpus now adds `unittest_exception_path_receipt` as a post-promotion
   stability eval where a broad `self.assertRaises(ValueError)` observer
   strengthens to exact `self.assertRaisesRegex(...)` evidence, verifies with
@@ -1514,11 +1520,11 @@ git diff --check
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.
 - `cargo xtask dogfood` now requires the receipt-backed async return-value,
-  pytest exception, unittest exception, API JSON detail, Flask route JSON
-  detail, FastAPI route JSON detail, API exception-response, and unittest
-  return-value eval rows in addition to the original boundary/API/CLI/mixed
-  cases, so those Python closure proofs cannot disappear from the corpus
-  without failing the checked dogfood gate.
+  pytest exception, custom exception, unittest exception, API JSON detail,
+  Flask route JSON detail, FastAPI route JSON detail, API exception-response,
+  and unittest return-value eval rows in addition to the original
+  boundary/API/CLI/mixed cases, so those Python closure proofs cannot disappear
+  from the corpus without failing the checked dogfood gate.
 - The corpus now adds `cli_exit_code_pytest_receipt` as a post-promotion
   stability eval where a changed literal `sys.exit(2)` side effect routes to a
   CLI exit-code repair card, exports a bounded test-only packet, verifies with

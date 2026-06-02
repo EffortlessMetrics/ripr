@@ -594,6 +594,70 @@
       "reason": "The run extends post-usable-alpha stability evidence to a Python exception-path repair: RIPR routes the missing exact ValueError message discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "custom_exception_pytest_receipt",
+      "repo_shape": "custom_exception_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/custom-exception-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/custom-exception-receipt --base HEAD~1 --format json",
+      "runtime_ms": 1000,
+      "top_finding_summary": "Python custom exception-path repair card for apply_coupon ExpiredCouponError message",
+      "canonical_gap_id": "gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest custom-exception test with pytest.raises(ExpiredCouponError, match=\"coupon expired\").",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/custom-exception-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_coupons.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/coupons.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected exception message is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/coupons.py::apply_coupon",
+      "missing_discriminator": "raises ExpiredCouponError matching \"coupon expired\"",
+      "suggested_test_file": "tests/test_coupons.py",
+      "suggested_test_name": "test_expired_coupon_rejected",
+      "verify_command": "pytest tests/test_coupons.py::test_expired_coupon_rejected",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.33s",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/custom-exception-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 800,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "custom exception-path scratch repo includes baseline pytest import setup; scoped repair routing is usable alpha while broader Python static facts remain preview/advisory",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/coupons.py:apply_coupon:exception_path:error_path:expiredcouponerror_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "raises ExpiredCouponError matching \"coupon expired\"",
+          "suggested_test_file": "tests/test_coupons.py",
+          "verify_command": "pytest tests/test_coupons.py::test_expired_coupon_rejected",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python custom-exception receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused custom-exception eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a custom Python exception type: RIPR routes the missing exact ExpiredCouponError message discriminator to one existing pytest method, exports a bounded test-only packet, verifies with pytest, and closes the canonical Python gap through an outcome receipt."
+    },
+    {
       "id": "unittest_exception_path_receipt",
       "repo_shape": "unittest_exception_path",
       "source_kind": "scratch_repo",

@@ -8284,6 +8284,7 @@ const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
     ("typer_cli_output_pytest_receipt", "closed"),
     ("cli_exit_code_pytest_receipt", "closed"),
     ("exception_path_pytest_receipt", "closed"),
+    ("custom_exception_pytest_receipt", "closed"),
     ("unittest_exception_path_receipt", "closed"),
     ("api_status_pytest_receipt", "closed"),
     ("api_json_detail_pytest_receipt", "closed"),
