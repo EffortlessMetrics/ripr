@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.8.0 swarm freeze](0.8.0-swarm-freeze.md)
 - [Python Repair Routing usable-alpha closeout](2026-05-31-python-repair-routing-usable-alpha-closeout.md)
 - [TypeScript Preview Completion closeout](2026-05-30-typescript-preview-completion-closeout.md)
 - [Adoption Integration Cleanup reconciliation](2026-05-23-adoption-integration-cleanup-reconciliation.md)
