@@ -19511,7 +19511,7 @@ const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
 const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
-const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 120_000;
+const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 240_000;
 const LANE1_EVIDENCE_AUDIT_CACHE_MAX_GB_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_MAX_CACHE_GB";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_CACHE_MAX_GB: u64 = 20;
 const LANE1_BYTES_PER_GB: u64 = 1024 * 1024 * 1024;
@@ -20115,8 +20115,11 @@ fn lane1_evidence_audit_repo_exposure_args() -> Vec<String> {
 }
 
 fn lane1_evidence_audit_timeout_ms() -> u64 {
-    std::env::var(LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV)
-        .ok()
+    lane1_evidence_audit_timeout_ms_from_env(std::env::var(LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV).ok())
+}
+
+fn lane1_evidence_audit_timeout_ms_from_env(value: Option<String>) -> u64 {
+    value
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS)
@@ -86582,7 +86585,31 @@ covered_by = ["cargo xtask check-file-policy"]
 
     #[test]
     fn lane1_evidence_audit_default_timeout_preempts_live_abort_window() {
-        assert_eq!(super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS, 120_000);
+        assert_eq!(super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS, 240_000);
+    }
+
+    #[test]
+    fn lane1_evidence_audit_timeout_ms_uses_positive_env_override_only() {
+        assert_eq!(
+            super::lane1_evidence_audit_timeout_ms_from_env(None),
+            super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            super::lane1_evidence_audit_timeout_ms_from_env(Some(String::new())),
+            super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            super::lane1_evidence_audit_timeout_ms_from_env(Some("0".to_string())),
+            super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            super::lane1_evidence_audit_timeout_ms_from_env(Some("not-a-timeout".to_string())),
+            super::LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS
+        );
+        assert_eq!(
+            super::lane1_evidence_audit_timeout_ms_from_env(Some("300000".to_string())),
+            300_000
+        );
     }
 
     #[test]
