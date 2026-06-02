@@ -24,7 +24,10 @@
 //! 5. `const NAME: T = LITERAL;` / `static NAME: T = LITERAL;` in the
 //!    same source file
 //! 6. `Some(L)` / `Err(L)` constructor unwrap (one level)
-//! 7. `Path::new(L)` / `PathBuf::from(L)` path literal constructors
+//! 7. `std::path::Path::new(L)` / `std::path::PathBuf::from(L)`,
+//!    plus bare `Path::new(L)` / `PathBuf::from(L)` only when the
+//!    test file syntactically imports those std path types without a
+//!    same-file shadow
 //! 8. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
 //!    same test body
 //!
@@ -71,6 +74,12 @@ pub(crate) struct ValueEnvFacts {
     /// invalidations so later shadows do not erase earlier safe calls.
     struct_field_bindings: BTreeMap<String, StructFieldBinding>,
     struct_field_invalidations: BTreeMap<String, Vec<SourcePosition>>,
+    /// Bare `Path::new(...)` / `PathBuf::from(...)` only count when
+    /// the source file imports the std path type by that exact name
+    /// and does not define a same-file shadow. Fully qualified std
+    /// constructors do not need this.
+    bare_std_path_imported: bool,
+    bare_std_path_buf_imported: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,6 +110,9 @@ impl ValueEnvFacts {
         let module_constants = file_facts_for(test, index)
             .map(|facts| extract_module_constants(&facts.source))
             .unwrap_or_default();
+        let path_constructor_imports = file_facts_for(test, index)
+            .map(|facts| extract_path_constructor_imports(&facts.source))
+            .unwrap_or_default();
         let (struct_field_bindings, struct_field_invalidations) =
             extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
         Self {
@@ -112,6 +124,8 @@ impl ValueEnvFacts {
             module_constants,
             struct_field_bindings,
             struct_field_invalidations,
+            bare_std_path_imported: path_constructor_imports.path,
+            bare_std_path_buf_imported: path_constructor_imports.path_buf,
         }
     }
 }
@@ -157,7 +171,7 @@ impl<'a> ValueEnv<'a> {
                 },
             );
         }
-        if let Some(inner) = unwrap_path_literal_constructor(trimmed) {
+        if let Some(inner) = unwrap_path_literal_constructor(trimmed, self.facts) {
             return self.resolve_identifier_or_literal_at(
                 inner.as_str(),
                 SourcePosition {
@@ -210,7 +224,7 @@ impl<'a> ValueEnv<'a> {
         if let Some(inner) = unwrap_option_or_result(trimmed) {
             return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
         }
-        if let Some(inner) = unwrap_path_literal_constructor(trimmed) {
+        if let Some(inner) = unwrap_path_literal_constructor(trimmed, self.facts) {
             return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
         }
         self.resolve_identifier_or_literal_at(trimmed, call_position)
@@ -334,6 +348,110 @@ impl<'a> ValueEnv<'a> {
 /// FileFacts entry.
 fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<&'a FileFacts> {
     index.files.get(&test.file)
+}
+
+#[derive(Default)]
+struct PathConstructorImports {
+    path: bool,
+    path_buf: bool,
+}
+
+/// Same-file syntactic import/shadow scan for bare path
+/// constructors. This intentionally does not resolve modules; it only
+/// lets `Path::new(...)` / `PathBuf::from(...)` count when the file
+/// text imports `std::path::Path` / `std::path::PathBuf` by that
+/// exact bare name and does not define a same-file item with that
+/// name.
+fn extract_path_constructor_imports(file_source: &str) -> PathConstructorImports {
+    let cleaned = strip_comments_and_strings(file_source);
+    let mut imports = PathConstructorImports::default();
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        let Some(import) = trimmed.strip_prefix("use ") else {
+            continue;
+        };
+        collect_std_path_constructor_imports(import.trim(), &mut imports);
+    }
+    let shadows = path_constructor_shadows(&cleaned);
+    PathConstructorImports {
+        path: imports.path && !shadows.path,
+        path_buf: imports.path_buf && !shadows.path_buf,
+    }
+}
+
+fn collect_std_path_constructor_imports(import: &str, imports: &mut PathConstructorImports) {
+    let import = import.trim_end_matches(';').trim();
+    match import {
+        "std::path::Path" | "::std::path::Path" => {
+            imports.path = true;
+            return;
+        }
+        "std::path::PathBuf" | "::std::path::PathBuf" => {
+            imports.path_buf = true;
+            return;
+        }
+        _ => {}
+    }
+
+    let Some(rest) = import
+        .strip_prefix("std::path::{")
+        .or_else(|| import.strip_prefix("::std::path::{"))
+    else {
+        return;
+    };
+    let Some(body) = rest.strip_suffix('}') else {
+        return;
+    };
+    for item in body.split(',').map(str::trim) {
+        match item {
+            "Path" => imports.path = true,
+            "PathBuf" => imports.path_buf = true,
+            _ => {}
+        }
+    }
+}
+
+fn path_constructor_shadows(cleaned_source: &str) -> PathConstructorImports {
+    let mut shadows = PathConstructorImports::default();
+    for line in cleaned_source.lines() {
+        let trimmed = line.trim();
+        if item_defines_name(trimmed, "Path") {
+            shadows.path = true;
+        }
+        if item_defines_name(trimmed, "PathBuf") {
+            shadows.path_buf = true;
+        }
+    }
+    shadows
+}
+
+fn item_defines_name(line: &str, name: &str) -> bool {
+    let line = strip_visibility_prefix(line);
+    for prefix in ["struct ", "enum ", "type ", "trait ", "mod ", "union "] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            let ident = rest
+                .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                .next()
+                .unwrap_or_default();
+            if ident == name {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn strip_visibility_prefix(line: &str) -> &str {
+    let Some(rest) = line.strip_prefix("pub") else {
+        return line;
+    };
+    let rest = rest.trim_start();
+    if let Some(rest) = rest.strip_prefix('(')
+        && let Some((_, after_visibility)) = rest.split_once(')')
+    {
+        return after_visibility.trim_start();
+    }
+    rest
 }
 
 /// `let IDENT = LITERAL;` and `let IDENT: T = LITERAL;` scan. Walks
@@ -1033,16 +1151,19 @@ fn unwrap_option_or_result(text: &str) -> Option<String> {
 
 /// Strip simple path literal constructors to the inner expression.
 /// Returns the inner text (trimmed). One level only.
-fn unwrap_path_literal_constructor(text: &str) -> Option<String> {
+fn unwrap_path_literal_constructor(text: &str, facts: &ValueEnvFacts) -> Option<String> {
     let trimmed = text.trim();
-    for ctor in [
-        "Path::new(",
-        "std::path::Path::new(",
-        "::std::path::Path::new(",
-        "PathBuf::from(",
-        "std::path::PathBuf::from(",
-        "::std::path::PathBuf::from(",
+    for (ctor, allowed) in [
+        ("Path::new(", facts.bare_std_path_imported),
+        ("std::path::Path::new(", true),
+        ("::std::path::Path::new(", true),
+        ("PathBuf::from(", facts.bare_std_path_buf_imported),
+        ("std::path::PathBuf::from(", true),
+        ("::std::path::PathBuf::from(", true),
     ] {
+        if !allowed {
+            continue;
+        }
         if let Some(rest) = trimmed.strip_prefix(ctor)
             && let Some(inner) = rest.strip_suffix(')')
         {
@@ -1609,7 +1730,11 @@ mod tests {
     #[test]
     fn resolve_at_unwraps_literal_path_constructors_only() {
         let seam = predicate_seam();
-        let facts = ValueEnvFacts::default();
+        let facts = ValueEnvFacts {
+            bare_std_path_imported: true,
+            bare_std_path_buf_imported: true,
+            ..ValueEnvFacts::default()
+        };
         let env = ValueEnv::new(&seam, &facts);
 
         assert_eq!(
@@ -1621,13 +1746,105 @@ mod tests {
             "Path::new string literals should become concrete activation values"
         );
         assert_eq!(
+            env.resolve_at(r#"PathBuf::from("target/ripr/workflow")"#, 1),
+            vec![(
+                r#""target/ripr/workflow""#.to_string(),
+                ValueContext::FunctionArgument
+            )],
+            "imported PathBuf::from string literals should become concrete activation values"
+        );
+        assert_eq!(
+            env.resolve_at(r#"std::path::Path::new(".")"#, 1),
+            vec![(r#"".""#.to_string(), ValueContext::FunctionArgument)],
+            "fully qualified Path::new literals should become concrete activation values"
+        );
+        assert_eq!(
+            env.resolve_at(r#"::std::path::Path::new(".")"#, 1),
+            vec![(r#"".""#.to_string(), ValueContext::FunctionArgument)],
+            "root-qualified Path::new literals should become concrete activation values"
+        );
+        assert_eq!(
             env.resolve_at(r#"std::path::PathBuf::from(".")"#, 1),
             vec![(r#"".""#.to_string(), ValueContext::FunctionArgument)],
             "PathBuf::from string literals should become concrete activation values"
         );
+        assert_eq!(
+            env.resolve_at(r#"::std::path::PathBuf::from(".")"#, 1),
+            vec![(r#"".""#.to_string(), ValueContext::FunctionArgument)],
+            "root-qualified PathBuf::from literals should become concrete activation values"
+        );
         assert!(
             env.resolve_at("Path::new(out_dir)", 1).is_empty(),
             "non-literal path constructors must remain unresolved"
+        );
+    }
+
+    #[test]
+    fn resolve_at_requires_std_import_for_bare_path_constructors() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert!(
+            env.resolve_at(r#"Path::new("target/ripr/workflow")"#, 1)
+                .is_empty(),
+            "bare Path::new must stay unresolved without same-file std import evidence"
+        );
+        assert!(
+            env.resolve_at(r#"PathBuf::from("target/ripr/workflow")"#, 1)
+                .is_empty(),
+            "bare PathBuf::from must stay unresolved without same-file std import evidence"
+        );
+        assert_eq!(
+            env.resolve_at(r#"std::path::Path::new("target/ripr/workflow")"#, 1),
+            vec![(
+                r#""target/ripr/workflow""#.to_string(),
+                ValueContext::FunctionArgument
+            )],
+            "fully qualified std path constructors do not need bare import evidence"
+        );
+    }
+
+    #[test]
+    fn extract_path_constructor_imports_excludes_same_file_shadows() {
+        let imports = extract_path_constructor_imports(
+            r#"
+use std::path::{Path, PathBuf};
+fn uses_path(path: &Path) {}
+"#,
+        );
+        assert!(imports.path, "brace import should enable bare Path::new");
+        assert!(
+            imports.path_buf,
+            "brace import should enable bare PathBuf::from"
+        );
+
+        let alias = extract_path_constructor_imports("use std::path::Path as StdPath;\n");
+        assert!(
+            !alias.path,
+            "aliased std Path import must not enable bare Path::new"
+        );
+
+        let shadow = extract_path_constructor_imports(
+            r#"
+use std::path::Path;
+struct Path;
+"#,
+        );
+        assert!(
+            !shadow.path,
+            "same-file Path shadow must keep bare Path::new unresolved"
+        );
+
+        let visible_shadow = extract_path_constructor_imports(
+            r#"
+use std::path::PathBuf;
+pub(super) struct PathBuf;
+"#,
+        );
+        assert!(
+            !visible_shadow.path_buf,
+            "same-file visible PathBuf shadow must keep bare PathBuf::from unresolved"
         );
     }
 
