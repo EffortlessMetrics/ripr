@@ -445,6 +445,12 @@ cargo check --workspace --all-targets
 The main Rust job stays on `stable` so routine CI also proves the current stable
 toolchain, while the MSRV job proves the declared workspace baseline.
 
+The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
+jobs are release-surface proof on main and manual dispatches; they must not
+depend on self-hosted runner capacity when preparing a source release. The
+routed Rust-small workflow remains the swarm development lane that selects
+self-hosted runners when available and falls back to hosted capacity.
+
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:
 
@@ -2266,6 +2272,10 @@ lanes must not depend on self-hosted runner availability just to prove that the
 current workspace can produce coverage and JUnit artifacts. The jobs still run
 only on pull requests, pushes to `main`/`master`, and manual dispatches, and
 Codecov upload remains non-blocking.
+
+Future Clippy also runs on `ubuntu-latest`. It remains advisory and never fails
+the branch; the hosted runner keeps deferred-lint readiness visible without
+blocking release proof on self-hosted runner availability.
 
 It installs `cargo-deny` as a normal command-line binary before running the
 check, so self-hosted runners do not need Docker just to execute the security
