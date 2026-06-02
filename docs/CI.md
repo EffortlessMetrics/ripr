@@ -655,15 +655,18 @@ by routine runner-placement edits.
 
 The remaining (non-required) self-hosted lanes route to the smallest safe EM
 shared self-hosted tier by actual workload, each with explicit
-`group` + `labels` and a per-job `timeout-minutes` hang guard. No
-`ubuntu-latest` fallback is added; queueing on these groups is acceptable
-backpressure and these lanes are advisory or label/push gated, so they do not
-block merge.
+`group` + `labels` and a per-job `timeout-minutes` hang guard. Queueing on
+these groups is acceptable backpressure and these lanes are advisory or
+label/push gated, so they do not block merge. The VS Code e2e lane is the
+exception: it runs on GitHub-hosted Ubuntu because it installs `xvfb` for
+headless extension tests and must not depend on privileged package installs on
+EM self-hosted runners.
 
 | Workflow / job | Group | Tier label |
 | --- | --- | --- |
 | `ci.yml` `rust` | `em-ci-small` | `rust-medium` |
-| `ci.yml` `msrv`, `vscode` | `em-ci-small` | `rust-small` |
+| `ci.yml` `msrv` | `em-ci-small` | `rust-small` |
+| `ci.yml` `vscode` | GitHub-hosted | `ubuntu-latest` |
 | `coverage.yml` | `em-ci-small` | `rust-heavy-medium` |
 | `test-analytics.yml` | `em-ci-small` | `rust-medium` |
 | `future-clippy.yml` | `em-ci-small` | `rust-medium` |

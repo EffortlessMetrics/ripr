@@ -172,9 +172,7 @@ jobs:
 
   vscode:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on:
-      group: em-ci-small
-      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-small]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
