@@ -60,8 +60,11 @@ A generated workflow run should make these evidence boundaries visible:
 - the configured gate-decision artifact when present;
 - advisory text explaining that the job summary, front panel, and packet index
   are not gate authority;
-- preview-language labels when TypeScript, Python, or later preview adapters
-  contribute grouped evidence;
+- preview-language labels when TypeScript, JavaScript, Python, or later preview
+  adapters contribute grouped evidence;
+- preview-language actionability state/category counts, repair-packet-ready
+  counts, static-limit context, and explicit no-gate-impact summary fields when
+  those fields are present in artifacts;
 - receipts or movement reports when supplied by existing artifacts.
 
 Missing optional inputs remain warnings or missing-artifact entries. Missing
@@ -142,6 +145,12 @@ When configuration declares additional preview languages:
 
 - findings and advisory summaries may be grouped by language;
 - preview languages must be labeled `preview` and advisory;
+- TypeScript-family output must keep separately labeled JavaScript preview
+  evidence in a `javascript` group when TypeScript preview is configured;
+- preview groups should summarize actionability state/category counts,
+  repair-packet-ready counts, static-limit context, and an explicit
+  `gate_impact = none` boundary where the generated workflow can derive those
+  values from existing artifacts;
 - preview groups must not be promoted to gate eligibility by the workflow;
 - missing preview evidence must be shown as missing, disabled, or unsupported
   rather than hidden;
@@ -192,8 +201,9 @@ that generated CI can create tests, edit source, or run provider-backed repair.
 - A missing optional calibration report is a warning, not a workflow failure.
 - A configured blocked gate points to `gate-decision.md` as authority and does
   not treat the job summary as the gate.
-- A TypeScript preview packet groups advisory evidence under a preview label
-  without changing gate eligibility.
+- A TypeScript preview packet groups advisory evidence under a preview label,
+  includes separately labeled JavaScript preview evidence when present, reports
+  actionability and repair-packet-ready counts, and keeps gate impact at none.
 - A Python preview packet with parse scaffold but no findings reports preview
   availability without inventing findings.
 - A generated workflow never auto-refreshes baselines, branch protection, or
@@ -217,7 +227,8 @@ Follow-up implementation should add focused tests for:
 - missing-artifact warnings and regeneration commands;
 - gate-decision authority text;
 - Rust-only output staying unchanged;
-- configured preview-language grouping.
+- configured preview-language grouping, including TypeScript-family JavaScript
+  grouping and actionability/gate-impact fields.
 
 ## Implementation Mapping
 
@@ -250,6 +261,9 @@ Future metrics may count:
 - `generated_pr_ci_gate_authority_links`;
 - `generated_pr_ci_language_groups`;
 - `generated_pr_ci_preview_language_groups`;
+- `generated_pr_ci_preview_language_javascript_group`;
+- `generated_pr_ci_preview_actionability_groups`;
+- `generated_pr_ci_preview_gate_impact_none`;
 - `generated_pr_ci_rust_default_unchanged`;
 - `generated_pr_ci_advisory_summaries`.
 

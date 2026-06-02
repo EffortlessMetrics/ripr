@@ -25,7 +25,7 @@ Budget bands:
 | `small` | 0-5 LEM | docs, policy metadata, or focused code checks |
 | `medium` | 6-20 LEM | ordinary product PR with Rust and policy gates |
 | `large` | 21-60 LEM | multi-surface PR, extension checks, or broad evidence artifacts |
-| `release` | 60+ LEM | explicit `release-check` or `full-ci` proof |
+| `release` | 61+ LEM | explicit `release-check` or `full-ci` proof |
 
 CI lanes are grouped by posture, not by how convenient they are to place in one
 workflow file.
@@ -34,7 +34,7 @@ workflow file.
 | --- | --- | --- | --- |
 | Required | Cheap merge-safety and policy invariants. | `fmt`, `cargo check`, clippy, focused tests, static-language, file/workflow/process/dependency policy, output-contract checks for schema/output changes. | Blocking on ordinary PRs that touch the relevant surface. |
 | Advisory | Evidence that helps review but should not block routine work until calibrated. | coverage, Test Analytics, `ripr` self-dogfood, SARIF upload, agent-loop artifacts, Droid review, future Clippy lints, broad security posture scans. | Upload artifacts or comments; do not fail the PR by default. |
-| On-demand / release | Expensive, slow, or release-bearing proof. | `cargo package`, `cargo publish --dry-run`, VSIX packaging, server archive checks, release readiness, full workspace proof. | Run on `main`, manual dispatch, `release-check`, or `full-ci`; avoid default PR blocking. |
+| On-demand / release | Expensive, slow, or release-bearing proof. | `cargo package`, `cargo publish --dry-run`, VSIX packaging, server archive checks, release readiness, full workspace proof. | Run only from each lane's wired `main`, manual dispatch, `release-check`, or `full-ci` trigger; avoid default PR blocking. |
 
 The current `ci.yml` still carries some release-like proof in the primary Rust
 job. Treat that as legacy posture while the CI split is rolled out. New CI work
@@ -45,6 +45,99 @@ This section defines the target policy. It does not mean the current workflows
 already implement PR planning, label-gated lane selection, CI actuals, or
 budget enforcement. Until those later PRs land, the "Current Workflows" section
 below remains the source of truth for what GitHub Actions runs today.
+
+## Codex CI-Efficiency Compatibility Invariants (Hard Guardrails)
+
+When asking Codex or other automation agents to "make CI cheaper," treat this
+section as strict compatibility policy for CI-efficiency PRs. It constrains
+future workflow and planner changes, but it does not override the current
+workflow behavior documented in [Current Workflows](#current-workflows).
+
+### 1) Concurrency semantics for heavy/core PR workflows
+
+- Do **not** change heavy/core workflow concurrency as a generic efficiency
+  edit. The PR must name the current behavior and the intended behavior.
+- Treat both models as product decisions:
+  - no-cancel preserves a running expensive job and allows only one pending
+    replacement;
+  - synchronize-cancel favors the latest commit and may abandon near-complete
+    work.
+- Any switch to or from `cancel-in-progress` must document the affected
+  workflows, rollback path, cost tradeoff, and review impact.
+- Cheap metadata-only workflows may use `cancel-in-progress: true`, but only as
+  an explicit documented exception.
+
+### 2) Change classification before lane selection
+
+- Do **not** build a future planner that routes all changed files through Rust
+  CI.
+- Treat metadata/control-plane surfaces as candidates for light paths unless
+  mixed with real Rust/build/test changes, including:
+  - `docs/**`, markdown-only edits, `README*`, `CHANGELOG*`, `SECURITY*`,
+    `CONTRIBUTING*`;
+  - `policy/**`, `plans/**`, `badges/**`, `AGENTS.md`;
+  - `.github/CODEOWNERS`, `.github/dependabot.yml`,
+    `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/**`;
+  - `docs/tracking/**`, `ci/hardware/**` receipt files, `.rails/**`,
+    `.uselesskey/**`.
+- Treat `.github/workflows/**` as a special workflow-change surface:
+  - not docs-light;
+  - route to minimal hosted workflow safety/validation unless policy requires
+    more.
+- Until a classifier is implemented and validated, the active workflows remain
+  the source of truth. Do not claim a docs-only PR skipped Rust proof unless the
+  check run evidence shows that it did.
+
+### 3) Target PR planner policy
+
+The target planner should classify first, then choose the cheapest truthful
+lane:
+
+- docs/control-plane-only -> no Rust compile;
+- workflow-only -> hosted YAML/workflow validation, no full Rust by default;
+- Rust source/build/test touched -> routed Rust-small;
+- hardware/GPU/receipt-only -> syntax/receipt validation only;
+- mixed or unknown -> Rust-small, not full CI.
+
+Full CI is opt-in by policy trigger (label/manual dispatch/main push/release/
+schedule/merge queue), not the default PR path.
+
+### 4) Hosted fallback boundary
+
+- Do **not** remove, narrow, or relabel the current protected GitHub-hosted
+  Rust-small fallback without updating the routed-runner docs, active-goal
+  state, and branch-protection contract in the same PR.
+- The current routed Rust-small workflow may select GitHub-hosted when a PR is
+  untrusted, runner state cannot be read, or no idle image-ready CX53/CX43
+  runner is available. That result remains a valid protected-path success while
+  the CX53/CX43 proof closeout is blocked.
+- Do **not** replace a targeted Rust-small fallback with broader hosted full CI
+  unless the PR names the cost, proof obligation, and explicit trigger such as
+  `full-ci`, `release-check`, or `ci-budget-ack`.
+
+### 5) Artifact policy
+
+- Avoid default-path artifact uploads with `if: always()` unless merge policy
+  requires them and they are tiny.
+- Prefer upload-on-failure with short retention (3-7 days) for diagnostics.
+- Keep receipt uploads minimal, especially for docs/control-plane-only paths.
+
+### 6) Required validation for CI-only efficiency PRs
+
+Every CI-efficiency PR should show evidence appropriate to the edited surface:
+
+- `git diff --check`;
+- docs/policy-only changes: the relevant docs, policy, and static-language
+  checks, plus an explicit claim boundary;
+- workflow changes: YAML/workflow validation and a note confirming the current
+  and intended concurrency semantics;
+- classification logic changes: dry-run or unit checks covering:
+  - docs-only;
+  - `.rails/**`;
+  - `.uselesskey/**`;
+  - workflow file change;
+  - Rust file change;
+  - mixed docs + Rust.
 
 ### PR Planning
 
@@ -71,10 +164,12 @@ PR Plan
 ```
 
 The active PR Plan workflow is structural advisory today: it runs on opened,
-synchronized, reopened, labeled, and unlabeled pull requests, uploads the
-changed-file list, and writes a placeholder step summary. Until the numeric
-planner exists, authors should still fill the PR template's CI economics
-section for CI-affecting changes.
+synchronized, reopened, labeled, and unlabeled pull requests, writes the
+changed-file list locally, and writes a placeholder step summary. To avoid
+routine artifact churn, it uploads the changed-file list only on failure or
+when the PR is labeled `full-ci`. Until the numeric planner exists, authors
+should still fill the PR template's CI economics section for CI-affecting
+changes.
 
 ### Risk Packs
 
@@ -172,7 +267,7 @@ implement and validate the lane-selection logic.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
-| `release-check` | Run package, publish dry-run, VSIX package, server archive, and release-readiness proof where applicable. |
+| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane. Today that is package list and publish dry-run. |
 | `vscode` | Run editor extension lanes even when no editor path changed. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
@@ -244,8 +339,7 @@ and should usually be split.
 ### Swarm Routed Rust
 
 `ripr-swarm` adds `.github/workflows/routed-rust.yml` as the development-trunk
-Rust gate in the swarm repository. It exposes one branch-protection-facing
-check:
+Rust gate. It exposes one branch-protection-facing check:
 
 ```text
 Ripr Rust Small Result
@@ -279,13 +373,25 @@ runner-image/toolchain readiness label. If runner state cannot be read, or a
 runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
 rather than selecting a self-hosted runner by guesswork.
 
+The route job and protected result summaries include count-only runner
+diagnostics so operators can separate missing host runners, busy runners, and
+missing `em-ci-rust-1.95` readiness labels without exposing runner names,
+registration tokens, secrets, or full label inventories. The protected result
+job also receives those values as environment variables, so downloaded result
+logs are sufficient for issue proof.
+
+The copyable self-hosted proof runbook is in
+[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook).
+Use it to record CX53 primary proof, CX43 fallback proof, or the bounded
+runner availability blocker without exposing runner tokens or secrets.
+
 The routed lane runs the existing Rust/product command surface without release
 package or publish dry-run steps. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
-Source `ripr` release and publish proof still runs through source-repository CI
-and release checks.
 
-The Rust workflow currently runs:
+The legacy Rust workflow currently runs on pushes to `main` or `master`, manual
+dispatches, pull requests labeled `release-check`, and pull requests labeled
+`full-ci`:
 
 ```bash
 cargo fmt --check
@@ -311,7 +417,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
@@ -321,8 +427,9 @@ cargo xtask check-process-policy
 cargo xtask check-network-policy
 ```
 
-On pushes to `main` or `master`, and on pull requests labeled `release-check`
-or `full-ci`, the Rust workflow also runs the release-surface package checks:
+On those same Rust workflow runs, pull requests labeled `release-check`, pull
+requests labeled `full-ci`, and pushes to `main` or `master` also run the
+release-surface package checks:
 
 ```bash
 cargo package -p ripr --list
@@ -337,6 +444,12 @@ cargo check --workspace --all-targets
 
 The main Rust job stays on `stable` so routine CI also proves the current stable
 toolchain, while the MSRV job proves the declared workspace baseline.
+
+The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
+jobs are release-surface proof on main and manual dispatches; they must not
+depend on self-hosted runner capacity when preparing a source release. The
+routed Rust-small workflow remains the swarm development lane that selects
+self-hosted runners when available and falls back to hosted capacity.
 
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:
@@ -419,9 +532,10 @@ advance through multiple work items, but each scoped PR should leave the same
 shape/check/report artifacts that CI uploads for human review.
 
 Current policy checks write Markdown reports to `target/ripr/reports` when they
-run. The Rust workflow generates `target/ripr/reports/index.md`, writes it to
-the GitHub Actions job summary when present, and uploads the report and receipt
-directories as the `ripr-pr-reports` artifact.
+run. The Rust workflow generates `target/ripr/reports/index.md` and writes it
+to the GitHub Actions job summary when present. To keep ordinary PR CI cheap,
+it uploads the report and receipt directories as the `ripr-pr-reports` artifact
+only on failure or when the PR is labeled `full-ci`.
 
 Local policy checks can also be run directly:
 
@@ -445,7 +559,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-command-catalog
@@ -536,6 +650,49 @@ It uploads the JUnit XML as the `rust-junit` GitHub Actions artifact and uploads
 the same file to Codecov Test Analytics only when `CODECOV_TOKEN` is available
 on trusted runs. Fork pull requests still run tests and upload the artifact, but
 skip the Codecov test-results upload because repository secrets are unavailable.
+
+### Self-Hosted Runner Placement
+
+The everyday required Rust gate routes through `routed-rust.yml`
+(`CX53 -> CX43 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
+and scratch cleanup) and exposes the single branch-protection check
+`Ripr Rust Small Result`. That lane is the migrated reference and is not changed
+by routine runner-placement edits.
+
+The remaining (non-required) self-hosted lanes route to the smallest safe EM
+shared self-hosted tier by actual workload, each with explicit
+`group` + `labels` and a per-job `timeout-minutes` hang guard. Queueing on
+these groups is acceptable backpressure and these lanes are advisory or
+label/push gated, so they do not block merge. The VS Code e2e lane is the
+exception: it runs on GitHub-hosted Ubuntu because it installs `xvfb` for
+headless extension tests and must not depend on privileged package installs on
+EM self-hosted runners.
+
+| Workflow / job | Group | Tier label |
+| --- | --- | --- |
+| `ci.yml` `rust` | `em-ci-small` | `rust-medium` |
+| `ci.yml` `msrv` | `em-ci-small` | `rust-small` |
+| `ci.yml` `vscode` | GitHub-hosted | `ubuntu-latest` |
+| `coverage.yml` | `em-ci-small` | `rust-heavy-medium` |
+| `test-analytics.yml` | `em-ci-small` | `rust-medium` |
+| `future-clippy.yml` | `em-ci-small` | `rust-medium` |
+| `security.yml` `cargo-deny` | `em-ci-tiny` | `rust-tiny` |
+| `source-of-truth.yml`, `badge-endpoints.yml` | `em-ci-tiny` | `rust-tiny` |
+| `security.yml` `dependency-review` | `em-ci-nano` | `policy-nano` |
+| `pr-plan.yml` | `em-ci-nano` | `workflow-nano` |
+| `droid-review`, `droid`, `droid-security-scan` | `em-ci-review` | `droid-review` |
+
+All self-hosted lanes carry the `trusted-pr` label and keep their existing
+fork/untrusted-PR `if:` guards, so fork code cannot reach trusted self-hosted
+runners. `rust-large` is intentionally not used here; it is reserved org-wide
+for the single heaviest lane. Build-heavy lanes still use `Swatinem/rust-cache`;
+moving them onto the shared `sccache`/`/mnt/ci-cache` path used by
+`routed-rust.yml` is a tracked follow-up rather than part of this placement
+change.
+
+Release and publish workflows (`publish-extension.yml`,
+`release-server-binaries.yml`) and branch protection (`.github/settings.yml`)
+are intentionally out of scope for this placement change.
 
 ## SARIF and Policy Contract
 
@@ -2106,12 +2263,27 @@ blocking. Default generated CI still stays non-blocking unless
 The security workflow currently runs:
 
 ```bash
-cargo deny check advisories licenses bans sources
+cargo-deny check advisories licenses bans sources
 ```
 
-It uses `deny.toml` to enforce RustSec advisories, license policy, banned
-crates, and approved dependency sources. Duplicate dependency findings are
-warnings while the `ra_ap_syntax` dependency graph is being baselined.
+The coverage and Test Analytics workflows run on `ubuntu-latest`. Both lanes
+remain advisory, but release candidates need an observable green boundary; these
+lanes must not depend on self-hosted runner availability just to prove that the
+current workspace can produce coverage and JUnit artifacts. The jobs still run
+only on pull requests, pushes to `main`/`master`, and manual dispatches, and
+Codecov upload remains non-blocking.
+
+Future Clippy also runs on `ubuntu-latest`. It remains advisory and never fails
+the branch; the hosted runner keeps deferred-lint readiness visible without
+blocking release proof on self-hosted runner availability.
+
+It installs `cargo-deny` as a normal command-line binary before running the
+check, so self-hosted runners do not need Docker just to execute the security
+workflow. The job also installs the Rust toolchain because `cargo-deny` shells
+out to `cargo metadata` while evaluating the workspace. It uses `deny.toml` to
+enforce RustSec advisories, license policy, banned crates, and approved
+dependency sources. Duplicate dependency findings are warnings while the
+`ra_ap_syntax` dependency graph is being baselined.
 
 Pull requests also run GitHub Dependency Review for high-severity vulnerability
 alerts and denied license families. Dependency Graph is enabled for the

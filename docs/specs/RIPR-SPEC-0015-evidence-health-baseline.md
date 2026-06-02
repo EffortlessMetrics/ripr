@@ -63,30 +63,20 @@ All flags are optional except when callers want non-default paths:
 same default artifacts. If `target/ripr/reports/mutation-calibration.json`
 already exists, the xtask command includes it as optional calibration context.
 The facade bounds the live child process with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 5 minutes). This includes both the
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 4 minutes). This includes both the
 preflight `cargo build -p ripr` phase and the `ripr evidence-health` generation
-phase. The default is intentionally conservative so pathological live-repo
-inputs degrade to a named limitation before they can silently drop the artifact.
-On timeout, incomplete child-process exit, or a zero-exit child run that does
-not write complete JSON and Markdown artifacts, it removes stale or partial
+phase. The default is intentionally below common 5-minute validation shells so
+pathological inputs can write bounded warning artifacts before the outer command
+runner can silently drop the artifact.
+During report generation, xtask enables repo-exposure latency tracing so timeout
+or incomplete artifacts can include phase breadcrumbs when the analyzer emits
+them.
+On timeout or incomplete child-process exit it removes stale or partial
 outputs and writes warning JSON/Markdown with phase context such as
 `evidence_health_build` or `evidence_health_generation` plus the named
-`evidence_health_timeout` or `evidence_health_incomplete` run limitation instead
-of waiting forever or pretending missing counts mean no evidence debt. The
-limited `inputs.generation.status` is `timeout`, `fail`, or
-`pass_incomplete`; `pass_incomplete` means the child process exited zero but
-artifact validation failed. The xtask generation subprocess enables
-repo-exposure latency tracing; limited artifacts carry
-`latency_trace_events_total` and a bounded `latency_trace_tail` when the
-analyzer emits phase progress before timing out or failing.
-
-Operators must run live Lane 1 report validation sequentially in a shared
-worktree. `cargo xtask evidence-health` should not be launched at the same time
-as `lane1-evidence-audit`, `evidence-quality-scorecard`,
-`evidence-quality-trend`, or `ripr-swarm readiness` unless each process has an
-isolated `CARGO_TARGET_DIR` and isolated report output paths. The operational
-runbook is documented in
-[PR_AUTOMATION.md](../PR_AUTOMATION.md#lane-1-report-validation).
+`evidence_health_timeout`, `evidence_health_incomplete`, or
+`evidence_health_runner_error` run limitation instead of waiting forever or
+pretending missing counts mean no evidence debt.
 
 The command:
 
@@ -202,16 +192,31 @@ calibration section.
 Given no calibration input, the report marks calibration as `not_provided` and
 still succeeds.
 
-Given the xtask evidence-health child process times out, exits before a
-complete report is available, or exits zero without complete JSON and Markdown
-artifacts, the command writes bounded warning artifacts with `status = "warn"`,
-a `run_limitations[].category = "evidence_health_timeout"` or
-`"evidence_health_incomplete"` entry, phase/input context,
-timeout/duration/output byte counts, exit status when available, bounded
-stdout/stderr excerpts, an artifact-validation `failure_reason` when available,
-repo-exposure latency trace counts/tail when available, and a repair route. The
-limited artifact is diagnostic only and does not claim user test debt from
-missing health counts.
+Given the xtask evidence-health child process times out, exits nonzero, exits
+without status, or exits successfully before complete JSON and Markdown reports
+are available, the command writes bounded warning artifacts with
+`status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"`,
+`"evidence_health_incomplete"`, or `"evidence_health_runner_error"` entry,
+phase/input context,
+timeout/duration/output byte counts, bounded stdout/stderr excerpts, exit
+status when available, and a repair route. The limited artifact records
+`inputs.generation.status = "timeout"` for timed-out children and `"fail"` for
+nonzero or missing status exits. If xtask cannot start, capture, poll, or read
+the build/report child process, the limited artifact records
+`inputs.generation.status = "runner_error"`,
+`run_limitations[].category = "evidence_health_runner_error"`, and a bounded
+`failure_reason`.
+When the child exits successfully but the artifacts are missing, malformed, or
+incomplete, the limited artifact records
+`inputs.generation.status = "pass_incomplete"` and a bounded `failure_reason`.
+Limited artifacts also carry bounded
+`latency_trace_events_total` and `latency_trace_tail` fields on
+`inputs.generation` and `run_limitations[]` when repo-exposure latency trace
+lines were captured, so the active analyzer phase remains visible without
+scraping stderr. Complete `ripr evidence-health` reports keep
+`status = "advisory"` and omit the xtask-only `inputs.generation` wrapper
+rather than emitting an `"ok"` generation row. The limited artifact is
+diagnostic only and does not claim user test debt from missing health counts.
 
 ## Test Mapping
 
@@ -226,23 +231,33 @@ missing health counts.
   pins argument validation.
 - `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
   pins the bounded xtask timeout fallback, stale-output cleanup, named
-  limitation category, repair route, and repo-exposure latency trace tail.
+  limitation category, repair route, and structured repo-exposure latency trace
+  tail.
 - `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
   pins the bounded preflight build fallback, phase diagnostics, stale-output
   cleanup, named limitation category, and repair route.
+- `xtask::tests::evidence_health_default_timeout_is_bounded_for_live_repo_pathologies`
+  pins the default timeout used to emit a bounded warning artifact before common
+  outer validation shells terminate the process.
+- `xtask::tests::evidence_health_build_runner_error_writes_named_limitation_reports`
+  and
+  `xtask::tests::evidence_health_generation_runner_error_writes_named_limitation_reports`
+  pin build/report runner errors as bounded warning artifacts with
+  `inputs.generation.status = "runner_error"` and
+  `run_limitations[].category = "evidence_health_runner_error"`.
+- `xtask::tests::evidence_health_success_accepts_complete_report_artifacts`,
+  `xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports`,
+  and
+  `xtask::tests::evidence_health_report_artifact_completion_validator_names_bad_shapes`
+  pin zero-exit artifact validation, stale-output cleanup, and bounded
+  `pass_incomplete` diagnostics.
 - `xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports`
   and
   `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`
   pin incomplete-exit fallback artifacts, stale-output cleanup, exit-status
   diagnostics, named limitation category, and repair route.
-- `xtask::tests::evidence_health_success_accepts_complete_report_artifacts`
-  and
-  `xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports`
-  pin zero-exit artifact validation, stale-output cleanup, `pass_incomplete`
-  diagnostics, and bounded fallback artifacts.
-- `xtask::tests::evidence_health_report_artifact_completion_validator_names_bad_shapes`
-  pins actionable artifact-validation failure messages for malformed success
-  outputs.
+- `xtask::tests::evidence_health_output_excerpt_is_bounded` pins stdout/stderr
+  excerpt bounds for limited warning artifacts.
 
 ## Implementation Mapping
 
@@ -252,11 +267,9 @@ missing health counts.
   command.
 - `xtask/src/command.rs`, `dispatch.rs`, `main.rs`, and `reports/repo.rs`
   expose `cargo xtask evidence-health`; `xtask/src/main.rs` also bounds the
-  child process and writes timeout or incomplete-exit limitation fallback
-  artifacts.
+  child process and writes timeout, incomplete-exit, and runner-error
+  limitation fallback artifacts.
 - `docs/OUTPUT_SCHEMA.md` defines the public JSON and Markdown contract.
-- `docs/PR_AUTOMATION.md` defines the sequential live-report validation
-  runbook for shared Cargo target and report directories.
 
 ## Metrics
 
@@ -275,7 +288,8 @@ The evidence-health baseline feeds these Lane 1 metrics:
 - `evidence_health_calibration_not_imported`;
 - `evidence_health_top_evidence_quality_risks`;
 - `evidence_health_timeout_limitations`;
-- `evidence_health_incomplete_limitations`.
+- `evidence_health_incomplete_limitations`;
+- `evidence_health_runner_error_limitations`.
 
 ## Non-Goals
 
@@ -299,8 +313,3 @@ The implementation is pinned by:
 - `cargo xtask check-traceability`;
 - `cargo xtask check-capabilities`;
 - `cargo xtask check-pr`.
-
-Live validation should run the Lane 1 report commands sequentially in the order
-documented by [PR automation](../PR_AUTOMATION.md#lane-1-report-validation) so
-Cargo locks and shared report outputs do not create false timeout/failure
-signals.

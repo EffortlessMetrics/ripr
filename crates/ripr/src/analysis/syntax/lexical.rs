@@ -1,7 +1,6 @@
 use crate::analysis::facts::{FileFacts, FunctionFact, TestFact};
 use crate::analysis::rust_index::{
     extract_assertions, extract_call_facts, extract_literal_facts, extract_return_facts,
-    is_test_file,
 };
 use crate::domain::SymbolId;
 use std::path::{Path, PathBuf};
@@ -35,8 +34,9 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
     while i < lines.len() {
         let trimmed = lines[i].trim();
         if trimmed.starts_with("#[test]")
-            || trimmed.starts_with("#[tokio::test]")
-            || trimmed.starts_with("#[async_std::test]")
+            || trimmed.starts_with("#[tokio::test")
+            || trimmed.starts_with("#[async_std::test")
+            || trimmed.starts_with("#[rstest")
         {
             pending_test = true;
             i += 1;
@@ -76,7 +76,7 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // rstest support is parser-only.
                 attrs: Vec::new(),
             };
-            if pending_test || is_test_file(&path) {
+            if pending_test {
                 tests.push(TestFact {
                     name: name.clone(),
                     file: path.clone(),
@@ -288,18 +288,23 @@ fn checks_value() {
     }
 
     #[test]
-    fn lexical_adapter_marks_functions_in_test_files_as_tests() -> Result<(), String> {
+    fn lexical_adapter_ignores_unannotated_helpers_in_test_files() -> Result<(), String> {
         let adapter = LexicalRustSyntaxAdapter;
         let facts = adapter.summarize_file(
             Path::new("tests/integration.rs"),
             r#"
+fn helper() {
+    run().unwrap();
+}
+
+#[test]
 fn integration_smoke() {
     run().unwrap();
 }
 "#,
         )?;
 
-        assert_eq!(facts.functions.len(), 1);
+        assert_eq!(facts.functions.len(), 2);
         assert_eq!(facts.tests.len(), 1);
         assert_eq!(facts.tests[0].name, "integration_smoke");
         assert!(

@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_factory.py:4:python_preview",
+      "canonical_gap_id": "gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1",
+        "language": "python",
+        "file": "src/factory.py",
+        "owner": "PriceRule.from_config",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "cls_config[discount]+1"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,29 +29,41 @@
         "delta": "value",
         "file": "src/factory.py",
         "line": 4,
-        "expression": "        return cls(config[\"discount\"] + 1)"
+        "expression": "        return cls(config[\"discount\"] + 1)",
+        "owner": "python:src/factory.py::PriceRule.from_config"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `from_config`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return cls(config[\"discount\"] + 1)`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `relational_check` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == cls(config[\"discount\"] + 1)`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `from_config`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_factory.py:4 test_price_rule_from_config uses weak relational check oracle: assert PriceRule.from_config({\"discount\": 4}) is not None"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `from_config`", "infection yes: Changed Python return expression can alter the owner return value: `return cls(config[\"discount\"] + 1)`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == cls(config[\"discount\"] + 1)`.", "local flow reaches returned value: return cls(config[\"discount\"] + 1) (line 4)", "related test tests/test_factory.py:4 test_price_rule_from_config uses weak relational check oracle: assert PriceRule.from_config({\"discount\": 4}) is not None", "missing discriminator return value == cls(config[\"discount\"] + 1): changed Python returned-value at line 4 lacks a concrete repair discriminator"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return cls(config[\"discount\"] + 1)","line":4}
       ],
-      "evidence": ["owner: PriceRule.from_config", "owner_kind: class_method", "owner_decorators: classmethod", "test_framework: pytest (test_price_rule_from_config)", "related_test_relation: syntactic_call (test_price_rule_from_config)", "test_oracle: relational_check weak (test_price_rule_from_config)"],
-      "missing": ["Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: PriceRule.from_config", "owner_kind: class_method", "owner_decorators: classmethod", "missing_discriminator: return value == cls(config[\"discount\"] + 1)", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_factory.py", "suggested_test_name: test_price_rule_from_config", "suggested_test_node_id: tests/test_factory.py::test_price_rule_from_config", "suggested_verify_command: pytest tests/test_factory.py::test_price_rule_from_config", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_price_rule_from_config)", "test_verify_command: pytest tests/test_factory.py::test_price_rule_from_config (test_price_rule_from_config)", "related_test_relation: syntactic_call (test_price_rule_from_config)", "test_oracle: relational_check weak (test_price_rule_from_config)", "test_oracle_shape: boundary_assertion (test_price_rule_from_config)"],
+      "missing": ["Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == cls(config[\"discount\"] + 1)",
+            "reason": "changed Python returned-value at line 4 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return cls(config[\"discount\"] + 1)","line":4}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == cls(config[\"discount\"] + 1)",
+          "reason": "changed Python returned-value at line 4 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return cls(config[\"discount\"] + 1)","line":4}
+        }
       ],
       "related_tests": [
         {
@@ -51,11 +75,49 @@
           "oracle": "assert PriceRule.from_config({\"discount\": 4}) is not None"
         }
       ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_factory.py",
+        "suggested_test_name": "test_price_rule_from_config",
+        "suggested_test_node_id": "tests/test_factory.py::test_price_rule_from_config",
+        "verify_command": "pytest tests/test_factory.py::test_price_rule_from_config",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "PriceRule.from_config",
+        "changed_behavior": "return_value changed at src/factory.py:4: `return cls(config[\"discount\"] + 1)`",
+        "current_test_evidence": "tests/test_factory.py:4 test_price_rule_from_config currently has oracle_strength=weak, oracle_kind=relational_check: assert PriceRule.from_config({\"discount\": 4}) is not None",
+        "missing_discriminator": "return value == cls(config[\"discount\"] + 1)",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == cls(config[\"discount\"] + 1)`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_factory.py",
+          "test_name": "test_price_rule_from_config",
+          "pytest_node_id": "tests/test_factory.py::test_price_rule_from_config"
+         },
+        "verify": {
+          "command": "pytest tests/test_factory.py::test_price_rule_from_config",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "relational_check",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "class_method"

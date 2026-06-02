@@ -1,5 +1,11 @@
+mod io;
+mod model;
+mod render;
+mod util;
+
 use super::write_parented_file;
-use serde_json::Value;
+use io::load_json;
+use render::{SummaryRenderInput, render_pr_evidence_summary};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +14,8 @@ const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
 const REVIEW_COMMENTS_JSON: &str = "target/ripr/review/comments.json";
 const REVIEW_COMMENTS_MD: &str = "target/ripr/review/comments.md";
+const START_HERE_JSON: &str = "target/ripr/reports/start-here.json";
+const START_HERE_MD: &str = "target/ripr/reports/start-here.md";
 const PR_SUMMARY_MD: &str = "target/ripr/pr/summary.md";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,13 +30,32 @@ pub(crate) fn ripr_pr_summary(args: &[String]) -> Result<(), String> {
     }
     let options = parse_options(args)?;
     let repo = repo_root()?;
-    let summary = render_pr_evidence_summary(&repo);
+    let summary = summary_text(&repo);
     let path = repo.join(PR_SUMMARY_MD);
     if options.check {
         check_summary(&path, &summary)
     } else {
         write_summary(&path, &summary)
     }
+}
+
+fn summary_text(repo: &Path) -> String {
+    let pr_evidence = load_json(repo, PR_EVIDENCE_JSON);
+    let review_comments = load_json(repo, REVIEW_COMMENTS_JSON);
+    let start_here = load_json(repo, START_HERE_JSON);
+    render_pr_evidence_summary(&SummaryRenderInput {
+        repo,
+        pr_evidence_json: PR_EVIDENCE_JSON,
+        review_comments_json: REVIEW_COMMENTS_JSON,
+        start_here_json: START_HERE_JSON,
+        pr_evidence_md: PR_EVIDENCE_MD,
+        review_comments_md: REVIEW_COMMENTS_MD,
+        start_here_md: START_HERE_MD,
+        pr_summary_md: PR_SUMMARY_MD,
+        pr_evidence: &pr_evidence,
+        review_comments: &review_comments,
+        start_here: &start_here,
+    })
 }
 
 fn parse_options(args: &[String]) -> Result<SummaryOptions, String> {
@@ -65,242 +92,6 @@ fn write_summary(path: &Path, summary: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn render_pr_evidence_summary(repo: &Path) -> String {
-    let pr_evidence = load_json(repo, PR_EVIDENCE_JSON);
-    let review_comments = load_json(repo, REVIEW_COMMENTS_JSON);
-    let pr_value = pr_evidence.value.as_ref();
-    let review_value = review_comments.value.as_ref();
-
-    let mut out = String::new();
-    out.push_str("# PR Evidence Summary\n\n");
-    render_fast_gate(
-        &mut out,
-        pr_value,
-        review_value,
-        &pr_evidence,
-        &review_comments,
-    );
-    render_ripr(&mut out, pr_value, review_value);
-    render_targeted_mutation(&mut out, pr_value);
-    render_artifacts(&mut out, repo, &pr_evidence, &review_comments);
-    out.push_str(
-        "\n_This summary is generated from diff-scoped artifacts. Do not copy it into public badge state._\n",
-    );
-    out
-}
-
-fn render_fast_gate(
-    out: &mut String,
-    pr_value: Option<&Value>,
-    review_value: Option<&Value>,
-    pr_evidence: &JsonInput,
-    review_comments: &JsonInput,
-) {
-    out.push_str("## Fast Gate\n\n");
-    out.push_str(&format!("- PR evidence JSON: {}\n", pr_evidence.state));
-    out.push_str(&format!(
-        "- review guidance JSON: {}\n",
-        review_comments.state
-    ));
-    out.push_str(&format!(
-        "- PR evidence status: `{}`\n",
-        string_field(pr_value, "status")
-    ));
-    out.push_str(&format!(
-        "- review guidance status: `{}`\n",
-        string_field(review_value, "status")
-    ));
-    out.push_str(&format!("- base: `{}`\n", string_field(pr_value, "base")));
-    out.push_str(&format!("- head: `{}`\n", string_field(pr_value, "head")));
-    out.push_str(&format!(
-        "- changed files: {}\n\n",
-        summary_u64(pr_value, "changed_files")
-    ));
-}
-
-fn render_ripr(out: &mut String, pr_value: Option<&Value>, review_value: Option<&Value>) {
-    out.push_str("## RIPR\n\n");
-    out.push_str(&format!(
-        "- changed-line comments: {}\n",
-        summary_u64(review_value.or(pr_value), "comments")
-    ));
-    out.push_str(&format!(
-        "- summary-only guidance: {}\n",
-        summary_u64(review_value.or(pr_value), "summary_only")
-    ));
-    out.push_str(&format!(
-        "- suppressed guidance: {}\n",
-        summary_u64(review_value.or(pr_value), "suppressed")
-    ));
-    out.push_str(&format!(
-        "- weakly_exposed: {}\n",
-        summary_u64(pr_value, "weakly_exposed")
-    ));
-    out.push_str(&format!(
-        "- reachable_unrevealed: {}\n",
-        summary_u64(pr_value, "reachable_unrevealed")
-    ));
-    out.push_str(&format!(
-        "- no_static_path: {}\n",
-        summary_u64(pr_value, "no_static_path")
-    ));
-    out.push_str(&format!(
-        "- severe gaps: {}\n\n",
-        summary_u64(pr_value, "severe_gaps")
-    ));
-}
-
-fn render_targeted_mutation(out: &mut String, pr_value: Option<&Value>) {
-    out.push_str("## Targeted Mutation\n\n");
-    out.push_str(&format!(
-        "- requires_targeted_mutation: {}\n",
-        summary_bool(pr_value, "requires_targeted_mutation")
-    ));
-    out.push_str(&format!(
-        "- ripr_severe_gap: {}\n",
-        summary_bool(pr_value, "ripr_severe_gap")
-    ));
-    out.push_str(&format!(
-        "- routing_reason: `{}`\n\n",
-        summary_string_or_null(pr_value, "routing_reason")
-    ));
-}
-
-fn render_artifacts(
-    out: &mut String,
-    repo: &Path,
-    pr_evidence: &JsonInput,
-    review_comments: &JsonInput,
-) {
-    out.push_str("## Artifacts\n\n");
-    out.push_str("| Artifact | Path | State |\n");
-    out.push_str("| --- | --- | --- |\n");
-    out.push_str(&format!(
-        "| PR evidence JSON | `{}` | {} |\n",
-        PR_EVIDENCE_JSON, pr_evidence.state
-    ));
-    out.push_str(&format!(
-        "| PR evidence Markdown | `{}` | {} |\n",
-        PR_EVIDENCE_MD,
-        file_state(repo, PR_EVIDENCE_MD)
-    ));
-    out.push_str(&format!(
-        "| Review guidance JSON | `{}` | {} |\n",
-        REVIEW_COMMENTS_JSON, review_comments.state
-    ));
-    out.push_str(&format!(
-        "| Review guidance Markdown | `{}` | {} |\n",
-        REVIEW_COMMENTS_MD,
-        file_state(repo, REVIEW_COMMENTS_MD)
-    ));
-    out.push_str(&format!(
-        "| PR evidence summary Markdown | `{}` | generated |\n",
-        PR_SUMMARY_MD
-    ));
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct JsonInput {
-    state: InputState,
-    value: Option<Value>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum InputState {
-    Present,
-    Missing,
-    Invalid(String),
-}
-
-impl std::fmt::Display for InputState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Present => f.write_str("present"),
-            Self::Missing => f.write_str("missing"),
-            Self::Invalid(err) => write!(f, "invalid: {}", md_escape(err)),
-        }
-    }
-}
-
-fn load_json(repo: &Path, relative: &str) -> JsonInput {
-    let path = repo.join(relative);
-    let Ok(text) = fs::read_to_string(&path) else {
-        return JsonInput {
-            state: InputState::Missing,
-            value: None,
-        };
-    };
-    match serde_json::from_str::<Value>(&text) {
-        Ok(value) => JsonInput {
-            state: InputState::Present,
-            value: Some(value),
-        },
-        Err(err) => JsonInput {
-            state: InputState::Invalid(first_line(&err.to_string())),
-            value: None,
-        },
-    }
-}
-
-fn file_state(repo: &Path, relative: &str) -> &'static str {
-    if repo.join(relative).exists() {
-        "present"
-    } else {
-        "missing"
-    }
-}
-
-fn string_field(value: Option<&Value>, key: &str) -> String {
-    value
-        .and_then(|value| value.get(key))
-        .and_then(Value::as_str)
-        .map(md_escape)
-        .unwrap_or_else(|| "not_available".to_string())
-}
-
-fn summary_u64(value: Option<&Value>, key: &str) -> String {
-    value
-        .and_then(|value| value.get("summary"))
-        .and_then(|summary| summary.get(key))
-        .and_then(Value::as_u64)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "not_available".to_string())
-}
-
-fn summary_bool(value: Option<&Value>, key: &str) -> String {
-    value
-        .and_then(|value| value.get("summary"))
-        .and_then(|summary| summary.get(key))
-        .and_then(Value::as_bool)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "not_available".to_string())
-}
-
-fn summary_string_or_null(value: Option<&Value>, key: &str) -> String {
-    let Some(value) = value
-        .and_then(|value| value.get("summary"))
-        .and_then(|summary| summary.get(key))
-    else {
-        return "not_available".to_string();
-    };
-    if value.is_null() {
-        "none".to_string()
-    } else {
-        value
-            .as_str()
-            .map(md_escape)
-            .unwrap_or_else(|| "invalid".to_string())
-    }
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
-}
-
-fn first_line(value: &str) -> String {
-    value.lines().next().unwrap_or(value).trim().to_string()
-}
-
 fn repo_root() -> Result<PathBuf, String> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.parent().map(Path::to_path_buf).ok_or_else(|| {
@@ -314,6 +105,7 @@ fn repo_root() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use serde_json::json;
 
     #[test]
@@ -352,6 +144,38 @@ mod tests {
         )?;
         write_json(
             &repo,
+            START_HERE_JSON,
+            &json!({
+                "status": "actionable",
+                "posture": "advisory",
+                "selected": {
+                    "state": "top_gap",
+                    "gap_id": "gap:pr:pricing",
+                    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "kind": "MissingBoundaryAssertion",
+                    "changed_behavior": "amount == threshold",
+                    "missing_discriminator": "Add an exact assertion for amount == threshold.",
+                    "focused_proof_intent": "Add a boundary assertion in tests/pricing.rs.",
+                    "repair": {
+                        "route": "AddBoundaryAssertion",
+                        "target_file": "tests/pricing.rs",
+                        "related_test": "tests/pricing.rs::discount_boundary"
+                    },
+                    "verify_command": "cargo xtask fixtures boundary_gap",
+                    "receipt_command": "ripr agent receipt --gap gap:pr:pricing",
+                    "receipt_state": "receipt_missing",
+                    "static_limit_kind": null
+                },
+                "limits": [
+                    "Composes explicit RIPR artifacts only.",
+                    "Does not run mutation testing."
+                ]
+            }),
+        )?;
+        write_json(
+            &repo,
             REVIEW_COMMENTS_JSON,
             &json!({
                 "status": "advisory",
@@ -366,9 +190,20 @@ mod tests {
             .map_err(|err| format!("write PR md: {err}"))?;
         fs::write(repo.join(REVIEW_COMMENTS_MD), "# Guidance\n")
             .map_err(|err| format!("write review md: {err}"))?;
+        fs::write(repo.join(START_HERE_MD), "# Start Here\n")
+            .map_err(|err| format!("write start-here md: {err}"))?;
 
-        let summary = render_pr_evidence_summary(&repo);
+        let summary = summary_text(&repo);
         assert!(summary.contains("# PR Evidence Summary"));
+        assert!(summary.contains("## Start Here"));
+        assert!(
+            summary.contains("- canonical gap: `gap:rust:pricing:discount:threshold-boundary`")
+        );
+        assert!(summary.contains("- repair route: `AddBoundaryAssertion`"));
+        assert!(summary.contains("- verify: `cargo xtask fixtures boundary_gap`"));
+        assert!(summary.contains("- receipt: `ripr agent receipt --gap gap:pr:pricing`"));
+        assert!(summary.contains("- receipt state: `receipt_missing`"));
+        assert!(summary.contains("- boundary: static advisory evidence only; gate decision remains separate pass/fail authority when configured."));
         assert!(summary.contains("## Fast Gate"));
         assert!(summary.contains("## RIPR"));
         assert!(summary.contains("## Targeted Mutation"));
@@ -383,7 +218,7 @@ mod tests {
     #[test]
     fn summary_makes_missing_artifacts_explicit() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-summary-missing")?;
-        let summary = render_pr_evidence_summary(&repo);
+        let summary = summary_text(&repo);
         assert!(summary.contains("- PR evidence JSON: missing"));
         assert!(summary.contains("- review guidance JSON: missing"));
         assert!(summary.contains("- changed files: not_available"));
@@ -414,7 +249,7 @@ mod tests {
             }),
         )?;
         write_file(&repo, REVIEW_COMMENTS_JSON, "{not json")?;
-        let summary = render_pr_evidence_summary(&repo);
+        let summary = summary_text(&repo);
         assert!(summary.contains("- PR evidence status: `error`"));
         assert!(summary.contains("- routing_reason: `none`"));
         assert!(summary.contains("- review guidance JSON: invalid:"));
@@ -428,7 +263,7 @@ mod tests {
         fs::create_dir_all(path.parent().ok_or_else(|| "summary parent".to_string())?)
             .map_err(|err| format!("create summary parent: {err}"))?;
         fs::write(&path, "stale\n").map_err(|err| format!("write stale summary: {err}"))?;
-        let expected = render_pr_evidence_summary(&repo);
+        let expected = summary_text(&repo);
         let err = match check_summary(&path, &expected) {
             Ok(()) => return Err("stale summary should fail".to_string()),
             Err(err) => err,

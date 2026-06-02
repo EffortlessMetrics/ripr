@@ -1,4 +1,7 @@
 use crate::domain::Finding;
+use crate::output::preview_actionability::{
+    is_preview_actionability_evidence_line, is_preview_actionability_missing_summary,
+};
 
 pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
     let mut lines = vec![
@@ -63,7 +66,13 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
     }
 
     if lines.len() == 5 && !finding.evidence.is_empty() {
-        lines.extend(finding.evidence.iter().cloned());
+        lines.extend(
+            finding
+                .evidence
+                .iter()
+                .filter(|line| !is_preview_actionability_evidence_line(line))
+                .cloned(),
+        );
     }
 
     lines
@@ -79,7 +88,10 @@ pub(super) fn weakness_lines(finding: &Finding) -> Vec<String> {
     let mut lines = finding
         .missing
         .iter()
-        .filter(|missing| !is_duplicate_discriminator_missing(missing, &discriminator_values))
+        .filter(|missing| {
+            !is_duplicate_discriminator_missing(missing, &discriminator_values)
+                && !is_preview_actionability_missing_summary(missing)
+        })
         .cloned()
         .collect::<Vec<_>>();
     for discriminator in &finding.activation.missing_discriminators {

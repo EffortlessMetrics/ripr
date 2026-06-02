@@ -3,6 +3,11 @@ fixtures/**/target/
 .ripr/release/
 *.profraw
 .DS_Store
+/exposure.json
+/repo-exposure.json
+/repo-exposure*.json
+/before.repo-exposure.json
+/after.repo-exposure.json
 editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/dist/

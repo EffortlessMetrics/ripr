@@ -16,9 +16,9 @@ mod render;
 mod summaries;
 mod test_efficiency;
 
-pub(crate) use model::{BadgeKind, BadgePolicy, BadgeSummary};
-#[cfg(test)]
-pub(crate) use model::{BadgeScope, BadgeStatus};
+pub(crate) use model::{
+    BadgeBasis, BadgeCounts, BadgeKind, BadgePolicy, BadgeScope, BadgeStatus, BadgeSummary,
+};
 pub(crate) use render::{render_native_json, render_shields_json};
 pub(crate) use summaries::{
     repo_gap_ledger_badge_summary_from_json, ripr_badge_summary_with_suppressions,

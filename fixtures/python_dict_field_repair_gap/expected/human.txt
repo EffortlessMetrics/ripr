@@ -1,0 +1,66 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_dict_field_repair_gap/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/invoice.py:2
+
+Changed
+  after:      return {"status": "paid", "id": invoice_id}
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  python:src/invoice.py::invoice_payload
+  canonical gap: gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `invoice_payload`
+  - infection yes: Changed Python field or attribute construction can alter object state: `return {"status": "paid", "id": invoice_id}`
+  - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
+  - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `status == "paid"`.
+  - local flow reaches constructed field: return {"status": "paid", "id": invoice_id} (line 2)
+  - related test tests/test_invoice.py:4 test_invoice_payload_smoke uses smoke smoke only oracle: assert payload
+
+Weakness
+  - Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
+  - missing discriminator status == "paid": changed Python field/object value at line 2 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: invoice_payload
+  changed behavior: field_value changed at src/invoice.py:2: `return {"status": "paid", "id": invoice_id}`
+  current test evidence: tests/test_invoice.py:4 test_invoice_payload_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert payload
+  missing discriminator: status == "paid"
+  recommended test shape: Strengthen the existing pytest returned mapping field assertion for `status == "paid"`.
+  suggested assertion: Assert the returned mapping field directly, e.g. `assert result["status"] == "paid"`.
+  suggested file: tests/test_invoice.py
+  suggested test: test_invoice_payload_smoke
+  pytest node: tests/test_invoice.py::test_invoice_payload_smoke
+  verify: pytest tests/test_invoice.py::test_invoice_payload_smoke (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == "paid"`.

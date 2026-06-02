@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_api_json_field_repair_gap/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:app_checkout.py:13:python_preview",
+      "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+        "language": "python",
+        "file": "app/checkout.py",
+        "owner": "checkout",
+        "behavior_kind": "field_value",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "return_detail_coupon_expired"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:app_checkout.py:13:python_preview",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "app/checkout.py",
+        "line": 13,
+        "expression": "        return {\"detail\": \"coupon expired\"}",
+        "owner": "python:app/checkout.py::checkout"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `checkout`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python field or attribute construction can alter object state: `return {\"detail\": \"coupon expired\"}`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `response.json()[\"detail\"] == \"coupon expired\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `checkout`", "infection yes: Changed Python field or attribute construction can alter object state: `return {\"detail\": \"coupon expired\"}`", "propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `response.json()[\"detail\"] == \"coupon expired\"`.", "local flow reaches constructed field: return {\"detail\": \"coupon expired\"} (line 13)", "related test tests/test_checkout.py:1 test_expired_coupon_response_smoke uses smoke smoke only oracle: assert response", "missing discriminator response.json()[\"detail\"] == \"coupon expired\": changed Python field/object value at line 13 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"return {\"detail\": \"coupon expired\"}","line":13}
+      ],
+      "evidence": ["owner: checkout", "owner_kind: function", "owner_decorators: api.post", "missing_discriminator: response.json()[\"detail\"] == \"coupon expired\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checkout.py", "suggested_test_name: test_expired_coupon_response_smoke", "suggested_test_node_id: tests/test_checkout.py::test_expired_coupon_response_smoke", "suggested_verify_command: pytest tests/test_checkout.py::test_expired_coupon_response_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_expired_coupon_response_smoke)", "test_fixtures: client (test_expired_coupon_response_smoke)", "test_verify_command: pytest tests/test_checkout.py::test_expired_coupon_response_smoke (test_expired_coupon_response_smoke)", "related_test_relation: api_client_route_call (test_expired_coupon_response_smoke)", "test_oracle: smoke_only smoke (test_expired_coupon_response_smoke)", "test_oracle_shape: broad_smoke_assertion (test_expired_coupon_response_smoke)"],
+      "missing": ["Related Python test reaches `checkout` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "response.json()[\"detail\"] == \"coupon expired\"",
+            "reason": "changed Python field/object value at line 13 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"struct_field","text":"return {\"detail\": \"coupon expired\"}","line":13}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "response.json()[\"detail\"] == \"coupon expired\"",
+          "reason": "changed Python field/object value at line 13 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"struct_field","text":"return {\"detail\": \"coupon expired\"}","line":13}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_expired_coupon_response_smoke",
+          "file": "tests/test_checkout.py",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert response"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_checkout.py",
+        "suggested_test_name": "test_expired_coupon_response_smoke",
+        "suggested_test_node_id": "tests/test_checkout.py::test_expired_coupon_response_smoke",
+        "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:app/checkout.py:checkout:field_value:field_construction:return_detail_coupon_expired",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "checkout",
+        "changed_behavior": "field_value changed at app/checkout.py:13: `return {\"detail\": \"coupon expired\"}`",
+        "current_test_evidence": "tests/test_checkout.py:1 test_expired_coupon_response_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert response",
+        "missing_discriminator": "response.json()[\"detail\"] == \"coupon expired\"",
+        "recommended_test_shape": "Strengthen the existing pytest response JSON field assertion for `response.json()[\"detail\"] == \"coupon expired\"`.",
+        "suggested_assertion": "Assert the response field directly: `assert response.json()[\"detail\"] == \"coupon expired\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_checkout.py",
+          "test_name": "test_expired_coupon_response_smoke",
+          "pytest_node_id": "tests/test_checkout.py::test_expired_coupon_response_smoke"
+         },
+        "verify": {
+          "command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `response.json()[\"detail\"] == \"coupon expired\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `response.json()[\"detail\"] == \"coupon expired\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

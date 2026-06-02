@@ -286,6 +286,11 @@ whether movement is:
 Verification commands should regenerate the evidence needed to reassess the
 same gap decision.
 
+Queue and agent-packet projections may consume receipt movement as freshness
+metadata. A record whose receipt says `resolved`, `stale`, or
+`gap_mismatch` must remain visible as a blocked/stale queue item instead of an
+assignable packet until the ledger is refreshed.
+
 ## Required Evidence
 
 An implemented gap decision ledger must provide:

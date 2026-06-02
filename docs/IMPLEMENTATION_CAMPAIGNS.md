@@ -3034,7 +3034,7 @@ cargo xtask check-pr
 Next:
 
 - Campaign 27 is closed and archived. Campaign 28 (First Useful PR Loop) is
-  the explicit next product lane. Keep TypeScript and Python preview evidence
+  also closed and archived. Keep TypeScript and Python preview evidence
   opt-in, visibly preview/advisory, and outside default gate authority until a
   later promotion policy explicitly changes that boundary.
 
@@ -3042,7 +3042,7 @@ Next:
 
 Campaign ID: `first-useful-pr-loop`
 
-Status: active
+Status: closed
 
 RIPR now has the structural repair loop: first-pr packets, actionable gaps,
 ranked repair packets, dry-run attempt context, receipts, outcomes, generated
@@ -3080,20 +3080,21 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `context/proof-stack-reconciliation` | done | Reconciled proof-stack language into RIPR's existing context system and roadmap end-goal framing without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. |
+| `context/proof-stack-reconciliation` | done | Reconciled proof-stack language into RIPR's existing context system, accepted source-of-truth stack, and roadmap end-goal framing without adding a runner-local goals namespace or another operating namespace. |
 | `goals/active-freshness-validation` | done | Goal validation now rejects a closed active campaign unless it declares a successor or explicit no-current-goal marker, so agents cannot silently continue from stale execution state. |
-| `first-pr/front-door-polish` | done | `ripr first-pr` now writes additive preflight status for root, Git refs, PR diff availability, Cargo workspace, config/defaults, artifact writability, and composition mode, with recovery commands before the selected repair or no-action packet. |
-| `first-pr/one-screen-recommendation` | done | Golden-backed start-here packets now carry one-screen recommendation fields for changed behavior, current static evidence strength, missing discriminator, focused proof intent, verify command, receipt command, and static-advisory boundary. |
-| `outcome/reviewer-native-receipts` | done | `ripr outcome` and the xtask targeted-test outcome mirror now render reviewer-native receipts that explain before/after static movement, focused proof visibility, remaining weak or unknown states, and explicit non-claims. |
-| `fixtures/first-pr-boundary-gap-demo` | done | The boundary-gap first-successful-pr corpus now includes a checked ten-minute demo story linking `ripr first-pr`, the top repairable gap, focused external proof, `ripr outcome`, and the reviewer-native receipt. |
-| `surfaces/one-screen-loop-convergence` | done | Generated CI, first-useful-action Markdown, VS Code/LSP repair packets, and agent seam packets now mirror changed behavior, missing discriminator, focused proof intent, verify, receipt, artifacts, and static-advisory boundary wording. |
-| `campaign/first-useful-pr-loop-closeout` | ready | Close only after the one-command, one-gap, one-repair, one-verification, one-receipt loop is proven across CLI, CI, editor, agent packet, and demo surfaces. |
+| `first-pr/front-door-polish` | done | `ripr first-pr` now writes a read-only preflight section for root, Git/base/head/diff, Cargo workspace, config defaults, output path, mode, and next-command guidance while preserving advisory artifact selection. |
+| `first-pr/one-screen-recommendation` | done | Start-here now has a golden-backed one-screen recommendation with top gap/no-action, changed behavior, current evidence strength, missing discriminator, focused proof intent, verify command, receipt command, receipt path, and static-advisory boundary. |
+| `outcome/reviewer-native-receipts` | done | `ripr outcome` now writes reviewer-native JSON/Markdown receipt sections covering before flags, focused proof signals, movement after verification, remaining weak/unknown seams, and reviewer claim boundaries. |
+| `fixtures/first-pr-boundary-gap-demo` | done | Added a checked boundary-gap demo story for before -> `ripr first-pr` -> focused external proof -> `ripr outcome` -> reviewer receipt. |
+| `surfaces/one-screen-loop-convergence` | done | Generated CI, VS Code/editor handoff, and agent packet surfaces now mirror changed behavior, missing discriminator, focused proof intent, verify and receipt commands, receipt artifacts, and the static-advisory boundary. |
+| `campaign/first-useful-pr-loop-closeout` | done | Closed Campaign 28 with a handoff, archived active goal manifest, proof commands, claim and policy boundary, remaining limits, and no selected successor goal. |
 
 References:
 
 - [README](README.md)
 - [Quickstart](QUICKSTART.md)
 - [Context system](agent-context/CONTEXT_SYSTEM.md)
+- [First Useful PR Loop plan](../plans/first-useful-pr-loop/implementation-plan.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [Support tiers](status/SUPPORT_TIERS.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
@@ -3107,8 +3108,8 @@ Blocking conditions:
 - runtime, coverage, or correctness proof claims
 - default blocking gates or public badge semantic changes
 - TypeScript/Python preview promotion
-- a parallel runner-local goals namespace or `docs/source-of-truth` operating
-  model
+- a parallel runner-local goals namespace or source-of-truth operating model
+  outside the accepted `docs/source-of-truth/` stack
 
 Commands:
 
@@ -3123,15 +3124,15 @@ cargo xtask check-pr
 
 Next:
 
-- Add active-goal freshness validation next, then move into the first-pr
-  front-door and receipt product loop. Do not spend the campaign only on
-  doctrine, templates, or validators.
+- Campaign 28 is closed and archived. `.ripr/goals/active.toml` records
+  `no_current_goal = true` until a successor campaign is selected from the
+  roadmap or a new accepted source-of-truth stack.
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
-Status: closed in documented scope. Campaign 28 is active in
-`.ripr/goals/active.toml`; this focused Lane 1 tracker is not the active
-execution manifest.
+Status: closed in documented scope. Campaign 28 is also closed and archived;
+`.ripr/goals/active.toml` records `no_current_goal = true` until a successor is
+selected. This focused Lane 1 tracker is not the active execution manifest.
 
 Sources of truth:
 
@@ -3170,8 +3171,9 @@ tests, provider calls, mutation execution, or score redefinition.
 
 ## Focused Lane 1 Tracker: User-Visible Output Evidence
 
-Status: closed as a focused Lane 1 tracker. Campaign 28 is active in
-`.ripr/goals/active.toml`; this focused tracker is not the active execution
+Status: closed as a focused Lane 1 tracker. Campaign 28 is also closed and
+archived; `.ripr/goals/active.toml` records `no_current_goal = true` until a
+successor is selected. This focused tracker is not the active execution
 campaign.
 
 Sources of truth:
@@ -3259,13 +3261,17 @@ Closeout:
 
 ## Focused Lane 1 Tracker: Finding Alignment Burn-Down
 
-Status: open planning rail. This focused tracker is not the active execution
-manifest unless `.ripr/goals/active.toml` explicitly selects it.
+Tracker ID: `lane1-finding-alignment-burndown`
+
+Status: closed. `.ripr/goals/active.toml` now records
+`status = "closed"` and `no_current_goal = true`; the archived manifest lives
+at `.ripr/goals/archive/2026-05-22-lane1-finding-alignment-burndown.toml`.
 
 Sources of truth:
 
 - [Lane 1 Finding Alignment Burn-Down tracker](lanes/LANE_1_FINDING_ALIGNMENT_BURNDOWN.md)
 - [Lane 1 Finding Alignment Burn-Down implementation plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
+- [Lane 1 Finding Alignment Burn-Down closeout](handoffs/2026-05-22-lane1-finding-alignment-burndown-closeout.md)
 - [Lane 1 Shippable Finding Alignment closeout](handoffs/2026-05-17-lane1-shippable-finding-alignment-closeout.md)
 - [Finding Alignment Consumer Contract v2](handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md)
 - [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
@@ -3297,19 +3303,20 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `report/finding-alignment-coverage-audit` | open | [#1140](https://github.com/EffortlessMetrics/ripr/issues/1140) audits aligned, unaligned, duplicate, unnamed-limitation, missing-repair, and missing-verify queues by evidence class. |
-| `analysis/named-static-unknown-invariant` | open | [#1141](https://github.com/EffortlessMetrics/ripr/issues/1141) preserves named static limitations for user-facing static unknowns. |
-| `analysis/canonical-primary-anchor-raw-spans` | open | [#1158](https://github.com/EffortlessMetrics/ripr/issues/1158) completes placement and supporting raw-span evidence for canonical items. |
-| `analysis/top-static-limitation-bucket-burndown` | open | [#1159](https://github.com/EffortlessMetrics/ripr/issues/1159) turns the top named static limitation bucket into fixture-backed analyzer repair. |
-| `docs/spec-config-policy-unsupported-flow-expansion` | open | [#1142](https://github.com/EffortlessMetrics/ripr/issues/1142) refines unsupported-flow expansion criteria for existing config/policy evidence. |
-| `fixtures/config-policy-unsupported-flow-burndown` | open | [#1143](https://github.com/EffortlessMetrics/ripr/issues/1143) pins selected config/policy unsupported-flow cases before analyzer work. |
-| `analysis/config-policy-unsupported-flow-support` | open | [#1144](https://github.com/EffortlessMetrics/ripr/issues/1144) expands one selected unsupported-flow category only when fixture-backed. |
-| `analysis/actionable-repair-route-completeness` | open | [#1145](https://github.com/EffortlessMetrics/ripr/issues/1145) keeps actionable canonical items repair-routed. |
-| `analysis/actionable-verify-command-coverage` | open | [#1146](https://github.com/EffortlessMetrics/ripr/issues/1146) keeps actionable canonical items verifiable where feasible. |
-| `report/actionable-canonical-gaps-scorecard-lead` | open | [#1147](https://github.com/EffortlessMetrics/ripr/issues/1147) preserves scorecard-leading actionable canonical gaps. |
-| `calibration/runtime-confidence-coverage-audit` | open | [#1160](https://github.com/EffortlessMetrics/ripr/issues/1160) reports calibrated-supported versus static-only canonical items by class. |
-| `dogfood/finding-alignment-examples-refresh` | open | [#1149](https://github.com/EffortlessMetrics/ripr/issues/1149) refreshes examples only after material burn-down deltas. |
-| `docs/canonical-alignment-contract-refresh` | open | [#1153](https://github.com/EffortlessMetrics/ripr/issues/1153) refreshes downstream handoff docs only when fields or guidance change. |
+| `report/finding-alignment-coverage-audit` | done | [swarm #229](https://github.com/EffortlessMetrics/ripr-swarm/issues/229) / [source #1140](https://github.com/EffortlessMetrics/ripr/issues/1140) audits aligned, unaligned, duplicate, unnamed-limitation, missing-repair, and missing-verify queues by evidence class. |
+| `analysis/named-static-unknown-invariant` | done | [swarm #233](https://github.com/EffortlessMetrics/ripr-swarm/issues/233) / [source #1141](https://github.com/EffortlessMetrics/ripr/issues/1141) preserves named static limitations for user-facing static unknowns. |
+| `analysis/canonical-primary-anchor-raw-spans` | done | [source #1158](https://github.com/EffortlessMetrics/ripr/issues/1158) closed via source PR #1187; primary-anchor and raw-span support are available for canonical items where placement is safe. |
+| `analysis/top-static-limitation-bucket-burndown` | done | [swarm #238](https://github.com/EffortlessMetrics/ripr-swarm/issues/238) / [source #1159](https://github.com/EffortlessMetrics/ripr/issues/1159) burned down the sampled `call_presence` / `activation_owner_call_unresolved` bucket with fixture-backed positive and must-not-claim coverage. |
+| `docs/spec-config-policy-unsupported-flow-expansion` | done | [swarm #241](https://github.com/EffortlessMetrics/ripr-swarm/issues/241) / [source #1142](https://github.com/EffortlessMetrics/ripr/issues/1142) selected `opaque_config_lookup` as the next fixture-backed expansion while keeping generated, macro, dynamic-dispatch, and unsupported cross-file flows as named limitations. |
+| `fixtures/config-policy-unsupported-flow-burndown` | done | [swarm #246](https://github.com/EffortlessMetrics/ripr-swarm/issues/246) / [source #1143](https://github.com/EffortlessMetrics/ripr/issues/1143) pinned macro-generated config/schema output and dynamic config dispatch as named limitation benchmark cases before analyzer work. |
+| `analysis/config-policy-unsupported-flow-support` | done | [swarm #250](https://github.com/EffortlessMetrics/ripr-swarm/issues/250) / [source #1144](https://github.com/EffortlessMetrics/ripr/issues/1144) landed in swarm #252; fixture-backed `opaque_config_lookup` moved out of limitation while unsupported flows stayed named. |
+| `analysis/actionable-repair-route-completeness` | done | [swarm #254](https://github.com/EffortlessMetrics/ripr-swarm/issues/254) / [source #1145](https://github.com/EffortlessMetrics/ripr/issues/1145) landed in swarm #257; config-policy repair-route coverage now requires the same top-level structured `repair_route` predicate as the overall actionable summary. |
+| `analysis/actionable-verify-command-coverage` | done | [swarm #258](https://github.com/EffortlessMetrics/ripr-swarm/issues/258) / [source #1146](https://github.com/EffortlessMetrics/ripr/issues/1146) landed in swarm #261; config/policy verify coverage now rejects missing sentinels and benchmark fixtures require concrete verify commands for actionable records. |
+| `report/actionable-canonical-gaps-scorecard-lead` | done | [swarm #262](https://github.com/EffortlessMetrics/ripr-swarm/issues/262) / [source #1147](https://github.com/EffortlessMetrics/ripr/issues/1147) landed in swarm #266; scorecard and trend output now lead with actionable canonical gaps while raw finding, canonical-item, repair-route, verify-command, and capability metric rows remain visible. |
+| `calibration/runtime-confidence-coverage-audit` | done | [source #1160](https://github.com/EffortlessMetrics/ripr/issues/1160) is closed; current audit and scorecard outputs report runtime confidence coverage by canonical evidence class without adding mutation execution. |
+| `dogfood/finding-alignment-examples-refresh` | done | [swarm #267](https://github.com/EffortlessMetrics/ripr-swarm/issues/267) / [source #1149](https://github.com/EffortlessMetrics/ripr/issues/1149) landed in swarm #276; finding-alignment dogfood receipts now include canonical gap identity, raw finding summary, before/after context, and material burn-down examples for supported opaque config lookups, actionable predicate-boundary scorecard lead, and runtime static-only class trends. |
+| `docs/canonical-alignment-contract-refresh` | done | [swarm #274](https://github.com/EffortlessMetrics/ripr-swarm/issues/274) / [source #1153](https://github.com/EffortlessMetrics/ripr/issues/1153) landed in swarm #281; the v2 downstream handoff now reflects the refreshed dogfood receipt fields, supported opaque config report lookup delta, actionable predicate-boundary lead, and runtime static-only class trend boundary. |
+| `campaign/finding-alignment-burndown-closeout` | done | [swarm #280](https://github.com/EffortlessMetrics/ripr-swarm/issues/280) closed the burn-down rail in the [closeout handoff](handoffs/2026-05-22-lane1-finding-alignment-burndown-closeout.md), recording improved classes, moved counts, remaining limitations, downstream consumers, and the next audit-driven evidence class selection rule. |
 
 Blocking conditions:
 
@@ -3336,6 +3343,88 @@ cargo xtask check-pr
 git diff --check
 ```
 
+## Focused Lane 1 Tracker: Value Resolution Audit Fixes
+
+Tracker ID: `lane1-value-resolution-audit-fixes`
+
+Status: closed. `.ripr/goals/active.toml` now records `status = "closed"` and
+`no_current_goal = true` after this rail's closeout.
+
+GitHub issue: [swarm #285](https://github.com/EffortlessMetrics/ripr-swarm/issues/285)
+
+Sources of truth:
+
+- [Lane 1 Value Resolution Audit Fixes tracker](lanes/LANE_1_VALUE_RESOLUTION_AUDIT_FIXES.md)
+- [Lane 1 Value Resolution Audit Fixes implementation plan](../plans/lane1-value-resolution-audit-fixes/implementation-plan.md)
+- [Lane 1 Value Resolution Audit Fixes closeout](handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md)
+- [Lane 1 Finding Alignment Burn-Down closeout](handoffs/2026-05-22-lane1-finding-alignment-burndown-closeout.md)
+- [RIPR-SPEC-0001](specs/RIPR-SPEC-0001-static-exposure-loop.md)
+  static exposure loop
+- [RIPR-SPEC-0021](specs/RIPR-SPEC-0021-evidence-record.md)
+  evidence record
+- [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
+  finding-to-gap alignment
+
+Objective:
+
+```text
+Burn down a fixture-backed slice of the predicate-boundary
+activation_value_unresolved bucket without broadening unsupported value flows
+or treating named static limitations as user test debt.
+```
+
+End state:
+
+- one audit-derived value-resolution sub-shape is fixture-backed before
+  analyzer behavior changes;
+- supported predicate-boundary cases move out of
+  `activation_value_unresolved` only when concrete activation values are
+  statically visible;
+- unsupported helper-built, cross-file, generated, macro-expanded, shadowed,
+  pattern-bound, non-literal, or opaque value flows remain named limitations;
+- raw findings remain supporting evidence and canonical items remain the
+  countable unit;
+- audit, scorecard, trend, and dogfood proof record the before/after movement
+  without changing PR/CI, editor, gate, badge, release, provider,
+  generated-test, source-edit, or mutation behavior.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/lane1-value-resolution-audit-fixes-stack` | done | [swarm #285](https://github.com/EffortlessMetrics/ripr-swarm/issues/285) opens the active issue-backed rail, active manifest, lane tracker, implementation plan, and docs indexes without analyzer behavior. |
+| `fixtures/value-resolution-audit-corpus` | done | Pin one audit-derived supported value-resolution sub-shape plus must-not-claim guards before analyzer behavior changes. |
+| `analysis/value-resolution-supported-subshape` | done | Confirm the fixture-backed supported sub-shape is already handled by existing value-resolution support and keep unsupported value flows named. |
+| `report/value-resolution-audit-delta` | done | Recorded zero-movement Lane 1 audit, scorecard, and trend evidence for the already-supported selected bucket without changing claims; see the [Value Resolution Audit Delta](handoffs/2026-05-22-value-resolution-audit-delta.md). |
+| `dogfood/value-resolution-receipts` | done | Added checked dogfood receipt with canonical gap identity, raw finding context, zero movement, remaining limitations, and static-evidence non-claims. |
+| `campaign/value-resolution-audit-closeout` | done | Closed the rail with proof, remaining limits, downstream non-impact, and no selected successor; see the [closeout](handoffs/2026-05-23-lane1-value-resolution-audit-fixes-closeout.md). |
+
+Blocking conditions:
+
+- PR/CI rendering changes
+- inline PR comment publishing
+- LSP/editor polish
+- gate-policy or default-blocking changes
+- public badge or score redefinition
+- generated tests
+- automatic source edits
+- provider/model calls
+- mutation execution
+- treating named static limitations as user test debt
+
+Commands:
+
+```bash
+cargo xtask goals status
+cargo xtask goals next
+cargo xtask check-goals
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
+
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
 Tracker ID: `policy-readiness-preview-evidence-governance`
@@ -3344,9 +3433,10 @@ Status: tracker
 
 GitHub issue: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
 
-Campaign 28 is active in the machine-readable manifest. This focused Lane 2
-tracker is not a replacement for `.ripr/goals/active.toml`; it records the
-policy boundary that Campaign 27 and later policy work must not cross.
+Campaign 28 is closed and archived in the machine-readable manifest. This
+focused Lane 2 tracker is not a replacement for `.ripr/goals/active.toml`; it
+records the policy boundary that Campaign 27 and later policy work must not
+cross.
 
 Objective:
 
@@ -3382,7 +3472,7 @@ Work items:
 | `policy/exception-ledger-convergence` | done | `docs/POLICY_ALLOWLISTS.md` now aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | done | `docs/BLOCKING_READINESS.md` now uses policy readiness as the ceiling for advisory, visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including calibration, baseline, waiver, suppression, and preview-evidence health. |
 | `ci/policy-readiness-advisory-projection` | done | Generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
-| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; Campaign 28 is now active in the machine-readable manifest. |
+| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; Campaign 28 is now closed and archived, and `.ripr/goals/active.toml` records `no_current_goal = true`. |
 
 References:
 
@@ -3424,8 +3514,8 @@ cargo xtask check-pr
 
 ## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
 
-Status: closed as a focused Lane 2 tracker. Campaign 28 is active in the
-machine-readable manifest.
+Status: closed as a focused Lane 2 tracker. Campaign 28 is closed and archived
+in the machine-readable manifest.
 
 Sources of truth:
 
@@ -3797,7 +3887,7 @@ Blocking conditions:
 
 Campaign ID: `start-here-surface-convergence`
 
-Status: proposed.
+Status: complete.
 
 The editor, CLI, generated CI, PR evidence, report packet index, receipts,
 preview-language reports, and install/release docs are useful independently.
@@ -3829,14 +3919,14 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `docs/start-here-surface-convergence-stack` | planned | Add proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
-| `report/pr-ci-start-here-canonical-unit` | planned | Align generated CI and PR evidence first screens on the canonical repair unit. |
-| `cli/start-here-command-language` | planned | Align CLI front-door command language and recovery states. |
-| `receipt/lifecycle-state-convergence` | planned | Standardize receipt found/missing/stale/mismatch/improved/unchanged states. |
-| `output/no-output-fail-closed-states` | planned | Standardize clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, unsafe states outside the editor. |
-| `policy/preview-promotion-proof-criteria` | planned | Define proof criteria before preview evidence can claim a stronger tier. |
-| `dogfood/external-style-start-here-receipts` | planned | Record normal-repo and failure-state receipts for the converged path. |
-| `campaign/start-here-surface-convergence-closeout` | planned | Close only after the issue burn-down is closed or explicitly superseded. |
+| `docs/start-here-surface-convergence-stack` | done | #201 accepted the proposal/spec/ADR stack, replaced source issue numbers with swarm issue rails, and activated the campaign manifest. |
+| `report/pr-ci-start-here-canonical-unit` | done | #202 made PR evidence ledger, PR review front-panel Markdown, and the CI-appended PR evidence summary lead with `Start here` canonical repair fields before raw counts. |
+| `cli/start-here-command-language` | done | #203 aligned CLI/front-door wording on `Start Here`, generated workflow summary copy, `doctor` setup guidance, safe next action, fail-closed state names, verify command, receipt command, receipt path, recovery states, and advisory boundaries without changing packet schema. |
+| `receipt/lifecycle-state-convergence` | done | #204 standardizes receipt found/missing/stale/mismatch/improved/unchanged/not-applicable states across agent receipt, first-pr, PR evidence, front-panel, actionable-gap outcome, and editor projection fixtures. |
+| `output/no-output-fail-closed-states` | done | #205 standardizes clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, and unsafe output states outside the editor. |
+| `policy/preview-promotion-proof-criteria` | done | #206 defines proof criteria before preview evidence can claim a stronger tier and keeps TypeScript, JavaScript, and Python preview evidence advisory until a policy-owned packet closes the criteria. |
+| `dogfood/external-style-start-here-receipts` | done | #207 records normal-repo and failure-state receipts for the converged path in [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md). |
+| `campaign/start-here-surface-convergence-closeout` | done | #208 closes the campaign in [Start-here surface convergence closeout](handoffs/2026-05-22-start-here-surface-convergence-closeout.md), archives the active goal, and records `no_current_goal = true`. |
 
 Commands:
 
@@ -4013,3 +4103,264 @@ Blocking conditions:
   claims
 - unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
   patch application in this campaign
+
+## Cross-Surface Campaign: Actionable Surface Translation
+
+Campaign ID: `actionable-surface-translation`
+
+Status: complete.
+
+The repo now has actionable canonical gap packets, editor queue projection,
+swarm dry-run attempts, outcome joins, and start-here surfaces. The next
+cross-surface slice is translation: make every first-screen surface answer the
+same repair-first question without changing analyzer truth or claim authority.
+
+Objective:
+
+```text
+Make badge, PR, editor, swarm dry-run, and outcome/trend surfaces translate
+existing actionable canonical gap evidence into the same repair-first user
+questions.
+```
+
+End state:
+
+- badge-adjacent copy explains unresolved actionable static repair gaps at point
+  of use;
+- PR evidence leads with actionable delta and one top next repair packet before
+  raw finding totals;
+- editor Show Status leads with one safe repair action or one precise
+  fail-closed reason;
+- swarm dry-run output includes a compact copy-ready operator or external-agent
+  packet;
+- outcome and trend reports lead with receipt-linked movement since the
+  previous refresh;
+- advisory/static boundaries remain visible and no covered surface claims
+  runtime adequacy, coverage adequacy, mutation proof, policy eligibility, gate
+  pass/fail, merge readiness, source-edit automation, generated tests, or
+  provider execution.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/actionable-surface-translation-stack` | done | Added RIPR-PROP-0016, linked RIPR-SPEC-0059 to RIPR-PLAN-0059, registered the artifacts, updated indexes, and selected this active manifest without behavior changes. |
+| `badge/actionable-basis-presentation` | done | Badge-adjacent copy and badge-basis output explain the headline count as unresolved actionable static repair gaps using `canonical_actionable_gap` as the public basis. |
+| `pr/actionable-delta-front-panel` | done | PR summary now starts with an advisory actionable repair front panel over existing actionable-gaps, outcome, and PR front-panel artifacts before raw path inventory. |
+| `editor/repair-first-status-hierarchy` | done | Editor Show Status now starts with a repair cockpit block naming workspace/current-file actionable state, top repair, related proof, verify command, receipt state, and fail-closed next action. |
+| `swarm/dry-run-copy-ready-packet` | done | `ripr-swarm attempt --dry-run` now starts with a compact copy-ready operator packet naming task, allowed files, boundaries, repair target, verify/receipt commands, stop conditions, and return format. |
+| `outcome/movement-front-section` | done | Actionable-gap outcomes now lead with receipt-linked movement since prior refresh: current actionable count, receipt-linked delta, resolved, improved, unchanged after attempt, missing/orphaned receipts, and top blocked reason. |
+| `campaign/actionable-surface-translation-closeout` | done | [Actionable Surface Translation closeout](handoffs/2026-05-23-actionable-surface-translation-closeout.md) records the PR chain, validation, claim boundary, remaining limits, and no selected successor. |
+
+Commands:
+
+```bash
+cargo xtask check-doc-artifacts
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-support-tiers
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- actionable-gap producer or schema changes
+- support-tier promotion in the activation PR
+- public badge semantic change in the activation PR
+- default CI blocking or gate behavior changes
+- PR comment publishing changes
+- source edits or generated tests
+- provider/model calls
+- mutation execution
+- release, publish, signing, or marketplace work
+- runtime adequacy, coverage adequacy, proof-of-correctness, policy
+  eligibility, gate pass/fail, or merge-readiness claims
+
+Closeout:
+
+- [Actionable Surface Translation closeout](handoffs/2026-05-23-actionable-surface-translation-closeout.md)
+  records the source-of-truth acceptance, surface proof audit, policy boundary,
+  and next-campaign selection rule.
+
+## Cross-Surface Campaign: First Useful PR Loop Continuation
+
+Campaign ID: `first-useful-pr-loop-continuation`
+
+Status: closed.
+
+Closeout:
+
+- [First Useful PR Loop Continuation closeout](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md)
+  records the proof that the CLI first screen, generated CI, VS Code,
+  agent packets, receipts, output contracts, and support-tier boundaries now
+  tell one consistent static-advisory repair story.
+
+Actionable Surface Translation made the covered first screens speak the same
+repair-first language. Campaign 28 is already closed and archived, so this
+successor campaign continues the same product loop without reactivating the
+closed manifest id. It uses the new alignment to make one real Rust PR easy to
+run from changed behavior to focused proof and receipt.
+
+Objective:
+
+```text
+Make a new user, reviewer, or coding-agent operator get from one changed Rust
+behavior to one trustworthy repair receipt with minimal interpretation burden.
+```
+
+End state:
+
+- `ripr first-pr --root . --base origin/main --head HEAD` is the obvious
+  front door for one PR and explains the top repairable gap or clear no-action
+  state.
+- The first screen names changed behavior, weak proof, missing discriminator,
+  focused test intent, verify command, receipt command or path, and the
+  advisory/static boundary.
+- `ripr outcome` receipts are reviewer-native and explain before/after static
+  movement without implying mutation, coverage, correctness, gate, or merge
+  proof.
+- A tiny first-PR demo proves the before -> recommendation -> focused proof ->
+  outcome receipt path.
+- Generated CI, VS Code, and agent packets mirror the same top-gap, verify,
+  receipt, and non-claim language instead of introducing a second mental model.
+- Support-tier, traceability, and output-contract surfaces record exactly what
+  users may believe.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/first-useful-pr-loop-activation` | done | Selected the First Useful PR Loop continuation as the active repo-owned goal without changing analyzer behavior. |
+| `docs/context-system-proof-stack-reconciliation` | done | Mapped proof-stack terminology into the repo tracking model and Codex Goals entrypoint without adding a runner-local goals namespace or a parallel docs/source-of-truth namespace. |
+| `goals/active-goal-freshness-check` | done | Pinned goal validation for stale closed campaigns, missing work-item proof commands, unknown proof commands, and failed `goals next` reporting before product behavior work resumes. |
+| `cli/first-pr-front-door-polish` | done | `ripr first-pr` now explains one top repairable gap, no-action state, or recovery state directly in stdout after #332. |
+| `output/one-screen-recommendation-contract` | done | Golden-backed first-pr output now carries and validates top gap, why it matters, weak evidence, missing discriminator, focused test intent, verify, receipt, and static boundary after #335. |
+| `receipt/reviewer-native-outcome` | done | Outcome receipts now make reviewer-visible static claim boundaries explicit after #338. |
+| `fixtures/first-pr-demo-story` | done | The boundary-gap fixture story now pins the before -> first-pr recommendation -> focused proof -> outcome receipt -> reviewer receipt path after #341. |
+| `surfaces/first-useful-loop-convergence` | done | Generated CI, VS Code, and agent packets now mirror the CLI first-useful loop vocabulary and non-claims. |
+| `campaign/first-useful-pr-loop-continuation-closeout` | done | Closed the continuation with proof that the first-pr front door, receipts, generated CI, VS Code, agent packets, output contracts, and support-tier boundaries tell one consistent static-advisory repair story. |
+
+Commands:
+
+```bash
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes in the activation PR
+- source-of-truth namespace duplication
+- runner-local goals or parallel docs/source-of-truth systems
+- source edits or generated tests
+- provider/model calls
+- mutation execution
+- support-tier promotion without a dedicated proof PR
+- default CI blocking or gate behavior changes
+- PR comment publishing changes
+- release, publish, signing, marketplace, or badge endpoint refresh work
+- runtime adequacy, coverage adequacy, proof-of-correctness, policy
+  eligibility, gate pass/fail, or merge-readiness claims
+
+Closeout:
+
+- [First Useful PR Loop Continuation closeout](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md)
+  records the first-pr surface convergence audit, static/advisory claim
+  boundary, archived manifest, and no selected successor campaign.
+
+## Repo-Ops Campaign: Self-Hosted Routed Runner Proof
+
+Campaign ID: `self-hosted-routed-runner-proof`
+
+Status: active.
+
+First Useful PR Loop Continuation is closed and archived. The current issue
+board has no product or analyzer PR queue, but it does have one live
+repo-owned cutover gap: [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34)
+tracks CX53/CX43 self-hosted routed Rust proof, and
+[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24) tracks the
+larger source-to-swarm cutover boundary. This repo-ops campaign selects that
+work without reopening product behavior, release, badge, source promotion, or
+branch-protection scope.
+
+Objective:
+
+```text
+Restore and prove the self-hosted routed Rust path for ripr-swarm while keeping
+the normalized Ripr Rust Small Result gate and GitHub-hosted fallback as the
+branch-protection-facing proof.
+```
+
+End state:
+
+- #34 records CX53 primary proof with `target=cx53`, `reason=cx53_idle`, and
+  `Ripr Rust Small Result` success, or a current bounded
+  image-readiness/runner-visibility blocker.
+- #34 records CX43 fallback proof with `target=cx43`, `reason=cx43_idle`, and
+  `Ripr Rust Small Result` success, or a current bounded
+  image-readiness/runner-visibility blocker.
+- #24 records the same cutover disposition and does not claim machine cutover
+  completion before self-hosted proof or an accepted blocker.
+- Branch protection remains strict and requires only `Ripr Rust Small Result`.
+- Conditional CX53/CX43/GitHub-hosted implementation jobs remain unrequired.
+- Normal feature, docs, spec, analyzer, editor, badge, and repo-ops work stays
+  routed to `ripr-swarm`; source `ripr` remains release/distribution authority.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/self-hosted-routed-runner-proof-activation` | done | Select #34/#24 as the active repo-owned successor after no-current-goal without changing analyzer, product, release, badge, source-promotion, or branch-protection behavior. |
+| `ops/current-routed-proof-refresh` | done | Current routed proof is recorded on #34 and #24 as the issue ledger. Hosted-fallback evidence remains current when that ledger records `target=github` and CX53/CX43 skipped. Recent receipts record both runner visibility/API failure and no idle image-ready CX53/CX43 runner availability; neither is CX53/CX43 execution proof. |
+| `ops/cx53-cx43-proof-closeout` | blocked | Requires CX53/CX43 self-hosted proof or an org-visible accepted runner-readiness/visibility blocker before proof can close. |
+| `campaign/self-hosted-routed-runner-proof-closeout` | blocked | Close only after #34/#24 carry proof or an accepted bounded blocker, plus branch-protection and source/swarm authority status. |
+
+Commands:
+
+```bash
+rtk git fetch origin --prune
+rtk git status --short --branch
+rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+rtk gh pr list --repo EffortlessMetrics/ripr --state open
+rtk cargo xtask pr-triage-report
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-workflows
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- output schema or product surface changes
+- source repo promotion
+- release, publish, signing, marketplace, or badge endpoint refresh work
+- release/publish/signing secrets in `ripr-swarm`
+- fork PRs on self-hosted runners
+- branch-protection expansion beyond `Ripr Rust Small Result`
+- default CI blocking changes beyond the normalized routed result
+- provider/model calls
+- source edits or generated tests
+- mutation execution
+- runtime adequacy, coverage adequacy, proof-of-correctness, policy
+  eligibility, gate pass/fail, or merge-readiness claims

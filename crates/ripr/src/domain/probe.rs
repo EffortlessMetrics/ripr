@@ -204,6 +204,17 @@ pub struct MissingDiscriminatorFact {
     pub flow_sink: Option<FlowSinkFact>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingCanonicalGap {
+    pub id: String,
+    pub language: String,
+    pub file: String,
+    pub owner: String,
+    pub behavior_kind: String,
+    pub probe_kind: String,
+    pub normalized_discriminator: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ActivationEvidence {
     pub observed_values: Vec<ValueFact>,
@@ -223,6 +234,7 @@ pub struct RelatedTest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Finding {
     pub id: String,
+    pub canonical_gap: Option<FindingCanonicalGap>,
     pub probe: Probe,
     pub class: ExposureClass,
     pub ripr: RiprEvidence,

@@ -11,9 +11,14 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
+use crate::output::path::display_path;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
+use std::path::Path;
 
 pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.3";
+pub(crate) const REPO_EXPOSURE_SUMMARY_SCHEMA_VERSION: &str = "0.1";
 
 /// Cap on related-tests rendered per seam in the JSON output. The
 /// existing `test_grip_evidence::find_related_tests` heuristic is
@@ -22,6 +27,7 @@ pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.3";
 /// fan out to hundreds of tests per seam. The cap keeps the artifact
 /// review-sized; tightening the heuristic itself is a future PR.
 const MAX_RELATED_TESTS_PER_SEAM_JSON: usize = 8;
+const MAX_TOP_FILES_SUMMARY_JSON: usize = 25;
 
 /// Render the repo exposure JSON.
 pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String {
@@ -91,6 +97,184 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
     writeln!(out, "]")?;
     writeln!(out, "}}")?;
     out.flush()
+}
+
+/// Render a bounded repo exposure summary JSON.
+///
+/// Unlike `repo-exposure-json`, this shape deliberately omits per-seam
+/// evidence arrays and nested evidence records. It is for badge, queue, and
+/// large-repo planning consumers that need aggregate counts and bounded top
+/// files without multi-GB payloads.
+pub(crate) fn render_repo_exposure_summary_json(
+    classified: &[ClassifiedSeam],
+    root: &Path,
+    base: Option<&str>,
+    mode: &str,
+) -> String {
+    let value = repo_exposure_summary_json_value(classified, root, base, mode);
+    match serde_json::to_string_pretty(&value) {
+        Ok(mut json) => {
+            json.push('\n');
+            json
+        }
+        Err(_) => "{}\n".to_string(),
+    }
+}
+
+fn repo_exposure_summary_json_value(
+    classified: &[ClassifiedSeam],
+    root: &Path,
+    base: Option<&str>,
+    mode: &str,
+) -> Value {
+    let metrics = ExposureMetrics::from(classified);
+    let canonical_gaps = canonical_gap_identities(classified);
+    let mut canonical_gap_ids = BTreeSet::<String>::new();
+    let mut actionable_gap_ids = BTreeSet::<String>::new();
+    let mut raw_actionable_seam_records = 0usize;
+
+    let mut actionability_counts = BTreeMap::<String, usize>::new();
+    let mut actionable_seam_kind_counts = BTreeMap::<String, usize>::new();
+    let mut gap_state_counts = BTreeMap::<String, usize>::new();
+    let mut file_summaries = BTreeMap::<String, FileExposureSummary>::new();
+
+    for entry in classified {
+        let file = display_path(entry.seam.file());
+        let file_summary = file_summaries.entry(file).or_default();
+        file_summary.raw_seams += 1;
+        increment(&mut file_summary.grip_class_counts, entry.class.as_str());
+        if entry.class.is_headline_eligible() {
+            file_summary.headline_eligible_seams += 1;
+        }
+        if entry.class == SeamGripClass::Suppressed {
+            file_summary.suppressed_exposure_gaps += 1;
+        }
+
+        let canonical_gap = canonical_gaps.get(entry.seam.id());
+        if let Some(gap) = canonical_gap {
+            canonical_gap_ids.insert(gap.id.clone());
+            file_summary.canonical_gap_ids.insert(gap.id.clone());
+        }
+
+        let record = evidence_record_for(entry, canonical_gap);
+        increment(
+            &mut gap_state_counts,
+            record.canonical_item.gap_state.as_str(),
+        );
+
+        if let Some(gap_id) = record.canonical_item.canonical_gap_id.as_ref()
+            && is_summary_actionable_canonical_item(&record.canonical_item)
+        {
+            raw_actionable_seam_records += 1;
+            if actionable_gap_ids.insert(gap_id.clone()) {
+                increment(
+                    &mut actionability_counts,
+                    record.canonical_item.actionability.as_str(),
+                );
+                increment(&mut actionable_seam_kind_counts, entry.seam.kind().as_str());
+            }
+            if file_summary.actionable_gap_ids.insert(gap_id.clone()) {
+                increment(
+                    &mut file_summary.actionability_counts,
+                    record.canonical_item.actionability.as_str(),
+                );
+            }
+        }
+    }
+
+    let grip_class_counts = grip_class_counts_json(&metrics);
+    let top_files_total = file_summaries.len();
+    let mut top_files = file_summaries.into_iter().collect::<Vec<_>>();
+    top_files.sort_by(|(file_a, a), (file_b, b)| {
+        b.actionable_gap_ids
+            .len()
+            .cmp(&a.actionable_gap_ids.len())
+            .then(b.headline_eligible_seams.cmp(&a.headline_eligible_seams))
+            .then(b.raw_seams.cmp(&a.raw_seams))
+            .then(file_a.cmp(file_b))
+    });
+    let top_files_json = top_files
+        .iter()
+        .take(MAX_TOP_FILES_SUMMARY_JSON)
+        .map(|(file, summary)| {
+            json!({
+                "file": file,
+                "raw_seams": summary.raw_seams,
+                "headline_eligible_seams": summary.headline_eligible_seams,
+                "canonical_gap_records": summary.canonical_gap_ids.len(),
+                "unsuppressed_exposure_gaps": summary.actionable_gap_ids.len(),
+                "suppressed_exposure_gaps": summary.suppressed_exposure_gaps,
+                "reason_breakdown": {
+                    "actionability": summary.actionability_counts,
+                    "grip_class": summary.grip_class_counts,
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "schema_version": REPO_EXPOSURE_SUMMARY_SCHEMA_VERSION,
+        "format": "repo-exposure-summary-json",
+        "tool": "ripr",
+        "ripr_version": env!("CARGO_PKG_VERSION"),
+        "scope": "repo",
+        "basis": "canonical_actionable_gap",
+        "metadata": {
+            "root": display_path(root),
+            "base": base,
+            "head": "HEAD",
+            "mode": mode,
+        },
+        "metrics": {
+            "raw_seams": metrics.seams_total,
+            "headline_eligible_seams": metrics.headline_eligible,
+            "canonical_gap_records": canonical_gap_ids.len(),
+            "raw_actionable_seam_records": raw_actionable_seam_records,
+            "unsuppressed_exposure_gaps": actionable_gap_ids.len(),
+            "suppressed_exposure_gaps": metrics.count_for(SeamGripClass::Suppressed),
+            "grip_class": grip_class_counts.clone(),
+        },
+        "reason_breakdown": {
+            "actionability": actionability_counts,
+            "gap_state": gap_state_counts,
+            "seam_kind": actionable_seam_kind_counts,
+            "grip_class": grip_class_counts,
+        },
+        "limits": {
+            "top_files_limit": MAX_TOP_FILES_SUMMARY_JSON,
+            "top_files_total": top_files_total,
+            "top_files_truncated": top_files_total > MAX_TOP_FILES_SUMMARY_JSON,
+        },
+        "top_files": top_files_json,
+    })
+}
+
+fn is_summary_actionable_canonical_item(
+    item: &crate::output::evidence_record::EvidenceRecordCanonicalItem,
+) -> bool {
+    item.gap_state == "actionable" && item.repair_route.is_some() && item.verify_command.is_some()
+}
+
+#[derive(Default)]
+struct FileExposureSummary {
+    raw_seams: usize,
+    headline_eligible_seams: usize,
+    suppressed_exposure_gaps: usize,
+    canonical_gap_ids: BTreeSet<String>,
+    actionable_gap_ids: BTreeSet<String>,
+    actionability_counts: BTreeMap<String, usize>,
+    grip_class_counts: BTreeMap<String, usize>,
+}
+
+fn grip_class_counts_json(metrics: &ExposureMetrics) -> BTreeMap<String, usize> {
+    SeamGripClass::ALL
+        .into_iter()
+        .map(|class| (class.as_str().to_string(), metrics.count_for(class)))
+        .collect()
+}
+
+fn increment(counts: &mut BTreeMap<String, usize>, key: &str) {
+    *counts.entry(key.to_string()).or_insert(0) += 1;
 }
 
 fn push_classified_json(
@@ -468,12 +652,21 @@ mod tests {
     }
 
     fn weakly_gripped_classified() -> ClassifiedSeam {
-        let seam = RepoSeam::new(
+        classified_at(
             "src/pricing.rs",
             "pricing::discounted_total",
-            SeamKind::PredicateBoundary,
             42,
-            88,
+            SeamGripClass::WeaklyGripped,
+        )
+    }
+
+    fn classified_at(file: &str, owner: &str, line: usize, class: SeamGripClass) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            file,
+            owner,
+            SeamKind::PredicateBoundary,
+            line * 10,
+            line,
             "amount >= discount_threshold",
             RequiredDiscriminator::BoundaryValue {
                 description: "amount >= discount_threshold".to_string(),
@@ -513,7 +706,7 @@ mod tests {
         ClassifiedSeam {
             seam,
             evidence,
-            class: SeamGripClass::WeaklyGripped,
+            class,
         }
     }
 
@@ -567,6 +760,85 @@ mod tests {
         let json = render_repo_exposure_json(&[]);
         assert!(json.contains("\"seams\": []"));
         assert!(json.contains("\"seams_total\": 0"));
+    }
+
+    #[test]
+    fn summary_json_contains_counts_and_omits_per_seam_payloads() -> Result<(), String> {
+        let summary = render_repo_exposure_summary_json(
+            &[weakly_gripped_classified()],
+            std::path::Path::new("."),
+            Some("origin/main"),
+            "draft",
+        );
+        let value: serde_json::Value = serde_json::from_str(&summary)
+            .map_err(|err| format!("parse summary JSON failed: {err}\n{summary}"))?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["format"], "repo-exposure-summary-json");
+        assert_eq!(value["scope"], "repo");
+        assert_eq!(value["basis"], "canonical_actionable_gap");
+        assert_eq!(value["metadata"]["base"], "origin/main");
+        assert_eq!(value["metadata"]["head"], "HEAD");
+        assert_eq!(value["metrics"]["raw_seams"], 1);
+        assert_eq!(value["metrics"]["headline_eligible_seams"], 1);
+        assert_eq!(value["metrics"]["canonical_gap_records"], 1);
+        assert_eq!(value["metrics"]["unsuppressed_exposure_gaps"], 1);
+        assert_eq!(
+            value["reason_breakdown"]["actionability"]["extend_related_test"],
+            1
+        );
+        assert_eq!(value["reason_breakdown"]["grip_class"]["weakly_gripped"], 1);
+        let top_files = value["top_files"]
+            .as_array()
+            .ok_or_else(|| format!("top_files is not an array: {value}"))?;
+        assert_eq!(top_files.len(), 1);
+        assert_eq!(top_files[0]["file"], "src/pricing.rs");
+        assert_eq!(top_files[0]["unsuppressed_exposure_gaps"], 1);
+
+        assert!(value.get("seams").is_none());
+        for forbidden in [
+            "\"evidence_record\"",
+            "\"related_tests\"",
+            "\"observed_values\"",
+            "\"missing_discriminators\"",
+        ] {
+            assert!(
+                !summary.contains(forbidden),
+                "summary should omit {forbidden}: {summary}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn summary_json_bounds_top_files() -> Result<(), String> {
+        let mut classified = Vec::new();
+        for idx in 0..30 {
+            classified.push(classified_at(
+                &format!("src/file_{idx}.rs"),
+                &format!("pricing::owner_{idx}"),
+                idx + 1,
+                SeamGripClass::WeaklyGripped,
+            ));
+        }
+
+        let summary = render_repo_exposure_summary_json(
+            &classified,
+            std::path::Path::new("."),
+            None,
+            "ready",
+        );
+        let value: serde_json::Value = serde_json::from_str(&summary)
+            .map_err(|err| format!("parse summary JSON failed: {err}\n{summary}"))?;
+        let top_files = value["top_files"]
+            .as_array()
+            .ok_or_else(|| format!("top_files is not an array: {value}"))?;
+
+        assert_eq!(top_files.len(), 25);
+        assert_eq!(value["limits"]["top_files_limit"], 25);
+        assert_eq!(value["limits"]["top_files_total"], 30);
+        assert_eq!(value["limits"]["top_files_truncated"], true);
+        Ok(())
     }
 
     #[test]
@@ -630,5 +902,24 @@ mod tests {
             "Markdown missing direct_owner_call tag: {md}"
         );
         assert!(md.contains("high"), "Markdown missing confidence tag: {md}");
+    }
+
+    #[test]
+    fn given_repo_exposure_related_tests_when_helper_owner_call_then_additive_reason_is_emitted() {
+        let mut classified = weakly_gripped_classified();
+        classified.evidence.related_tests[0].relation_reason =
+            crate::analysis::test_grip_evidence::RelationReason::HelperOwnerCall;
+
+        let json = render_repo_exposure_json(&[classified.clone()]);
+        assert!(
+            json.contains("\"relation_reason\": \"helper_owner_call\""),
+            "JSON missing helper_owner_call relation_reason: {json}"
+        );
+
+        let md = render_repo_exposure_md(&[classified]);
+        assert!(
+            md.contains("helper_owner_call"),
+            "Markdown missing helper_owner_call tag: {md}"
+        );
     }
 }

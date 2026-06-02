@@ -1,12 +1,5 @@
 # Contributing
 
-Active development happens in
-[`EffortlessMetrics/ripr-swarm`](https://github.com/EffortlessMetrics/ripr-swarm).
-This repository remains the public release and distribution authority. Open PRs
-here only for release, security, or explicit `ripr-swarm` promotion work; routine
-feature, analyzer, editor, docs, badge, and repo-ops changes should target
-`ripr-swarm`.
-
 `ripr` is built PR by PR. Each PR should have a narrow production delta and a
 complete evidence package, so reviewers can evaluate behavior, risk, and
 traceability without reconstructing intent from chat history.

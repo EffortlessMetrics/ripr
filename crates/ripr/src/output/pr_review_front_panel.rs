@@ -1,6 +1,12 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use super::first_pr::STATIC_EVIDENCE_BOUNDARY;
+use super::receipt_lifecycle::{
+    RECEIPT_MISSING, RECEIPT_NOT_APPLICABLE, receipt_lifecycle_state,
+    receipt_lifecycle_state_from_receipt_value,
+};
+
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_review_front_panel";
 
@@ -119,10 +125,19 @@ struct PanelTopIssue {
     path: Option<String>,
     line: Option<u64>,
     classification: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    changed_behavior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_evidence_strength: Option<String>,
     missing_discriminator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focused_proof_intent: Option<String>,
     related_test: Option<String>,
     suggested_test: Option<String>,
     verify_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    receipt_command: Option<String>,
+    static_evidence_boundary: &'static str,
     agent_command: Option<String>,
     receipt: PanelReceipt,
 }
@@ -395,26 +410,40 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
     out.push_str("# RIPR PR Review\n\n");
     out.push_str(&format!("Status: {}\n\n", report.status));
 
+    out.push_str("Start here:\n");
     if report.summary.top_issue_state == "missing_required_input" {
-        out.push_str("Next: regenerate the missing assistant proof artifact before acting on this panel.\n\n");
+        out.push_str("- State: missing required evidence\n");
+        out.push_str("- Safe next action: regenerate the missing assistant proof artifact before acting on this panel.\n");
         if let Some(warning) = report.warnings.first() {
-            out.push_str("Missing input:\n");
             out.push_str(&format!(
-                "- {}\n\n",
+                "- Missing input: {}\n",
                 str_or(warning.source_artifact.as_deref(), "not_available")
             ));
         }
+        out.push_str("- Boundary: advisory static evidence only; no gate, runtime, coverage, or mutation proof is implied.\n\n");
     } else if let Some(issue) = &report.top_issue {
-        out.push_str("Top issue:\n");
+        out.push_str(&format!("- State: {}\n", report.summary.top_issue_state));
+        out.push_str(&format!("- Source: {}\n", issue.source));
+        out.push_str(&format!("- Identity: {}\n", issue_primary_identity(issue)));
         out.push_str(&format!(
             "- File: {}\n",
             issue_location(issue).unwrap_or_else(|| "not_available".to_string())
         ));
+        out.push_str(&format!("- Repair route: {}\n", issue_repair_route(issue)));
         if let Some(classification) = &issue.classification {
             out.push_str(&format!("- Class: {classification}\n"));
         }
+        if let Some(changed_behavior) = &issue.changed_behavior {
+            out.push_str(&format!("- Changed behavior: `{changed_behavior}`\n"));
+        }
+        if let Some(strength) = &issue.current_evidence_strength {
+            out.push_str(&format!("- Current evidence strength: {strength}\n"));
+        }
         if let Some(discriminator) = &issue.missing_discriminator {
             out.push_str(&format!("- Missing discriminator: {discriminator}\n"));
+        }
+        if let Some(intent) = &issue.focused_proof_intent {
+            out.push_str(&format!("- Focused proof intent: {intent}\n"));
         }
         if let Some(suggested) = &issue.suggested_test {
             out.push_str(&format!(
@@ -425,9 +454,20 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         if let Some(related) = &issue.related_test {
             out.push_str(&format!("- Related test: {related}\n"));
         }
+        out.push_str(&format!(
+            "- Verify command: {}\n",
+            markdown_command_or(issue.verify_command.as_deref(), "not_available")
+        ));
+        if let Some(command) = &issue.receipt_command {
+            out.push_str(&format!("- Receipt command: `{command}`\n"));
+        }
+        out.push_str(&format!("- Receipt: {}\n", issue_receipt_summary(issue)));
+        out.push_str(&format!("- Boundary: {}\n", issue.static_evidence_boundary));
         out.push('\n');
     } else {
-        out.push_str("Next: no actionable PR-local RIPR guidance is available.\n\n");
+        out.push_str("- State: no actionable PR-local RIPR guidance\n");
+        out.push_str("- Safe next action: inspect supporting evidence or regenerate inputs after a relevant change.\n");
+        out.push_str("- Boundary: no actionable gap is not a coverage, runtime, mutation, gate, or merge-readiness claim.\n\n");
     }
 
     if report.summary.placement == "summary_only" {
@@ -533,7 +573,7 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
     if let Some(issue) = &report.top_issue
         && (issue.agent_command.is_some()
             || issue.verify_command.is_some()
-            || issue.receipt.status != "not_available")
+            || issue.receipt.status != RECEIPT_NOT_APPLICABLE)
         && report.summary.policy_state != "waived"
         && report.summary.policy_state != "suppressed"
         && report.summary.top_issue_state != "summary_only"
@@ -571,6 +611,42 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         out.push_str(&format!("- {limit}\n"));
     }
     out
+}
+
+fn issue_primary_identity(issue: &PanelTopIssue) -> String {
+    issue
+        .canonical_gap_id
+        .as_deref()
+        .or(issue.seam_id.as_deref())
+        .unwrap_or("not_available")
+        .to_string()
+}
+
+fn issue_repair_route(issue: &PanelTopIssue) -> String {
+    if issue.suggested_test.is_some() {
+        "focused_test".to_string()
+    } else if issue.agent_command.is_some() {
+        "agent_handoff".to_string()
+    } else if issue.verify_command.is_some() {
+        "verify_existing_repair".to_string()
+    } else if issue.receipt.status != RECEIPT_NOT_APPLICABLE {
+        "inspect_receipt_state".to_string()
+    } else {
+        "not_available".to_string()
+    }
+}
+
+fn markdown_command_or(command: Option<&str>, fallback: &str) -> String {
+    command
+        .map(|command| format!("`{command}`"))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn issue_receipt_summary(issue: &PanelTopIssue) -> String {
+    match issue.receipt.artifact.as_deref() {
+        Some(artifact) => format!("{} ({artifact})", issue.receipt.status),
+        None => issue.receipt.status.clone(),
+    }
 }
 
 pub(crate) use crate::output::path::display_path;
@@ -1283,6 +1359,7 @@ fn top_issue_from_first_action(
     let selected = action.get("selected")?;
     let target = action.get("target");
     let seam_id = string_path(selected, &["seam_id"]);
+    let classification = string_path(selected, &["classification"]);
     Some(PanelTopIssue {
         source: "first_useful_action".to_string(),
         source_artifact: input.first_action_path.clone()?,
@@ -1290,14 +1367,25 @@ fn top_issue_from_first_action(
         canonical_gap_id: string_path(selected, &["canonical_gap_id"]),
         path: string_path(selected, &["path"]),
         line: u64_path(selected, &["line"]),
-        classification: string_path(selected, &["classification"]),
+        classification: classification.clone(),
+        changed_behavior: string_from_sources(&[
+            (Some(selected), &["changed_behavior"]),
+            (target, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(selected)]),
         missing_discriminator: string_path(selected, &["missing_discriminator"]),
+        focused_proof_intent: focused_proof_intent_from_action_or_proof(
+            action,
+            parsed.assistant_proof.as_ref(),
+        ),
         related_test: target.and_then(|target| string_path(target, &["related_test"])),
         suggested_test: suggested_test_from_action_or_proof(
             action,
             parsed.assistant_proof.as_ref(),
         ),
         verify_command: string_path(action, &["commands", "verify"]),
+        receipt_command: string_path(action, &["commands", "receipt"]),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().map(|seam_id| {
             format!(
                 "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
@@ -1307,7 +1395,7 @@ fn top_issue_from_first_action(
         receipt: receipt_from_input(
             input.receipt_path.as_deref(),
             parsed.receipt.as_ref(),
-            "missing",
+            RECEIPT_MISSING,
         ),
     })
 }
@@ -1336,7 +1424,26 @@ fn top_issue_from_guidance(
             (Some(item), &["static_class"]),
         ])
         .map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(item), &["changed_behavior"]),
+            (Some(item), &["changed_expression"]),
+            (Some(item), &["evidence", "changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| {
+                string_from_sources(&[
+                    (Some(item), &["classification"]),
+                    (Some(item), &["class"]),
+                    (Some(item), &["static_class"]),
+                ])
+                .map(normalize_class)
+            }),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["suggested_test", "near_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         verify_command: seam_id.as_ref().map(|_| {
@@ -1345,6 +1452,8 @@ fn top_issue_from_guidance(
                 input.root
             )
         }),
+        receipt_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().map(|seam_id| {
             format!(
                 "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
@@ -1353,7 +1462,7 @@ fn top_issue_from_guidance(
         }),
         receipt: PanelReceipt {
             artifact: None,
-            status: "missing".to_string(),
+            status: RECEIPT_MISSING.to_string(),
         },
     })
 }
@@ -1384,10 +1493,19 @@ fn top_issue_from_gate_decision(
             (Some(item), &["line"]),
         ]),
         classification: Some("weakly_exposed".to_string()),
+        changed_behavior: string_path(item, &["evidence", "changed_behavior"]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| Some("weakly_exposed".to_string())),
         missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["evidence", "focused_proof_intent"]),
+            (Some(item), &["evidence", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["evidence", "recommended_test"]),
         suggested_test: string_path(item, &["evidence", "assertion_shape"]),
         verify_command: None,
+        receipt_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: seam_id.as_deref().and_then(|seam_id| {
             if decision == "acknowledged" {
                 Some(format!(
@@ -1401,9 +1519,9 @@ fn top_issue_from_gate_decision(
         receipt: PanelReceipt {
             artifact: None,
             status: if decision == "suppressed" {
-                "not_available".to_string()
+                RECEIPT_NOT_APPLICABLE.to_string()
             } else {
-                "missing".to_string()
+                RECEIPT_MISSING.to_string()
             },
         },
     })
@@ -1424,14 +1542,23 @@ fn top_issue_from_baseline_delta(
         path: string_path(item, &["path"]),
         line: u64_path(item, &["line"]),
         classification: string_path(item, &["static_class"]).map(normalize_class),
+        changed_behavior: string_path(item, &["changed_behavior"]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| string_path(item, &["static_class"]).map(normalize_class)),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
         related_test: string_path(item, &["suggested_test", "recommended_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         verify_command: string_path(item, &["repair", "verify_command"]),
+        receipt_command: string_path(item, &["repair", "receipt_command"]),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {
             artifact: None,
-            status: "not_available".to_string(),
+            status: RECEIPT_NOT_APPLICABLE.to_string(),
         },
     })
 }
@@ -1457,16 +1584,41 @@ fn top_issue_from_assistant_health(
         path: string_path(seam, &["path"]),
         line: u64_path(seam, &["line"]),
         classification: string_path(seam, &["grip_class"]).map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(seam), &["changed_behavior"]),
+            (recommendation, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[
+            Some(seam),
+            recommendation,
+        ])
+        .or_else(|| string_path(seam, &["grip_class"]).map(normalize_class)),
         missing_discriminator: string_path(seam, &["missing_discriminator"]),
+        focused_proof_intent: recommendation.and_then(|value| {
+            string_from_sources(&[
+                (Some(value), &["focused_proof_intent"]),
+                (Some(value), &["suggested_test"]),
+                (Some(value), &["assertion_shape"]),
+            ])
+        }),
         related_test: recommendation.and_then(|value| string_path(value, &["related_test"])),
         suggested_test: recommendation.and_then(|value| string_path(value, &["suggested_test"])),
         verify_command: recommendation.and_then(|value| string_path(value, &["verify_command"])),
+        receipt_command: receipt.and_then(|value| string_path(value, &["command"])),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: handoff.and_then(|value| string_path(value, &["agent_command"])),
         receipt: PanelReceipt {
             artifact: receipt.and_then(|value| string_path(value, &["artifact"])),
-            status: receipt
-                .and_then(|value| string_path(value, &["status"]))
-                .unwrap_or_else(|| "missing".to_string()),
+            status: parsed
+                .receipt
+                .as_ref()
+                .map(receipt_lifecycle_state_from_receipt_value)
+                .or_else(|| {
+                    receipt
+                        .and_then(|value| string_path(value, &["status"]))
+                        .map(|state| receipt_lifecycle_state(Some(&state)))
+                })
+                .unwrap_or_else(|| RECEIPT_MISSING.to_string()),
         },
     })
 }
@@ -1525,6 +1677,19 @@ fn placement_from_guidance(pr_guidance: Option<&Value>) -> String {
     "not_available".to_string()
 }
 
+fn focused_proof_intent_from_action_or_proof(
+    action: &Value,
+    proof: Option<&Value>,
+) -> Option<String> {
+    string_from_sources(&[
+        (Some(action), &["target", "focused_proof_intent"]),
+        (Some(action), &["target", "suggested_assertion"]),
+        (proof, &["recommendation", "focused_proof_intent"]),
+        (proof, &["recommendation", "suggested_test"]),
+        (proof, &["recommendation", "assertion_shape"]),
+    ])
+}
+
 fn suggested_test_from_action_or_proof(action: &Value, proof: Option<&Value>) -> Option<String> {
     string_from_sources(&[
         (proof, &["recommendation", "suggested_test"]),
@@ -1538,6 +1703,16 @@ fn suggested_test_from_action_or_proof(action: &Value, proof: Option<&Value>) ->
             return format!("Add a focused test where {condition} and assert the exact {target}.");
         }
         value
+    })
+}
+
+fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        let source = (*source)?;
+        string_from_sources(&[
+            (Some(source), &["current_evidence_strength"]),
+            (Some(source), &["evidence", "current_evidence_strength"]),
+        ])
     })
 }
 
@@ -1555,10 +1730,12 @@ fn receipt_from_input(
                 ])
             })
         }),
-        status: if receipt_path.is_some() || receipt_json.is_some() {
-            "present".to_string()
+        status: if let Some(receipt) = receipt_json {
+            receipt_lifecycle_state_from_receipt_value(receipt)
+        } else if receipt_path.is_some() {
+            receipt_lifecycle_state(Some("present"))
         } else {
-            missing_status.to_string()
+            receipt_lifecycle_state(Some(missing_status))
         },
     }
 }
@@ -1845,6 +2022,59 @@ mod tests {
         let rendered = render_pr_review_front_panel_json(&report)?;
         assert!(rendered.contains("\"kind\": \"malformed_input\""));
         assert!(rendered.contains("Optional PR guidance input is malformed"));
+        Ok(())
+    }
+
+    #[test]
+    fn first_action_top_issue_ignores_target_evidence_strength() -> Result<(), String> {
+        let input = PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: None,
+            first_action_path: Some("first-action.json".to_string()),
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: None,
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        };
+        let parsed = ParsedPanelSources {
+            first_action: Some(
+                serde_json::from_str(
+                    r#"{
+                        "selected": {"classification": "weakly_exposed"},
+                        "target": {"current_evidence_strength": "target-only value"}
+                    }"#,
+                )
+                .map_err(|e| e.to_string())?,
+            ),
+            ..Default::default()
+        };
+
+        let issue = top_issue_from_first_action(&input, &parsed)
+            .ok_or_else(|| "expected first-action top issue".to_string())?;
+        assert_eq!(
+            issue.current_evidence_strength, None,
+            "first-action top issue must source evidence strength only from selected"
+        );
         Ok(())
     }
 

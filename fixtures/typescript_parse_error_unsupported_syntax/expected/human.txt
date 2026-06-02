@@ -1,0 +1,64 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_parse_error_unsupported_syntax/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/broken.ts:2
+
+Changed
+  after:    const next = ;
+
+Probe
+  family: static_unknown
+  delta:  unknown
+
+Language
+  language: typescript
+  status: preview
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: static_limitation
+  category: unsupported_syntax
+  repair packet ready: false
+  why not actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)
+  repair route: fix or isolate the unsupported syntax before relying on repair guidance
+  evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+  raw evidence: src/broken.ts:2 (typescript_preview_probe) source=probe:src_broken.ts:2:typescript_preview_unsupported_syntax
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
+  - infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
+  - propagation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
+  - observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
+  - discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
+  - static_limit unsupported_syntax: 1 parser error(s)
+
+Weakness
+  - Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.
+
+Stop reasons:
+  - static_probe_unknown
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: unknown
+  changed behavior: static_unknown changed at src/broken.ts:2: `const next = ;`
+  oracle: unknown (none)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: unsupported_syntax
+  repair packet ready: false
+  why not actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)
+  repair route: fix or isolate the unsupported syntax before relying on repair guidance
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.

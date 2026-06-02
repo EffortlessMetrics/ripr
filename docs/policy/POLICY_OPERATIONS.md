@@ -6,8 +6,9 @@ GitHub tracker: PR stack #859 through #922, closed by the campaign closeout.
 
 This was the focused Lane 2 tracker for policy operations after
 [Policy readiness](POLICY_READINESS.md). It is not the global active campaign
-manifest. `.ripr/goals/active.toml` now points at Campaign 28: First Useful PR
-Loop. This tracker records the policy-operations work that landed without
+manifest. Campaign 28 is now closed and archived, and
+`.ripr/goals/active.toml` records `no_current_goal = true` until a successor is
+selected. This tracker records the policy-operations work that landed without
 changing analyzer behavior, editor behavior, generated tests, mutation
 execution, default CI blocking, config files, baselines, suppressions, or
 preview-language gate eligibility.
@@ -203,6 +204,8 @@ default `allowed_now = false`, explicit required/supplied/missing evidence
 accounting, advisory generated-CI posture, rollback guidance, and no actual
 promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI
 blocking, or preview eligibility mutation.
+The maintainer-facing proof checklist is
+[Preview promotion criteria](PREVIEW_PROMOTION_CRITERIA.md).
 
 The maintainer workflow is documented in
 [Policy operations workflow](../POLICY_OPERATIONS_WORKFLOW.md). It explains how

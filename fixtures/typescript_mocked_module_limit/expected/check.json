@@ -17,7 +17,8 @@
         "delta": "control",
         "file": "src/discount.ts",
         "line": 2,
-        "expression": "    if (amount >= threshold) {"
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/discount.ts::applyDiscount"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `applyDiscount`"},
@@ -29,8 +30,8 @@
       "evidence_path": ["reach yes: 1 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/discount.test.ts:11 at threshold discounts uses strong exact value oracle: expect(...).toBe(...)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: applyDiscount", "static_limit mocked_module: `./api`"],
-      "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "Static limit `mocked_module`: related test file mocks `./api` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence."],
+      "evidence": ["owner: applyDiscount", "static_limit mocked_module: `./api`", "gap_state: static_limitation", "actionability_category: mocked_module", "why_not_actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance", "repair_route: add mock-shape support or validate the real substitution under test before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount"],
+      "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "Static limit `mocked_module`: related test file mocks `./api` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `mocked_module`: static limit `mocked_module` prevents bounded TypeScript repair guidance. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet"],
       "activation": {
         "observed_values": [
         ],
@@ -51,13 +52,68 @@
           "oracle": "expect(...).toBe(...)"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/discount.test.ts",
+          "line": 11,
+          "name": "at threshold discounts"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "mocked_module"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "mocked_module",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/discount.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "applyDiscount",
+            "raw": "file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount",
+            "source_id": "probe:src_discount.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
+      },
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.",
       "language": "typescript",
       "language_status": "preview",
+      "owner_kind": "function",
       "static_limit_kind": "mocked_module"
     }
   ]

@@ -1,6 +1,6 @@
 # Start-Here Surface Convergence Implementation Plan
 
-Status: proposed
+Status: closed
 
 Owner: cross-lane; Lane 4 / PR-CI and CLI surfaces lead, Lane 2 owns policy
 meaning, Lane 3 consumes editor-ready state
@@ -18,8 +18,9 @@ First-PR Bridge are closed. `cargo xtask first-pr` and `ripr first-pr` can
 produce start-here packets. Generated CI, PR evidence, report indexes, support
 tiers, preview-language docs, and receipts exist.
 
-The next product gap is convergence: each surface should lead with the same
-canonical repair unit, state names, receipt lifecycle, and non-claims.
+The campaign is closed. Each surface now leads with the same canonical repair
+unit, state names, receipt lifecycle, and non-claims where that surface can
+project start-here evidence.
 
 ## Hard Boundaries
 
@@ -36,18 +37,16 @@ canonical repair unit, state names, receipt lifecycle, and non-claims.
 
 ## GitHub Issue Burn-Down
 
-Issue numbers are assigned after the docs stack PR creates the GitHub issues.
-
 | Issue | Work item | Status |
 | --- | --- | --- |
-| #1148 | `docs(product): open start-here surface convergence stack` | planned |
-| #1150 | `report: align PR/CI first screen on canonical repair unit` | planned |
-| #1151 | `cli: converge start-here command language` | planned |
-| #1152 | `receipt: standardize receipt lifecycle state` | planned |
-| #1154 | `output: standardize no-output and fail-closed states` | planned |
-| #1155 | `policy(language): define preview promotion proof criteria` | planned |
-| #1156 | `dogfood: record external-style start-here receipts` | planned |
-| #1157 | `campaign: close start-here surface convergence` | planned |
+| #201 | `docs(product): open start-here surface convergence stack` | done |
+| #202 | `report: align PR/CI first screen on canonical repair unit` | done |
+| #203 | `cli: converge start-here command language` | done |
+| #204 | `receipt: standardize receipt lifecycle state` | done |
+| #205 | `output: standardize no-output and fail-closed states` | done |
+| #206 | `policy(language): define preview promotion proof criteria` | done |
+| #207 | `dogfood: record external-style start-here receipts` | done |
+| #208 | `campaign: close start-here surface convergence` | done |
 
 ## Work Item 1: docs(product): open start-here surface convergence stack
 
@@ -205,6 +204,9 @@ tier than preview.
 - TypeScript, JavaScript, and Python remain preview until a policy-owned
   promotion packet closes the criteria.
 - Generated CI, editor, and CLI docs keep preview evidence advisory by default.
+- JavaScript evidence that shares the TypeScript-family preview adapter remains
+  JavaScript preview evidence unless a policy-owned packet explicitly names
+  JavaScript or an adapter-family promotion scope.
 
 ### Proof Commands
 
@@ -252,6 +254,8 @@ Close only after the issue burn-down proves converged start-here behavior.
 - PR/CI, CLI, receipts, no-output states, preview promotion criteria, and
   dogfood receipts are current.
 - Closeout maps requirements to artifacts and validation commands.
+- The active campaign manifest is archived and records `no_current_goal = true`
+  so the next campaign must be selected explicitly.
 
 ### Proof Commands
 
@@ -265,3 +269,8 @@ cargo xtask check-output-contracts
 cargo xtask check-pr
 git diff --check
 ```
+
+### Closeout
+
+Closed by
+[`docs/handoffs/2026-05-22-start-here-surface-convergence-closeout.md`](../../docs/handoffs/2026-05-22-start-here-surface-convergence-closeout.md).

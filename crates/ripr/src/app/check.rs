@@ -1,10 +1,12 @@
 use super::{CheckInput, CheckOutput};
 use crate::analysis::{
-    AnalysisOptions, AnalysisResult, run_analysis_with_oracle_policy,
-    run_repo_analysis_with_oracle_policy,
+    AnalysisResult, run_analysis_with_oracle_policy, run_repo_analysis_with_oracle_policy,
 };
 use crate::config::RiprConfig;
 use crate::domain::Summary;
+
+mod options_builder;
+mod output_builder;
 
 /// Runs the end-to-end static exposure analysis for a workspace.
 ///
@@ -30,10 +32,7 @@ pub(crate) fn check_workspace_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    let options = analysis_options_from_input(&input);
-    let analysis =
-        run_analysis_with_oracle_policy(&options, config.oracles(), config.languages().enabled())?;
-    Ok(check_output_from_analysis(input, analysis))
+    run_check(input, config, AnalysisMode::Diff)
 }
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
@@ -54,13 +53,7 @@ pub(crate) fn check_workspace_repo_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    let options = analysis_options_from_input(&input);
-    let analysis = run_repo_analysis_with_oracle_policy(
-        &options,
-        config.oracles(),
-        config.languages().enabled(),
-    )?;
-    Ok(check_output_from_analysis(input, analysis))
+    run_check(input, config, AnalysisMode::Repo)
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -71,7 +64,7 @@ pub(crate) fn check_workspace_repo_with_config(
 /// to compute legacy `Findings` those formats discard. The rest of the
 /// fields are populated for schema-consistency only.
 pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
-    check_output_from_analysis(
+    output_builder::check_output_from_analysis(
         input,
         AnalysisResult {
             summary: Summary::default(),
@@ -80,26 +73,31 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
     )
 }
 
-fn analysis_options_from_input(input: &CheckInput) -> AnalysisOptions {
-    AnalysisOptions {
-        root: input.root.clone(),
-        base: input.base.clone(),
-        diff_file: input.diff_file.clone(),
-        mode: input.mode.analysis_mode(),
-        include_unchanged_tests: input.include_unchanged_tests,
-    }
+enum AnalysisMode {
+    Diff,
+    Repo,
 }
 
-fn check_output_from_analysis(input: CheckInput, analysis: AnalysisResult) -> CheckOutput {
-    CheckOutput {
-        schema_version: "0.1".to_string(),
-        tool: "ripr".to_string(),
-        mode: input.mode,
-        root: input.root,
-        base: input.base,
-        summary: analysis.summary,
-        findings: analysis.findings,
-    }
+fn run_check(
+    input: CheckInput,
+    config: &RiprConfig,
+    mode: AnalysisMode,
+) -> Result<CheckOutput, String> {
+    let options = options_builder::analysis_options_from_input(&input);
+    let analysis = match mode {
+        AnalysisMode::Diff => run_analysis_with_oracle_policy(
+            &options,
+            config.oracles(),
+            config.languages().enabled(),
+        )?,
+        AnalysisMode::Repo => run_repo_analysis_with_oracle_policy(
+            &options,
+            config.oracles(),
+            config.languages().enabled(),
+        )?,
+    };
+
+    Ok(output_builder::check_output_from_analysis(input, analysis))
 }
 
 #[cfg(test)]

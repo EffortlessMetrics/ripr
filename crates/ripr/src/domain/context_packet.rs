@@ -4,6 +4,7 @@ use super::{Finding, MissingDiscriminatorFact, RelatedTest, ValueFact};
 pub struct ContextPacket {
     pub version: &'static str,
     pub tool: &'static str,
+    pub canonical_gap_id: Option<String>,
     pub probe: ContextPacketProbe,
     pub ripr: ContextPacketRipr,
     pub related_tests: Vec<RelatedTest>,
@@ -42,6 +43,7 @@ impl ContextPacket {
         Self {
             version: "1.0",
             tool: "ripr",
+            canonical_gap_id: finding.canonical_gap.as_ref().map(|gap| gap.id.clone()),
             probe: ContextPacketProbe {
                 id: finding.probe.id.0.clone(),
                 family: finding.probe.family.as_str().to_string(),
@@ -76,7 +78,7 @@ impl ContextPacket {
 mod tests {
     use super::*;
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
         MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
         RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, SymbolId,
         ValueContext, ValueFact,
@@ -93,6 +95,7 @@ mod tests {
 
         assert_eq!(packet.version, "1.0");
         assert_eq!(packet.tool, "ripr");
+        assert_eq!(packet.canonical_gap_id, None);
         assert_eq!(packet.probe.id, "probe:src_lib_rs:9:predicate");
         assert_eq!(packet.probe.family, "predicate");
         assert_eq!(packet.probe.delta, "control");
@@ -145,9 +148,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn context_packet_from_finding_carries_canonical_gap_id() {
+        let mut finding = sample_finding();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let packet = ContextPacket::from_finding(&finding, 2, Vec::new());
+
+        assert_eq!(
+            packet.canonical_gap_id.as_deref(),
+            Some(
+                "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+            )
+        );
+    }
+
     fn sample_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:9:predicate".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:9:predicate".to_string()),
                 location: SourceLocation::new("src/lib.rs", 9, 1),

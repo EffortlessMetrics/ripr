@@ -59,11 +59,11 @@ README-server.txt
 
 ## Release Proof
 
-The current verified public release line is `v0.6.0`, published on May 18,
+The current verified public release line is `v0.7.0`, published on May 20,
 2026:
 
-- The GitHub Release has `ripr-0.6.0.vsix`.
-- The release has `ripr-server-manifest-v0.6.0.json`.
+- The GitHub Release has `ripr-0.7.0.vsix`.
+- The release has `ripr-server-manifest-v0.7.0.json`.
 - The release has `checksums.txt`.
 - The release has server archives and `.sha256` files for each supported
   target:
@@ -75,7 +75,7 @@ The current verified public release line is `v0.6.0`, published on May 18,
 - The installed public loop was verified for `doctor`, `pilot`, `outcome`,
   `agent verify`, and `agent receipt`; see
   [Installation verification](INSTALLATION_VERIFICATION.md).
-- The 0.7.0 release must refresh the same VSIX, manifest, checksum, and
+- Future releases must refresh the same VSIX, manifest, checksum, and
   per-target server-archive asset family before publication.
 
 The historical `v0.3.1` release was verified on May 7, 2026:

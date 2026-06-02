@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_metaclass_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/models.py:6
+
+Changed
+  after:  class InvoiceRecord(metaclass=AuditMeta):
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/models.py::InvoiceRecord
+
+Language
+  language: python
+  status: preview
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach weak: 1 heuristic Python test link(s) found for owner `InvoiceRecord`; relation is uncertain
+  - infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator unknown: Static limit `metaprogramming` prevents a safe Python discriminator claim.
+  - related test tests/test_models.py:4 test_invoice_record_status uses unknown unknown oracle
+
+Weakness
+  - Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.
+
+Stop reasons:
+  - static_probe_unknown

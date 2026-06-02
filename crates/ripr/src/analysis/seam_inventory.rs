@@ -25,6 +25,7 @@ use super::rust_index::{
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
     CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamFactCache, WorkspaceState,
+    compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
@@ -35,6 +36,8 @@ use super::workspace;
 use crate::config::RiprConfig;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
 
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 
@@ -96,6 +99,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     };
     let key = state.cache_key();
+    if repo_exposure_seam_limit().is_some() {
+        trace_latency_phase("cache_load", "skipped_due_seam_limit", Duration::ZERO);
+        let classified = inventory_classified_seams_from_state_with_config(&state, config)?;
+        trace_latency_phase("total", "sampled_computed", total_started.elapsed());
+        return Ok(classified);
+    }
     let cache_started = Instant::now();
     trace_latency_phase(
         "cache_load",
@@ -271,6 +280,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     config: &RiprConfig,
 ) -> Result<Vec<ClassifiedSeam>, String> {
     let total_started = Instant::now();
+    let store_limit = compact_classified_seam_cache_store_limit()?;
     let cache = RepoSeamFactCache::at_compact_classified(root);
     let state = collect_workspace_state(root, config)?;
     let key = state.cache_key();
@@ -296,13 +306,23 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
 
     let classified = inventory_compact_classified_seams_from_state_with_config(&state, config)?;
     let store_started = Instant::now();
-    let store_status = match cache.store_compact_classified_seams(&key, &classified) {
-        Ok(()) => "ok".to_string(),
-        Err(reason) => {
-            eprintln!("ripr: compact repo seam cache store ignored ({reason})");
-            cache_store_status_label(&reason)
-        }
-    };
+    trace_latency_phase(
+        "compact_cache_store",
+        &format!(
+            "start_classified_{}_limit_{}",
+            classified.len(),
+            store_limit
+        ),
+        Duration::ZERO,
+    );
+    let store_status =
+        match cache.store_compact_classified_seams_with_limit(&key, &classified, store_limit) {
+            Ok(()) => "ok".to_string(),
+            Err(reason) => {
+                eprintln!("ripr: compact repo seam cache store ignored ({reason})");
+                cache_store_status_label(&reason)
+            }
+        };
     trace_latency_phase(
         "compact_cache_store",
         &store_status,
@@ -401,8 +421,9 @@ fn inventory_classified_seams_from_state_with_config(
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
     trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
     let seams_started = Instant::now();
-    let seams = inventory_seams_from_index(&production_files, &cached.index);
+    let mut seams = inventory_seams_from_index(&production_files, &cached.index);
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
+    apply_repo_exposure_seam_limit(&mut seams);
     let evidence_started = Instant::now();
     trace_latency_phase(
         "evidence_for_seams",
@@ -415,6 +436,36 @@ fn inventory_classified_seams_from_state_with_config(
     let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok(classified)
+}
+
+fn repo_exposure_seam_limit() -> Option<usize> {
+    std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV)
+        .ok()
+        .and_then(|value| parse_repo_exposure_seam_limit(&value))
+}
+
+fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
+    value
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|limit| *limit > 0)
+}
+
+fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) {
+    let Some(limit) = repo_exposure_seam_limit() else {
+        return;
+    };
+    let total = seams.len();
+    if total <= limit {
+        return;
+    }
+    seams.truncate(limit);
+    trace_latency_phase(
+        "repo_exposure_seam_limit",
+        &format!("limit_{}_of_{total}", seams.len()),
+        Duration::ZERO,
+    );
 }
 
 #[cfg(test)]
@@ -1087,6 +1138,15 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             cache_store_status_label("write cache failed: access denied"),
             "ignored_write_cache_failed__access_denied"
         );
+    }
+
+    #[test]
+    fn repo_exposure_seam_limit_parser_accepts_positive_integer_only() {
+        assert_eq!(parse_repo_exposure_seam_limit("8000"), Some(8000));
+        assert_eq!(parse_repo_exposure_seam_limit(" 12 "), Some(12));
+        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+        assert_eq!(parse_repo_exposure_seam_limit("-1"), None);
+        assert_eq!(parse_repo_exposure_seam_limit("not-a-number"), None);
     }
 
     #[test]

@@ -24,6 +24,7 @@ pub(in crate::analysis) fn build_finding(
 
     Finding {
         id: context.probe.id.0.clone(),
+        canonical_gap: None,
         probe: context.probe.clone(),
         class,
         ripr: evidence.ripr,

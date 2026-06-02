@@ -11,6 +11,17 @@ campaigns, work items, the active goal manifest, and handoffs) that any
 runner — Codex, Kiro, Claude Code, Cursor, or a generic agent — consumes,
 see [Repo tracking model](REPO_TRACKING_MODEL.md).
 
+When a handoff uses generic proof-stack language, Codex should translate it
+into RIPR's existing repo artifacts instead of adding a second task system:
+proposal/PRD means `docs/proposals/RIPR-PROP-*`, spec means
+`docs/specs/RIPR-SPEC-*`, ADR means `docs/adr/`, implementation plan means
+`docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, or `plans/`,
+active goal means `.ripr/goals/active.toml`, policy ledger means `policy/*.toml`
+or `.ripr/traceability.toml`, capability claims mean `docs/CAPABILITY_MATRIX.md`
+and `metrics/capabilities.toml`, support tiers mean
+`docs/status/SUPPORT_TIERS.md`, closeout means `docs/handoffs/`, and durable
+learning means `docs/LEARNINGS.md`.
+
 The repository supplies the harness around that loop:
 
 - implementation campaign docs
@@ -137,26 +148,27 @@ commands.
 The current `xtask` goals commands read this manifest:
 
 ```bash
-cargo xtask goals status
-cargo xtask goals next
-cargo xtask goals report
+rtk cargo xtask goals status
+rtk cargo xtask goals next
+rtk cargo xtask goals report
 ```
 
 Validate the manifest with:
 
 ```bash
-cargo xtask check-campaign
+rtk cargo xtask check-goals
 ```
 
-`check-campaign` validates the active execution manifest and the focused tracker
-rails around it. Focused tracker manifests must stay outside
+`check-goals` validates the active execution manifest and the focused tracker
+rails around it. `check-campaign` remains a compatibility alias. Focused
+tracker manifests must stay outside
 `.ripr/goals/active.toml`, done work items must stay tied to proof commands,
 and declared source-of-truth paths must point at existing proposal, plan, spec,
 receipt, and closeout files. When campaign docs reference a tracker manifest,
 the referenced manifest path must exist.
 
-Blocking a work item through `xtask` is planned but not implemented yet:
-
-```bash
-cargo xtask goals block <work-item-id> --reason "..."
-```
+Blocked work items are manifest state, not a separate mutation command. Record
+blocked work in the active manifest with `status = "blocked"`,
+`blocked_reason`, and `blocked_by` when applicable. `cargo xtask goals next`
+surfaces those blocked items and their reasons so agents do not infer ready work
+from chat history when the queue is intentionally blocked.

@@ -27,6 +27,10 @@ system, a second rust-analyzer, or a generic test generator.
 `ripr`'s end goal is to be a repo-native, proof-carrying static exposure
 assistant.
 
+That makes the repository itself a self-aligning product system: each PR moves
+one bounded capability, proves what changed, states what users may believe, and
+leaves the next slice easier to choose from repo artifacts.
+
 For users, `ripr` should make changed behavior test gaps obvious and
 repairable:
 
@@ -57,6 +61,84 @@ change what users may believe when the supporting spec, fixture, golden,
 dogfood receipt, or validation command is strong enough. `ripr` should never
 imply full test adequacy, runtime mutation confirmation, coverage adequacy,
 merge approval, or proof of correctness from static evidence alone.
+
+## Multi-Lane Safe Swarm Autonomy
+
+The swarm roadmap is intentionally **parallel-lane**, not a single serialized
+phase chain. Multiple lanes may move at the same time, but all lanes must
+converge through shared claim boundaries, evidence-level semantics, authority
+boundaries, and durable receipts.
+
+Roadmap eligibility is not execution authority. A lane starts only when current
+repo state selects it: an open PR, an accepted proposal/spec/plan work item, an
+active goal item, or an issue that links to those artifacts. If
+`cargo xtask goals next` says all unfinished items are blocked, this roadmap
+does not create a hidden ready item.
+
+The operating rule is:
+
+```text
+parallel work is encouraged; claim escalation is not
+```
+
+In practice, this means one lane may improve packet routing while another lane
+improves docs or CI/report truth, but no lane may silently convert:
+
+- visible -> ready
+- static-only -> safe-to-edit
+- review unavailable -> review passed
+- advisory timeout -> all failures advisory
+
+### Shared Gates
+
+All lanes must pass the same global gates:
+
+1. **Claim boundary gate**: every output states what it does not prove.
+2. **Evidence-level gate**: every packet/report states its evidence level and
+   what action that level allows.
+3. **Authority gate**: each action is explicit about swarm authority, source
+   authority, operator authority, CI authority, or docs-only authority.
+4. **Receipt gate**: meaningful movement records a durable receipt artifact.
+5. **Material-change gate**: no refresh-only churn PRs when only timestamps or
+   regenerated equivalent status changed.
+
+### Parallel Lane Model
+
+| Lane | Owns | Produces | Must not do |
+| --- | --- | --- | --- |
+| A. Control Plane / CI Truth | Workflow truth, advisory semantics, runner proof disposition, report consistency | Control-plane status + workflow/runner receipts | Hide unknown failures as advisory |
+| B. Judgment Routing | `blocked_by_operator_judgment` packet routing + decision ledger | Judgment packets + decision receipts | Mark packets ready by visibility alone |
+| C. Evidence Ladder / Readiness | Evidence levels, readiness names, allowed actions | Evidence ladder + readiness contract | Use ambiguous "ready" without readiness target |
+| D. Analyzer Evidence Movement | Narrow class-by-class evidence movement with fixture backing | Evidence audits + fixture-backed readiness deltas | Overclaim runtime/mutation adequacy |
+| E. Source Promotion | Bounded swarm-proof to source-proof promotion path | Promotion candidates + source template + closeout receipts | Backdoor unauthorized source edits |
+| F. Operator UX / Product Surface | First-useful "what now?" guidance and recovery docs | Roadmap/operator guidance artifacts | Create status-only docs churn |
+| G. Bounded Attempts (gated) | Attempt contracts and receipt model for dry-run/test-only work | Attempt schemas + attempt outcome receipts | Run production source edits by default |
+
+Lanes **A-F may proceed in parallel** only through PR-sized slices selected by
+the active goal, issue ledger, implementation plan, or source-of-truth stack.
+Lane **G is design-eligible** under the same selection rule, but execution
+remains gated on control-plane truth, judgment routing, evidence ladder
+readiness semantics, and explicit authority checks.
+
+### Shared Evidence Vocabulary
+
+New lane artifacts that introduce or change readiness, routing, or handoff
+behavior should carry an explicit evidence level:
+
+- `E0`: raw static signal (report only)
+- `E1`: canonical actionable gap (surface in reports)
+- `E2`: repair packet (dry-run routing / judgment packet)
+- `E3`: strong static packet (bounded swarm dry-run eligible)
+- `E4`: operator-selected packet (test-only candidate)
+- `E5`: receipt-backed improvement (source-promotion candidate)
+- `E6`: source-merged proof (durable advancement)
+- `E7`: runtime/mutation confirmation (calibration only)
+
+Readiness labels should always be concrete, for example
+`ready_for_report`, `ready_for_judgment`, `ready_for_dry_run`,
+`ready_for_test_only_attempt`, and `ready_for_source_promotion`.
+These labels are descriptive; they do not grant source-promotion, dry-run, or
+merge authority without the linked proof and authority boundary.
 
 ## Current Position
 

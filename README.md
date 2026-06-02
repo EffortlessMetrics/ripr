@@ -1,9 +1,17 @@
+<p align="center">
+  <img src="assets/logo/ripr-icon-dark.svg" alt="ripr logo" width="120" />
+</p>
+
 <h1 align="center">ripr</h1>
 
 <p align="center">
   <a href="https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml"><img src="https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="https://codecov.io/gh/EffortlessMetrics/ripr"><img src="https://codecov.io/gh/EffortlessMetrics/ripr/graph/badge.svg?branch=main" alt="Codecov" /></a>
-  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json" alt="ripr+" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json" alt="ripr open gaps" /></a>
+  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json" alt="ripr+ test-efficiency gaps" /></a>
 </p>
 
 <p align="center">
@@ -71,10 +79,15 @@ executed. Mutation testing asks whether tests fail against a concrete mutant.
 Does this changed behavior appear exposed to a meaningful test assertion?
 ```
 
-The usable repair loop is Rust/Cargo: find one named gap, add one focused proof
-outside `ripr`, and keep the receipt. TypeScript and Python are opt-in preview
-surfaces; see [Support tiers](docs/status/SUPPORT_TIERS.md) for what is usable,
-stable, preview, advisory, blocked, or unsupported.
+The mature repair loop is Rust/Cargo: find one named gap, add one focused proof
+outside `ripr`, and keep the receipt. TypeScript remains an opt-in preview
+surface. Python now has a scoped `usable alpha` repair-routing loop for selected
+pytest/unittest workflows: direct weak Python findings can emit repair cards,
+verify commands, bounded agent packets, and before/after receipts. Broader
+Python static facts remain preview/advisory and do not run imports, execute
+tests, generate tests, or claim mutation adequacy. See
+[Support tiers](docs/status/SUPPORT_TIERS.md) for what is usable, stable,
+preview, advisory, blocked, or unsupported.
 
 ## The Problem
 
@@ -332,16 +345,18 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.7.0` is the prepared source release-candidate line for the Rust crate, VS Code/Open VSX extension package metadata, generated CI workflow artifacts, and the Rust 1.95 MSRV. The current public release remains `0.6.0` until release execution tags, publishes, and verifies crates.io, GitHub Release assets, VS Code Marketplace, Open VSX, and install smoke. | 0.7 release proof and explicit publish decision. |
+| Distribution | `0.7.0` is the current public release line for the Rust crate, GitHub Release server assets, VS Code/Open VSX extension metadata, generated CI workflow artifacts, and the Rust 1.95 MSRV. `ripr-swarm` remains the development trunk; source `ripr` remains the release/distribution authority. | Promotion and release-maintenance proof. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges count unresolved actionable static repair gaps while diff badge artifacts remain finding-exposure based. | Output contract maintenance. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, repo seam diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Editor contract maintenance. |
-| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | Agent loop maintenance. |
-| RIPR swarm repair loop | `cargo xtask ripr-swarm plan --top <n>` ranks actionable canonical gap packets into swarm-ready, blocked, missing-context, static-limitation, and high-confidence buckets; `cargo xtask ripr-swarm attempt --packet <id> --dry-run` prints one bounded repair context; and [RIPR swarm human workflow](docs/RIPR_SWARM_HUMAN_WORKFLOW.md) explains packet selection, repair, verify, receipt, and outcome handling. The [0.7 dogfood receipt](docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md) records live audit timeout handling with fail-closed packet suppression, fixture-backed packet planning, dry-run attempts, verify/receipt separation, and outcome joins. The [0.7 readiness closeout](docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md) keeps the loop advisory/dry-run-first and routes release proof back to source `ripr`. These surfaces do not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges. | 0.7 release proof and explicit publish decision. |
+| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. GapRecord-backed agent packets also carry allowed files, forbidden files, conflict groups, receipt command/status, and preview-language guardrails when supplied. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | Agent loop maintenance. |
+| RIPR swarm repair loop | `cargo xtask ripr-swarm plan --top <n>` ranks actionable canonical gap packets into swarm-ready, blocked, missing-context, static-limitation, and high-confidence buckets; `cargo xtask ripr-swarm attempt --packet <id> --dry-run` prints one bounded repair context; and [RIPR swarm human workflow](docs/RIPR_SWARM_HUMAN_WORKFLOW.md) explains packet selection, repair, verify, receipt, and outcome handling. The [0.7 dogfood receipt](docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md) records live audit timeout handling with fail-closed packet suppression, fixture-backed packet planning, dry-run attempts, verify/receipt separation, and outcome joins. The [0.7 readiness closeout](docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md) keeps the loop advisory/dry-run-first and routes release proof back to source `ripr`. Recent Lane 1 route evidence includes `analysis/assertion-target-return-value-owner-call-tracing` for a non-actionable static-limitation subroute. These surfaces do not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges. | Swarm repair-loop maintenance. |
 | First useful action | `ripr first-action` writes advisory `first-useful-action.{json,md}` from explicit PR guidance, assistant proof, PR evidence ledger, baseline delta, receipt, optional gate, optional coverage/grip frontier, and editor context inputs without hidden analysis, source edits, generated tests, provider calls, mutation execution, or default CI blocking; generated CI projects the report as advisory summary/artifact content, and VS Code status/Show Status can project an existing workspace-matched report without new diagnostics. | `docs/first-useful-action-workflow` |
-| Gap decision ledger | `ripr reports gap-ledger --records ...` renders explicit `GapRecord` input into advisory JSON and Markdown so repairability, projection eligibility, safe gate predicates, missing artifacts, preview ineligibility, and receipt movement share one decision vocabulary before downstream surfaces consume them. | `report/first-useful-action-gap-record` |
+| Gap decision ledger | `ripr reports gap-ledger --records ...` renders explicit `GapRecord` input into advisory JSON and Markdown so repairability, projection eligibility, safe gate predicates, missing artifacts, preview ineligibility, and receipt movement share one decision vocabulary before downstream surfaces consume them. `--check-output` can also derive PR-local Python preview repair records from actionable `python_repair_card` findings without rerunning analysis. | `report/first-useful-action-gap-record` |
+| Python repair routing | Scoped `usable alpha` loop for selected pytest/unittest findings: repair cards, verify commands, bounded agent packets, queue/ingest handling, real-repo eval receipts, and before/after outcome receipts. Broader Python static facts and static limits remain preview/advisory. | `dogfood/python-stability-evals-v1` |
+| Python preview static facts | Opt-in/advisory Python facts cover project/test discovery, owners, probes, oracle shapes, static limits, related-test hints, and stable canonical gap IDs. Static-limit findings remain limitation evidence, not repair cards or agent packets. | Maintenance; no promotion of broader preview facts. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
@@ -381,10 +396,9 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
-`v0.6.0` public release line includes the server manifest, per-target server
-archives, checksums, and VSIX needed for this default path; `v0.7.0` must
-refresh the same asset family during release execution before any public
-availability claim.
+`v0.7.0` public release line includes the server manifest, per-target server
+archives, checksums, and VSIX needed for this default path. Future public
+release claims must refresh the same asset family during release execution.
 
 See:
 
@@ -438,7 +452,6 @@ See:
 
 - [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md)
 - [PR automation](docs/PR_AUTOMATION.md)
-- [Swarm development](docs/swarm-development.md)
 - [Engineering rules](docs/ENGINEERING.md)
 - [Agent workflows](docs/AGENT_WORKFLOWS.md)
 - [Codex Goals](docs/CODEX_GOALS.md)
@@ -477,6 +490,13 @@ Start here:
 | Release the crate or extension | [Release](docs/RELEASE.md), [Release copy checklist](docs/RELEASE_COPY_CHECKLIST.md), [Publishing](docs/PUBLISHING.md), and [Open VSX](docs/OPENVSX.md) |
 | Work on extension assets | [Brand assets](assets/logo/README.md) |
 | Find repo instructions for agents | [Agent instructions](AGENTS.md) |
+
+> `EffortlessMetrics/ripr-swarm` is the public same-repo development landing
+> zone for trusted agent and maintainer PRs. The release-facing repository,
+> package publishing, marketplace publishing, GitHub Releases, and public
+> distribution authority remain in
+> [`EffortlessMetrics/ripr`](https://github.com/EffortlessMetrics/ripr).
+> See [Swarm development](docs/swarm-development.md).
 
 ## Development
 

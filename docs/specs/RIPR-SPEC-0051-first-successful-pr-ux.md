@@ -4,14 +4,16 @@ Status: accepted
 
 ## Problem
 
-RIPR now has the repair-loop architecture needed for a useful Rust first run:
+RIPR now has the repair-loop architecture needed for a useful first run:
 gap decision ledger, first useful action, PR repair cards, agent packets,
 receipts, generated CI summaries, optional gates, and report packet navigation.
 Those artifacts are correct but still require a new user to know too much
-internal report topology.
+internal report topology. Stable Rust gaps remain the primary first-run path;
+preview-language gaps may enter the same front door only when explicit
+artifact evidence already names the advisory boundary.
 
-A first-time adopter should be able to run one obvious path on one Rust PR and
-answer:
+A first-time adopter should be able to run one obvious path on one supported PR
+and answer:
 
 ```text
 What happened?
@@ -29,9 +31,11 @@ manual pilot, coding-agent, and advisory-CI adoption.
 
 ## Behavior
 
-RIPR should provide one documented first-run path for a Rust PR. The public
-path is `ripr first-pr`; the repo-local `cargo xtask first-pr` command remains
-a compatibility wrapper over the same first-run packet contract.
+RIPR should provide one documented first-run path for a stable Rust PR, plus
+preview/advisory projection for Python gaps when a gap ledger already supplies
+repairable preview records. The public path is `ripr first-pr`; the repo-local
+`cargo xtask first-pr` command remains a compatibility wrapper over the same
+first-run packet contract.
 
 The target flow is:
 
@@ -39,7 +43,7 @@ The target flow is:
 install or use local binary
 -> run first PR path
 -> read start-here packet
--> inspect top repairable Rust gap or no-action state
+-> inspect top repairable supported gap or no-action state
 -> copy bounded repair packet
 -> add one focused test or output proof outside RIPR
 -> run verification command
@@ -52,6 +56,22 @@ or documented commands to create missing first-run artifacts when the command
 reports that work in the packet. It must not silently rerun hidden analysis,
 invent analyzer evidence, edit source, generate tests, call providers, run
 mutation testing, publish comments, or change gate policy.
+
+### Front-door preflight
+
+The public `ripr first-pr` command should include a read-only preflight section
+in the start-here packet. The preflight answers whether the supplied root,
+Git worktree, base/head refs, diff, supported project marker, repository
+config, artifact output directory, and write/check mode are usable for the
+first-run path. Supported project markers currently mean a Cargo workspace or a
+Python preview project root.
+
+Preflight checks explain setup and recovery. They do not create analyzer facts,
+rank gaps, edit source, generate tests, run mutation testing, or decide gate
+authority. When explicit artifacts already provide a typed selected state, the
+selected artifact state remains the repair/no-action authority; preflight
+`needs_attention` notes help the user repair setup drift such as a missing
+`origin/main` ref or an empty local diff.
 
 ### Start-here packet
 
@@ -71,8 +91,8 @@ The packet must answer these reviewer questions in stable, user-facing terms:
 | Question | Required answer |
 | --- | --- |
 | What happened? | First-run status and selected state. |
-| What matters most? | One top repairable Rust gap, or a no-action/error state. |
-| What should happen next? | One repair, refresh, retry, inspect, or no-action step. |
+| What matters most? | One top repairable stable Rust gap, one preview Python gap from explicit gap-ledger evidence, or a no-action/error state. |
+| What should happen next? | One repair, refresh, retry, inspect, or no-action step, with changed behavior, current evidence strength, missing discriminator, and focused proof intent when a repairable gap is selected. |
 | Which artifact backs it? | Paths to the source gap ledger, repair card, agent packet, receipt, and gate decision when present. |
 | Which command regenerates the missing piece? | A copyable command when the packet knows one. |
 | What proves movement? | Verify and receipt commands, or a reason they are unavailable. |
@@ -85,8 +105,8 @@ machine-readable form consumed by generated CI, LSP orchestration, and agents.
 
 The packet should select at most one top item for the first screen:
 
-1. A PR-local, Rust, repairable, unsuppressed, unwaived, non-baseline gap with
-   a repair route and verification command.
+1. A PR-local repairable, unsuppressed, unwaived, non-baseline stable Rust gap
+   or preview Python gap with a repair route and verification command.
 2. A missing required artifact state with a regeneration command.
 3. A stale, wrong-root, malformed, timeout, or other blocked state with a retry
    or inspection command.
@@ -104,13 +124,14 @@ A repairable top gap should include:
 - gap ID and source artifact path;
 - gap kind;
 - changed behavior text when safe to display;
-- current static evidence strength in reviewer-readable terms;
-- missing discriminator or output proof intent;
+- current evidence strength in conservative static terms;
+- missing discriminator;
+- focused test or output-proof intent;
 - why the gap matters;
 - repair route;
 - likely related test or output proof location when known;
 - verification command;
-- receipt command or receipt path when known;
+- receipt command, receipt path, command source, or receipt state when known;
 - advisory and authority boundary;
 - stable dedupe or anchor identity when available.
 
@@ -124,7 +145,7 @@ No-action states must be explicit. A first-run packet may select no-action when
 the best available artifact says:
 
 - empty diff;
-- no projectable Rust gap;
+- no projectable supported gap;
 - already observed;
 - waived;
 - suppressed;
@@ -191,11 +212,12 @@ First-run projection should reuse the same gap and repair vocabulary across:
 - LSP "start current repair" orchestration;
 - agent repair packet;
 - receipt instructions;
+- outcome receipt review packet;
 - first successful PR docs.
 
 Those surfaces may choose different levels of detail, but they should not
-disagree about the selected gap, repair route, verification command, or
-authority boundary.
+disagree about the selected gap, repair route, verification command, receipt
+movement, or authority boundary.
 
 ## Required Evidence
 
@@ -214,6 +236,9 @@ An implementation of this spec must provide:
   projections consume the start-here packet;
 - dogfood receipts showing selected gap, repair attempt, verification, receipt,
   and movement;
+- outcome receipts that answer what changed, what RIPR flagged before, what
+  focused proof signal moved, what remains weak or unknown, and what reviewers
+  should or should not infer;
 - docs that explain first-run adoption without requiring report graph
   knowledge.
 
@@ -240,9 +265,11 @@ command.
 When the start-here packet selects a repairable gap, generated CI and report
 navigation should use its typed fields as the first-screen unit:
 `canonical_gap_id` or `gap_id`, `language`, `language_status`, repair route,
-repair target, related test, static limit when present, verify command, receipt
-command, receipt state, and advisory non-claims. Raw finding counts remain
-supporting evidence.
+repair target, related test, changed behavior, why it matters, current evidence
+strength, missing discriminator, focused proof intent, static limit when
+present, verify command, receipt command, receipt path, receipt state, and
+advisory non-claims.
+Raw finding counts remain supporting evidence.
 
 ## Outputs
 
@@ -284,7 +311,8 @@ Repairable Rust boundary gap:
 - Given a PR-local Rust `MissingBoundaryAssertion` gap with repair route,
   anchor, related test, verification command, and no waiver or suppression, the
   start-here packet selects it as the top gap.
-- The Markdown first screen shows status, why it matters, repair route, verify
+- The Markdown first screen shows status, changed behavior, current evidence
+  strength, missing discriminator, focused proof intent, verify command, receipt
   command, artifact links, and advisory status.
 - The JSON packet links to the source gap ledger record.
 

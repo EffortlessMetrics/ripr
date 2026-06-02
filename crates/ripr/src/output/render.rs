@@ -5,6 +5,7 @@ use super::{
 use crate::analysis;
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
+use std::collections::BTreeMap;
 
 /// Path (relative to the analyzed workspace root) where the
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
@@ -59,6 +60,16 @@ pub(crate) fn render_check_with_config(
             let classified =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(repo_exposure::render_repo_exposure_json(&classified))
+        }
+        OutputFormat::RepoExposureSummaryJson => {
+            let classified =
+                analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
+            Ok(repo_exposure::render_repo_exposure_summary_json(
+                &classified,
+                &output.root,
+                output.base.as_deref(),
+                output.mode.as_str(),
+            ))
         }
         OutputFormat::RepoExposureMd => {
             let classified =
@@ -136,9 +147,13 @@ fn ripr_plus_summary_from_disk(
 ) -> Result<badge::BadgeSummary, String> {
     let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
     if !report_path.exists() {
-        return Err(format!(
-            "missing {}; run `cargo xtask test-efficiency-report` before requesting badge-plus formats",
+        let warning = format!(
+            "missing {}; provide test-efficiency JSON before requesting a measured ripr+ badge; see docs/BADGE_ADOPTION.md",
             report_path.display()
+        );
+        eprintln!("ripr: {warning}; rendering neutral ripr+ badge");
+        return Ok(missing_test_efficiency_badge_summary(
+            repo_scope, config, warning,
         ));
     }
     let text = std::fs::read_to_string(&report_path)
@@ -180,6 +195,48 @@ fn ripr_plus_summary_from_disk(
             policy,
             scope,
         ))
+    }
+}
+
+fn missing_test_efficiency_badge_summary(
+    repo_scope: bool,
+    config: &RiprConfig,
+    warning: String,
+) -> badge::BadgeSummary {
+    badge::BadgeSummary {
+        kind: badge::BadgeKind::RiprPlus,
+        scope: if repo_scope {
+            badge::BadgeScope::Repo
+        } else {
+            badge::BadgeScope::Diff
+        },
+        basis: if repo_scope {
+            badge::BadgeBasis::CanonicalActionableGap
+        } else {
+            badge::BadgeBasis::FindingExposure
+        },
+        message: "needs test-efficiency".to_string(),
+        status: badge::BadgeStatus::Warn,
+        color: "lightgrey",
+        counts: badge::BadgeCounts {
+            unsuppressed_exposure_gaps: 0,
+            unsuppressed_test_efficiency_findings: 0,
+            intentional_test_efficiency_findings: 0,
+            suppressed_exposure_gaps: 0,
+            suppressed_test_efficiency_findings: 0,
+            unknowns: 0,
+            unknowns_test_efficiency: 0,
+            analyzed_findings: 0,
+            analyzed_seams: 0,
+            analyzed_gap_records: 0,
+            analyzed_tests: 0,
+        },
+        reason_counts: BTreeMap::new(),
+        policy: badge::BadgePolicy {
+            suppressions_path: config.suppressions().display_path(),
+            ..badge::BadgePolicy::default()
+        },
+        warnings: vec![warning],
     }
 }
 
@@ -246,6 +303,14 @@ mod tests {
 
         assert!(exposure_json.contains("\"schema_version\": \"0.3\""));
         assert!(exposure_json.contains("over_threshold"));
+        let exposure_summary = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureSummaryJson,
+            &RiprConfig::default(),
+        )?;
+        assert!(exposure_summary.contains("\"format\": \"repo-exposure-summary-json\""));
+        assert!(exposure_summary.contains("\"basis\": \"canonical_actionable_gap\""));
+        assert!(!exposure_summary.contains("\"evidence_record\""));
         assert!(exposure_md.contains("over_threshold"));
         assert!(sarif.contains("\"version\": \"2.1.0\""));
         assert!(sarif.contains("ripr.seam."));
@@ -480,6 +545,21 @@ mod tests {
     }
 
     #[test]
+    fn render_dispatch_repo_exposure_summary_json_surfaces_missing_workspace_as_error()
+    -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureSummaryJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn render_dispatch_repo_exposure_md_surfaces_missing_workspace_as_error() -> Result<(), String>
     {
         let output = check_output_with_nonexistent_root();
@@ -521,43 +601,47 @@ mod tests {
     }
 
     #[test]
-    fn render_dispatch_badge_plus_shields_surfaces_missing_report_as_error() -> Result<(), String> {
+    fn render_dispatch_badge_plus_shields_missing_report_is_neutral() -> Result<(), String> {
         let root = temp_root("ripr-render-badge-plus-shields-missing")?;
         let mut output = check_output_with(Vec::new());
         output.root = root;
 
-        let result = render_check_with_config(
+        let rendered = render_check_with_config(
             &output,
             &OutputFormat::BadgePlusShields,
             &RiprConfig::default(),
-        );
+        )?;
 
-        let err = expect_err(result)?;
-        assert!(
-            err.contains("test-efficiency.json"),
-            "expected missing-report hint, got: {err}"
-        );
-        assert!(err.contains("cargo xtask test-efficiency-report"));
+        assert!(rendered.contains(r#""schemaVersion": 1"#));
+        assert!(rendered.contains(r#""label": "ripr+""#));
+        assert!(rendered.contains(r#""message": "needs test-efficiency""#));
+        assert!(rendered.contains(r#""color": "lightgrey""#));
+        assert!(!rendered.contains("cargo xtask test-efficiency-report"));
 
         remove_temp_root(&output.root)?;
         Ok(())
     }
 
     #[test]
-    fn render_dispatch_repo_badge_plus_shields_surfaces_missing_report_as_error()
-    -> Result<(), String> {
+    fn render_dispatch_repo_badge_plus_json_missing_report_is_neutral() -> Result<(), String> {
         let root = temp_root("ripr-render-repo-badge-plus-shields-missing")?;
         let mut output = check_output_with(Vec::new());
         output.root = root;
 
-        let result = render_check_with_config(
+        let rendered = render_check_with_config(
             &output,
-            &OutputFormat::RepoBadgePlusShields,
+            &OutputFormat::RepoBadgePlusJson,
             &RiprConfig::default(),
-        );
+        )?;
 
-        let err = expect_err(result)?;
-        assert!(err.contains("test-efficiency.json"));
+        assert!(rendered.contains(r#""kind": "ripr_plus""#));
+        assert!(rendered.contains(r#""scope": "repo""#));
+        assert!(rendered.contains(r#""basis": "canonical_actionable_gap""#));
+        assert!(rendered.contains(r#""message": "needs test-efficiency""#));
+        assert!(rendered.contains(r#""color": "lightgrey""#));
+        assert!(rendered.contains("test-efficiency.json"));
+        assert!(rendered.contains("docs/BADGE_ADOPTION.md"));
+        assert!(!rendered.contains("cargo xtask test-efficiency-report"));
 
         remove_temp_root(&output.root)?;
         Ok(())
@@ -786,6 +870,7 @@ mod tests {
     fn sample_finding(file: &str, line: usize) -> Finding {
         Finding {
             id: "probe:src_lib_rs:42:error_path".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:42:error_path".to_string()),
                 family: ProbeFamily::ErrorPath,

@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,7 +20,9 @@ concurrency:
 
 jobs:
   rust:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -98,13 +101,10 @@ jobs:
         run: |
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
-      - name: Generate ripr report index
-        if: always()
-        run: cargo xtask reports index || true
       - name: Generate ripr receipts
         if: always()
         run: cargo xtask receipts || true
-      - name: Refresh ripr report index
+      - name: Generate ripr report index
         if: always()
         run: cargo xtask reports index || true
       - name: Write ripr report summary
@@ -137,8 +137,11 @@ jobs:
           if [ -f target/xtask/impacted-evidence/latest.md ]; then
             printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/xtask/impacted-evidence/latest.md >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload ripr reports
+      - name: Remove RIPR analysis cache before artifact upload
         if: always()
+        run: rm -rf target/ripr/cache
+      - name: Upload ripr reports
+        if: failure() || contains(github.event.pull_request.labels.*.name, 'full-ci')
         uses: actions/upload-artifact@v7
         with:
           name: ripr-pr-reports
@@ -151,7 +154,9 @@ jobs:
           if-no-files-found: ignore
 
   msrv:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.95.0
@@ -162,7 +167,9 @@ jobs:
       - run: cargo check --workspace --all-targets
 
   vscode:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: editors/vscode

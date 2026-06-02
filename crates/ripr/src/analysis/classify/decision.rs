@@ -189,17 +189,31 @@ pub(in crate::analysis) fn recommended_next_step(
 ) -> Option<String> {
     match class {
         ExposureClass::Exposed => None,
-        ExposureClass::WeaklyExposed => Some(match probe.family {
-            ProbeFamily::Predicate => "Add boundary tests for below, equal, and above the changed threshold with exact assertions.".to_string(),
-            ProbeFamily::ErrorPath => "Assert the exact error variant or payload instead of only is_err().".to_string(),
-            ProbeFamily::SideEffect => "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.".to_string(),
-            ProbeFamily::ReturnValue => "Replace broad assertions with exact equality or a property that constrains the changed returned value.".to_string(),
-            _ => "Strengthen the related assertion so it discriminates the changed behavior.".to_string(),
-        }),
+        ExposureClass::WeaklyExposed => {
+            Some(weakly_exposed_guidance_for_family(&probe.family).to_string())
+        }
         ExposureClass::ReachableUnrevealed => Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string()),
         ExposureClass::NoStaticPath => Some("Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.".to_string()),
         ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
         ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
+    }
+}
+
+fn weakly_exposed_guidance_for_family(family: &ProbeFamily) -> &'static str {
+    match family {
+        ProbeFamily::Predicate => {
+            "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+        }
+        ProbeFamily::ErrorPath => {
+            "Assert the exact error variant or payload instead of only is_err()."
+        }
+        ProbeFamily::SideEffect => {
+            "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect."
+        }
+        ProbeFamily::ReturnValue => {
+            "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+        }
+        _ => "Strengthen the related assertion so it discriminates the changed behavior.",
     }
 }
 
@@ -278,6 +292,40 @@ mod tests {
         assert_eq!(
             match_arm.as_deref(),
             Some("Strengthen the related assertion so it discriminates the changed behavior.")
+        );
+    }
+
+    #[test]
+    fn recommended_next_step_covers_targeted_weak_guidance_families() {
+        let predicate = recommended_next_step(
+            &probe(ProbeFamily::Predicate, "value >= threshold"),
+            &ExposureClass::WeaklyExposed,
+        );
+        assert_eq!(
+            predicate.as_deref(),
+            Some(
+                "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+            )
+        );
+
+        let error_path = recommended_next_step(
+            &probe(ProbeFamily::ErrorPath, "Err(AppError::Denied)"),
+            &ExposureClass::WeaklyExposed,
+        );
+        assert_eq!(
+            error_path.as_deref(),
+            Some("Assert the exact error variant or payload instead of only is_err().")
+        );
+
+        let return_value = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "count + 1"),
+            &ExposureClass::WeaklyExposed,
+        );
+        assert_eq!(
+            return_value.as_deref(),
+            Some(
+                "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+            )
         );
     }
 

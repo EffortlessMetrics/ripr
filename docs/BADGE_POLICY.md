@@ -80,13 +80,14 @@ summaries.
 
 ### Repo scope (`scope: repo`)
 
-The badge counts unresolved actionable canonical repair items across the entire
-repo baseline. This is the only scope that should be published as a public
-README, crate page, or extension store badge.
+The badge counts unresolved actionable static repair gaps across the entire
+repo baseline using `canonical_actionable_gap` as its public basis. This is the
+only scope that should be published as a public README, crate page, or
+extension store badge.
 
 - **Audience**: anyone reading the repo cold from outside.
 - **Meaning**: "the current repo baseline has N unresolved actionable static
-  repair items under policy."
+  repair gaps under policy."
 - Public repo scope uses `canonical_actionable_gap` as its basis. A counted
   item has a canonical gap identity, unresolved state, actionable repair route,
   safe verification command, receipt path, no suppression or intentional
@@ -580,11 +581,12 @@ ripr check --base origin/main --format badge-plus-shields
 ```
 
 The `badge-plus-*` formats read `target/ripr/reports/test-efficiency.json`
-(relative to `--root`). If the report is missing, the command fails with a
-clear error pointing at `cargo xtask test-efficiency-report`. CI artifact
-wiring (`ci/badge-artifacts`) will eventually generate the report as part
-of the badge pipeline; until then, callers must regenerate the report
-explicitly when test-efficiency state changes.
+(relative to `--root`). If the report is missing, the command renders a neutral
+`ripr+` badge with `message = "needs test-efficiency"`, warns on stderr, and
+exits successfully so badge generators do not publish a permanent
+`unavailable` state. CI artifact wiring (`ci/badge-artifacts`) should generate
+the report as part of the badge pipeline before publishing or enforcing a
+measured `ripr+` value.
 
 Reasoning. The current top-level commands are `check`, `explain`, `context`,
 `doctor`, `lsp`. Each is a distinct *operation*. A badge is the same
@@ -720,8 +722,10 @@ repo badge basis, compact seam-native inventory counts, test-efficiency
 counts, and whether an explicit gap-decision-ledger projection was
 available. It does **not** update `badges/*.json`; use it before a
 badge semantics PR or generated endpoint refresh to see whether the
-public badge is still a seam-native inventory signal or a repair-item
-projection.
+public badge names unresolved actionable static repair gaps with
+`canonical_actionable_gap` as the public basis. Seam-native inventory remains
+supporting/internal diagnostics, and `ripr+` items must project into the same
+repair, verify, and receipt model before they affect the public headline.
 
 ### `ripr` badge product contract
 

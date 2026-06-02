@@ -2,66 +2,26 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::model::{ChangedFile, ChangedLine};
+use super::path::{parse_new_path_marker, parse_old_path_marker};
 
 pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
-    let mut current_path: Option<PathBuf> = None;
-    let mut old_line = 0usize;
-    let mut new_line = 0usize;
-    let mut in_hunk = false;
+    let mut state = parser_state::ParserState::default();
 
     for raw in input.lines() {
-        if !in_hunk && let Some(path) = parse_new_path_marker(raw) {
-            current_path = Some(path.clone());
-            files.entry(path.clone()).or_insert_with(|| ChangedFile {
-                path,
-                ..ChangedFile::default()
-            });
+        if state.handle_diff_boundary(raw) {
             continue;
         }
 
-        if raw.starts_with("diff --git ") {
-            current_path = None;
-            in_hunk = false;
+        if state.register_path_marker(raw, &mut files) {
             continue;
         }
 
-        if raw.starts_with("@@") {
-            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
-                old_line = old_start;
-                new_line = new_start;
-                in_hunk = true;
-            }
+        if state.handle_hunk_header(raw) {
             continue;
         }
 
-        let Some(path) = current_path.clone() else {
-            continue;
-        };
-        let Some(file) = files.get_mut(&path) else {
-            continue;
-        };
-
-        if !in_hunk && (raw.starts_with("+++") || raw.starts_with("---")) {
-            continue;
-        }
-
-        if let Some(text) = raw.strip_prefix('+') {
-            file.added_lines.push(ChangedLine {
-                line: new_line,
-                text: text.to_string(),
-            });
-            new_line = new_line.saturating_add(1);
-        } else if let Some(text) = raw.strip_prefix('-') {
-            file.removed_lines.push(ChangedLine {
-                line: old_line,
-                text: text.to_string(),
-            });
-            old_line = old_line.saturating_add(1);
-        } else if raw.starts_with(' ') || raw.is_empty() {
-            old_line = old_line.saturating_add(1);
-            new_line = new_line.saturating_add(1);
-        }
+        state.consume_hunk_line(raw, &mut files);
     }
 
     files.into_values().collect()
@@ -84,78 +44,111 @@ fn parse_start(segment: &str) -> Option<usize> {
     start.parse::<usize>().ok()
 }
 
-fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
-    let marker = raw.strip_prefix("+++ ")?;
-    let path = parse_diff_path_token(marker)?;
-    if path == "/dev/null" {
-        return None;
+mod parser_state {
+    use super::{
+        ChangedFile, ChangedLine, parse_hunk_header, parse_new_path_marker, parse_old_path_marker,
+    };
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    #[derive(Default)]
+    pub(super) struct ParserState {
+        current_path: Option<PathBuf>,
+        old_line: usize,
+        new_line: usize,
+        in_hunk: bool,
+        saw_old_path_marker: bool,
     }
-    let path = path.strip_prefix("b/").unwrap_or(&path);
-    Some(PathBuf::from(path))
-}
 
-fn parse_diff_path_token(raw: &str) -> Option<String> {
-    let raw = raw.trim_end_matches('\r');
-    if let Some(quoted) = raw.strip_prefix('"') {
-        return parse_c_quoted_path(quoted);
-    }
+    impl ParserState {
+        pub(super) fn register_path_marker(
+            &mut self,
+            raw: &str,
+            files: &mut BTreeMap<PathBuf, ChangedFile>,
+        ) -> bool {
+            if self.in_hunk {
+                return false;
+            }
 
-    let token = raw.split_once('\t').map_or(raw, |(path, _metadata)| path);
-    Some(token.trim_end().to_string()).filter(|path| !path.is_empty())
-}
+            if parse_old_path_marker(raw) {
+                self.saw_old_path_marker = true;
+                return true;
+            }
 
-fn parse_c_quoted_path(raw: &str) -> Option<String> {
-    let mut path = String::new();
-    let mut chars = raw.chars().peekable();
+            let Some(path) = parse_new_path_marker(raw) else {
+                return false;
+            };
+            if self.current_path.is_none() || self.saw_old_path_marker {
+                self.current_path = Some(path.clone());
+                files.entry(path.clone()).or_insert_with(|| ChangedFile {
+                    path,
+                    ..ChangedFile::default()
+                });
+            }
+            self.saw_old_path_marker = false;
+            true
+        }
 
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' => return Some(path),
-            '\\' => path.push(parse_c_escape(&mut chars)),
-            _ => path.push(ch),
+        pub(super) fn handle_diff_boundary(&mut self, raw: &str) -> bool {
+            if !raw.starts_with("diff --git ") {
+                return false;
+            }
+            self.current_path = None;
+            self.in_hunk = false;
+            self.saw_old_path_marker = false;
+            true
+        }
+
+        pub(super) fn handle_hunk_header(&mut self, raw: &str) -> bool {
+            if !raw.starts_with("@@") {
+                return false;
+            }
+            self.saw_old_path_marker = false;
+            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+                self.old_line = old_start;
+                self.new_line = new_start;
+                self.in_hunk = true;
+            } else {
+                self.in_hunk = false;
+            }
+            true
+        }
+
+        pub(super) fn consume_hunk_line(
+            &mut self,
+            raw: &str,
+            files: &mut BTreeMap<PathBuf, ChangedFile>,
+        ) {
+            if !self.in_hunk {
+                self.saw_old_path_marker = false;
+                return;
+            }
+
+            let Some(path) = self.current_path.clone() else {
+                return;
+            };
+            let Some(file) = files.get_mut(&path) else {
+                return;
+            };
+
+            if let Some(text) = raw.strip_prefix('+') {
+                file.added_lines.push(ChangedLine {
+                    line: self.new_line,
+                    text: text.to_string(),
+                });
+                self.new_line = self.new_line.saturating_add(1);
+            } else if let Some(text) = raw.strip_prefix('-') {
+                file.removed_lines.push(ChangedLine {
+                    line: self.old_line,
+                    text: text.to_string(),
+                });
+                self.old_line = self.old_line.saturating_add(1);
+            } else if raw.starts_with(' ') || raw.is_empty() {
+                self.old_line = self.old_line.saturating_add(1);
+                self.new_line = self.new_line.saturating_add(1);
+            }
         }
     }
-
-    None
-}
-
-fn parse_c_escape<I>(chars: &mut std::iter::Peekable<I>) -> char
-where
-    I: Iterator<Item = char>,
-{
-    let Some(ch) = chars.next() else {
-        return '\\';
-    };
-
-    match ch {
-        'n' => '\n',
-        'r' => '\r',
-        't' => '\t',
-        '\\' => '\\',
-        '"' => '"',
-        '0'..='7' => parse_octal_escape(ch, chars),
-        _ => ch,
-    }
-}
-
-fn parse_octal_escape<I>(first: char, chars: &mut std::iter::Peekable<I>) -> char
-where
-    I: Iterator<Item = char>,
-{
-    let mut value = first.to_digit(8).unwrap_or(0);
-
-    for _ in 0..2 {
-        let Some(next) = chars.peek().copied() else {
-            break;
-        };
-        let Some(digit) = next.to_digit(8) else {
-            break;
-        };
-        let _ = chars.next();
-        value = value.saturating_mul(8).saturating_add(digit);
-    }
-
-    char::from_u32(value).unwrap_or('\u{FFFD}')
 }
 
 #[cfg(test)]
@@ -204,8 +197,8 @@ mod tests {
 
         assert_eq!(files.len(), 1);
         let file = &files[0];
-        assert_eq!(file.removed_lines[0].line, 0);
-        assert_eq!(file.added_lines[0].line, 0);
+        assert!(file.removed_lines.is_empty());
+        assert!(file.added_lines.is_empty());
     }
 
     #[test]
@@ -332,6 +325,90 @@ mod tests {
         assert_eq!(
             files[0].added_lines[0].text,
             "++ added payload not a file marker"
+        );
+    }
+
+    #[test]
+    fn malformed_hunk_header_resets_hunk_state() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,1 +1,1 @@
+-old
++new
+@@ malformed header @@
+--- metadata should be ignored
++++ metadata should be ignored
++line should be ignored
+-dropped should be ignored
+";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].removed_lines.len(), 1);
+    }
+
+    #[test]
+    fn malformed_hunk_header_allows_following_plain_file_section() {
+        let diff = "--- src/a.rs
++++ src/a.rs
+@@ -1,1 +1,1 @@
+-old a
++new a
+@@ malformed header @@
+--- metadata should be ignored
++++ metadata should be ignored
+--- src/b.rs
++++ src/b.rs
+@@ -5,1 +5,1 @@
+-old b
++new b
+";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, PathBuf::from("src/a.rs"));
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].removed_lines.len(), 1);
+        assert_eq!(files[1].path, PathBuf::from("src/b.rs"));
+        assert_eq!(files[1].added_lines[0].line, 5);
+        assert_eq!(files[1].added_lines[0].text, "new b");
+        assert_eq!(files[1].removed_lines[0].line, 5);
+        assert_eq!(files[1].removed_lines[0].text, "old b");
+    }
+
+    #[test]
+    fn valid_hunk_after_malformed_hunk_still_parses() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ malformed header @@
++ignored
+-dropped
+@@ -4,1 +4,1 @@
+-old
++new
+";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].removed_lines,
+            vec![ChangedLine {
+                line: 4,
+                text: "old".to_string()
+            }]
+        );
+        assert_eq!(
+            files[0].added_lines,
+            vec![ChangedLine {
+                line: 4,
+                text: "new".to_string()
+            }]
         );
     }
 

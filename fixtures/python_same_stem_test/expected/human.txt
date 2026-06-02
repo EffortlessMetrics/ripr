@@ -12,6 +12,8 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/reconcile.py::reconcile_total
+  canonical gap: gap:python:src/reconcile.py:reconcile_total:return_value:return_value:amount-2
 
 Language
   language: python
@@ -22,15 +24,13 @@ Static exposure
   weakly_exposed (warning, confidence 0.40)
 
 Evidence
-  - reach yes: 1 related Python test(s) found for owner `reconcile_total`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - reach weak: 1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain
+  - infection yes: Changed Python return expression can alter the owner return value: `return amount - 2`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - local flow reaches returned value: return amount - 2 (line 2)
   - related test tests/test_reconcile.py:1 test_reconcile_fixture_contract uses unknown unknown oracle
 
 Weakness
-  - Related Python test reaches `reconcile_total` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger.
-
-Next step
-  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
+  - Only heuristic Python test links were found for `reconcile_total`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.

@@ -1,6 +1,6 @@
 # Lane 1 Finding Alignment Burn-Down Implementation Plan
 
-Status: open
+Status: closed
 
 Owner: Lane 1 - Evidence Accuracy
 
@@ -83,7 +83,10 @@ calls, generated tests, source edits, or mutation execution.
 
 ## Work Item 1: report: audit finding alignment coverage by evidence class
 
-Issue: [#1140](https://github.com/EffortlessMetrics/ripr/issues/1140)
+Issue: [swarm #229](https://github.com/EffortlessMetrics/ripr-swarm/issues/229)
+/ [source #1140](https://github.com/EffortlessMetrics/ripr/issues/1140)
+
+Status: done in swarm #229 proof on 2026-05-22.
 
 ### Goal
 
@@ -108,6 +111,20 @@ missing repair routes, missing verify commands, and top examples.
 - `canonical_items_without_verify_command` is reported.
 - `raw_to_canonical_ratio` remains visible.
 
+### Current Proof
+
+The 2026-05-22 live sampled audit reports:
+
+- `alignment_coverage_by_class`: 7 evidence classes;
+- `unaligned_raw_findings_by_class`: empty;
+- `top_unaligned_examples`: empty because no unaligned raw findings remain in
+  the sampled audit;
+- `same_line_duplicate_groups`: 10 groups;
+- `static_unknown_without_named_limitation`: 0;
+- `canonical_items_without_repair_route`: 0;
+- `canonical_items_without_verify_command`: 0;
+- `raw_to_canonical_ratio`: 1.1392.
+
 ### Proof Commands
 
 ```bash
@@ -120,7 +137,10 @@ git diff --check
 
 ## Work Item 2: analysis: keep static_unknown canonical items named
 
-Issue: [#1141](https://github.com/EffortlessMetrics/ripr/issues/1141)
+Issue: [swarm #233](https://github.com/EffortlessMetrics/ripr-swarm/issues/233)
+/ [source #1141](https://github.com/EffortlessMetrics/ripr/issues/1141)
+
+Status: done in swarm #233 proof on 2026-05-22.
 
 ### Goal
 
@@ -148,6 +168,8 @@ git diff --check
 
 Issue: [#1158](https://github.com/EffortlessMetrics/ripr/issues/1158)
 
+Status: done in source PR #1187 proof on 2026-05-17.
+
 ### Goal
 
 Complete the placement/supporting-span projection enough that downstream
@@ -174,7 +196,10 @@ git diff --check
 
 ## Work Item 4: analysis: burn down top named static limitation bucket
 
-Issue: [#1159](https://github.com/EffortlessMetrics/ripr/issues/1159)
+Issue: [swarm #238](https://github.com/EffortlessMetrics/ripr-swarm/issues/238)
+/ [source #1159](https://github.com/EffortlessMetrics/ripr/issues/1159)
+
+Status: done in swarm #238 / #240 proof on 2026-05-22.
 
 ### Goal
 
@@ -190,6 +215,35 @@ turn it into a fixture-backed analyzer repair.
 - The PR reports before/after audit or scorecard delta.
 
 ### Current Selected Slice
+
+The 2026-05-22 sampled audit selected `call_presence` /
+`activation_owner_call_unresolved` as the top named static limitation bucket.
+This slice supports the direct owner-call plus same-file direct-wrapper
+sub-shapes:
+
+- a related test directly calls the owner and carries an explicit mock
+  expectation; or
+- a non-test wrapper in the same file directly calls exactly one specific local
+  owner;
+- a test calls that wrapper;
+- the owner contains a value-insensitive `call_presence` seam.
+
+The supported case moves activation to `yes` without inventing observed values.
+Wrappers that skip the owner, two-hop wrapper chains, assertion-target affinity
+alone, generated tests, provider calls, PR/CI rendering, gate policy, public
+score semantics, and mutation execution remain out of scope.
+
+Sampled audit delta for this slice:
+
+- before: `call_presence` had 770 static-limitation items, including 719
+  `activation_owner_call_unresolved` limitations;
+- after: `call_presence` has 715 static-limitation items, including 663
+  `activation_owner_call_unresolved` limitations;
+- delta: -55 `call_presence` static limitations and -56
+  `activation_owner_call_unresolved` limitations;
+- current `call_presence` scorecard work score: 4,554.
+
+### Historical Proof
 
 The 2026-05-18 live audit selected `activation_value_unresolved` as the top
 named static limitation bucket. The first merged slice burned down the
@@ -208,16 +262,27 @@ Predicate-boundary value checks, non-direct owner affinity, helper-only flows,
 generated tests, provider calls, PR/CI rendering, gate policy, public score
 semantics, and mutation execution remain out of scope.
 
-The current follow-up keeps the same audit-selected bucket and widens the
-supported value-insensitive owner-call path to direct calls whose argument
-values remain opaque. It still does not invent observed activation values and
-still requires concrete activation values for predicate-boundary checks. The
-2026-05-19 live audit before this slice reported 26,277 static limitations,
-including 25,908 `activation_value_unresolved` limitations. The after-audit
-reported 19,106 static limitations, including 18,859
-`activation_value_unresolved` limitations, while actionable canonical gaps
-stayed at 162. Delta: -7,171 total static limitations and -7,049
-`activation_value_unresolved` limitations.
+The follow-up kept the same historical bucket and widened the supported
+value-insensitive owner-call path to direct calls whose argument values remain
+opaque. It still did not invent observed activation values and still required
+concrete activation values for predicate-boundary checks. The 2026-05-19 live
+audit before that slice reported 26,277 static limitations, including 25,908
+`activation_value_unresolved` limitations. The after-audit reported 19,106
+static limitations, including 18,859 `activation_value_unresolved`
+limitations, while actionable canonical gaps stayed at 162. Delta: -7,171 total
+static limitations and -7,049 `activation_value_unresolved` limitations.
+
+The 2026-05-22 sampled audit follow-up selected `call_presence` /
+`activation_owner_call_unresolved` as the current top named static limitation
+bucket. Swarm #240 added fixture-backed positive and must-not-claim coverage for
+the supported direct owner-call plus mock-expectation sub-shape and kept
+specific call-target affinity as a named limitation when no owner call is
+observed. The refreshed bounded audit reported:
+
+- `call_presence` limitations: 770 -> 769;
+- `call_presence` `activation_owner_call_unresolved`: 719 -> 718;
+- `call_presence` work score: 5000 -> 4994;
+- total `activation_owner_call_unresolved`: 1217 -> 1216.
 
 ### Proof Commands
 
@@ -231,7 +296,10 @@ git diff --check
 
 ## Work Item 5: docs(spec): refine config/policy unsupported-flow expansion
 
-Issue: [#1142](https://github.com/EffortlessMetrics/ripr/issues/1142)
+Issue: [swarm #241](https://github.com/EffortlessMetrics/ripr-swarm/issues/241)
+/ [source #1142](https://github.com/EffortlessMetrics/ripr/issues/1142)
+
+Status: done in swarm #241 / #244 proof on 2026-05-22.
 
 ### Goal
 
@@ -241,9 +309,11 @@ unsupported-flow expansion.
 ### Acceptance
 
 - The existing RIPR-SPEC-0048 remains the source of truth.
-- The update identifies which unsupported flow is next: opaque lookup,
-  generated config/schema output, macro output, dynamic dispatch, or
-  unsupported cross-file flow.
+- The update identifies `opaque_config_lookup` as the next unsupported-flow
+  expansion target.
+- Generated config/schema output, macro output, dynamic dispatch, and
+  unsupported cross-file flow remain named limitations until selected by a
+  later fixture-backed slice.
 - The update states required benchmark and audit deltas before analyzer
   changes.
 - Internal policy/config metadata alone remains no-action.
@@ -261,7 +331,10 @@ git diff --check
 
 ## Work Item 6: fixtures: add config-policy unsupported-flow burn-down cases
 
-Issue: [#1143](https://github.com/EffortlessMetrics/ripr/issues/1143)
+Issue: [swarm #246](https://github.com/EffortlessMetrics/ripr-swarm/issues/246)
+/ [source #1143](https://github.com/EffortlessMetrics/ripr/issues/1143)
+
+Status: done in swarm #246 / #249 proof on 2026-05-22.
 
 ### Goal
 
@@ -287,7 +360,10 @@ git diff --check
 
 ## Work Item 7: analysis: expand config/policy unsupported-flow support
 
-Issue: [#1144](https://github.com/EffortlessMetrics/ripr/issues/1144)
+Issue: [swarm #250](https://github.com/EffortlessMetrics/ripr-swarm/issues/250)
+/ [source #1144](https://github.com/EffortlessMetrics/ripr/issues/1144)
+
+Status: done in swarm #250 / #252 proof on 2026-05-22.
 
 ### Goal
 
@@ -317,6 +393,10 @@ git diff --check
 
 Issue: [#1145](https://github.com/EffortlessMetrics/ripr/issues/1145)
 
+Swarm issue: [#254](https://github.com/EffortlessMetrics/ripr-swarm/issues/254)
+
+Status: done in swarm #257 proof on 2026-05-22.
+
 ### Goal
 
 Make `actionable` mean the item says what repair is needed.
@@ -342,6 +422,10 @@ git diff --check
 ## Work Item 9: analysis: attach verify commands to actionable canonical items
 
 Issue: [#1146](https://github.com/EffortlessMetrics/ripr/issues/1146)
+
+Swarm issue: [#258](https://github.com/EffortlessMetrics/ripr-swarm/issues/258)
+
+Status: done in swarm #261 proof on 2026-05-22.
 
 ### Goal
 
@@ -369,6 +453,10 @@ git diff --check
 
 Issue: [#1147](https://github.com/EffortlessMetrics/ripr/issues/1147)
 
+Swarm issue: [#262](https://github.com/EffortlessMetrics/ripr-swarm/issues/262)
+
+Status: done in swarm #266 proof on 2026-05-22.
+
 ### Goal
 
 Keep internal scorecards led by user work while new evidence classes land.
@@ -394,6 +482,8 @@ git diff --check
 ## Work Item 11: calibration: audit runtime confidence coverage
 
 Issue: [#1160](https://github.com/EffortlessMetrics/ripr/issues/1160)
+
+Status: done before activation; source #1160 closed on 2026-05-19 with current audit and scorecard runtime-confidence coverage rows.
 
 ### Goal
 
@@ -421,6 +511,10 @@ git diff --check
 
 Issue: [#1149](https://github.com/EffortlessMetrics/ripr/issues/1149)
 
+Swarm issue: [#267](https://github.com/EffortlessMetrics/ripr-swarm/issues/267)
+
+Status: done in swarm #276 proof on 2026-05-22.
+
 ### Goal
 
 Refresh the existing gallery only when a new burn-down delta changes useful
@@ -447,6 +541,10 @@ git diff --check
 
 Issue: [#1153](https://github.com/EffortlessMetrics/ripr/issues/1153)
 
+Swarm issue: [#274](https://github.com/EffortlessMetrics/ripr-swarm/issues/274)
+
+Status: done in swarm #281 proof on 2026-05-22.
+
 ### Goal
 
 Refresh the existing v2 downstream handoff only after material burn-down
@@ -469,10 +567,47 @@ cargo xtask check-pr
 git diff --check
 ```
 
+## Work Item 14: campaign: close Lane 1 finding alignment burn-down
+
+Issue: [swarm #280](https://github.com/EffortlessMetrics/ripr-swarm/issues/280)
+
+Status: done in swarm #284 proof on 2026-05-22.
+
+### Goal
+
+Close the Lane 1 finding-alignment burn-down after the downstream handoff
+refresh lands.
+
+### Acceptance
+
+- Raw findings remain supporting evidence and canonical items remain the
+  countable unit.
+- Improved evidence classes and remaining static-only or unknown classes are
+  summarized.
+- Dogfood, audit, scorecard, runtime-confidence, and downstream-handoff proof
+  commands are recorded.
+- Remaining open follow-up issues are named.
+- The next campaign choice is explicit.
+- No analyzer, PR/CI, editor, gate, provider, source-edit, generated-test, or
+  mutation behavior changes land in this closeout PR.
+
+### Proof Commands
+
+```bash
+cargo xtask goals status
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
+
 ## Closeout
 
-Close the burn-down rail only after the tracker closeout conditions are met and
-the final handoff records:
+The burn-down rail closed on 2026-05-22 in the
+[Lane 1 Finding Alignment Burn-Down closeout](../../docs/handoffs/2026-05-22-lane1-finding-alignment-burndown-closeout.md).
+The final handoff records:
 
 - what evidence classes improved;
 - what remains unknown;

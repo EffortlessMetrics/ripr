@@ -1,6 +1,6 @@
 # CI Current State
 
-This document records the current (as of 2026-05-09) implementation state of
+This document records the current (as of 2026-05-24) implementation state of
 the CI economics system. It is the honest answer to "what actually runs today?"
 as distinct from the target design in `docs/CI.md`.
 
@@ -46,15 +46,17 @@ as distinct from the target design in `docs/CI.md`.
 
 - `cargo package -p ripr --list`
 - `cargo publish -p ripr --dry-run`
-- VSIX packaging and e2e (currently runs on every PR — see gap below).
+- VS Code compile/package checks in the legacy CI workflow run on pushes,
+  manual dispatches, and pull requests labeled `full-ci` only. The separate
+  marketplace publish workflow remains release/manual-authority surface.
 
 ## Gaps vs target state
 
 | Gap | Target PR | Impact |
 | --- | --- | --- |
-| No numeric PR Plan (`ci-plan.json`) | PR 10 | No LEM forecast before lanes run. |
+| No numeric PR Plan (`ci-plan.json`) | PR 11 | Structural PR Plan exists; no numeric LEM forecast before lanes run. |
 | No `ci-actuals.json` emission | PR 12 | No forecast→actuals loop. |
-| VS Code e2e runs on every PR | PR 13 | Pays for Node+xvfb on unrelated Rust PRs. |
+| VS Code lane is not path-gated or wired to the `vscode` label | PR 13 | `full-ci` is currently the only PR label that runs the legacy VS Code CI job. |
 | `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
 | No soft budget guard | PR 15 | No warning when PRs exceed budget bands. |
 | `indexing_slicing` / `string_slice` are not active | PR 07 | Missing per-call receipts for parser/diff bounded indexing and slicing. |

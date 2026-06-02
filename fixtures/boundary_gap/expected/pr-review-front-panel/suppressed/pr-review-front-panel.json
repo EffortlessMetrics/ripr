@@ -44,14 +44,16 @@
     "path": "src/suppressed.rs",
     "line": 6,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
     "missing_discriminator": "suppressed == 6",
     "related_test": null,
     "suggested_test": null,
     "verify_command": null,
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "agent_command": null,
     "receipt": {
       "artifact": null,
-      "status": "not_available"
+      "status": "receipt_not_applicable"
     }
   },
   "movement": {

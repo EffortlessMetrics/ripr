@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_pr_start_here",
+  "status": "actionable",
+  "posture": "advisory",
+  "root": "fixtures/first_successful_pr/python-preview-gap",
+  "inputs": {
+    "gap_ledger": "inputs/reports/gap-decision-ledger.json",
+    "base": "origin/main",
+    "head": "HEAD",
+    "first_action": "target/ripr/reports/first-useful-action.json",
+    "review_comments": "target/ripr/review/comments.json",
+    "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "receipts_dir": "target/ripr/receipts"
+  },
+  "selected": {
+    "state": "top_gap",
+    "output_state": "preview_limited",
+    "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "language": "python",
+    "language_status": "preview",
+    "kind": "MissingBoundaryAssertion",
+    "source_artifact": "inputs/reports/gap-decision-ledger.json",
+    "changed_behavior": "if amount >= threshold:",
+    "current_evidence_strength": "Static evidence found related Python test context, but the current proof is weak because the discriminator is missing.",
+    "missing_discriminator": "amount == threshold",
+    "focused_proof_intent": "Strengthen the existing related test in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.",
+    "why": "A related Python test reaches this change, but no boundary discriminator was found for the changed behavior.",
+    "repair": {
+      "route": "StrengthenExistingTest",
+      "target_file": "tests/test_pricing.py",
+      "related_test": "test_calculate_discount_smoke",
+      "suggested_assertion": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount"
+    },
+    "anchor": {
+      "file": "app/pricing.py",
+      "line": 2,
+      "owner": "python:app/pricing.py::calculate_discount",
+      "dedupe_fingerprint": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold"
+    },
+    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+    "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json",
+    "receipt_path": "target/ripr/receipts/gap-pr-gap-python-app-pricing-py-calculate-discount-predicate-boundary-amount-threshold.targeted-test-outcome.json",
+    "receipt_command_source": "gap_ledger.receipt_command",
+    "receipt_state": null,
+    "static_limit_kind": "python_preview",
+    "static_limit_detail": "Python repair cards are preview advisory evidence.",
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
+    "agent_packet_command": "ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json"
+  },
+  "commands": {
+    "regenerate_gap_ledger": "ripr check --root fixtures/first_successful_pr/python-preview-gap --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root fixtures/first_successful_pr/python-preview-gap --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+    "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json",
+    "verify": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+    "receipt": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json"
+  },
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "inputs/reports/gap-decision-ledger.json",
+      "status": "present",
+      "regeneration_command": "ripr check --root fixtures/first_successful_pr/python-preview-gap --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root fixtures/first_successful_pr/python-preview-gap --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md"
+    },
+    {
+      "id": "first_action",
+      "label": "First useful action",
+      "path": "target/ripr/reports/first-useful-action.json",
+      "status": "missing",
+      "regeneration_command": "ripr first-action --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md"
+    },
+    {
+      "id": "review_comments",
+      "label": "PR repair cards",
+      "path": "target/ripr/review/comments.json",
+      "status": "missing",
+      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/python-preview-gap --base origin/main --head HEAD --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json"
+    },
+    {
+      "id": "agent_packet",
+      "label": "Agent repair packet",
+      "path": "target/ripr/workflow/agent-packet.json",
+      "status": "missing",
+      "regeneration_command": "ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json"
+    },
+    {
+      "id": "gate_decision",
+      "label": "Gate decision",
+      "path": "target/ripr/reports/gate-decision.json",
+      "status": "missing",
+      "regeneration_command": "ripr gate evaluate --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/gate-decision.json --out-md target/ripr/reports/gate-decision.md"
+    }
+  ],
+  "authority": {
+    "status": "advisory",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate."
+  },
+  "warnings": [],
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ]
+}

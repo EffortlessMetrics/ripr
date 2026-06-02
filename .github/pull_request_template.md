@@ -2,22 +2,22 @@
 
 -
 
-## Source Repository Routing
+## Swarm / Source Boundary
 
-`EffortlessMetrics/ripr` is the public release and distribution authority.
-Routine feature, analyzer, editor, docs, badge, repo-ops, and fixture work
-belongs in [`EffortlessMetrics/ripr-swarm`](https://github.com/EffortlessMetrics/ripr-swarm).
+This PR targets `EffortlessMetrics/ripr-swarm`, the normal development trunk for
+trusted same-repo `ripr` work. Confirm the change belongs here:
 
-This PR belongs in the source repository because it is:
+- [ ] ordinary feature, analyzer, editor, docs, spec, fixture, badge,
+      dependency, or repo-ops development for `ripr-swarm`
+- [ ] repair or follow-up for a same-repo swarm PR
+- [ ] swarm-only CI, runner, routing, source-of-truth, or agent-operating
+      surface
+- [ ] other swarm-scoped work:
 
-- [ ] release/publish/distribution work
-- [ ] security fix
-- [ ] explicit `ripr-swarm` to source promotion PR
-- [ ] source-repo boundary/governance fix that keeps routine development out of
-      this repo
-
-If none of those boxes apply, close this PR and reopen the work against
-`EffortlessMetrics/ripr-swarm`.
+If this PR moves crates.io publishing, VS Marketplace publishing, Open VSX
+publishing, GitHub Release assets, signing, release environments, or release
+secrets, close or retarget it. Those surfaces belong in `EffortlessMetrics/ripr`
+unless a dedicated release-boundary change has already been approved.
 
 
 ## Source-of-truth Links
@@ -27,8 +27,7 @@ Spec:
 ADR:
 Plan item:
 Active goal:
-Support-tier impact:
-Policy impact:
+Issue:
 
 ## Scope
 
@@ -57,6 +56,43 @@ Single acceptance criterion:
 -
 
 Non-goals:
+
+-
+
+## Support-tier Impact
+
+- [ ] none
+- [ ] updates `docs/status/SUPPORT_TIERS.md`
+- [ ] changes a README, release, docs, CLI, JSON, editor, CI, or package claim
+
+Claim/proof notes:
+
+-
+
+## Policy Impact
+
+- [ ] none
+- [ ] doc artifacts
+- [ ] CI lane
+- [ ] package boundary
+- [ ] lint / Clippy
+- [ ] no-panic
+- [ ] file policy
+- [ ] generated artifact
+- [ ] dependency
+- [ ] process/network
+
+Ledger or exception notes:
+
+-
+
+## Proof
+
+```bash
+# commands run
+```
+
+Result, failures, or skipped proof:
 
 -
 
@@ -130,6 +166,8 @@ normal CI cannot validate the revert, document that explicitly.
 - [ ] `cargo package -p ripr --list`
 - [ ] `cargo publish -p ripr --dry-run`
 - [ ] `cargo xtask check-static-language`
+- [ ] `cargo xtask check-doc-artifacts`
+- [ ] `cargo xtask check-support-tiers`
 - [ ] `cargo xtask check-no-panic-family`
 - [ ] `cargo xtask check-allow-attributes`
 - [ ] `cargo xtask check-local-context`

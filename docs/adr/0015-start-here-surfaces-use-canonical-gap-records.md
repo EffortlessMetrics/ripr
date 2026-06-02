@@ -1,6 +1,6 @@
 # ADR 0015: Start-Here Surfaces Use Canonical Gap Records
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-17
 

@@ -1,6 +1,6 @@
 # RIPR-PROP-0011: Start-Here Surface Convergence
 
-Status: proposed
+Status: accepted
 
 Owner: Cross-lane; Lane 4 / PR-CI and CLI surfaces lead, Lane 3 consumes
 editor-ready state, Lane 2 owns policy meaning
@@ -21,16 +21,16 @@ Linked ADRs:
 
 - `ADR-0015`: Start-here surfaces use canonical gap records
 
-Linked issues:
+Linked swarm issues:
 
-- #1148 `docs(product): open start-here surface convergence stack`
-- #1150 `report: align PR/CI first screen on canonical repair unit`
-- #1151 `cli: converge start-here command language`
-- #1152 `receipt: standardize receipt lifecycle state`
-- #1154 `output: standardize no-output and fail-closed states`
-- #1155 `policy(language): define preview promotion proof criteria`
-- #1156 `dogfood: record external-style start-here receipts`
-- #1157 `campaign: close start-here surface convergence`
+- #201 `docs(product): open start-here surface convergence stack`
+- #202 `report: align PR/CI first screen on canonical repair unit`
+- #203 `cli: converge start-here command language`
+- #204 `receipt: standardize receipt lifecycle state`
+- #205 `output: standardize no-output and fail-closed states`
+- #206 `policy(language): define preview promotion proof criteria`
+- #207 `dogfood: record external-style start-here receipts`
+- #208 `campaign: close start-here surface convergence`
 
 ## Problem
 

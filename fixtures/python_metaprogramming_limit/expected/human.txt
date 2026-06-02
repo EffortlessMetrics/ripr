@@ -2,9 +2,9 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_metaprogramming_limit/input
 
-Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-INFO src/models.py:2
+NOTE src/models.py:2
 
 Changed
   after:      return type(name, (), {"kind": "preview"})
@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/models.py::build_model
 
 Language
   language: python
@@ -19,19 +20,18 @@ Language
   owner kind: function
 
 Static exposure
-  exposed (info, confidence 0.60)
+  static_unknown (note, confidence 0.20)
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `build_model`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator unknown: Static limit `metaprogramming` prevents a safe Python discriminator claim.
   - related test tests/test_models.py:4 test_build_model_sets_name uses strong exact value oracle: assert build_model("Invoice").__name__ == "Invoice"
 
 Weakness
-  - Related Python test reaches `build_model` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   - Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.
 
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+Stop reasons:
+  - static_probe_unknown

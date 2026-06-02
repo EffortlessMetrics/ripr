@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_policy.py:3:python_preview",
+      "canonical_gap_id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/policy.py",
+        "owner": "DiscountPolicy.apply",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,29 +29,41 @@
         "delta": "control",
         "file": "src/policy.py",
         "line": 3,
-        "expression": "        if amount >= threshold:"
+        "expression": "        if amount >= threshold:",
+        "owner": "python:src/policy.py::DiscountPolicy.apply"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= threshold:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_policy.py:4 test_discount_policy_apply uses unknown unknown oracle"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "local flow reaches unknown sink: if amount >= threshold: (line 3)", "related test tests/test_policy.py:4 test_discount_policy_apply uses unknown unknown oracle", "missing discriminator amount == threshold: changed Python equality-boundary at line 3 lacks a concrete repair discriminator"],
       "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= threshold:","line":3}
       ],
-      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "test_framework: pytest (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)"],
-      "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
+      "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed Python equality-boundary at line 3 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":3}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed Python equality-boundary at line 3 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":3}
+        }
       ],
       "related_tests": [
         {
@@ -51,11 +75,49 @@
           "oracle": ""
         }
       ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_policy.py",
+        "suggested_test_name": "test_discount_policy_apply",
+        "suggested_test_node_id": "tests/test_policy.py::test_discount_policy_apply",
+        "verify_command": "pytest tests/test_policy.py::test_discount_policy_apply",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/policy.py:DiscountPolicy.apply:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "DiscountPolicy.apply",
+        "changed_behavior": "predicate_boundary changed at src/policy.py:3: `if amount >= threshold:`",
+        "current_test_evidence": "tests/test_policy.py:4 test_discount_policy_apply currently has oracle_strength=unknown, oracle_kind=unknown",
+        "missing_discriminator": "amount == threshold",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `threshold`, and `threshold + 1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"amount, expected\", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_policy.py",
+          "test_name": "test_discount_policy_apply",
+          "pytest_node_id": "tests/test_policy.py::test_discount_policy_apply"
+         },
+        "verify": {
+          "command": "pytest tests/test_policy.py::test_discount_policy_apply",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "method"

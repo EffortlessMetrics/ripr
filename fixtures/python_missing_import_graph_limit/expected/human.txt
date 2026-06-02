@@ -2,9 +2,9 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_missing_import_graph_limit/input
 
-Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-INFO src/totals.py:4
+NOTE src/totals.py:4
 
 Changed
   after:      return remote_total(client, include_tax=True)
@@ -12,6 +12,7 @@ Changed
 Probe
   family: return_value
   delta:  value
+  owner:  python:src/totals.py::total
 
 Language
   language: python
@@ -19,19 +20,18 @@ Language
   owner kind: function
 
 Static exposure
-  exposed (info, confidence 0.60)
+  static_unknown (note, confidence 0.20)
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `total`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.
   - related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12
 
 Weakness
-  - Related Python test reaches `total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   - Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics.
 
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+Stop reasons:
+  - static_probe_unknown

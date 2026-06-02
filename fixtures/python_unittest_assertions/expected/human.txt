@@ -12,6 +12,8 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  python:src/risk.py::risk_score
+  canonical gap: gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100
 
 Language
   language: python
@@ -23,14 +25,15 @@ Static exposure
 
 Evidence
   - reach yes: 1 related Python test(s) found for owner `risk_score`
-  - infection unknown: Python preview adapter does not yet model infection.
-  - propagation unknown: Python preview adapter does not yet model propagation.
+  - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
+  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
   - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
   - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches unknown sink: if amount >= 100: (line 2)
   - related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), "high")
 
 Weakness
   - Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
 
 Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.

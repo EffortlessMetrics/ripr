@@ -1424,6 +1424,7 @@ mod tests {
             target_line: None,
             related_test: None,
             assertion_shape: None,
+            missing_discriminator: None,
             changed_behavior: None,
             stop_conditions: Vec::new(),
         };

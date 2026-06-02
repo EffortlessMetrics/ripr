@@ -147,7 +147,7 @@ target/ripr/pilot/pilot-summary.md
 The pilot terminal summary should answer:
 
 ```text
-What is the top actionable seam?
+What is the top actionable seam or preview-language repair card?
 Why did RIPR flag it?
 What focused test should I write next?
 Which file contains the structured packet?
@@ -350,6 +350,22 @@ oracle-strength, and related-test deltas. Older snapshots without the record
 remain supported through legacy repo-exposure fields.
 ```
 
+Outcome receipts must also include a reviewer-native packet derived from the
+same before/after comparison. The packet answers:
+
+- what static evidence changed between the supplied snapshots;
+- what RIPR flagged before the focused repair attempt;
+- which focused proof signals became visible outside RIPR;
+- what moved after verification and what remained weak or unknown;
+- what reviewers should inspect; and
+- what reviewers should not infer, including runtime mutation results,
+  coverage adequacy, general correctness, merge approval, source edits, or
+  generated tests.
+
+This packet is a projection of the compared static artifacts. It must not
+create new analyzer facts, run analysis, run mutation testing, edit source,
+generate tests, call providers, change policy, or become a CI gate.
+
 ### Public install exposes the loop
 
 ```text
@@ -419,7 +435,11 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_spells_out_first_screen_recommendation`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_terminal_prints_top_test_and_follow_up_commands`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked`
 - `crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture`
+- `crates/ripr/tests/cli_smoke.rs::pilot_accepts_python_project_without_ripr_config`
+- `crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff`
 - `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
 - `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement`

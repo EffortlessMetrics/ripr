@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/typescript_awaited_promise_reject/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
       "id": "probe:src_profile.ts:3:typescript_preview",
@@ -17,73 +17,150 @@
         "delta": "control",
         "file": "src/profile.ts",
         "line": 3,
-        "expression": "        return await Promise.reject(new Error(\"missing id\"));"
+        "expression": "        return await Promise.reject(new Error(\"missing id\"));",
+        "owner": "typescript:src/profile.ts::loadProfile"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `loadProfile`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `broad_error` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `rejects Error matching \"missing id\"`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `loadProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `broad_error` (rank 3)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/profile.test.ts:1 rejects missing profile id uses weak broad error oracle: expect(...).toThrow(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `loadProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `broad_error` (rank 3)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `rejects Error matching \"missing id\"`.", "local flow reaches error variant: return await Promise.reject(new Error(\"missing id\")); (line 3)", "related test tests/profile.test.ts:1 rejects missing profile id broadly uses weak broad error oracle: expect(...).toThrow()", "missing discriminator rejects Error matching \"missing id\": changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator"],
       "flow_sinks": [
+        {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
       ],
-      "evidence": ["owner: loadProfile"],
-      "missing": ["Related test reaches `loadProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence": ["owner: loadProfile", "missing_discriminator: rejects Error matching \"missing id\"", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:3:typescript_preview;owner=loadProfile"],
+      "missing": ["Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "rejects Error matching \"missing id\"",
+            "reason": "changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "rejects Error matching \"missing id\"",
+          "reason": "changed TypeScript thrown or rejected error at line 3 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
+        }
       ],
       "related_tests": [
         {
-          "name": "rejects missing profile id",
+          "name": "rejects missing profile id broadly",
           "file": "tests/profile.test.ts",
           "line": 1,
           "oracle_strength": "weak",
           "oracle_kind": "broad_error",
-          "oracle": "expect(...).toThrow(...)"
+          "oracle": "expect(...).toThrow()"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "error_path changed at src/profile.ts:3: `return await Promise.reject(new Error(\"missing id\"));`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "rejects Error matching \"missing id\"",
+        "oracle_kind": "broad_error",
+        "oracle_strength": "weak",
+        "owner": "loadProfile",
+        "owner_kind": "function",
+        "probe_family": "error_path",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 1,
+          "name": "rejects missing profile id broadly"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Use literal toThrow/rejects.toThrow or rejects.toMatchObject payload evidence; broad error checks stay weak.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "preview_actionability": {
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/profile.ts",
+            "kind": "typescript_preview_probe",
+            "line": 3,
+            "owner": "loadProfile",
+            "raw": "file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:3:typescript_preview;owner=loadProfile",
+            "source_id": "probe:src_profile.ts:3:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
+      "suggested_next_action": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     },
     {
       "id": "probe:src_profile.ts:10:typescript_preview",
-      "classification": "weakly_exposed",
-      "severity": "warning",
-      "confidence": 0.40,
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
       "probe": {
         "id": "probe:src_profile.ts:10:typescript_preview",
         "family": "error_path",
         "delta": "control",
         "file": "src/profile.ts",
         "line": 10,
-        "expression": "        await Promise.reject(new Error(\"missing id\"));"
+        "expression": "        await Promise.reject(new Error(\"missing id\"));",
+        "owner": "typescript:src/profile.ts::publishProfile"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `publishProfile`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `broad_error` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_error_variant` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `publishProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `broad_error` (rank 3)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/profile.test.ts:5 rejects missing publish id uses weak broad error oracle: expect(...).toThrow(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `publishProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_error_variant` (rank 5)", "discriminator yes: Related test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches error variant: await Promise.reject(new Error(\"missing id\")); (line 10)", "related test tests/profile.test.ts:5 rejects missing publish id exactly uses strong exact error variant oracle: await expect(...).rejects.toThrow(\"missing id\")"],
       "flow_sinks": [
+        {"kind":"error_variant","text":"await Promise.reject(new Error(\"missing id\"));","line":10}
       ],
-      "evidence": ["owner: publishProfile"],
-      "missing": ["Related test reaches `publishProfile` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence": ["owner: publishProfile", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:10:typescript_preview;owner=publishProfile"],
+      "missing": ["Related test reaches `publishProfile` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "activation": {
         "observed_values": [
         ],
@@ -96,21 +173,74 @@
       ],
       "related_tests": [
         {
-          "name": "rejects missing publish id",
+          "name": "rejects missing publish id exactly",
           "file": "tests/profile.test.ts",
           "line": 5,
-          "oracle_strength": "weak",
-          "oracle_kind": "broad_error",
-          "oracle": "expect(...).toThrow(...)"
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "await expect(...).rejects.toThrow(\"missing id\")"
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "error_path changed at src/profile.ts:10: `await Promise.reject(new Error(\"missing id\"));`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_error_variant",
+        "oracle_strength": "strong",
+        "owner": "publishProfile",
+        "owner_kind": "function",
+        "probe_family": "error_path",
+        "related_test": {
+          "file": "tests/profile.test.ts",
+          "line": 5,
+          "name": "rejects missing publish id exactly"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact error payload evidence is present; no repair packet is emitted without strict fields.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
+      "preview_actionability": {
+        "actionability_category": "strong_oracle_observed",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
+        "gap_state": "already_observed",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/profile.ts",
+            "kind": "typescript_preview_probe",
+            "line": 10,
+            "owner": "publishProfile",
+            "raw": "file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:10:typescript_preview;owner=publishProfile",
+            "source_id": "probe:src_profile.ts:10:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
       "stop_reasons": [],
-      "oracle_kind": "broad_error",
-      "oracle_strength": "weak",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

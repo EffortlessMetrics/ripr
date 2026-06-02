@@ -26,6 +26,7 @@ jobs:
   pr-plan:
     name: pr-plan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
@@ -42,7 +43,7 @@ jobs:
         run: printf "## PR Plan (advisory)\n\nForecast logic lands in a follow-up PR. See docs/ci/pr-plan.md.\n" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload PR Plan artifact
-        if: always()
+        if: failure() || contains(github.event.pull_request.labels.*.name, 'full-ci')
         uses: actions/upload-artifact@v7
         with:
           name: ripr-pr-plan

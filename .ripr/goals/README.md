@@ -79,7 +79,7 @@ For manifest-only changes, run at minimum:
 ```bash
 git diff --check
 cargo xtask goals next
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask check-doc-index
 cargo xtask check-pr-shape
 ```

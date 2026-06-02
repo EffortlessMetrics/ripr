@@ -53,10 +53,11 @@ mod tests {
     use super::{render, render_finding};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
-        SourceLocation, StageEvidence, StageState, Summary, ValueContext, ValueFact,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
+        FlowSinkFact, FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact,
+        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
+        ValueFact,
     };
     use std::path::PathBuf;
 
@@ -176,6 +177,40 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_includes_preview_actionability_without_raw_string_spam() {
+        let mut finding = unknown_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.evidence = vec![
+            "owner: discountedTotal".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: incomplete_repair_packet".to_string(),
+            "why_not_actionable: TypeScript preview lacks a complete repair packet contract"
+                .to_string(),
+            "repair_route: project canonical TypeScript repair packet fields later".to_string(),
+            "missing_actionability_fields: canonical_gap_id, verify_command".to_string(),
+            "evidence_needed_to_promote: canonical gap identity and verify command".to_string(),
+            "raw_evidence_ref: file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=discountedTotal".to_string(),
+        ];
+        finding.missing = vec![
+            "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: duplicate summary".to_string(),
+        ];
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("Preview actionability\n"));
+        assert!(rendered.contains("  authority: preview_advisory_only\n"));
+        assert!(rendered.contains("  gap state: advisory\n"));
+        assert!(rendered.contains("  category: incomplete_repair_packet\n"));
+        assert!(rendered.contains("  repair packet ready: false\n"));
+        assert!(rendered.contains("  raw evidence: src/lib.ts:2 (typescript_preview_probe)"));
+        assert!(rendered.contains("  - owner: discountedTotal\n"));
+        assert!(!rendered.contains("  - gap_state: advisory\n"));
+        assert!(!rendered.contains("duplicate summary"));
+    }
+
+    #[test]
     fn render_finding_omits_language_metadata_when_absent() {
         let rendered = render_finding(&sample_finding());
 
@@ -198,6 +233,37 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_includes_probe_owner_when_present() {
+        let mut finding = sample_finding();
+        finding.probe.owner = Some(SymbolId("python:src/pricing.py::discount".to_string()));
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("  owner:  python:src/pricing.py::discount\n"));
+    }
+
+    #[test]
+    fn render_finding_includes_canonical_gap_when_present() {
+        let mut finding = sample_finding();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold"
+                .to_string(),
+            language: "python".to_string(),
+            file: "src/pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "amount>=threshold".to_string(),
+        });
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains(
+            "  canonical gap: gap:python:src/pricing.py:discount:predicate_boundary:predicate:amount>=threshold\n"
+        ));
+    }
+
+    #[test]
     fn human_output_includes_effective_stop_reasons_for_unknowns() {
         let output = render_finding(&unknown_finding());
 
@@ -208,6 +274,7 @@ mod tests {
     fn sample_finding() -> Finding {
         Finding {
             id: "probe:sample.rs:7:predicate".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:sample.rs:7:predicate".to_string()),
                 location: SourceLocation::new("src/sample.rs", 7, 3),
@@ -272,6 +339,7 @@ mod tests {
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
+            canonical_gap: None,
             probe: Probe {
                 id: ProbeId("probe:src_lib_rs:1:static_unknown".to_string()),
                 location: SourceLocation::new("src/lib.rs", 1, 1),

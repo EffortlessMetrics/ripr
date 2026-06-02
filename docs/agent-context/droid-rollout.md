@@ -57,6 +57,7 @@ trusted actor guard for manual @droid commands
 show_full_output: false on every Droid action step
 upload_debug_artifacts: false on every Droid action step
 approved EffortlessMetrics/droid-action-safe SHA
+GitHub CLI available on PATH before Droid action starts
 no direct Factory-AI/droid-action use for BYOK workflows
 no raw $HOME/.factory/** or droid-prompts/** artifact upload
 quoted heredoc for settings.local.json

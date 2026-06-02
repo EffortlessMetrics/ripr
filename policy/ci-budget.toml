@@ -48,9 +48,9 @@ notes = "Demotes ripr-waive for this PR once lane selection is implemented."
 
 [[label]]
 name = "release-check"
-effect = "run_release_readiness_lanes"
+effect = "run_wired_release_surface_lanes"
 budget_effect = "release"
-notes = "Runs package, publish dry-run, VSIX, server archive, and release readiness proof where applicable."
+notes = "Currently runs the legacy Rust workflow package list and publish dry-run proof on pull requests; broader release readiness lanes remain target vocabulary until wired."
 
 [[label]]
 name = "vscode"

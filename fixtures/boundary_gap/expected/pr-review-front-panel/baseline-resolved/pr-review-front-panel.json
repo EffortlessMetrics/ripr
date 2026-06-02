@@ -44,14 +44,17 @@
     "path": "src/gone.rs",
     "line": 2,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
     "missing_discriminator": "gone == 2",
+    "focused_proof_intent": "assert_eq!(gone(), 2)",
     "related_test": "tests/gone.rs::boundary",
     "suggested_test": "assert_eq!(gone(), 2)",
     "verify_command": null,
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "agent_command": null,
     "receipt": {
       "artifact": null,
-      "status": "not_available"
+      "status": "receipt_not_applicable"
     }
   },
   "movement": {

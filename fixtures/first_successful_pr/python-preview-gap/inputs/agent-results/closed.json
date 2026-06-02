@@ -1,0 +1,29 @@
+{
+  "packet": {
+    "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "allowed_files": [
+      "tests/test_pricing.py"
+    ],
+    "forbidden_files": [
+      "app/pricing.py"
+    ],
+    "staleness_status": "not_evaluated"
+  },
+  "attempt": {
+    "status": "completed",
+    "edited_files": [
+      "tests/test_pricing.py"
+    ],
+    "verify": {
+      "status": "passed",
+      "exit_code": 0
+    }
+  },
+  "receipt": {
+    "path": ".ripr/receipts/python-threshold.json",
+    "provenance": {
+      "movement": "resolved"
+    }
+  }
+}

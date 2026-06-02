@@ -54,15 +54,11 @@ fn parse_options(args: &[String]) -> Result<ImpactedEvidenceOptions, String> {
             }
             "--label" => {
                 i += 1;
-                options
-                    .labels
-                    .push(non_empty_arg(args, i, "--label")?.to_string());
+                add_label_arg(args, i, "--label", &mut options.labels)?;
             }
             "--labels" => {
                 i += 1;
-                options
-                    .labels
-                    .extend(split_labels(non_empty_arg(args, i, "--labels")?));
+                add_labels_arg(args, i, "--labels", &mut options.labels)?;
             }
             "--check" => options.check = true,
             other => return Err(format!("unknown impacted-evidence argument {other:?}")),
@@ -71,6 +67,26 @@ fn parse_options(args: &[String]) -> Result<ImpactedEvidenceOptions, String> {
     }
     options.labels = normalize_labels(&options.labels);
     Ok(options)
+}
+
+fn add_label_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    labels: &mut Vec<String>,
+) -> Result<(), String> {
+    labels.push(non_empty_arg(args, index, flag)?.to_string());
+    Ok(())
+}
+
+fn add_labels_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    labels: &mut Vec<String>,
+) -> Result<(), String> {
+    labels.extend(split_labels(non_empty_arg(args, index, flag)?));
+    Ok(())
 }
 
 fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
@@ -166,8 +182,7 @@ struct RoutingDecision {
 }
 
 fn routing_decision(labels: &[String], ripr_routes_targeted: bool) -> RoutingDecision {
-    let has = |needle: &str| labels.iter().any(|label| label == needle);
-    if has("mutation/full-owner") {
+    if has_any_label(labels, &["mutation/full-owner"]) {
         return RoutingDecision {
             mode: "full_owner",
             requires_targeted_mutation: false,
@@ -175,10 +190,10 @@ fn routing_decision(labels: &[String], ripr_routes_targeted: bool) -> RoutingDec
             reason: json!("mutation/full-owner label"),
         };
     }
-    if has("mutation") || has("mutation/targeted") {
+    if has_any_label(labels, &["mutation", "mutation/targeted"]) {
         return targeted("mutation label");
     }
-    if has("release-risk") {
+    if has_any_label(labels, &["release-risk"]) {
         return targeted("release-risk label");
     }
     if ripr_routes_targeted {
@@ -190,6 +205,12 @@ fn routing_decision(labels: &[String], ripr_routes_targeted: bool) -> RoutingDec
         requires_full_owner_mutation: false,
         reason: Value::Null,
     }
+}
+
+fn has_any_label(labels: &[String], needles: &[&str]) -> bool {
+    needles
+        .iter()
+        .any(|needle| labels.iter().any(|label| label == needle))
 }
 
 fn targeted(reason: &'static str) -> RoutingDecision {
@@ -456,6 +477,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_rejects_blank_label_values() -> Result<(), String> {
+        let err = match parse_options(&["--label".to_string(), "   ".to_string()]) {
+            Ok(_) => return Err("blank --label should fail".to_string()),
+            Err(err) => err,
+        };
+        assert_eq!(
+            err,
+            "impacted-evidence --label requires a non-empty value".to_string()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parse_accepts_labels_and_check() -> Result<(), String> {
         let parsed = parse_options(&[
             "--label".to_string(),
@@ -550,6 +584,40 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("impacted evidence is stale"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn explicit_mutation_label_wins_over_ripr_signal() -> Result<(), String> {
+        let repo = temp_repo("impacted-mutation-label")?;
+        write_pr_evidence(&repo, true, false)?;
+        let options = ImpactedEvidenceOptions {
+            labels: vec!["mutation".to_string()],
+            ..ImpactedEvidenceOptions::default()
+        };
+        let packet = impacted_evidence_packet(&repo, &options);
+        assert_eq!(packet["summary"]["mutation_mode"], "targeted");
+        assert_eq!(packet["summary"]["routing_reason"], "mutation label");
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn full_owner_label_has_highest_routing_precedence() -> Result<(), String> {
+        let repo = temp_repo("impacted-full-owner-precedence")?;
+        write_pr_evidence(&repo, true, true)?;
+        let options = ImpactedEvidenceOptions {
+            labels: vec![
+                "release-risk".to_string(),
+                "mutation/full-owner".to_string(),
+            ],
+            ..ImpactedEvidenceOptions::default()
+        };
+        let packet = impacted_evidence_packet(&repo, &options);
+        assert_eq!(packet["summary"]["mutation_mode"], "full_owner");
+        assert_eq!(
+            packet["summary"]["routing_reason"],
+            "mutation/full-owner label"
+        );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 

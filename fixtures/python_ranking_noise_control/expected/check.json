@@ -1,0 +1,310 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_ranking_noise_control/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":4,"probes":4,"findings":4,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_c_discount.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/c_discount.py",
+        "owner": "calculate_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_c_discount.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/c_discount.py",
+        "line": 2,
+        "expression": "    if amount >= threshold:",
+        "owner": "python:src/c_discount.py::calculate_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `calculate_discount`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= threshold:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `calculate_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_calculate_discount_smoke uses smoke smoke only oracle: assert result", "missing discriminator amount == threshold: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= threshold:","line":2}
+      ],
+      "evidence": ["owner: calculate_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_calculate_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_calculate_discount_smoke)", "test_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke (test_calculate_discount_smoke)", "related_test_relation: syntactic_call (test_calculate_discount_smoke)", "test_oracle: smoke_only smoke (test_calculate_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_calculate_discount_smoke)"],
+      "missing": ["Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_calculate_discount_smoke",
+          "file": "tests/test_discount.py",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert result"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_discount.py",
+        "suggested_test_name": "test_calculate_discount_smoke",
+        "suggested_test_node_id": "tests/test_discount.py::test_calculate_discount_smoke",
+        "verify_command": "pytest tests/test_discount.py::test_calculate_discount_smoke",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "calculate_discount",
+        "changed_behavior": "predicate_boundary changed at src/c_discount.py:2: `if amount >= threshold:`",
+        "current_test_evidence": "tests/test_discount.py:4 test_calculate_discount_smoke currently has oracle_strength=smoke, oracle_kind=smoke_only: assert result",
+        "missing_discriminator": "amount == threshold",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `amount == threshold`. Keep the equality case as the minimum repair; optional pytest parameterization can add `threshold - 1`, `threshold`, and `threshold + 1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `amount == threshold` first. Optional pytest shape: @pytest.mark.parametrize(\"amount, expected\", [(threshold - 1, ...), (threshold, ...), (threshold + 1, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_discount.py",
+          "test_name": "test_calculate_discount_smoke",
+          "pytest_node_id": "tests/test_discount.py::test_calculate_discount_smoke"
+         },
+        "verify": {
+          "command": "pytest tests/test_discount.py::test_calculate_discount_smoke",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_b_observed.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/b_observed.py:calculate_fee:return_value:return_value:amount+5",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/b_observed.py:calculate_fee:return_value:return_value:amount+5",
+        "language": "python",
+        "file": "src/b_observed.py",
+        "owner": "calculate_fee",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount+5"
+
+      },
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_b_observed.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/b_observed.py",
+        "line": 2,
+        "expression": "    return amount + 5",
+        "owner": "python:src/b_observed.py::calculate_fee"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `calculate_fee`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount + 5`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `calculate_fee`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 5`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return amount + 5 (line 2)", "related test tests/test_observed.py:4 test_calculate_fee_exact uses strong exact value oracle: assert calculate_fee(100) == 105"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount + 5","line":2}
+      ],
+      "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_calculate_fee_exact)", "test_verify_command: pytest tests/test_observed.py::test_calculate_fee_exact (test_calculate_fee_exact)", "related_test_relation: syntactic_call (test_calculate_fee_exact)", "test_oracle: exact_value strong (test_calculate_fee_exact)"],
+      "missing": ["Related Python test reaches `calculate_fee` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_calculate_fee_exact",
+          "file": "tests/test_observed.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert calculate_fee(100) == 105"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_d_isolated.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/d_isolated.py:isolated_total:return_value:return_value:amount+1",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/d_isolated.py:isolated_total:return_value:return_value:amount+1",
+        "language": "python",
+        "file": "src/d_isolated.py",
+        "owner": "isolated_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount+1"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_d_isolated.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/d_isolated.py",
+        "line": 2,
+        "expression": "    return amount + 1",
+        "owner": "python:src/d_isolated.py::isolated_total"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `isolated_total`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount + 1`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `isolated_total`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 1`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount + 1 (line 2)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount + 1","line":2}
+      ],
+      "evidence": ["owner: isolated_total", "owner_kind: function"],
+      "missing": ["No Python test references `isolated_total(`; add a pytest or unittest test that calls the changed owner."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_a_dynamic.py:2:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_a_dynamic.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/a_dynamic.py",
+        "line": 2,
+        "expression": "    return getattr(client, method_name)()",
+        "owner": "python:src/a_dynamic.py::call_named"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `call_named`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `dynamic_dispatch` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `call_named`", "infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.", "propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `dynamic_dispatch` prevents a safe Python discriminator claim.", "related test tests/test_dynamic.py:9 test_call_named_exact uses strong exact value oracle: assert call_named(Client(), \"total\") == 5"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_exact)", "test_verify_command: pytest tests/test_dynamic.py::test_call_named_exact (test_call_named_exact)", "related_test_relation: syntactic_call (test_call_named_exact)", "test_oracle: exact_value strong (test_call_named_exact)"],
+      "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_call_named_exact",
+          "file": "tests/test_dynamic.py",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert call_named(Client(), \"total\") == 5"
+        }
+      ],
+      "stop_reasons": ["dynamic_dispatch_unresolved"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "dynamic_dispatch"
+    }
+  ]
+}

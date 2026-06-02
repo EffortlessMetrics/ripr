@@ -129,6 +129,13 @@ class of artifact. Missing expected artifacts must remain visible as warnings
 or `missing_expected[]` entries with a command to regenerate them when the
 command is known.
 
+Repo-local `cargo xtask reports index` also records the Lane 1 evidence chain
+as `lane1_readiness`. That section checks only known artifact paths for
+evidence-health, Lane 1 evidence audit, actionable-gaps, evidence-quality
+scorecard, evidence-quality trend, and badge-basis outputs. Missing, warning,
+or failing artifacts warn and list the regeneration command. The index must not
+run those expensive reports itself or promote badge/gate authority.
+
 ## Required Evidence
 
 The index can only summarize evidence already present in supplied directories
@@ -437,6 +444,10 @@ pass/fail authority.
   presented as runtime confirmation.
 - Validation receipts such as `check-pr.md`, `fixtures.md`, `goldens.md`, and
   dogfood reports are grouped under `validation_receipts`.
+- Repo-local Lane 1 evidence readiness appears as a separate
+  `lane1_readiness` section, not as a public PR decision group. Missing,
+  warning, incomplete, timeout, unreadable, or failing Lane 1 artifacts remain
+  visible with next commands.
 
 ## Test Mapping
 
@@ -454,6 +465,8 @@ Follow-up tests and fixtures should cover:
 - missing optional artifact with regeneration command;
 - JSON grouping and Markdown grouping;
 - generated-CI projection that remains advisory.
+- repo-local Lane 1 readiness when the evidence chain is missing;
+- repo-local Lane 1 readiness when all known Lane 1 artifacts are present.
 
 ## Implementation Mapping
 

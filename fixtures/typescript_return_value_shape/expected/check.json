@@ -17,29 +17,41 @@
         "delta": "value",
         "file": "src/rounding.ts",
         "line": 2,
-        "expression": "    return Math.round(amount * 100) / 100;"
+        "expression": "    return Math.round(amount * 100) / 100;",
+        "owner": "typescript:src/rounding.ts::roundCents"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `roundCents`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 1)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `return value == Math.round(amount * 100) / 100`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `roundCents`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `roundCents`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == Math.round(amount * 100) / 100`.", "local flow reaches returned value: return Math.round(amount * 100) / 100; (line 2)", "related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle", "missing discriminator return value == Math.round(amount * 100) / 100: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return Math.round(amount * 100) / 100;","line":2}
       ],
-      "evidence": ["owner: roundCents"],
-      "missing": ["Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "evidence": ["owner: roundCents", "missing_discriminator: return value == Math.round(amount * 100) / 100", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/rounding.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_rounding.ts:2:typescript_preview;owner=roundCents"],
+      "missing": ["Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "return value == Math.round(amount * 100) / 100",
+            "reason": "changed TypeScript returned-value at line 2 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"return_value","text":"return Math.round(amount * 100) / 100;","line":2}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "return value == Math.round(amount * 100) / 100",
+          "reason": "changed TypeScript returned-value at line 2 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"return_value","text":"return Math.round(amount * 100) / 100;","line":2}
+        }
       ],
       "related_tests": [
         {
@@ -51,13 +63,76 @@
           "oracle": ""
         }
       ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/rounding.ts:2: `return Math.round(amount * 100) / 100;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "return value == Math.round(amount * 100) / 100",
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "roundCents",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/rounding.test.ts",
+          "line": 6,
+          "name": "rounds two decimals"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact return-value assertion for the changed output.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "preview_actionability": {
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/rounding.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": "roundCents",
+            "raw": "file=src/rounding.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_rounding.ts:2:typescript_preview;owner=roundCents",
+            "source_id": "probe:src_rounding.ts:2:typescript_preview"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "unknown",
-      "recommended_next_step": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
-      "suggested_next_action": "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).",
+      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "owner_kind": "function"
     }
   ]
 }

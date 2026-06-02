@@ -1,6 +1,11 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
+use super::receipt_lifecycle::{
+    RECEIPT_MISSING, receipt_lifecycle_state, receipt_lifecycle_state_from_movement,
+    receipt_lifecycle_state_from_receipt_value,
+};
+
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_evidence_ledger";
 const LIMITS_NOTE: &str = "Read-only advisory PR evidence ledger over existing static RIPR artifacts; gate-decision remains the pass/fail authority.";
@@ -124,6 +129,7 @@ struct RepairReceipt {
     source: String,
     canonical_gap_id: Option<String>,
     seam_id: Option<String>,
+    receipt_state: String,
     static_movement: StaticMovement,
     focused_test: Option<String>,
     receipt: String,
@@ -340,6 +346,58 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
         report.gate.mode.as_deref().unwrap_or("not_available"),
         report.gate.decision.as_deref().unwrap_or("not_available")
     ));
+
+    out.push_str("Start here:\n");
+    if let Some(route) = report.top_repair_route.as_ref() {
+        out.push_str(&format!("- Identity: {}\n", route_identity(route)));
+        if let Some(gap_id) = route.gap_id.as_deref() {
+            out.push_str(&format!("- Gap: {gap_id}\n"));
+        }
+        out.push_str(&format!("- Source: {}\n", route.source));
+        out.push_str(&format!("- Location: {}\n", route_location(route)));
+        out.push_str(&format!(
+            "- Repair route: {}\n",
+            route.repair_route.as_deref().unwrap_or("focused_test")
+        ));
+        if let Some(missing) = route.missing_discriminator.as_deref() {
+            out.push_str(&format!("- Missing discriminator: {missing}\n"));
+        }
+        if let Some(test) = route.suggested_test.as_deref() {
+            out.push_str(&format!("- Suggested test: {test}\n"));
+        }
+        if let Some(related) = route.related_test.as_deref() {
+            out.push_str(&format!("- Related test: {related}\n"));
+        }
+        if let Some(verify) = route.verify_command.as_deref() {
+            out.push_str(&format!("- Verify command: `{verify}`\n"));
+        }
+        if let Some(receipt) = route.receipt_command.as_deref() {
+            out.push_str(&format!("- Receipt command: `{receipt}`\n"));
+        }
+        out.push_str(&format!(
+            "- Receipt state: {}\n",
+            route.receipt_state.as_deref().unwrap_or(RECEIPT_MISSING)
+        ));
+        if let Some(language) = route.language.as_deref() {
+            let status = route.language_status.as_deref().unwrap_or("unknown");
+            out.push_str(&format!("- Language: {language} ({status})\n"));
+        }
+        if let Some(limit) = route.static_limit_kind.as_deref() {
+            out.push_str(&format!("- Static limit: {limit}\n"));
+            if let Some(detail) = route.static_limit_detail.as_deref() {
+                out.push_str(&format!("  - {detail}\n"));
+            }
+        }
+        if let Some(agent) = route.agent_command.as_deref() {
+            out.push_str(&format!("- Agent handoff: `{agent}`\n"));
+        }
+        out.push_str("- Boundary: advisory static evidence only; raw counts below are supporting evidence and gate authority remains separate.\n");
+    } else {
+        out.push_str("- State: no canonical repair route available\n");
+        out.push_str("- Boundary: no route is not a coverage, runtime, mutation, gate, or merge-readiness claim.\n");
+    }
+
+    out.push_str("\nSupporting movement counts:\n");
     out.push_str("| Measure | Count |\n");
     out.push_str("| --- | ---: |\n");
     out.push_str(&format!(
@@ -370,55 +428,6 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
         "| Visible unresolved gaps | {} |\n",
         report.movement.visible_unresolved
     ));
-
-    if let Some(route) = report.top_repair_route.as_ref() {
-        out.push_str("\nTop focused test to add:\n");
-        out.push_str(&format!("- {}\n", route_headline(route)));
-        out.push_str("  Evidence boundary:\n");
-        if let Some(gap_id) = route.canonical_gap_id.as_deref() {
-            out.push_str(&format!("  - Canonical gap: {gap_id}\n"));
-        } else if let Some(gap_id) = route.gap_id.as_deref() {
-            out.push_str(&format!("  - Gap: {gap_id}\n"));
-        }
-        if let Some(language) = route.language.as_deref() {
-            let status = route.language_status.as_deref().unwrap_or("unknown");
-            out.push_str(&format!("  - Language: {language} ({status})\n"));
-        }
-        if let Some(limit) = route.static_limit_kind.as_deref() {
-            out.push_str(&format!("  - Static limit: {limit}\n"));
-            if let Some(detail) = route.static_limit_detail.as_deref() {
-                out.push_str(&format!("    - {detail}\n"));
-            }
-        }
-        out.push_str(&format!(
-            "  - Receipt state: {}\n",
-            route.receipt_state.as_deref().unwrap_or("receipt_missing")
-        ));
-        if let Some(repair_route) = route.repair_route.as_deref() {
-            out.push_str(&format!("  Repair route: {repair_route}\n"));
-        }
-        if let Some(missing) = route.missing_discriminator.as_deref() {
-            out.push_str(&format!("  Missing discriminator: {missing}\n"));
-        }
-        if let Some(gap_id) = route.gap_id.as_deref() {
-            out.push_str(&format!("  Gap: {gap_id}\n"));
-        }
-        if let Some(test) = route.suggested_test.as_deref() {
-            out.push_str(&format!("  Suggested test: {test}\n"));
-        }
-        if let Some(related) = route.related_test.as_deref() {
-            out.push_str(&format!("  Related test: {related}\n"));
-        }
-        if let Some(verify) = route.verify_command.as_deref() {
-            out.push_str(&format!("  Verify: {verify}\n"));
-        }
-        if let Some(receipt) = route.receipt_command.as_deref() {
-            out.push_str(&format!("  Receipt command: {receipt}\n"));
-        }
-        if let Some(agent) = route.agent_command.as_deref() {
-            out.push_str(&format!("  Agent: {agent}\n"));
-        }
-    }
 
     out.push_str("\nReceipts:\n");
     out.push_str(&format!(
@@ -508,6 +517,24 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
     out.push_str(LIMITS_NOTE);
     out.push('\n');
     out
+}
+
+fn route_identity(route: &RepairRoute) -> String {
+    route
+        .canonical_gap_id
+        .as_deref()
+        .or(route.gap_id.as_deref())
+        .or(route.seam_id.as_deref())
+        .unwrap_or("not_available")
+        .to_string()
+}
+
+fn route_location(route: &RepairRoute) -> String {
+    match (route.path.as_deref(), route.line) {
+        (Some(path), Some(line)) => format!("{path}:{line}"),
+        (Some(path), None) => path.to_string(),
+        _ => "not_available".to_string(),
+    }
 }
 
 fn parse_sources(input: &PrEvidenceLedgerInput) -> ParsedSources {
@@ -862,6 +889,7 @@ fn repair_receipts_from_sources(
             seam_id: string_path(receipt, &["provenance", "seam_id"])
                 .or_else(|| string_path(receipt, &["seam", "seam_id"]))
                 .or_else(|| string_path(receipt, &["guidance", "seam_id"])),
+            receipt_state: receipt_lifecycle_state_from_receipt_value(receipt),
             static_movement: StaticMovement {
                 state,
                 source: "agent_receipt".to_string(),
@@ -891,6 +919,9 @@ fn repair_receipts_from_sources(
                 source: "recommendation_calibration".to_string(),
                 canonical_gap_id: canonical_gap_id_from_value(recommendation),
                 seam_id: string_path(recommendation, &["seam_id"]),
+                receipt_state: receipt_lifecycle_state_from_movement(
+                    string_path(recommendation, &["static_movement", "state"]).as_deref(),
+                ),
                 static_movement: StaticMovement {
                     state: string_path(recommendation, &["static_movement", "state"])
                         .unwrap_or_else(|| "unknown".to_string()),
@@ -1042,7 +1073,8 @@ fn route_from_gap_ledger(value: &Value) -> Option<RepairRoute> {
         verify_command: first_string_array_item(record, &["verification_commands"]),
         receipt_command: string_path(record, &["receipt_command"]),
         receipt_state: string_path(record, &["receipt", "state"])
-            .or_else(|| string_path(record, &["receipt", "movement"])),
+            .or_else(|| string_path(record, &["receipt", "movement"]))
+            .map(|state| receipt_lifecycle_state(Some(&state))),
         static_limit_kind: string_path(record, &["static_limit_kind"]),
         static_limit_detail: string_path(record, &["static_limit_detail"]),
         agent_command: string_path(route, &["agent_command"]).or_else(|| {
@@ -1115,7 +1147,8 @@ fn route_from_zero_status(value: &Value) -> Option<RepairRoute> {
         related_test: string_path(route, &["related_test"]),
         verify_command: string_path(route, &["verify_command"]),
         receipt_command: string_path(route, &["receipt_command"]),
-        receipt_state: string_path(route, &["receipt_state"]),
+        receipt_state: string_path(route, &["receipt_state"])
+            .map(|state| receipt_lifecycle_state(Some(&state))),
         static_limit_kind: string_path(route, &["static_limit_kind"]),
         static_limit_detail: string_path(route, &["static_limit_detail"]),
         agent_command: string_path(route, &["agent_command"]),
@@ -1146,7 +1179,8 @@ fn route_from_pr_guidance(value: &Value) -> Option<RepairRoute> {
         related_test: string_path(item, &["suggested_test", "near_test"]),
         verify_command: string_path(item, &["llm_guidance", "verify_command"]),
         receipt_command: string_path(item, &["llm_guidance", "receipt_command"]),
-        receipt_state: string_path(item, &["receipt_state"]),
+        receipt_state: string_path(item, &["receipt_state"])
+            .map(|state| receipt_lifecycle_state(Some(&state))),
         static_limit_kind: string_path(item, &["static_limit_kind"]),
         static_limit_detail: string_path(item, &["static_limit_detail"]),
         agent_command: seam_id.map(|id| {
@@ -1221,7 +1255,8 @@ fn route_from_baseline_delta(value: &Value) -> Option<RepairRoute> {
         related_test: string_path(item, &["suggested_test", "recommended_test"]),
         verify_command: string_path(item, &["repair", "verify_command"]),
         receipt_command: string_path(item, &["repair", "receipt_command"]),
-        receipt_state: string_path(item, &["receipt_state"]),
+        receipt_state: string_path(item, &["receipt_state"])
+            .map(|state| receipt_lifecycle_state(Some(&state))),
         static_limit_kind: string_path(item, &["static_limit_kind"]),
         static_limit_detail: string_path(item, &["static_limit_detail"]),
         agent_command: seam_id.map(|id| {
@@ -1319,6 +1354,7 @@ fn repair_receipt_json(record: &RepairReceipt) -> Value {
         "source": record.source,
         "canonical_gap_id": record.canonical_gap_id,
         "seam_id": record.seam_id,
+        "receipt_state": record.receipt_state,
         "static_movement": {
             "state": record.static_movement.state,
             "source": record.static_movement.source,
@@ -1381,17 +1417,6 @@ fn history_json(history: &HistorySummary) -> Value {
         "new_policy_eligible_total": history.new_policy_eligible_total,
         "trend": history.trend,
     })
-}
-
-fn route_headline(route: &RepairRoute) -> String {
-    match (route.path.as_deref(), route.line) {
-        (Some(path), Some(line)) => format!("{path}:{line}"),
-        (Some(path), None) => path.to_string(),
-        _ => route
-            .seam_id
-            .clone()
-            .unwrap_or_else(|| "unknown repair route".to_string()),
-    }
 }
 
 fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
@@ -1630,8 +1655,9 @@ mod tests {
 
         let markdown = render_pr_evidence_ledger_markdown(&report);
         assert!(markdown.contains("# RIPR PR Evidence Ledger"));
+        assert!(markdown.contains("Start here:"));
+        assert!(markdown.contains("Supporting movement counts:"));
         assert!(markdown.contains("| Baseline gaps resolved | 3 |"));
-        assert!(markdown.contains("Top focused test to add:"));
         assert!(markdown.contains("Limits: Read-only advisory PR evidence ledger"));
         Ok(())
     }
@@ -1717,7 +1743,7 @@ mod tests {
         assert!(markdown.contains("src/pricing.rs:42"));
         assert!(markdown.contains("Gap: gap:pr:pricing:threshold-boundary"));
         assert!(markdown.contains("Gap decision ledger: gap-ledger.json"));
-        assert!(markdown.contains("Verify: cargo xtask fixtures boundary_gap"));
+        assert!(markdown.contains("Verify command: `cargo xtask fixtures boundary_gap`"));
         Ok(())
     }
 
@@ -1976,7 +2002,7 @@ mod tests {
             history_json: None,
         });
         let gate_markdown = render_pr_evidence_ledger_markdown(&gate_report);
-        assert!(gate_markdown.contains("- gate-seam"));
+        assert!(gate_markdown.contains("- Identity: gate-seam"));
         assert!(gate_markdown.contains("Coverage delta: 1.25"));
         let gate_json = render_pr_evidence_ledger_json(&gate_report)?;
         assert!(gate_json.contains("\"source\": \"gate_decision\""));

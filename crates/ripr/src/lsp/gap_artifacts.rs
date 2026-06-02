@@ -386,6 +386,11 @@ fn validate_actionable_gaps(
             "actionable-gaps report must not carry run_limitations for editor projection",
         ));
     }
+    if !actionable_gaps_runtime_status_is_editor_consumable(artifact) {
+        return Err(GapArtifactRejection::MalformedArtifact(
+            "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection",
+        ));
+    }
     let packets = artifact.get("packets").and_then(Value::as_array).ok_or(
         GapArtifactRejection::MalformedArtifact("actionable-gaps report must contain packets"),
     )?;
@@ -412,11 +417,17 @@ fn validate_actionable_gaps(
 
         if packet_is_actionable(packet) {
             has_actionable_packet = true;
+            require_actionable_packet_string(
+                packet,
+                &["canonical_gap_id"],
+                "actionable packet must carry canonical_gap_id",
+            )?;
             identities.push(
                 identity_from_sources(&[Some(packet)])
                     .ok_or(GapArtifactRejection::MissingIdentity)?,
             );
             validate_actionable_packet_projection_fields(packet)?;
+            require_actionable_packet_repair_route(packet)?;
             require_actionable_packet_string(
                 packet,
                 &["repair_kind"],
@@ -434,6 +445,11 @@ fn validate_actionable_gaps(
             )?;
             require_actionable_packet_string(
                 packet,
+                &["target_test_shape"],
+                "actionable packet must carry target_test_shape",
+            )?;
+            require_actionable_packet_string(
+                packet,
                 &["verify_command"],
                 "actionable packet must carry verify_command",
             )?;
@@ -446,6 +462,27 @@ fn validate_actionable_gaps(
                 packet,
                 &["receipt_command_or_path"],
                 "actionable packet must carry receipt_command_or_path",
+            )?;
+            require_actionable_packet_string(
+                packet,
+                &["receipt_command"],
+                "actionable packet must carry receipt_command",
+            )?;
+            require_actionable_packet_typed_related_target(packet)?;
+            require_actionable_packet_array(
+                packet,
+                &["must_not_change"],
+                "actionable packet must carry must_not_change",
+            )?;
+            require_actionable_packet_array(
+                packet,
+                &["allowed_edit_surface"],
+                "actionable packet must carry allowed_edit_surface",
+            )?;
+            require_actionable_packet_raw_evidence_refs(
+                packet,
+                &["raw_evidence_refs"],
+                "actionable packet must carry raw_evidence_refs",
             )?;
         } else {
             if packet_is_no_action(packet) {
@@ -515,6 +552,28 @@ fn report_has_run_limitations(artifact: &Value) -> bool {
         .is_some_and(|items| !items.is_empty())
 }
 
+fn actionable_gaps_runtime_status_is_editor_consumable(artifact: &Value) -> bool {
+    if path_value(Some(artifact), &["run_status"])
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some_and(|state| state != "full")
+    {
+        return false;
+    }
+    let runtime_status = artifact.get("runtime_status");
+    if path_value(runtime_status, &["state"])
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some_and(|state| state != "full")
+    {
+        return false;
+    }
+    !matches!(
+        path_value(runtime_status, &["downstream_consumable"]).and_then(Value::as_bool),
+        Some(false)
+    )
+}
+
 fn actionable_gaps_empty_queue_is_complete(artifact: &Value) -> bool {
     let Some(summary) = artifact.get("summary") else {
         return false;
@@ -561,6 +620,44 @@ fn validate_actionable_packet_projection_fields(
         ));
     }
     Ok(())
+}
+
+fn require_actionable_packet_repair_route(packet: &Value) -> Result<(), GapArtifactRejection> {
+    let message = "actionable packet must carry structured repair_route";
+    if !matches!(packet.get("repair_route"), Some(Value::Object(route)) if !route.is_empty()) {
+        return Err(GapArtifactRejection::MalformedArtifact(message));
+    }
+    require_actionable_packet_string(packet, &["repair_route", "repair_kind"], message)?;
+    require_actionable_packet_string(packet, &["repair_route", "target_test_type"], message)?;
+    if require_actionable_packet_string(packet, &["repair_route", "assertion_shape"], message)
+        .is_err()
+        && require_actionable_packet_string(
+            packet,
+            &["repair_route", "suggested_assertion"],
+            message,
+        )
+        .is_err()
+    {
+        return Err(GapArtifactRejection::MalformedArtifact(message));
+    }
+    Ok(())
+}
+
+fn require_actionable_packet_typed_related_target(
+    packet: &Value,
+) -> Result<(), GapArtifactRejection> {
+    let Some(value) = path_value(Some(packet), &["related_test_or_observer"]) else {
+        return Err(GapArtifactRejection::MalformedArtifact(
+            "actionable packet must carry typed related_test_or_observer",
+        ));
+    };
+    if actionable_packet_related_target_file(value).is_some() {
+        Ok(())
+    } else {
+        Err(GapArtifactRejection::MalformedArtifact(
+            "actionable packet must carry typed related_test_or_observer",
+        ))
+    }
 }
 
 fn require_actionable_packet_source(
@@ -673,13 +770,68 @@ fn require_actionable_packet_string(
     Ok(())
 }
 
+fn require_actionable_packet_array(
+    packet: &Value,
+    path: &[&str],
+    message: &'static str,
+) -> Result<(), GapArtifactRejection> {
+    path_value(Some(packet), path)
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .map(|_| ())
+        .ok_or(GapArtifactRejection::MalformedArtifact(message))
+}
+
+fn require_actionable_packet_raw_evidence_refs(
+    packet: &Value,
+    path: &[&str],
+    message: &'static str,
+) -> Result<(), GapArtifactRejection> {
+    let values = path_value(Some(packet), path)
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or(GapArtifactRejection::MalformedArtifact(message))?;
+    if values
+        .iter()
+        .all(actionable_packet_raw_evidence_ref_is_structured)
+    {
+        Ok(())
+    } else {
+        Err(GapArtifactRejection::MalformedArtifact(message))
+    }
+}
+
+fn actionable_packet_raw_evidence_ref_is_structured(value: &Value) -> bool {
+    let has_anchor = path_value(Some(value), &["file"])
+        .or_else(|| path_value(Some(value), &["path"]))
+        .or_else(|| path_value(Some(value), &["source_file"]))
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some();
+    let has_identity = path_value(Some(value), &["kind"])
+        .or_else(|| path_value(Some(value), &["source_id"]))
+        .or_else(|| path_value(Some(value), &["evidence_record_ref"]))
+        .or_else(|| path_value(Some(value), &["canonical_gap_id"]))
+        .and_then(Value::as_str)
+        .and_then(non_empty)
+        .is_some();
+    has_anchor && has_identity
+}
+
 fn actionable_packet_guidance_is_missing(value: &str) -> bool {
     matches!(
         value.trim(),
-        "repair_route_unknown"
+        "" | "unknown"
+            | "none"
+            | "no_action"
+            | "repair_route_unknown"
             | "repair_kind_unknown"
+            | "receipt_command_unknown"
+            | "receipt_path_unknown"
+            | "confidence_basis_unknown"
             | "verify_command_unknown"
             | "target_test_type_unknown"
+            | "target_test_shape_unknown"
             | "assertion_shape_unknown"
             | "recommended_repair_unknown"
     )
@@ -699,6 +851,46 @@ fn actionable_packet_related_paths(packet: &Value) -> Vec<String> {
         path_value(observer, &["test"]),
         path_value(observer, &["target_file"]),
     ])
+}
+
+fn actionable_packet_related_target_file(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => actionable_packet_related_target_file_from_text(value),
+        Value::Object(object) => object
+            .get("file")
+            .and_then(Value::as_str)
+            .and_then(actionable_packet_workspace_relative_file_token),
+        Value::Array(values) => values
+            .iter()
+            .find_map(actionable_packet_related_target_file),
+        Value::Null | Value::Bool(_) | Value::Number(_) => None,
+    }
+}
+
+fn actionable_packet_related_target_file_from_text(value: &str) -> Option<String> {
+    if let Some((file, _)) = value.split_once("::") {
+        return actionable_packet_workspace_relative_file_token(file);
+    }
+    actionable_packet_workspace_relative_file_token(value)
+}
+
+fn actionable_packet_workspace_relative_file_token(value: &str) -> Option<String> {
+    let normalized = value.trim().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.contains(':')
+        || normalized.chars().any(char::is_whitespace)
+        || !normalized.contains('.')
+    {
+        return None;
+    }
+    if normalized
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return None;
+    }
+    Some(normalized)
 }
 
 fn validate_evidence_record(
@@ -841,7 +1033,7 @@ fn validate_language(
             language.as_str().to_string(),
         ));
     }
-    if !context.enabled_languages.contains(&language) {
+    if !language_enabled(context.enabled_languages, language) {
         return Err(GapArtifactRejection::DisabledLanguage(
             language.as_str().to_string(),
         ));
@@ -852,6 +1044,12 @@ fn validate_language(
         ));
     }
     Ok(())
+}
+
+fn language_enabled(enabled_languages: &[LanguageId], language: LanguageId) -> bool {
+    enabled_languages.contains(&language)
+        || (language == LanguageId::JavaScript
+            && enabled_languages.contains(&LanguageId::TypeScript))
 }
 
 fn validate_paths(root: &Path, paths: &[String]) -> Result<(), GapArtifactRejection> {
@@ -914,7 +1112,8 @@ fn language_from_value(value: &Value) -> Result<Option<LanguageId>, GapArtifactR
     match language {
         None => Ok(None),
         Some("rust") => Ok(Some(LanguageId::Rust)),
-        Some("typescript") | Some("javascript") => Ok(Some(LanguageId::TypeScript)),
+        Some("typescript") => Ok(Some(LanguageId::TypeScript)),
+        Some("javascript") => Ok(Some(LanguageId::JavaScript)),
         Some("python") => Ok(Some(LanguageId::Python)),
         Some(other) => Err(GapArtifactRejection::MalformedArtifact(match other {
             "" => "language must not be empty",
@@ -1038,7 +1237,7 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
         return false;
     }
     let tokens = command_tokens(trimmed);
-    if !matches!(tokens.first().map(String::as_str), Some("cargo" | "ripr")) {
+    if !command_program_is_allowed(&tokens) {
         return false;
     }
     for index in 0..tokens.len() {
@@ -1057,9 +1256,23 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     true
 }
 
+fn command_program_is_allowed(tokens: &[String]) -> bool {
+    match tokens.first().map(String::as_str) {
+        Some("cargo" | "ripr" | "pytest") => true,
+        Some("python") => {
+            tokens.get(1).map(String::as_str) == Some("-m")
+                && tokens.get(2).map(String::as_str) == Some("unittest")
+        }
+        _ => false,
+    }
+}
+
 fn looks_like_command_payload(value: &str) -> bool {
     let trimmed = value.trim_start();
-    trimmed.starts_with("cargo ") || trimmed.starts_with("ripr ")
+    trimmed.starts_with("cargo ")
+        || trimmed.starts_with("ripr ")
+        || trimmed.starts_with("pytest ")
+        || trimmed.starts_with("python -m unittest ")
 }
 
 fn command_tokens(command: &str) -> Vec<String> {
@@ -1194,6 +1407,59 @@ mod tests {
     }
 
     fn actionable_gaps_report() -> Value {
+        let raw_finding = json!({
+            "file": "src/pricing.rs",
+            "line": 42,
+            "kind": "weakly_exposed",
+            "language": "rust",
+            "language_status": "stable"
+        });
+        let repair_route = json!({
+            "repair_kind": "add_boundary_assertion",
+            "target_test_type": "boundary_discriminator",
+            "assertion_shape": "assert_eq!(price(threshold, threshold), expected)"
+        });
+        let packet = json!({
+            "canonical_gap_id": "gap:rust:pricing-boundary",
+            "evidence_class": "predicate_boundary",
+            "gap_state": "actionable",
+            "actionability": "extend_related_test",
+            "source_file": "src/pricing.rs",
+            "primary_anchor": {
+                "file": "src/pricing.rs",
+                "line": 42
+            },
+            "repair_kind": "add_boundary_assertion",
+            "target_test_type": "boundary_discriminator",
+            "target_test": "tests/pricing.rs::below_threshold_has_no_discount",
+            "assertion_shape": "assert_eq!(price(threshold, threshold), expected)",
+            "repair_route": repair_route,
+            "target_test_shape": "boundary_discriminator: assert_eq!(price(threshold, threshold), expected)",
+            "recommended_repair": "Add the equality-boundary assertion.",
+            "why": "Related tests reach the seam but miss equality at the threshold.",
+            "related_test_or_observer": {
+                "file": "tests/pricing.rs",
+                "name": "below_threshold_has_no_discount",
+                "line": 10
+            },
+            "verify_command": "ripr agent verify --root . --json",
+            "repair_route_source": "canonical_item.repair_route",
+            "verify_command_source": "canonical_item.verify_command",
+            "receipt_command": "ripr agent receipt --root . --json",
+            "receipt_command_or_path": "ripr agent receipt --root . --json",
+            "receipt_source": "canonical_item.receipt_command",
+            "public_projection_eligible": true,
+            "projection_exclusion_reasons": [],
+            "raw_evidence_refs": [raw_finding.clone()],
+            "raw_findings": [raw_finding],
+            "confidence_basis": "static_only",
+            "must_not_change": [
+                "Do not infer actionability from raw static class."
+            ],
+            "allowed_edit_surface": [
+                "tests/pricing.rs"
+            ]
+        });
         json!({
             "schema_version": "0.1",
             "tool": "ripr",
@@ -1208,50 +1474,7 @@ mod tests {
                 "public_projection_excluded_packets": 0
             },
             "run_limitations": [],
-            "packets": [
-                {
-                    "canonical_gap_id": "gap:rust:pricing-boundary",
-                    "evidence_class": "predicate_boundary",
-                    "gap_state": "actionable",
-                    "actionability": "extend_related_test",
-                    "source_file": "src/pricing.rs",
-                    "primary_anchor": {
-                        "file": "src/pricing.rs",
-                        "line": 42
-                    },
-                    "repair_kind": "add_boundary_assertion",
-                    "target_test_type": "boundary_discriminator",
-                    "target_test": "tests/pricing.rs::below_threshold_has_no_discount",
-                    "assertion_shape": "assert_eq!(price(threshold, threshold), expected)",
-                    "recommended_repair": "Add the equality-boundary assertion.",
-                    "why": "Related tests reach the seam but miss equality at the threshold.",
-                    "related_test_or_observer": {
-                        "file": "tests/pricing.rs",
-                        "name": "below_threshold_has_no_discount",
-                        "line": 10
-                    },
-                    "verify_command": "ripr agent verify --root . --json",
-                    "repair_route_source": "canonical_item.repair_route",
-                    "verify_command_source": "canonical_item.verify_command",
-                    "receipt_command_or_path": "ripr agent receipt --root . --json",
-                    "receipt_source": "canonical_item.receipt_command",
-                    "public_projection_eligible": true,
-                    "projection_exclusion_reasons": [],
-                    "raw_findings": [
-                        {
-                            "file": "src/pricing.rs",
-                            "line": 42,
-                            "kind": "weakly_exposed",
-                            "language": "rust",
-                            "language_status": "stable"
-                        }
-                    ],
-                    "confidence_basis": "static_only",
-                    "must_not_change": [
-                        "Do not infer actionability from raw static class."
-                    ]
-                }
-            ],
+            "packets": [packet],
             "must_not_infer": [
                 "do not claim mutation execution or runtime proof from this packet"
             ]
@@ -1527,13 +1750,58 @@ mod tests {
     }
 
     #[test]
+    fn actionable_gaps_report_rejects_limited_runtime_status_without_run_limitations() {
+        let mut artifact = actionable_gaps_report();
+        artifact["run_status"] = json!("limited_stale_input");
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection"
+            ))
+        );
+
+        artifact["run_status"] = json!("full");
+        artifact["runtime_status"] = json!({
+            "state": "limited_large_cache_skip",
+            "phase": "repo_seam_facts_cache",
+            "downstream_consumable": false,
+            "repair_route": "cargo xtask cache report && cargo xtask cache gc --dry-run"
+        });
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable-gaps report runtime_status must be full and downstream-consumable for editor projection"
+            ))
+        );
+    }
+
+    #[test]
     fn actionable_gaps_report_rejects_actionable_packet_without_identity() {
         let mut artifact = actionable_gaps_report();
         artifact["packets"][0]["canonical_gap_id"] = json!(null);
 
         assert_eq!(
             validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
-            Err(GapArtifactRejection::MissingIdentity)
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry canonical_gap_id"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_actionable_packet_without_canonical_gap_id_even_with_seam_id()
+    {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["canonical_gap_id"] = json!(null);
+        artifact["packets"][0]["seam_id"] = json!("fallback-seam-id");
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry canonical_gap_id"
+            ))
         );
     }
 
@@ -1580,6 +1848,19 @@ mod tests {
     }
 
     #[test]
+    fn actionable_gaps_report_rejects_missing_structured_repair_route() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["repair_route"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry structured repair_route"
+            ))
+        );
+    }
+
+    #[test]
     fn actionable_gaps_report_rejects_missing_receipt_command_or_path() {
         let mut artifact = actionable_gaps_report();
         artifact["packets"][0]["receipt_command_or_path"] = json!(null);
@@ -1601,6 +1882,118 @@ mod tests {
             validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
             Err(GapArtifactRejection::MalformedArtifact(
                 "actionable packet must carry verify_command"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_target_test_shape() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["target_test_shape"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry target_test_shape"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_receipt_command() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["receipt_command"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry receipt_command"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_related_context() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["related_test_or_observer"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry typed related_test_or_observer"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_related_context_without_typed_target() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["related_test_or_observer"] = json!("input that reaches the branch");
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry typed related_test_or_observer"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_must_not_change() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["must_not_change"] = json!([]);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry must_not_change"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_allowed_edit_surface() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["allowed_edit_surface"] = json!([]);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry allowed_edit_surface"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_missing_raw_evidence_refs() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["raw_evidence_refs"] = json!([]);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry raw_evidence_refs"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_malformed_raw_evidence_refs() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["raw_evidence_refs"] = json!([{}]);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry raw_evidence_refs"
+            ))
+        );
+
+        artifact["packets"][0]["raw_evidence_refs"] = json!(["placeholder"]);
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry raw_evidence_refs"
             ))
         );
     }
@@ -1633,6 +2026,49 @@ mod tests {
     }
 
     #[test]
+    fn actionable_gaps_report_rejects_missing_related_test_or_observer() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["related_test_or_observer"] = json!(null);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry typed related_test_or_observer"
+            ))
+        );
+    }
+
+    #[test]
+    fn actionable_gaps_report_rejects_placeholder_guidance_fields() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["confidence_basis"] = json!("unknown");
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry confidence_basis"
+            ))
+        );
+
+        artifact["packets"][0]["confidence_basis"] = json!("confidence_basis_unknown");
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry confidence_basis"
+            ))
+        );
+
+        artifact["packets"][0]["confidence_basis"] = json!("static_only");
+        artifact["packets"][0]["receipt_command"] = json!("receipt_command_unknown");
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must carry receipt_command"
+            ))
+        );
+    }
+
+    #[test]
     fn actionable_gaps_report_rejects_disabled_language_in_later_packet() -> Result<(), String> {
         let mut artifact = actionable_gaps_report();
         let python_packet = json!({
@@ -1647,6 +2083,11 @@ mod tests {
             "target_test_type": "boundary_discriminator",
             "target_test": "tests/test_pricing.py::test_boundary",
             "assertion_shape": "assert price(threshold, threshold) == expected",
+            "repair_route": {
+                "repair_kind": "add_boundary_assertion",
+                "target_test_type": "boundary_discriminator",
+                "assertion_shape": "assert price(threshold, threshold) == expected"
+            },
             "verify_command": "ripr agent verify --root . --json",
             "repair_route_source": "canonical_item.repair_route",
             "verify_command_source": "canonical_item.verify_command",
@@ -1717,6 +2158,35 @@ mod tests {
         assert_eq!(
             enabled.identities[0].canonical_gap_id.as_deref(),
             Some("gap:py:pricing")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn javascript_preview_gap_ledger_is_enabled_by_typescript_adapter() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["gap_id"] = json!("gap:js:pricing");
+        artifact["records"][0]["canonical_gap_id"] = json!("gap:js:pricing");
+        artifact["records"][0]["language"] = json!("javascript");
+
+        let disabled = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]));
+        assert_eq!(
+            disabled,
+            Err(GapArtifactRejection::DisabledLanguage(
+                "javascript".to_string()
+            ))
+        );
+
+        let enabled = validate_gap_artifact(
+            &artifact,
+            &context(&[LanguageId::Rust, LanguageId::TypeScript]),
+        )
+        .map_err(|err| format!("{err:?}"))?;
+        assert_eq!(enabled.language, Some(LanguageId::JavaScript));
+        assert_eq!(enabled.language_status, Some(LanguageStatus::Preview));
+        assert_eq!(
+            enabled.identities[0].canonical_gap_id.as_deref(),
+            Some("gap:js:pricing")
         );
         Ok(())
     }
@@ -1917,6 +2387,35 @@ mod tests {
         let command = "ripr agent verify --root \"/workspace\" --json";
 
         assert!(command_payload_is_safe(&workspace, command));
+    }
+
+    #[test]
+    fn command_payload_accepts_python_test_verify_commands() {
+        let workspace = root();
+
+        assert!(command_payload_is_safe(
+            &workspace,
+            "pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(command_payload_is_safe(
+            &workspace,
+            "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python script.py --do-anything"
+        ));
+        assert!(!command_payload_is_safe(&workspace, "tox -e py"));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "pytest ../outside/test_pricing.py"
+        ));
+        assert!(looks_like_command_payload(
+            " pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(looks_like_command_payload(
+            "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
     }
 
     #[test]

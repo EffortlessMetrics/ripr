@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_monkeypatch_module_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/service.py:10
+
+Changed
+  after:      return remote_total_with_tax()
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/service.py::fetch_total
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `fetch_total`
+  - infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `mocked_module` prevents a safe Python propagation claim.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator unknown: Static limit `mocked_module` prevents a safe Python discriminator claim.
+  - related test tests/test_service.py:4 test_fetch_total_monkeypatches_remote_total uses strong exact value oracle: assert fetch_total() == 10
+
+Weakness
+  - Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.
+
+Stop reasons:
+  - static_probe_unknown

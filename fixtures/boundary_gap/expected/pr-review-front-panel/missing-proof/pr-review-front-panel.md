@@ -2,10 +2,11 @@
 
 Status: incomplete
 
-Next: regenerate the missing assistant proof artifact before acting on this panel.
-
-Missing input:
-- target/ripr/reports/test-oracle-assistant-proof.json
+Start here:
+- State: missing required evidence
+- Safe next action: regenerate the missing assistant proof artifact before acting on this panel.
+- Missing input: target/ripr/reports/test-oracle-assistant-proof.json
+- Boundary: advisory static evidence only; no gate, runtime, coverage, or mutation proof is implied.
 
 Movement:
 - New policy-eligible gaps: 0

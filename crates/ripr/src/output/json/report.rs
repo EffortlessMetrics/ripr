@@ -1,8 +1,18 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{
-    Finding, FlowSinkFact, MissingDiscriminatorFact, RelatedTest, StageEvidence, ValueFact,
+    Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
+    StageEvidence, ValueFact,
 };
+use crate::output::preview_actionability::{
+    preview_actionability_for, preview_actionability_json_value,
+};
+use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_preview_card::{
+    typescript_preview_card, typescript_preview_card_json_value,
+};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 use super::finding_alignment;
 use super::{array_field, escape, field, float_field, number_field};
@@ -32,8 +42,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     summary_json(&mut out, output);
     out.push_str(",\n");
     out.push_str("  \"findings\": [\n");
+    let canonical_gap_counts = canonical_gap_counts(&output.findings);
     for (idx, finding) in output.findings.iter().enumerate() {
-        finding_json_with_config(&mut out, finding, 2, config);
+        finding_json_with_config_and_counts(&mut out, finding, 2, config, &canonical_gap_counts);
         if idx + 1 != output.findings.len() {
             out.push(',');
         }
@@ -71,18 +82,39 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
 
 #[cfg(test)]
 pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
-    finding_json_with_config(out, finding, indent, &RiprConfig::default());
+    finding_json_with_config_and_counts(
+        out,
+        finding,
+        indent,
+        &RiprConfig::default(),
+        &BTreeMap::new(),
+    );
 }
 
-pub(super) fn finding_json_with_config(
+fn finding_json_with_config_and_counts(
     out: &mut String,
     finding: &Finding,
     indent: usize,
     config: &RiprConfig,
+    canonical_gap_counts: &BTreeMap<&str, usize>,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "id", &finding.id, true);
+    if let Some(gap) = &finding.canonical_gap {
+        field(out, indent + 1, "canonical_gap_id", &gap.id, true);
+        number_field(
+            out,
+            indent + 1,
+            "canonical_gap_group_size",
+            canonical_gap_counts
+                .get(gap.id.as_str())
+                .copied()
+                .unwrap_or(1),
+            true,
+        );
+        canonical_gap_json(out, gap, indent + 1, true);
+    }
     field(
         out,
         indent + 1,
@@ -116,13 +148,17 @@ pub(super) fn finding_json_with_config(
         true,
     );
     number_field(out, indent + 2, "line", finding.probe.location.line, true);
+    let render_probe_owner = finding.probe.owner.is_some() && finding.language_status.is_some();
     field(
         out,
         indent + 2,
         "expression",
         &finding.probe.expression,
-        false,
+        render_probe_owner,
     );
+    if render_probe_owner && let Some(owner) = &finding.probe.owner {
+        field(out, indent + 2, "owner", &owner.0, false);
+    }
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
     out.push_str(&format!("{}\"ripr\": {{\n", "  ".repeat(indent + 1)));
     stage_json(out, indent + 2, "reach", &finding.ripr.reach, true);
@@ -177,6 +213,32 @@ pub(super) fn finding_json_with_config(
         out.push('\n');
     }
     out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        repair_placement_json(out, &placement, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = python_repair_card(finding) {
+        python_repair_card_json(out, &card, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = typescript_preview_card(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "typescript_preview_card",
+            &typescript_preview_card_json_value(&card),
+        );
+        out.push_str(",\n");
+    }
+    if let Some(actionability) = preview_actionability_for(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "preview_actionability",
+            &preview_actionability_json_value(&actionability),
+        );
+        out.push_str(",\n");
+    }
     let stop_reasons = stop_reason_values(finding);
     array_field(out, indent + 1, "stop_reasons", &stop_reasons, true);
     let strongest = strongest_related_test(finding);
@@ -247,6 +309,40 @@ pub(super) fn finding_json_with_config(
         field(out, indent + 1, "static_limit_kind", kind.as_str(), false);
     }
     out.push_str(&format!("{sp}}}"));
+}
+
+fn canonical_gap_counts(findings: &[Finding]) -> BTreeMap<&str, usize> {
+    let mut counts = BTreeMap::new();
+    for finding in findings {
+        if let Some(gap) = &finding.canonical_gap {
+            *counts.entry(gap.id.as_str()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn canonical_gap_json(out: &mut String, gap: &FindingCanonicalGap, indent: usize, trailing: bool) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"canonical_gap\": {{\n"));
+    field(out, indent + 1, "id", &gap.id, true);
+    field(out, indent + 1, "language", &gap.language, true);
+    field(out, indent + 1, "file", &gap.file, true);
+    field(out, indent + 1, "owner", &gap.owner, true);
+    field(out, indent + 1, "behavior_kind", &gap.behavior_kind, true);
+    field(out, indent + 1, "probe_kind", &gap.probe_kind, true);
+    field(
+        out,
+        indent + 1,
+        "normalized_discriminator",
+        &gap.normalized_discriminator,
+        false,
+    );
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+    if trailing {
+        out.push(',');
+    }
+    out.push('\n');
 }
 
 fn evidence_path_values(finding: &Finding) -> Vec<String> {
@@ -434,6 +530,210 @@ fn flow_sink_json(out: &mut String, sink: &FlowSinkFact) {
         escape(&sink.text),
         sink.line
     ));
+}
+
+struct RepairPlacement {
+    suggested_test_file: String,
+    suggested_test_name: String,
+    suggested_test_node_id: Option<String>,
+    verify_command: String,
+    verify_command_confidence: String,
+}
+
+fn repair_placement_from_evidence(finding: &Finding) -> Option<RepairPlacement> {
+    Some(RepairPlacement {
+        suggested_test_file: evidence_value(finding, "suggested_test_file: ")?.to_string(),
+        suggested_test_name: evidence_value(finding, "suggested_test_name: ")?.to_string(),
+        suggested_test_node_id: evidence_value(finding, "suggested_test_node_id: ")
+            .map(ToString::to_string),
+        verify_command: evidence_value(finding, "suggested_verify_command: ")?.to_string(),
+        verify_command_confidence: evidence_value(
+            finding,
+            "suggested_verify_command_confidence: ",
+        )?
+        .to_string(),
+    })
+}
+
+fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|entry| entry.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn repair_placement_json(out: &mut String, placement: &RepairPlacement, indent: usize) {
+    out.push_str(&format!(
+        "{}\"repair_placement\": {{\n",
+        "  ".repeat(indent)
+    ));
+    field(
+        out,
+        indent + 1,
+        "suggested_test_file",
+        &placement.suggested_test_file,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_test_name",
+        &placement.suggested_test_name,
+        true,
+    );
+    if let Some(node_id) = &placement.suggested_test_node_id {
+        field(out, indent + 1, "suggested_test_node_id", node_id, true);
+    }
+    field(
+        out,
+        indent + 1,
+        "verify_command",
+        &placement.verify_command,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "verify_command_confidence",
+        &placement.verify_command_confidence,
+        false,
+    );
+    out.push_str(&format!("{} }}", "  ".repeat(indent)));
+}
+
+fn json_value_field(out: &mut String, indent: usize, name: &str, value: &Value) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"{name}\": "));
+    match serde_json::to_string_pretty(value) {
+        Ok(rendered) => {
+            for (idx, line) in rendered.lines().enumerate() {
+                if idx > 0 {
+                    out.push('\n');
+                    out.push_str(&sp);
+                }
+                out.push_str(line);
+            }
+        }
+        Err(_) => out.push_str("null"),
+    }
+}
+
+fn python_repair_card_json(out: &mut String, card: &PythonRepairCard, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"python_repair_card\": {{\n"));
+    field(out, indent + 1, "card_version", &card.card_version, true);
+    field(out, indent + 1, "source", &card.source, true);
+    field(
+        out,
+        indent + 1,
+        "canonical_gap_id",
+        &card.canonical_gap_id,
+        true,
+    );
+    field(out, indent + 1, "language", &card.language, true);
+    field(
+        out,
+        indent + 1,
+        "language_status",
+        &card.language_status,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "authority_boundary",
+        &card.authority_boundary,
+        true,
+    );
+    field(out, indent + 1, "repair_action", &card.repair_action, true);
+    field(out, indent + 1, "changed_owner", &card.changed_owner, true);
+    field(
+        out,
+        indent + 1,
+        "changed_behavior",
+        &card.changed_behavior,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "current_test_evidence",
+        &card.current_test_evidence,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "missing_discriminator",
+        &card.missing_discriminator,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "recommended_test_shape",
+        &card.recommended_test_shape,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &card.suggested_assertion,
+        true,
+    );
+    out.push_str(&format!(
+        "{}\"suggested_location\": {{\n",
+        "  ".repeat(indent + 1)
+    ));
+    field(
+        out,
+        indent + 2,
+        "test_file",
+        &card.suggested_test_file,
+        true,
+    );
+    field(
+        out,
+        indent + 2,
+        "test_name",
+        &card.suggested_test_name,
+        card.suggested_test_node_id.is_some(),
+    );
+    if let Some(node_id) = &card.suggested_test_node_id {
+        field(out, indent + 2, "pytest_node_id", node_id, false);
+    }
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"verify\": {{\n", "  ".repeat(indent + 1)));
+    field(out, indent + 2, "command", &card.verify_command, true);
+    field(
+        out,
+        indent + 2,
+        "confidence",
+        &card.verify_command_confidence,
+        false,
+    );
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"receipt\": {{\n", "  ".repeat(indent + 1)));
+    if let Some(command) = &card.receipt_command {
+        field(out, indent + 2, "command", command, true);
+    } else {
+        out.push_str(&format!("{}\"command\": null,\n", "  ".repeat(indent + 2)));
+    }
+    field(out, indent + 2, "status", &card.receipt_status, true);
+    field(out, indent + 2, "guidance", &card.receipt_guidance, false);
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    array_field(
+        out,
+        indent + 1,
+        "stop_conditions",
+        &card.stop_conditions,
+        true,
+    );
+    array_field(out, indent + 1, "limits", &card.limits, false);
+    out.push_str(&format!("{sp} }}"));
 }
 
 pub(super) fn stop_reason_values(finding: &Finding) -> Vec<String> {

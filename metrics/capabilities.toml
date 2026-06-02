@@ -354,19 +354,164 @@ spec = "RIPR-SPEC-0057"
 evidence = [
   "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md explains why swarm work starts as bounded repair coordination rather than raw-finding queues, arbitrary test generation, provider integration, or badge changes",
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md defines ripr-swarm as a bounded repair runner over actionable canonical gap packets rather than raw findings",
-  "cargo xtask ripr-swarm plan --top <n> writes target/ripr/reports/swarm-plan.{json,md} from actionable-gaps.json with top ready packets, blocked packets, missing verify/receipt buckets, static-limitation blocking, high-confidence counts, and must-not-infer guardrails",
+  "docs/specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md defines the external-agent handoff as one canonical packet in, operator-reviewed patch and receipt metadata out, with no provider SDK, autonomous merge, production-code edits by default, raw-finding work queue, or unbounded retry loop",
+  "cargo xtask ripr-swarm plan --top <n> writes target/ripr/reports/swarm-plan.{json,md} from actionable-gaps.json with top ready packets, blocked packets, blocked-state counts, missing verify/receipt buckets, static-limitation blocking, high-confidence counts, and must-not-infer guardrails",
+  "cargo xtask ripr-swarm plan --top <n> forwards static_limitation_backlog from actionable-gaps.json so route-grained analyzer repair routes and limitation_backlog_packets remain visible when no packet is safely actionable, without treating limitations as repair-ready work",
   "cargo xtask ripr-swarm attempt --packet <id> --dry-run prints bounded packet context with repair route, target test/assertion shape, verify command, receipt command, expected evidence movement, and must-not-change boundaries without editing files or running commands",
-  "cargo xtask ripr-swarm readiness writes target/ripr/reports/swarm-readiness.{json,md} from swarm-plan and actionable-gap-outcomes artifacts with actionable gap, packet readiness, missing verify/receipt, static-limitation, high-confidence, attempted, improved, unchanged, regressed, resolved, and orphaned receipt counts",
+  "cargo xtask ripr-swarm attempt-ledger writes target/ripr/reports/swarm-attempt-ledger.{json,md} from swarm-plan, actionable-gap-outcomes, any prior ledger, and repo-local real repair attempts with durable attempt_id, packet_id, canonical_gap_id, typed route context, actor_kind, receipt_path, verify command/result, receipt command, before/after gap state, outcome, timestamp, latest-attempt projection, attempt-history summary, repair-route quality, top failing routes, and missing evidence fields",
+  "cargo xtask ripr-swarm readiness writes target/ripr/reports/swarm-readiness.{json,md} from swarm-plan, actionable-gap-outcomes, and swarm-attempt-ledger artifacts with coarse readiness_state, actionable gap, packet readiness, blocked-state route audit with example packet/canonical gap identities, field-level blocker routes, missing verify/receipt, static-limitation, high-confidence, attempted, improved, unchanged, regressed, resolved, orphaned receipt, attempt-history summary, repair-route quality, top failing route, top limitation routes, missing evidence field counts, route-quality next-action attempt sample identity, and a stable top_next_action projection over next_actions[0]",
   "docs/RIPR_SWARM_HUMAN_WORKFLOW.md documents the operator loop from packet selection through dry-run, bounded repair, verify command, receipt command, outcome report, and stop conditions",
   "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md records release-loop dogfood: live audit timeout fail-closed behavior, fixture-backed packet planning, ready and static-limit dry-run attempts, verify/receipt command separation, and outcome joins for not-attempted, improved, unchanged, and orphaned receipt states",
   "docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md accepts the live swarm-repo audit timeout as a bounded 0.7 limitation, keeps the loop advisory/dry-run-first, and authorizes source promotion before source release proof",
   "fixtures/swarm-plan-packet-corpus pins ready boundary/error/output packets plus static-limitation, missing verify, missing receipt, and missing must-not-change blocking cases",
   "fixtures/actionable-gap-outcomes-corpus pins not-attempted, receipt-present, improved, unchanged, regressed, resolved, attempted-without-receipt, and orphaned-receipt outcome joins",
-  "the implemented plan command is report-only and does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
+  "fixtures/surface-projection-alignment/corpus.json pins a receipt-backed canonical gap whose packet_id, canonical_gap_id, repair_kind, verify command, receipt command/state, evidence_improved outcome, and readiness top_next_action stay aligned while badge/LSP/PR/CI remain advisory consumers",
+  "fixtures/real-repair-attempts/corpus.json records repo-local repair-loop attempts across improved, resolved, unchanged, expected_unchanged_negative_capability, attempted_no_receipt, and static-limitation route-improvement outcomes with packet identity, canonical gap identity, verify command/result, receipt command/path/state, must-not-change boundaries, raw evidence refs, operator notes, and negative-capability limitation-route improvements; TypeScript preview receipt cases include typescript_preview_lsp_repair_context_improved, javascript_preview_generated_ci_grouping_improved, typescript_preview_mocked_module_limitation_improved, typescript_preview_weak_oracle_downgrade_unchanged, and typescript_preview_weak_oracle_guidance_improved; the Python preview case python_preview_boundary_gap_test_only_closed records a test-only packet, focused pytest verify command, forbidden production file, and closed canonical gap receipt; language_repair_route_quality reports TypeScript, JavaScript, and Python preview outcomes by language and repair kind",
+  "fixtures/python-real-repo-evals/corpus.json records tiny controlled pytest, normal pytest app, async return-value, parametrized-boundary, CLI/output, log output, argparse CLI output, Click CLI output, Typer CLI output, CLI exit-code, pytest exception, custom exception, unittest exception, API status-code, API JSON detail, Flask route JSON detail, FastAPI route JSON detail, mixed Rust/Python, decorated route, unittest return-value, unittest returned-dict field, and dataclass/model-field scratch-repo evaluations where RIPR emits Python repair cards and bounded agent packets, human-run focused pytest/unittest commands pass, and before/after outcome receipts close the canonical gaps while static_limit_cases records dynamic_dispatch_no_packet_eval, decorator_indirection_no_packet_eval, missing_import_graph_no_packet_eval, metaprogramming_no_packet_eval, mocked_module_no_packet_eval, opaque_custom_helper_no_packet_eval, property_based_no_packet_eval, unresolved_fixture_no_packet_eval, generated_file_no_packet_eval, and unsupported_syntax_no_packet_eval as no card, no packet, not_applicable verify/receipt, and no_receipt movement; Python repair-routing quality metrics report top-1 usefulness, ranked top-3 precision, verify-command validity, agent-packet boundary validity, concrete-discriminator coverage, suggested test-location coverage, false-actionable and crash rates, receipt closure, unsupported limitation distribution, no-action static-limit distribution, and ordinary no-action distribution",
+  "fixtures/python-real-repo-evals/corpus.json no_action_cases records no_related_test_no_packet_eval as ordinary no_static_path evidence, already_observed_no_packet_eval as exposed strong-oracle evidence, and heuristic_only_no_packet_eval as weakly_exposed uncertain related-test evidence; all have no repair card, no agent packet, not_applicable verify/receipt, no receipt movement, and an ordinary no-action distribution separate from static-limit distribution",
+  "fixtures/user-surface-projection-alignment/corpus.json pins full badge, LSP, PR comment, and CI examples to the same actionable packet identity by source_alignment_case while limited runtime-state examples use canonical_runtime_status with null packet identity and degraded route-quality rows preserve non-success next actions",
+  "xtask::tests::dogfood_user_surface_projection_alignment_reports_contract_drift, dogfood_user_surface_projection_alignment_accepts_limited_runtime_status, dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route, dogfood_user_surface_projection_alignment_rejects_limited_static_limitation_backlog_projection, dogfood_surface_projection_alignment_covers_route_quality_non_success, dogfood_surface_projection_alignment_covers_missing_receipt_route_quality, dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source, dogfood_user_surface_projection_alignment_matches_missing_receipt_source, dogfood_user_surface_projection_alignment_covers_route_quality_non_success_all_surfaces, dogfood_user_surface_projection_alignment_matches_surface_projection_source, ripr_swarm_repair_route_quality_samples_attempts_and_classifies_failures, ripr_swarm_readiness_consumes_attempt_ledger_counts, ripr_swarm_readiness_routes_timeout_receipts_to_bounded_verify_backlog, ripr_swarm_readiness_audits_blocked_state_routes, ripr_swarm_readiness_routes_static_limitation_backlog_when_no_ready_packets, ripr_swarm_readiness_prioritizes_sampled_static_limitation_backlog, lane1_static_limitation_backlog_emits_analyzer_packets, lane1_static_limitation_backlog_splits_same_category_by_repair_route, and lane1_static_limitation_backlog_keeps_samples_for_each_top_repair_route pin user-surface fail-closed behavior, named runtime repair routes, limited-runtime rejection of stale static-limitation backlog projection, sampled-limited readiness routing to analyzer backlog before the runtime-resolution reminder, non-success route-quality preservation across public consumers with concrete attempt_id next-action samples, expected unchanged negative-capability receipts, missing-receipt routing, blocked-state route auditing, readiness top limitation routes with inspectable source samples including line, expression, limitation reason, and non-claims, route-grained limitation backlog packets, route-sample preservation for low-count packet-backed top limitation routes, report-only runtime diagnostics staying out of packet-backed route projection, and full-row anchoring to the repair-loop source fixture",
+  "docs/handoffs/2026-05-27-lane1-evidence-to-repair-closeout-audit.md records fresh local proof across lane1-evidence-audit, swarm plan, actionable-gap-outcomes, attempt-ledger, readiness, scorecard, trend, dogfood, and cache reports; the proof is limited_incomplete_input, not a full lane closeout",
+  "the implemented plan, attempt-ledger, and readiness commands are report-only and do not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
-fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus"]
-next = "0.7 release proof and explicit publish decision"
-metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
+fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus", "fixtures/surface-projection-alignment", "fixtures/real-repair-attempts", "fixtures/python-real-repo-evals", "fixtures/user-surface-projection-alignment"]
+next = "analysis/related-test-ranking-audit-fixes"
+metric = "readiness_state, swarm_ready_packets, swarm_blocked_packets, swarm_blocked_by_missing_context_packets, swarm_blocked_by_static_limitation_packets, swarm_blocked_by_public_projection_exclusion_packets, swarm_public_projection_exclusion_reasons, swarm_blocked_by_operator_judgment_packets, swarm_missing_canonical_gap_id, swarm_not_actionable_gap_state, swarm_missing_verify_command, swarm_missing_verify_result, swarm_missing_receipt_command, swarm_missing_repair_route, swarm_missing_target_test_shape, swarm_missing_must_not_change, swarm_missing_allowed_edit_surface, swarm_missing_raw_evidence_refs, swarm_related_context_missing, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempt_ledger_attempts_total, swarm_attempt_ledger_expected_unchanged, swarm_attempt_history_attempts_total, swarm_attempt_history_durable_attempts_total, swarm_attempt_history_evidence_unchanged, swarm_attempt_history_attempted_no_receipt, swarm_attempt_history_expected_unchanged, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_expected_unchanged_packets, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts, blocked_state_routes, blocked_state_route_examples, limitation_backlog_packets, repair_kind_attempted, repair_kind_improved, repair_kind_unchanged, repair_kind_expected_unchanged, repair_kind_regressed, repair_kind_missing_verify_result, repair_kind_failure_count, repair_kind_dominant_failure_reason, repair_kind_success_rate, top_failing_repair_routes, top_limitation_routes, top_missing_evidence_fields, top_next_action, surface_projection_alignment_receipts, real_repair_attempt_receipts, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, user_surface_projection_alignment_receipts, lane1_closeout_evidence_audit"
+
+[[capability]]
+id = "lane1_canonical_actionability_contract"
+name = "Lane 1 canonical actionability contract"
+status = "alpha"
+spec = "RIPR-SPEC-0061"
+evidence = [
+  "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md defines the rule that actionable means a safe bounded repair route with canonical identity, repair kind, target shape, verify command, receipt command, confidence, must-not-change boundaries, and raw evidence references",
+  "docs/specs/RIPR-SPEC-0021-evidence-record.md defines canonical_item identity, gap_state, repair_route, static limitations, raw spans, and receipt command compatibility",
+  "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md keeps public projection deny-by-default when canonical identity, repair route, verify, receipt, freshness, or safety checks are missing",
+  "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md blocks swarm-ready ranking for missing verify command, missing receipt command, static limitations, and missing must-not-change boundaries",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_iterator_local_then_activation_is_static_limitation keeps idx >= offset style local/iterator operands as named static limitations without invented candidate values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_input_operand_is_computed_local_then_activation_stays_static_limitation keeps computed local operands as named static limitations without invented candidate values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_owner_call_when_parameter_field_operands_resolve_then_activation_is_yes and given_boundary_owner_call_when_parameter_field_operands_are_opaque_then_activation_stays_static_limitation validate simple parameter field boundary operands can resolve through same-test struct field bindings while opaque, computed, and iterator-derived operands remain blocked",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_boundary_seam_when_parameter_operands_are_called_with_equal_strings_then_missing_discriminator_is_cleared keeps parameter equality-boundary seams out of the actionable repair queue when a related test already calls the owner with equal concrete operands",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins both iterator-derived and local/computed activation_boundary_input_unresolved cases as named limitations with route-specific analyzer repair routes",
+  "fixtures/swarm-plan-packet-corpus/corpus.json keeps iterator-derived and local/computed activation_boundary_input_unresolved packets blocked by static_limitation even when stale add_boundary_assertion fields are present",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_keeps_unresolved_boundary_operands_as_named_limitation maps iterator-derived activation_boundary_input_unresolved to analysis/iterator-boundary-operand-resolution while keeping it non-actionable",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_computed_boundary_operands_to_local_computed_limitation maps local/computed activation_boundary_input_unresolved to analysis/local-computed-boundary-operand-resolution while keeping it non-actionable",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_member_boundary_operands_to_local_member_limitation and member_boundary_operand_route_requires_identifier_member_tokens route member-access activation_boundary_input_unresolved operands to analysis/local-member-boundary-operand-resolution while keeping them non-actionable and rejecting method-call/decimal overmatches",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder preserves parameter/literal boundary items as actionable add_boundary_assertion packets with verify and receipt commands",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_recommended_test_as_canonical_related_target preserves structured recommended test targets as canonical related context when no nearest existing related test is available",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_recommends_existing_source_module_test_file_when_visible validates no-related-test packet generation prefers an existing source-adjacent module test file over a guessed root integration-test file",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_recommends_existing_ancestor_module_test_file_when_visible validates no-related-test packet generation prefers an existing ancestor module test file over a guessed root integration-test file",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories maps local/computed activation_boundary_input_unresolved to analysis/local-computed-boundary-operand-resolution",
+  "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt validates emitted public packets carry target_test_shape, receipt_command, confidence, raw_evidence_refs, must_not_change boundaries, and allowed_edit_surface before projection eligibility",
+  "xtask::tests::lane1_actionable_gap_packets_exclude_missing_canonical_gap_id validates seam_id fallback identity is not enough for public projection or swarm-ready routing",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_verify_projection_exclusion keeps stale packet artifacts with explicit missing_verify_command projection reasons blocked by the verify-command field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_receipt_projection_exclusion keeps stale packet artifacts with explicit missing_receipt_command projection reasons blocked by the receipt-command field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_must_not_change_projection_exclusion keeps stale packet artifacts with explicit missing_must_not_change projection reasons blocked by the must-not-change field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_allowed_edit_surface_projection_exclusion keeps stale packet artifacts with explicit missing_allowed_edit_surface projection reasons blocked by the edit-surface field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_readiness_routes_missing_allowed_edit_surface_projection_exclusion_without_missing_context keeps external swarm-plan artifacts with explicit missing_allowed_edit_surface projection reasons routed to the edit-surface readiness blocker even when missing_context is absent",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_raw_evidence_refs_projection_exclusion keeps stale packet artifacts with explicit missing_raw_evidence_refs projection reasons blocked by the raw-evidence field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_readiness_routes_missing_raw_evidence_refs_projection_exclusion_without_missing_context keeps external swarm-plan artifacts with explicit missing_raw_evidence_refs projection reasons routed to the raw-evidence readiness blocker even when missing_context is absent",
+    "xtask::tests::ripr_swarm_readiness_reconstructs_field_blockers_from_projection_exclusions keeps stale or external swarm-plan artifacts with packet-level projection_exclusion_reasons routed to the specific readiness field blockers even when summary counters or missing_context rows are absent",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_confidence_projection_exclusion keeps stale packet artifacts with explicit missing_confidence projection reasons blocked by the confidence-basis field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_related_context_projection_exclusion keeps stale packet artifacts with explicit missing_related_test_or_observer projection reasons blocked by the related-context field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_not_actionable_gap_state_projection_exclusion keeps stale packet artifacts with explicit not_actionable_gap_state projection reasons blocked by the actionability field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_missing_repair_route_projection_exclusion keeps stale packet artifacts with explicit missing_repair_route projection reasons blocked by the repair-route field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_blocks_legacy_unbounded_repo_exposure_verify_commands keeps broad repo-exposure verify commands blocked by the verify-command field route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_routes_explicit_static_limitation_projection_exclusion keeps stale packet artifacts with explicit static_limitation_present projection reasons blocked by the static-limitation route instead of generic public projection exclusion",
+    "xtask::tests::ripr_swarm_plan_blocks_explicit_projection_exclusion_reasons and ripr_swarm_readiness_audits_blocked_state_routes preserve reason-count rows for generic public projection exclusions so readiness can name the dominant policy reason",
+    "xtask::tests::ripr_swarm_plan_blocks_missing_target_test_shape keeps swarm-ready ranking blocked when stale or external packet artifacts lack target_test_shape",
+  "xtask::tests::ripr_swarm_plan_blocks_missing_raw_evidence_refs keeps swarm-ready ranking blocked when a packet lacks raw evidence references",
+  "xtask::tests::ripr_swarm_plan_blocks_receipt_path_without_receipt_command keeps path-only receipt context blocked as missing_receipt_command instead of swarm-ready",
+  "xtask::tests::lane1_actionable_gap_packets_use_recommended_test_as_related_target validates structured recommendation.recommended_test can supply related_test_or_observer and allowed_edit_surface without prose parsing when the target file exists",
+  "xtask::tests::lane1_actionable_gap_packets_exclude_missing_edit_surface_file validates typed recommended targets with missing files stay public-projection excluded and blocked by missing_allowed_edit_surface",
+  "xtask::tests::ripr_swarm_plan_blocks_missing_raw_evidence_refs_even_with_raw_findings validates supporting raw_findings cannot satisfy the explicit raw_evidence_refs delegation contract",
+  "xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context validates static_limitation_backlog forwarding through swarm-plan JSON/Markdown",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_related_test_or_observer validates LSP artifact projection rejects actionable packets without a typed related test or observer",
+  "crates/ripr/src/lsp/gap_artifacts.rs actionable-gaps validation rejects public packets missing canonical_gap_id, target_test_shape, receipt_command, related_test_or_observer, must_not_change, allowed_edit_surface, or raw_evidence_refs",
+  "xtask::tests::ripr_swarm_attempt_ledger_preserves_prior_attempts_and_highlights_latest records durable attempt history and latest-attempt projection over current outcome joins plus prior ledger entries",
+  "xtask::tests::ripr_swarm_attempt_ledger_synthesizes_current_plan_not_attempted_rows, ripr_swarm_attempt_ledger_drops_stale_synthetic_not_attempted_rows, and ripr_swarm_attempt_ledger_preserves_current_plan_not_attempted_rows keep synthetic not_attempted queue placeholders tied to the current swarm plan instead of stale prior-ledger noise",
+  "xtask::tests::ripr_swarm_attempt_ledger_summarizes_repair_route_quality validates typed route context, per-repair-kind quality counts, durable attempt-id samples, top failing repair routes, and missing evidence fields",
+  "xtask::tests::ripr_swarm_attempt_ledger_imports_real_repair_attempts validates repo-local dogfood attempts are imported into durable attempt history and route-quality summaries without creating repair packets",
+  "xtask::tests::ripr_swarm_attempt_ledger_real_corpus_supersedes_unchanged_attempts validates durable attempt-history summary counts superseded unchanged, attempted-no-receipt, and expected-unchanged outcomes while latest route quality stays focused on current attempts",
+  "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts validates readiness consumes swarm-attempt-ledger current counts, durable attempt-history summary, and route-quality signals instead of deriving durable attempt state directly from raw outcomes",
+  "xtask::tests::ripr_swarm_readiness_recomputes_summary_from_attempts_when_summary_is_stale validates readiness can compute attempt-history summary from legacy durable attempts while keeping latest routing counts focused on the current attempt per canonical gap",
+  "xtask::tests::ripr_swarm_readiness_audits_blocked_state_routes validates readiness blocked-state route rows carry counts, reasons, next action kinds, repair routes, and example packet/canonical gap identities for packet-field and attempt-outcome blockers",
+  "xtask::tests::ripr_swarm_readiness_consumes_attempt_ledger_counts validates readiness forwards swarm-plan static limitation backlog so analyzer routes remain visible to thin user surfaces",
+  "fixtures/real-repair-attempts/corpus.json and xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions record merged PR and handoff attempts that preserve canonical identity, repair guidance, verify command/result, receipt command/path/state, movement/outcome consistency, must-not-change boundaries, raw evidence refs, negative-capability limitation-route improvements, and non-success outcomes without hiding unchanged or missing-receipt attempts; TypeScript preview receipt cases include typescript_preview_lsp_repair_context_improved, javascript_preview_generated_ci_grouping_improved, typescript_preview_mocked_module_limitation_improved, typescript_preview_weak_oracle_downgrade_unchanged, and typescript_preview_weak_oracle_guidance_improved; the Python preview case python_preview_boundary_gap_test_only_closed records a test-only packet, focused pytest verify command, forbidden production file, and closed canonical gap receipt; language_repair_route_quality reports TypeScript, JavaScript, and Python preview outcomes by language and repair kind",
+  "fixtures/user-surface-projection-alignment/corpus.json proves badge, LSP, PR comment, and CI examples share one full-run canonical gap/packet route through source_alignment_case while limited runtime-state examples carry null packet identity and do not headline raw findings or default to blocking",
+  "docs/handoffs/2026-05-27-lane1-evidence-to-repair-closeout-audit.md records fresh local proof across lane1-evidence-audit, swarm plan, actionable-gap-outcomes, attempt-ledger, readiness, scorecard, trend, dogfood, and cache reports; the proof is limited_incomplete_input, not a full lane closeout",
+  "xtask::tests::lane1_static_limitation_backlog_splits_related_test_affinity_call_presence_by_expression_shape validates related-test-affinity call-presence owner-call absence stays non-actionable while splitting same-file relation backlog by method-chain, associated-call, and function-call expression shape",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_multi_owner_production_wrapper_has_target_affinity_then_activation_is_yes validates call-presence target affinity can disambiguate a same-package production wrapper that directly calls multiple owners without inventing activation values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown keeps the route target-scoped so another call target does not confirm this owner",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_module_qualified_ambiguous_production_wrapper_has_target_affinity_then_activation_is_yes validates module-qualified production wrapper calls can disambiguate duplicate wrapper names for call-presence target affinity without inventing activation values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_module_qualified_wrapper_asserts_other_target_then_activation_stays_unknown keeps module-qualified target-affinity wrapper calls target-scoped so another asserted call target does not confirm this owner",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_crate_qualified_wrapper_has_target_affinity_then_activation_is_yes validates explicit crate-qualified owner calls can establish call-presence target-affinity activation when the module path resolves to indexed crate-local code and assertion tokens match the call target",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_crate_qualified_wrapper_asserts_other_target_then_activation_stays_unknown, given_call_presence_when_bare_qualified_wrapper_has_target_affinity_then_activation_stays_unknown, and given_call_presence_when_crate_qualified_owner_exists_only_in_other_package_then_activation_stays_unknown keep the crate-qualified route target-scoped, explicit, and package-local",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_imported_ambiguous_support_helper_calls_owner_then_activation_is_yes and given_call_presence_when_aliased_direct_imported_support_helper_calls_owner_then_activation_is_yes validate direct imports can disambiguate indexed test-support helpers",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_imported_support_helper_targets_other_owner_then_activation_stays_unknown, given_call_presence_when_direct_imported_external_helper_then_activation_stays_unknown, and given_call_presence_when_block_local_direct_imported_helper_is_not_file_scoped_then_activation_stays_unknown keep other-owner, external, and block-local helper imports limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_has_target_affinity_then_activation_is_yes validates assertion-target affinity can disambiguate a value-insensitive same-package production wrapper that directly calls multiple owners without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_value_insensitive_seam_when_multi_owner_wrapper_asserts_other_target_then_activation_stays_unknown keeps the value-insensitive route target-scoped so another asserted target does not confirm this owner",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_uses_turbofish_then_activation_is_yes and analysis::extract::calls::tests::call_extraction_recognizes_turbofish_function_calls validate direct generic owner calls can reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_direct_owner_call_has_space_before_paren_then_activation_is_yes validates direct owner calls with whitespace before the call delimiter reduce activation_owner_call_unresolved for value-insensitive call-presence seams without inventing activation values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_calls_owner_method_then_activation_is_yes validates simple same-file receiver-method wrappers can reduce activation_owner_call_absent_same_file_only without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_wrapper_uses_dynamic_method_receiver_then_activation_stays_unknown keeps dynamic method receivers as static limitations for analysis/same-file-owner-call-tracing",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_assertion_target_return_value_owner_call_absence_limitation and fixtures/real-repair-attempts/corpus.json::assertion_target_return_value_owner_call_route_split route assertion-target return-value owner-call limitations to analysis/assertion-target-return-value-owner-call-tracing while preserving non-actionable status",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_routes_same_file_receiver_method_owner_call_absence_limitation, xtask/src/main.rs::tests::lane1_static_limitation_backlog_splits_same_file_owner_call_absence_by_expression_shape, and fixtures/real-repair-attempts/corpus.json::same_file_receiver_method_backlog_route_split route same-file receiver-method call-presence owner-call limitations through analysis/same-file-receiver-method-owner-call-tracing in evidence records, plan, readiness, and receipts while preserving non-actionable status",
+  "crates/ripr/src/analysis/classify/activation.rs::tests::same_file_method_chain_owner_call_tracing_covers_activation_alias_helpers, crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_method_chain_owner_through_helpers_then_activation_is_yes, and fixtures/real-repair-attempts/corpus.json::same_file_method_chain_owner_call_helper_tests_improved validate source-shaped same-file method-chain owner-call helper coverage without promoting remaining limitations to public packets or claiming sampled-count movement",
+  "crates/ripr/src/analysis/classify/activation.rs::tests::same_file_method_chain_owner_call_tracing_covers_activation_alias_helpers and fixtures/real-repair-attempts/corpus.json::activation_body_line_helper_owner_call_tests_improved validate direct owner-call coverage for activation body-line scanner helpers without accepting lazy fallback or short-circuit helper calls as unconditional activation evidence",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_parent_qualified_wrapper_calls_owner_then_activation_is_yes validates explicit parent-qualified unit-test calls can reach production wrappers for same-file call-presence activation without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_unit_shadow_calls_wrapper_name_then_activation_stays_unknown keeps bare test-local helper shadows from inheriting production wrapper owner-call relations",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_calls_same_file_fanout_wrapper_then_activation_is_yes and given_call_presence_when_test_local_fanout_helper_asserts_other_target_then_activation_stays_unknown validate embedded same-file unit tests can follow an unconditional fan-out production wrapper to a value-insensitive owner without inventing observed values, while tests/*.rs fan-out helpers and multi-owner_wrapper guard tests keep cross-file mixed-owner wrappers target-scoped",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_trims_owner_call_result_then_activation_is_yes, given_call_presence_when_test_local_helper_borrows_owner_call_result_then_activation_is_yes, and given_call_presence_when_test_local_helper_uses_unknown_owner_call_chain_then_activation_stays_unknown validate bounded post-owner trim/to_string and as_ref borrow chains while arbitrary post-call methods stay limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_assertion_helper_calls_owner_then_activation_is_yes, given_call_presence_when_test_local_assert_macro_helper_calls_owner_then_activation_is_yes, given_call_presence_when_test_local_equality_helper_calls_owner_as_later_arg_then_activation_is_yes, given_call_presence_when_assert_message_arg_calls_owner_then_activation_stays_unknown, and given_call_presence_when_test_local_assert_macro_short_circuits_owner_then_activation_stays_unknown validate recognized assertion and equality-macro helpers can establish value-insensitive owner-call activation without inventing observed values while short-circuiting assert! predicates and assert! message arguments stay limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_matches_macro_helper_calls_owner_then_activation_is_yes and given_call_presence_when_test_local_matches_macro_short_circuits_owner_then_activation_stays_unknown validate recognized matches! macro helpers while short-circuiting matches! predicates stay limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_format_macro_then_activation_is_yes validates format-macro helper owner calls can reduce activation_owner_call_absent_same_file_only without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_format_args_macro_then_activation_is_yes and given_call_presence_when_test_local_format_args_macro_short_circuits_owner_then_activation_stays_unknown validate direct format_args!-macro helper owner calls while keeping guarded format_args! arguments limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_block_then_activation_is_yes and given_call_presence_when_test_local_helper_conditionally_calls_owner_then_activation_stays_unknown validate direct block-expression helper owner calls while keeping conditional blocks limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_tuple_literal_then_activation_is_yes validates tuple-literal helper owner calls can reduce activation_owner_call_absent_same_file_only without inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_std_identity_then_activation_is_yes and given_call_presence_when_test_local_helper_wraps_owner_call_in_local_identity_then_activation_stays_unknown validate fully qualified std/core convert identity wrappers while keeping local identity wrappers limited for analysis/same-file-owner-call-tracing",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_result_turbofish_then_activation_is_yes and direct_delegate_wrapper_name_preserves_turbofish_constructor validate inert Result turbofish helper wrappers can reduce activation_owner_call_absent_same_file_only without accepting arbitrary generic wrappers or inventing observed values",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_dbg_macro_helper_calls_owner_then_activation_is_yes and given_call_presence_when_test_local_dbg_macro_short_circuits_owner_then_activation_stays_unknown validate direct dbg!-macro helper owner calls while keeping short-circuiting dbg! arguments limited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_test_local_helper_wraps_owner_call_in_unknown_macro_then_activation_stays_unknown keeps arbitrary macro wrappers limited for analysis/same-file-owner-call-tracing",
+  "existing Lane 1 packet and editor queue tests validate canonical identity, repair guidance, verify, receipt, public projection eligibility, and fail-closed packet validation while analysis/assertion-target-return-value-owner-call-tracing remains the next sampled work-queue proof"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
+  "fixtures/swarm-plan-packet-corpus",
+  "fixtures/editor_actionable_gap_queue",
+  "fixtures/real-repair-attempts",
+  "fixtures/user-surface-projection-alignment"
+]
+next = "analysis/local-computed-boundary-operand-resolution"
+metric = "finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, lane1_actionable_gap_packets, swarm_ready_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, real_repair_attempt_receipts, user_surface_projection_alignment_receipts, lane1_closeout_evidence_audit"
+
+[[capability]]
+id = "actionable_surface_translation"
+name = "Actionable surface translation"
+status = "alpha"
+spec = "RIPR-SPEC-0059"
+evidence = [
+  "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md records the cross-surface product rationale",
+  "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md defines the first-screen translation contract for badge, PR evidence, editor status, swarm dry-run, and outcome/trend surfaces",
+  "plans/actionable-surface-translation/implementation-plan.md records the completed PR sequence and proof commands",
+  "badge-basis output explains unresolved actionable static repair gaps with canonical_actionable_gap as the public basis",
+  "PR summary output starts with an advisory actionable repair front panel before raw path inventory",
+  "VS Code Show Status starts with an editor repair cockpit over current actionable state, top repair, verify command, receipt state, and fail-closed next action",
+  "ripr-swarm attempt --dry-run starts with a copy-ready operator packet and fails closed on prose-only edit targets",
+  "actionable-gap outcomes and evidence-quality trend reports include movement_front sections while keeping receipt-linked movement bounded to outcome artifacts",
+  "fixtures/user-surface-projection-alignment/corpus.json validates that badge, LSP, PR comment, and CI examples consume canonical actionable state by source_alignment_case for full runs, preserve non-success route-quality next actions, consume canonical runtime status for limited runs, stay advisory, and do not headline raw findings",
+  "xtask::tests::dogfood_user_surface_projection_alignment_reports_contract_drift, dogfood_user_surface_projection_alignment_accepts_limited_runtime_status, dogfood_user_surface_projection_alignment_rejects_wrong_runtime_repair_route, dogfood_user_surface_projection_alignment_rejects_limited_static_limitation_backlog_projection, dogfood_surface_projection_alignment_covers_route_quality_non_success, dogfood_surface_projection_alignment_covers_missing_receipt_route_quality, dogfood_user_surface_projection_alignment_matches_route_quality_non_success_source, dogfood_user_surface_projection_alignment_matches_missing_receipt_source, dogfood_user_surface_projection_alignment_covers_route_quality_non_success_all_surfaces, and dogfood_user_surface_projection_alignment_matches_surface_projection_source validate that limited/stale user-surface examples route resolve_limited_runtime_status through named runtime repair commands and reject static-limitation backlog projection while full rows match canonical repair-loop source fixtures including degraded route-quality and missing-receipt state",
+  "docs/handoffs/2026-05-27-lane1-evidence-to-repair-closeout-audit.md records fresh local proof across lane1-evidence-audit, swarm plan, actionable-gap-outcomes, attempt-ledger, readiness, scorecard, trend, dogfood, and cache reports; the proof is limited_incomplete_input, not a full lane closeout",
+  "docs/handoffs/2026-05-23-actionable-surface-translation-closeout.md records the PR chain, validation, remaining advisory/static limits, and no selected successor"
+]
+fixtures = [
+  "fixtures/editor_actionable_gap_queue",
+  "fixtures/swarm-plan-packet-corpus",
+  "fixtures/actionable-gap-outcomes-corpus",
+  "fixtures/user-surface-projection-alignment"
+]
+next = "maintenance"
+metric = "repo_actionable_queue_count, pr_local_actionable_gap_count, actionable_gaps_new, actionable_gaps_resolved, actionable_gaps_blocked_static_limited, actionable_receipts_missing, actionable_receipts_orphaned, actionable_repairs_attempted_unchanged, swarm_ready_packets, outcome_delta_improved, outcome_delta_unchanged, outcome_delta_regressed, outcome_delta_resolved, user_surface_projection_alignment_receipts, lane1_closeout_evidence_audit"
 
 [[capability]]
 id = "parser_backed_syntax_facts"
@@ -500,8 +645,8 @@ evidence = [
   "boundary_gap fixture",
   "weak_error_oracle fixture",
   "snapshot_oracle fixture",
-  "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, Option/Result constructors, and source-order-scoped same-test struct literal field projections",
-  "negative guards for comment/string shadows, cross-file constants, unresolved helpers, unrelated builder methods, helper-built structs, before-call shadowed struct bindings, fixture parameter collisions, common non-let binders, non-simple let pattern binders, and non-literal struct fields",
+  "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, Option/Result constructors, source-order-scoped same-test struct literal field projections, and value-insensitive activation through conservative one-hop same-file helper owner calls",
+  "negative guards for comment/string shadows, cross-file constants, unresolved helpers, unrelated builder methods, helper-built structs, before-call shadowed struct bindings, fixture parameter collisions, common non-let binders, non-simple let pattern binders, non-literal struct fields, helper-name-only affinity, and generic owner helper names",
   "evidence-first activation output",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents stable syntax-first activation/value scope and keeps unsupported value sources as explicit limitations"
 ]
@@ -648,8 +793,10 @@ evidence = [
   "crates/ripr/src/output/evidence_health.rs",
   "RIPR-SPEC-0015 evidence health baseline contract",
   "ripr evidence-health writes advisory JSON and Markdown",
+  "CLI parser/help tests pin the evidence-health command surface",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
-  "cargo xtask evidence-health bounds the child process and writes named evidence_health_timeout or evidence_health_incomplete run limitations with bounded repo-exposure latency trace tails instead of leaving stale or partial artifacts when the live report times out, fails, or exits zero without complete JSON/Markdown artifacts",
+  "cargo xtask evidence-health uses a 4-minute default child-process timeout and writes named evidence_health_timeout, evidence_health_incomplete, or evidence_health_runner_error run limitations instead of leaving stale or partial artifacts when the live report times out, exits nonzero, or the runner cannot start/capture/poll/read the child with inputs.generation.status = runner_error",
+  "limited evidence-health artifacts carry bounded repo-exposure latency trace totals and tail rows so slow live-repo phases remain inspectable without treating the limitation as user test debt",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
   "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation reason/stage/category distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
   "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",
@@ -657,7 +804,7 @@ evidence = [
 ]
 fixtures = []
 next = "maintenance"
-metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks, evidence_health_timeout_limitations"
+metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks, evidence_health_timeout_limitations, evidence_health_incomplete_limitations, evidence_health_runner_error_limitations"
 
 [[capability]]
 id = "lane1_evidence_quality_audit"
@@ -667,6 +814,9 @@ spec = "RIPR-SPEC-0031"
 evidence = [
   "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
   "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json, lane1-evidence-audit.md, actionable-gaps.json, and actionable-gaps.md from generated instant-mode repo-exposure JSON",
+  "cargo xtask lane1-evidence-audit analyzes a bounded 5,000-seam repo-exposure sample by default, records limited_sampled_input/lane1_repo_exposure_sampled with the preserved repo_exposure_seam_limit trace row, and supports RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS=0 for unsampled full-repo attempts",
+  "cargo xtask lane1-evidence-audit uses a 120-second default repo-exposure generation budget, configurable with RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS, to fail closed into a named limited artifact before cold live runs can abort without reports",
+  "xtask/src/run.rs streams generated repo-exposure stdout into the Lane 1 audit capture file with runner-owned byte counts and stale-file overwrite",
   "cargo xtask lane1-evidence-audit writes a bounded lane1_repo_exposure_timeout run limitation with latency trace context when repo-exposure generation exceeds the configured timeout before producing complete input",
   "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
   "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations by reason, stage, normalized category, and repair route, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, top files by unresolved evidence debt, finding_alignment.summary derived from evidence_record.canonical_item, finding_alignment.coverage rows for per-class coverage, runtime confidence rows by canonical evidence class, unaligned examples, same-line duplicate raw findings, unnamed static-unknown limitations, and missing repair/verify guidance, plus actionable gap top lists by class, file, repair kind, missing discriminator kind, static limitation reason, guidance-unknown class, and bounded actionable-gap packets with repair and verify commands",
@@ -689,9 +839,9 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-scorecard writes target/ripr/reports/evidence-quality-scorecard.json and evidence-quality-scorecard.md",
   "scorecard consumes the current Lane 1 evidence-quality audit, optional evidence-health JSON, previous scorecard when present, capability metadata, and traceability metadata",
-  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage including runtime confidence rows by evidence class, actionable gap top lists, recommended Lane 1 repair slices, recent deltas, limited-input unknowns, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
+  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage including runtime confidence rows by evidence class, actionable gap top lists, evidence-class work queue rows, recommended Lane 1 repair slices led by live work-queue rows, recent deltas, limited-input unknowns, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Scorecard JSON and Markdown contract",
-  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
+  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, audit work-queue repair promotion, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
 ]
 fixtures = []
 next = "maintenance"
@@ -705,13 +855,14 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-trend writes target/ripr/reports/evidence-quality-trend.json and evidence-quality-trend.md",
   "trend consumes the current evidence-quality scorecard and optional previous scorecard or audit snapshot, reporting missing history as an explicit no-history unknown",
+  "trend treats current scorecards with limited input unknowns as current_scorecard_limited, preserving metric rows for diagnostics while refusing improvement/regression claims",
   "xtask/src/main.rs distinguishes improvement, regression, unchanged, mixed, and unknown states for Lane 1 evidence-quality metrics and normalized static limitation categories",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Trend JSON and Markdown contract",
-  "xtask unit tests pin no-history output, metric direction semantics, and static limitation category deltas"
+  "xtask unit tests pin no-history output, current-limited scorecards, metric direction semantics, and static limitation category deltas"
 ]
 fixtures = []
 next = "maintenance"
-metric = "lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_static_limitation_category_rows"
+metric = "lane1_evidence_trend_actionable_canonical_gaps, lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_current_scorecard_limited, lane1_evidence_trend_static_limitation_category_rows"
 
 [[capability]]
 id = "evidence_quality_benchmark_corpus"
@@ -720,7 +871,9 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, value-insensitive owner-call activation for no-argument and opaque-argument calls, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, generic call-presence assertion-affinity token guards for argument, field, common method, enum-field, and match-arm names, value-insensitive owner-call activation for no-argument, opaque-argument, one-hop same-file helper, test-local helper, same-file parent-qualified unit-test helper, unambiguous production wrapper, same-owner multi-call production wrapper, target-affinity disambiguated multi-owner production wrapper, module-qualified target-affinity production wrapper, value-insensitive target-affinity disambiguated multi-owner production wrapper, Err-wrapped test-local helper, and super-qualified test-support helper calls, same-file test-local shadow guards, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "fixtures/evidence-quality-benchmark/corpus.json#call_presence_production_wrapper_owner_call_activation_values_not_required, #call_presence_production_wrapper_same_owner_multi_call_activation_values_not_required, #call_presence_target_affinity_multi_owner_wrapper_activation_values_not_required, #call_presence_module_qualified_target_affinity_wrapper_activation_values_not_required, #call_presence_specific_call_target_affinity_stays_named_limitation, #value_insensitive_affinity_only_owner_call_stays_named_limitation, and #value_insensitive_target_affinity_multi_owner_wrapper_activation_values_not_required pin production-wrapper owner-call activation plus assertion-target affinity evidence as medium-confidence relation evidence, including call-presence and value-insensitive target affinity as named limitations unless a direct wrapper-to-owner call is observed, and include the guard that comment/string owner-call text does not confirm activation",
+  "fixtures/evidence-quality-benchmark/corpus.json#one_hop_helper_without_owner_call_stays_named_limitation pins helper-name-only same-file affinity as activation_owner_call_absent_same_file_only routed to analysis/same-file-owner-call-tracing rather than activation or user test debt",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required config/policy case IDs, required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
@@ -1094,6 +1247,7 @@ evidence = [
   "ripr reports index writes advisory target/ripr/reports/index.{json,md} from explicit artifact directories without rerunning analysis or changing gate authority",
   "crates/ripr/src/output/report_packet_index.rs groups artifacts by reviewer use, identifies the start-here front panel, preserves gate-decision authority, records missing expected surfaces, and emits regeneration commands when known",
   "docs/OUTPUT_SCHEMA.md documents the implemented report_packet_index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
+  "cargo xtask reports index adds repo-local lane1_readiness for evidence-health, lane1-evidence-audit, actionable-gaps, evidence-quality-scorecard, evidence-quality-trend, and badge-basis artifacts without running those expensive reports",
   "generated GitHub CI runs ripr reports index only when indexed artifacts exist, uploads target/ripr/reports/index.{json,md} with the normal report packet, and appends packet-index status, start-here, gate-authority, missing-surface, and warning summaries without changing pass/fail authority",
   "docs/REPORT_PACKET_INDEX_WORKFLOW.md documents reviewer, maintainer, developer, and coding-agent use of the grouped packet map, missing-surface regeneration, and advisory gate boundary",
   "fixtures/boundary_gap/expected/report-packet-index/ pins complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and coverage/grip-present packet cases",
@@ -1148,6 +1302,7 @@ evidence = [
   "crates/ripr/src/output/pilot/ranking.rs ranks top actionable seams and crates/ripr/src/output/pilot/render.rs renders pilot-summary.json/md",
   "ripr pilot writes repo-exposure.json, repo-exposure.md, agent-seam-packets.json, pilot-summary.json, and pilot-summary.md",
   "pilot-summary.md and terminal copy surface the top inspected seam, why it matters, the focused test to write, and the before/after commands without opening JSON",
+  "Python preview diff runs project the top python_repair_card into pilot-summary.{json,md} and terminal first-use output with missing discriminator, suggested test, verify command, supported/deferred features, limitation count, and deferred receipt status",
   "docs/OUTPUT_SCHEMA.md Pilot Summary section",
   "docs/QUICKSTART.md zero-config first-run pilot path",
   "docs/INSTALLATION_VERIFICATION.md public install smoke checklist"
@@ -1166,6 +1321,7 @@ spec = "RIPR-SPEC-0009"
 evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr outcome",
   "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id, preferring seams[].evidence_record stage/value/discriminator/oracle/related-test movement when present and falling back to legacy fields",
+  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, keeps strengthened-but-still-weak rows visible in remaining weak/unknown receipt output, fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview closed, unchanged, opened, strengthened, and weakened receipts, fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.{json,md} pins non-boundary return-value closure, fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.{json,md} pins exception-path closure, fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.{json,md} pins field/object closure, and fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.{json,md} pins output/log closure",
   "ripr outcome prints Markdown by default and supports --format json plus --out",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
@@ -1173,10 +1329,15 @@ evidence = [
   "docs/INSTALLATION_VERIFICATION.md public install smoke checklist"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap",
+  "fixtures/first_successful_pr/python-output-gap"
 ]
 next = "campaign/editor-agent-integration-closeout"
-metric = "targeted_test_outcome_available"
+metric = "targeted_test_outcome_available, language_adapter_python_gap_receipt_from_check_output"
 
 [[capability]]
 id = "operator_cockpit"
@@ -1275,6 +1436,7 @@ evidence = [
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
   "current validated diagnostics carrying gap_id surface bounded gap repair actions for copying a repair packet, opening a safe related test, copying safe verify/receipt commands, copying static-limit notes, and refreshing saved-workspace analysis",
+  "validated Python preview GapRecord diagnostics accept safe pytest and python -m unittest verify commands, can copy a fail-fast pytest skeleton from the repair route, and can open repair_route.target_file when related_test is a bare test name",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
@@ -1328,18 +1490,19 @@ spec = "RIPR-SPEC-0038"
 evidence = [
   "generated GitHub workflow summary reads enabled languages through public ripr doctor",
   "language grouping section is hidden for Rust-only configuration",
-  "TypeScript and Python groups are emitted only when preview adapters are configured",
-  "language groups summarize advisory artifact entries, preview-status counts, classifications, and static-limit kinds",
+  "TypeScript, JavaScript, and Python groups are emitted only when preview adapters are configured",
+  "TypeScript-family generated CI grouping includes separately labeled JavaScript preview evidence when TypeScript preview is configured",
+  "language groups summarize advisory artifact entries, preview-status counts, classifications, static-limit kinds, actionability states/categories, repair-packet-ready counts, and gate impact none",
   "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
   "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
   "CLI smoke tests pin the generated workflow section",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary",
-  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults",
+  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping, actionability summaries, JavaScript grouping, and gate impact none marked checked while preserving advisory defaults",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md records the Rust-default and gate-authority boundary"
 ]
 fixtures = []
 next = "maintenance"
-metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
+metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_preview_language_javascript_group, generated_pr_ci_preview_actionability_groups, generated_pr_ci_preview_gate_impact_none, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
 id = "repository_config"
@@ -1373,42 +1536,238 @@ evidence = [
   "Python preview adapter runs only when [languages] enables python",
   "language = python and language_status = preview in JSON and human goldens",
   "owner/test fixtures cover def, async def, methods, class/static methods, decorated functions, pytest, unittest, and parametrized pytest",
-  "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, unittest assertions, and mock call assertions",
+  "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, pytest fixture/oracle shapes, unittest assertion shapes, framework verify commands, and mock call assertions",
   "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
-  "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
-  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
+  "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, test-name similarity, fixture-name proximity, uncertain heuristic links, and unrelated mention negatives",
+  "non-static-limit Python preview findings carry stable canonical_gap_id values across JSON and human goldens while static-limit fixtures remain limitation-only",
+  "non-static-limit Python preview findings carry family-specific RIPR infection and propagation evidence while static-limit fixtures fail closed as static_unknown with typed stop reasons",
+  "first repair-class Python preview fixtures carry activation-level missing discriminator facts for predicate boundary, return value, exception path, field/object value, and output/log/call effects",
+  "strong-oracle, no-path, heuristic-only, and static-limit Python fixtures suppress repair guidance rather than becoming repair-ready work",
+  "python_ranking_noise_control pins direct repairable weak findings ahead of observed, no-path, and static-limit preview findings",
+  "python_test_placement_verify pins suggested pytest and unittest test placement, verify commands, and verify-command confidence for direct weak Python findings",
+  "direct weak Python findings with canonical gaps, concrete missing discriminators, placement, and verify commands now carry python_repair_card output with changed owner, changed behavior, current test evidence, test shape, suggested assertion, suggested location, verify command, preview/advisory authority boundary, receipt status, stop conditions, and limits",
+  "fixtures/python_parametrized_boundary_repair_gap pins pytest boundary repair-card guidance that keeps the equality case as the minimum repair while offering optional below/equal/above parameterized rows without invented expected values",
+  "field/object Python repair cards now specialize suggested assertions for returned mapping fields, response JSON fields, and response status-code fields without changing canonical gap identity",
+  "fixtures/python_model_field_repair_gap pins a syntax-only returned constructor keyword field repair card that recommends result.active object-field evidence and adds a stop condition when the object does not expose the keyword as a public attribute",
+  "ripr pilot projects the top Python preview repair card into pilot-summary.{json,md} and terminal first-use output for Python diff runs",
+  "cargo xtask pr-summary highlights the top Python preview repair card from actionable-gaps.json with canonical gap, changed owner, missing discriminator, suggested test target, verify command, receipt command, stop conditions, and preview/advisory boundary",
+  "LSP GapRecord code actions accept bounded pytest/python -m unittest verify commands for Python preview repair cards, copy a bounded Python agent packet for current actionable repairable records, copy a full repair card for safe target-file routes with a current validated GapRecord freshness cue, copy a fail-fast pytest skeleton, and open the target test file when the repair route has a bare test name",
+  "ripr first-pr selects Python preview GapRecords from the gap decision ledger, emits preview-limited start-here.{json,md} for Python project roots without Cargo, and recovers missing Python-only gap ledgers through ripr check --json plus reports gap-ledger --check-output instead of Rust repo-exposure",
+  "ripr first-pr --check-output <check.json> materializes a check-output-derived gap decision ledger before selecting the preview Python start-here repair",
+  "reports gap-ledger --check-output derives PR-local Python GapRecords from python_repair_card findings, synthesizes receipt commands for check-output before/after snapshots when raw cards lack one, agent packet --gap-ledger exports bounded packets with allowed files, forbidden files, conflict groups, verify commands, receipt commands/status, and stop conditions, and swarm queue blocks rootless or wrong-root ledgers before emitting packets while marking receipt-stale or already-closed packets as blocked_stale",
+  "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, inputs/reports/no-path-check.json, and expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview before/after outcome receipts where the canonical gap closes, stays unchanged, opens, strengthens, or weakens",
+  "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python return-value gap closure from broad to exact oracle evidence",
+  "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python exception-path gap closure from broad exception evidence to exact message evidence",
+  "fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python field/object gap closure from broad object truthiness to exact field evidence",
+  "fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json, inputs/reports/after-check.json, and expected/outcome/closed.{json,md} pin Python output/log gap closure from broad output smoke to exact output text evidence",
+  "fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json and expected/swarm-ingest/closed.json pin ripr swarm ingest classification for a Python preview test-only agent attempt with passing verify evidence and resolved receipt movement",
+  "fixtures/real-repair-attempts/corpus.json:python_preview_boundary_gap_test_only_closed records a repo-local Python preview packet that edits only tests/test_pricing.py, forbids app/pricing.py, runs a focused pytest verify command, and closes the predicate-boundary canonical gap through a ripr outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:tiny_controlled_pytest_boundary_receipt records a scratch pytest repo repair card, bounded agent packet, human-run focused pytest verify pass, and closed Python predicate-boundary outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:normal_pytest_app_boundary_receipt records a pyproject-based pytest app repair card, bounded agent packet, human-run focused pytest verify pass, and closed Python predicate-boundary outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:async_return_pytest_receipt records an async def return-value pytest repair card, bounded agent packet, focused pytest verify pass through asyncio.run without pytest-asyncio, and closed Python return-value outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:cli_output_pytest_receipt records a CLI/output-style pytest repair card, bounded agent packet, human-run focused capsys pytest verify pass, and closed Python output/call-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:click_cli_output_pytest_receipt records a Click-shaped CLI output repair card, bounded agent packet, focused pytest verify pass against a local Click-shaped stub, and closed Python call/output-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:typer_cli_output_pytest_receipt records a Typer-shaped CLI output repair card, bounded agent packet, focused pytest verify pass against a local Typer-shaped stub, and closed Python call/output-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:exception_path_pytest_receipt records a pytest exception-path repair card, bounded agent packet, human-run focused pytest.raises match verify pass, and closed Python exception-path outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:unittest_exception_path_receipt records a unittest exception-path repair card, bounded agent packet, focused python -m unittest assertRaisesRegex verify pass, and closed Python exception-path outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:api_status_pytest_receipt records an API-style status-code pytest repair card, bounded agent packet, human-run focused pytest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:api_json_detail_pytest_receipt records an API-style response JSON field pytest repair card, bounded agent packet, human-run focused pytest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:flask_route_json_detail_pytest_receipt records a Flask-style @app.route(..., methods=[...]) response JSON field pytest repair card, bounded agent packet, focused pytest verify pass against a local Flask-shaped stub, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:fastapi_route_json_detail_pytest_receipt records a FastAPI-style @app.post(...) response JSON field pytest repair card, bounded agent packet, focused pytest verify pass against a local FastAPI-shaped stub, and closed Python field/object outcome receipt",
+  "crates/ripr/src/analysis/language/python.rs and classify_change_uses_status_discriminator_for_route_response_constructor_assignment route simple response-constructor assignments in static Python route owners to response.status_code repair cards",
+  "fixtures/python-real-repo-evals/corpus.json:api_exception_response_pytest_receipt records an API exception-to-response pytest repair card, bounded agent packet, focused pytest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:mixed_rust_python_pytest_receipt records a mixed Rust/Python pytest repo repair card, bounded agent packet, human-run focused pytest verify pass, and closed Python predicate-boundary outcome receipt",
+  "fixtures/python_api_route_decorator_repair_gap pins simple route decorators such as @api.post(...) as static route metadata that can produce a field/object repair card while arbitrary decorators remain static limits",
+  "fixtures/python_api_json_field_repair_gap pins a framework-shaped API repair card that links client.post(\"/checkout\") to a route owner and recommends response.json()[\"detail\"] evidence without executing route registration",
+  "fixtures/python_dynamic_route_registration_limit pins dynamic route registration as a decorator_indirection static limitation that emits no repair card or agent-packet-eligible canonical gap",
+  "fixtures/python_argparse_output_repair_gap pins an argparse-shaped command whose changed print output routes to a bounded pytest CLI output repair card without importing argparse or executing tests",
+  "fixtures/python-real-repo-evals/corpus.json:log_output_pytest_receipt records a pytest caplog repair card, bounded agent packet, focused pytest verify pass with exact log text evidence, and closed Python call/output-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:argparse_cli_output_pytest_receipt records an argparse-shaped CLI output repair card, bounded agent packet, focused pytest verify pass through stdlib argparse, and closed Python call/output-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:decorated_route_status_pytest_receipt records a decorated route pytest repair card, bounded agent packet, human-run focused status-code pytest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:parametrized_boundary_pytest_receipt records a native pytest parametrized boundary repair card, bounded agent packet, focused pytest verify pass, and closed Python predicate-boundary outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:cli_exit_code_pytest_receipt records a CLI exit-code repair card, bounded agent packet, focused pytest verify pass, and closed Python call/output-effect outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:unittest_return_value_receipt records a unittest return-value repair card, bounded agent packet, focused python -m unittest verify pass, and closed Python return-value outcome receipt",
+  "crates/ripr/src/analysis/language/python.rs return_dict_field_parts_prefer_literal_changed_value_candidates pins multi-field returned dict discriminator precision so literal changed fields such as status == \"active\" outrank pass-through fields such as name == name",
+  "fixtures/python-real-repo-evals/corpus.json:unittest_dict_field_receipt records a unittest returned-dict field repair card, bounded agent packet, focused python -m unittest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:model_field_pytest_receipt records a dataclass/model-field repair card, bounded agent packet, focused pytest verify pass, and closed Python field/object outcome receipt",
+  "fixtures/python-real-repo-evals/corpus.json:dynamic_dispatch_no_packet_eval records a dynamic-dispatch static limitation with related pytest context, no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement so no-action Python evals do not inflate repair-card success metrics",
+  "fixtures/python-real-repo-evals/corpus.json:decorator_indirection_no_packet_eval records a decorator_indirection static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:missing_import_graph_no_packet_eval records a missing_import_graph static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:metaprogramming_no_packet_eval records a metaprogramming static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:mocked_module_no_packet_eval records a mocked_module static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:opaque_custom_helper_no_packet_eval records an opaque_custom_assertion_helper static limitation with related pytest context and unknown custom-helper oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:property_based_no_packet_eval records a property_based_test static limitation with related pytest context and weak relational oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:unresolved_fixture_no_packet_eval records an unresolved_pytest_fixture static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:generated_file_no_packet_eval records a detectable generated Python exclusion with related pytest context while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:unsupported_syntax_no_packet_eval records an unsupported_syntax static limitation with related pytest context and exact oracle evidence while still emitting no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "fixtures/python-real-repo-evals/corpus.json:no_action_cases records no_related_test_no_packet_eval as an ordinary no_static_path no-action eval, already_observed_no_packet_eval as an exposed/strong-oracle no-action eval, and heuristic_only_no_packet_eval as a weakly_exposed heuristic-only no-action eval; all have no repair card, no agent packet, not_applicable verify and receipt results, and no_receipt movement",
+  "static-limit fixtures cover dynamic_dispatch, dynamic import through missing_import_graph, decorator_indirection, mocked_module with patch and monkeypatch syntax, opaque_custom_assertion_helper, property_based_test, unresolved_pytest_fixture, missing_import_graph, metaprogramming including metaclass declarations, and unsupported_syntax",
+  "python_generated_file_excluded pins detectable generated Python diffs such as *_pb2.py as zero-finding, zero-repair-card inputs so generated-code edits stay out of preview repair routing",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence",
   "docs/handoffs/2026-05-13-campaign-27-closeout.md records Python as opt-in preview rather than Rust parity"
 ]
 fixtures = [
   "fixtures/python_boundary_gap",
+  "fixtures/python_parametrized_boundary_repair_gap",
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",
   "fixtures/python_parametrize_basic",
   "fixtures/python_strong_oracle",
   "fixtures/python_pytest_raises",
+  "fixtures/python_pytest_oracle_shapes",
   "fixtures/python_unittest_assertions",
+  "fixtures/python_unittest_oracle_shapes",
   "fixtures/python_mock_assert_called",
   "fixtures/python_broad_boolean_assertion",
   "fixtures/python_return_value_shape",
   "fixtures/python_error_path_shape",
   "fixtures/python_field_assignment_shape",
+  "fixtures/python_dict_field_repair_gap",
+  "fixtures/python_model_field_repair_gap",
+  "fixtures/python_same_line_duplicate_collapse",
+  "fixtures/python_ranking_noise_control",
+  "fixtures/python_test_placement_verify",
+  "fixtures/python_api_route_decorator_repair_gap",
+  "fixtures/python_api_json_field_repair_gap",
+  "fixtures/python_dynamic_route_registration_limit",
+  "fixtures/python_cli_output_repair_gap",
+  "fixtures/python_argparse_output_repair_gap",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
   "fixtures/python_owner_file_match",
   "fixtures/python_cross_file_import_reference",
   "fixtures/python_same_stem_test",
+  "fixtures/python_related_test_name_similarity",
+  "fixtures/python_fixture_name_relation",
   "fixtures/python_unrelated_test_mention",
   "fixtures/python_dynamic_dispatch_limit",
   "fixtures/python_decorator_indirection_limit",
   "fixtures/python_mocked_module_limit",
+  "fixtures/python_monkeypatch_module_limit",
+  "fixtures/python_opaque_custom_helper_limit",
+  "fixtures/python_property_based_limit",
+  "fixtures/python_unresolved_fixture_limit",
+  "fixtures/python_generated_file_excluded",
+  "fixtures/python_dynamic_import_limit",
   "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_metaclass_limit",
   "fixtures/python_metaprogramming_limit",
-  "fixtures/python_unsupported_syntax_limit"
+  "fixtures/python_unsupported_syntax_limit",
+  "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap",
+  "fixtures/first_successful_pr/python-output-gap",
+  "fixtures/real-repair-attempts",
+  "fixtures/python-real-repo-evals"
 ]
 next = "maintenance"
-metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
+metric = "language_adapter_python_findings_preview, language_adapter_python_canonical_gap_identity, language_adapter_python_ripr_evidence_model, language_adapter_python_repair_class_predicate_boundary, language_adapter_python_repair_class_return_value, language_adapter_python_repair_class_exception_path, language_adapter_python_repair_class_field_value, language_adapter_python_repair_class_output_or_call_effect, language_adapter_python_repair_guidance_suppressed_non_actionable, language_adapter_python_repair_ranking_noise_control, language_adapter_python_test_placement_verify, language_adapter_python_repair_card_v1, language_adapter_python_existing_test_strengthening, language_adapter_python_route_decorator_repair_card, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_real_repair_attempt_receipt, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, language_adapter_python_pilot_first_use_path, language_adapter_python_pr_summary_repair_card_projection, language_adapter_python_lsp_agent_packet_action, language_adapter_python_lsp_repair_card_action, language_adapter_python_lsp_pytest_skeleton_action, language_adapter_python_first_pr_start_here_path, language_adapter_python_first_pr_check_output_bridge, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states, language_adapter_python_generated_file_exclusion, language_adapter_python_static_limit_stop_reasons, language_adapter_python_static_limit_mocked_module, language_adapter_python_static_limit_opaque_custom_assertion_helper, language_adapter_python_static_limit_property_based_test, language_adapter_python_static_limit_unresolved_pytest_fixture, language_adapter_python_static_limit_*"
+
+[[capability]]
+id = "python_repair_routing_loop"
+name = "Python repair routing loop"
+status = "usable alpha"
+spec = "RIPR-SPEC-0028"
+evidence = [
+  "direct weak Python findings with canonical gaps, concrete missing discriminators, suggested test locations, verify commands, stop conditions, and limits emit python_repair_card output across human, JSON, SARIF, GitHub, pilot, first-pr, and LSP surfaces",
+  "Python CLI output repair cards specialize generic side-effect copy into CLI output or CLI exit-code assertion guidance when the missing discriminator is output text or a literal exit code",
+  "reports gap-ledger --check-output derives Python GapRecords from actionable python_repair_card findings and synthesizes receipt commands for before/after check-output snapshots",
+  "ripr agent packet --gap-ledger and ripr swarm queue --language python export bounded Python test-repair packets with allowed files, forbidden production files, conflict groups, verify commands, receipt commands/status, and stop conditions while excluding static limits and no-action records",
+  "ripr swarm ingest --result classifies Python repair attempts without trusting them blindly, flags forbidden production-code edits, treats missing verify evidence as uncertain, and attaches before/after movement when available",
+  "fixtures/first_successful_pr/python-preview-gap plus return, exception, field, and output variants pin closed Python before/after outcome receipts by canonical gap ID",
+  "fixtures/real-repair-attempts and fixtures/python-real-repo-evals record test-only Python repair attempts, bounded agent packets, focused pytest/unittest verify passes, and closed outcome receipts for controlled, normal pytest, async return-value, parametrized-boundary, CLI/output, log output, argparse CLI output, Click CLI output, Typer CLI output, CLI exit-code, pytest exception, custom exception, and unittest exception paths, API status, API JSON detail, Flask route JSON detail, FastAPI route JSON detail, API exception-to-response, mixed, decorated route, unittest return-value, unittest returned-dict field, and dataclass/model-field cases; static_limit_cases records dynamic_dispatch_no_packet_eval, decorator_indirection_no_packet_eval, missing_import_graph_no_packet_eval, metaprogramming_no_packet_eval, mocked_module_no_packet_eval, opaque_custom_helper_no_packet_eval, property_based_no_packet_eval, unresolved_fixture_no_packet_eval, generated_file_no_packet_eval, and unsupported_syntax_no_packet_eval as static-limit no-action evals with no repair card, no agent packet, and no receipt movement; no_action_cases records no_related_test_no_packet_eval, already_observed_no_packet_eval, and heuristic_only_no_packet_eval as ordinary no-action evals with the same no-packet/no-receipt boundary",
+  "cargo xtask dogfood derives Python repair-routing quality metrics for top-1 usefulness, ranked top-3 precision, verify-command validity, agent-packet boundary validity, concrete-discriminator coverage, suggested-location coverage, false-actionable rate, crash rate, receipt closure, unsupported limitation distribution, no-action static-limit distribution, and ordinary no-action distribution, and requires the receipt-backed boundary, async return-value, CLI/output, log output, argparse CLI output, Click CLI output, Typer CLI output, CLI exit-code, pytest exception, custom exception, and unittest exception, API status, API JSON detail, Flask route JSON detail, FastAPI route JSON detail, API exception-response, mixed, decorated-route, unittest return-value, unittest dict-field, and model-field eval rows plus required no-action rows",
+  "docs/status/SUPPORT_TIERS.md promotes only this scoped Python repair-routing loop to usable alpha while keeping broader Python static facts and static limits preview/advisory",
+  "docs/handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md records the support-tier proof, validation commands, remaining static limits, and non-goals for the scoped Python repair-routing loop"
+]
+fixtures = [
+  "fixtures/first_successful_pr/python-preview-gap",
+  "fixtures/first_successful_pr/python-return-gap",
+  "fixtures/first_successful_pr/python-exception-gap",
+  "fixtures/first_successful_pr/python-field-gap",
+  "fixtures/first_successful_pr/python-output-gap",
+  "fixtures/real-repair-attempts",
+  "fixtures/python-real-repo-evals"
+]
+next = "dogfood/python-stability-evals-v1"
+metric = "language_adapter_python_repair_card_v1, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_real_repair_attempt_receipt, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states"
+
+[[capability]]
+id = "typescript_preview_static_facts"
+name = "TypeScript preview static facts"
+status = "alpha"
+spec = "RIPR-SPEC-0027"
+evidence = [
+  "RIPR-SPEC-0027 accepts the TypeScript-family preview static-facts contract",
+  "docs/lanes/LANE_1_TYPESCRIPT_PREVIEW_COMPLETION.md records current implementation and missing completion slices",
+  "plans/typescript-preview-completion/implementation-plan.md sequences the bounded completion PRs",
+  "JavaScript findings emitted by the TypeScript-family adapter are separately labeled language = javascript while remaining preview evidence",
+  "fixtures/typescript_boundary_gap",
+  "fixtures/typescript_strong_oracle",
+  "fixtures/typescript_return_value_shape",
+  "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes",
+  "fixtures/typescript_tsx_preview",
+  "fixtures/javascript_js_preview",
+  "fixtures/javascript_jsx_preview",
+  "fixtures/typescript_disabled",
+  "fixtures/typescript_parse_error_unsupported_syntax",
+  "fixtures/typescript_static_limit_taxonomy",
+  "fixtures/typescript_owner_kinds",
+  "fixtures/typescript_jest_vitest_assertion_facts",
+  "fixtures/typescript_related_test_matching",
+  "fixtures/typescript_related_test_name_proximity",
+  "fixtures/typescript_probe_facts",
+  "fixtures/typescript_strict_actionability",
+  "fixtures/typescript-preview-repair-loop",
+  "fixtures/typescript-preview-false-actionable-audit",
+  "fixtures/mixed_rust_typescript_preview",
+  "TypeScript/JavaScript findings project structural owner ids and owner_kind metadata for functions, arrow functions, methods, class methods, TSX/JSX components, and module initializers",
+  "TypeScript/Jest/Vitest assertion facts cover nested describe, test.each, it.each, exact-value, async resolves, mock interaction, snapshot, and smoke-only evidence while keeping weak oracles weak",
+  "TypeScript mock interaction guidance names bounded literal/object/count payload evidence when syntax can safely identify the target and expected value, while still withholding actionable repair packets until verify, receipt, evidence refs, and edit boundaries exist",
+  "TypeScript error-path guidance distinguishes bare broad toThrow/rejects evidence from literal toThrow/rejects.toThrow and safe rejects.toMatchObject payload evidence, while still withholding actionable repair packets until verify, receipt, evidence refs, and edit boundaries exist",
+  "TypeScript related-test matching covers direct owner calls, relative named import aliases, namespace import member calls, bounded direct new-instance method receiver calls, unshadowed direct static class-method calls, and uncertainty-only same-stem, describe-name, and test-name proximity while excluding unrelated imports, type-only imports, unsafe object methods, factories, dependency injection, mocked modules, namespace chains, dynamic property access, strings, comments, and partial owner-token names",
+  "TypeScript preview probe facts cover predicate, return-value, error-path, field/object construction, side-effect, mock-interaction, and log/output shapes while suppressing discriminator candidates for ambiguous const expressions and computed-member calls",
+  "TypeScript preview static-limit taxonomy covers dynamic_dispatch, metaprogramming, missing_import_graph, decorator_indirection, mocked_module, and unsupported_syntax as advisory preview evidence",
+  "TypeScript strict actionability evidence fails closed with gap_state, actionability_category, why_not_actionable, repair_route, missing actionability fields, and raw preview evidence refs instead of emitting repair packets",
+  "TypeScript/JavaScript preview actionability projects as structured preview_actionability in check JSON, human output, GitHub annotations, and diff-scoped SARIF properties while repair-packet, gate, badge, baseline, and RIPR Zero surfaces remain unchanged",
+  "TypeScript/JavaScript preview findings also project an advisory typescript_preview_card through check JSON, human output, GitHub annotations, and diff-scoped SARIF properties with owner, probe family, related test, oracle kind/strength, missing discriminator or static limits, suggested assertion shape, why-not-actionable, repair route, preview authority, and repair_packet_ready=false",
+  "TypeScript/JavaScript preview actionability reaches LSP diagnostic data, hover preview actionability context, and inspect-context code actions while incomplete preview items stay bounded to inspect and refresh actions without repair-packet, verify, receipt, edit, or generated-test actions",
+  "generated CI groups TypeScript-family preview evidence as separately labeled TypeScript and JavaScript advisory groups with actionability states/categories, repair-packet-ready counts, static-limit context, and gate impact none",
+  "cargo xtask dogfood checks TypeScript preview labels, disabled-language behavior, static limits, and no cross-language related-test routing",
+  "fixtures/typescript-preview-repair-loop/corpus.json records TypeScript and JavaScript repair-loop dogfood receipts for advisory boundary proof, smoke and snapshot weak-oracle downgrades, static class-method smoke-oracle guidance, async broad-error evidence, JavaScript mock-interaction skip, mocked-module static limitation, and already-observed unchanged evidence while keeping repair_packet_ready=false and advisory preview authority",
+  "fixtures/typescript-preview-false-actionable-audit/corpus.json audits mock-interaction payload gaps, broad error checks, weak snapshot/smoke oracles, heuristic related-test links, owner-name-only test titles, method receiver and static class-method repair-packet gaps, remaining receiver ambiguity, module-initializer ambiguity, and static limits as safe advisory, named limitation, candidate future support, or must-remain-non-actionable cases",
+  "language_repair_route_quality reports TypeScript and JavaScript preview outcomes by language and repair kind without promoting preview evidence into public packets, badge inputs, gates, baseline authority, or RIPR Zero",
+  "docs/handoffs/2026-05-30-typescript-preview-completion-closeout.md records the support-tier decision that TypeScript and JavaScript remain preview"
+]
+fixtures = [
+  "fixtures/typescript_boundary_gap",
+  "fixtures/typescript_strong_oracle",
+  "fixtures/typescript_return_value_shape",
+  "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes",
+  "fixtures/typescript_tsx_preview",
+  "fixtures/javascript_js_preview",
+  "fixtures/javascript_jsx_preview",
+  "fixtures/typescript_disabled",
+  "fixtures/typescript_parse_error_unsupported_syntax",
+  "fixtures/typescript_static_limit_taxonomy",
+  "fixtures/typescript_owner_kinds",
+  "fixtures/typescript_jest_vitest_assertion_facts",
+  "fixtures/typescript_related_test_matching",
+  "fixtures/typescript_related_test_name_proximity",
+  "fixtures/typescript_probe_facts",
+  "fixtures/typescript_strict_actionability",
+  "fixtures/typescript-preview-repair-loop",
+  "fixtures/typescript-preview-false-actionable-audit",
+  "fixtures/mixed_rust_typescript_preview"
+]
+next = "maintenance"
+metric = "language_adapter_typescript_findings_preview, language_adapter_typescript_owner_function, language_adapter_typescript_owner_method, language_adapter_typescript_owner_class_method, language_adapter_typescript_owner_arrow_function, language_adapter_typescript_owner_component, language_adapter_typescript_oracle_exact_value, language_adapter_typescript_oracle_error_path, language_adapter_typescript_oracle_side_effect, language_adapter_typescript_oracle_snapshot_weak, language_adapter_typescript_oracle_smoke, language_adapter_typescript_related_imported_owner_call, language_adapter_typescript_related_method_receiver_call, language_adapter_typescript_probe_predicate, language_adapter_typescript_probe_return_value, language_adapter_typescript_probe_error_path, language_adapter_typescript_probe_field_construction, language_adapter_typescript_probe_call_side_effect, language_adapter_typescript_probe_mock_interaction, language_adapter_typescript_probe_ambiguous_suppressed, language_adapter_typescript_static_limit_dynamic_dispatch, language_adapter_typescript_static_limit_metaprogramming, language_adapter_typescript_static_limit_missing_import_graph, language_adapter_typescript_static_limit_decorator_indirection, language_adapter_typescript_static_limit_mocked_module, language_adapter_typescript_static_limit_unsupported_syntax, language_adapter_typescript_actionability_advisory, language_adapter_typescript_actionability_static_limitation, language_adapter_typescript_actionability_already_observed, language_adapter_typescript_preview_card, language_adapter_typescript_lsp_preview_actionability_context, language_adapter_typescript_ci_preview_grouping, language_adapter_typescript_preview_repair_loop_dogfood, language_adapter_typescript_false_actionable_audit, language_adapter_typescript_route_quality_by_language, language_adapter_javascript_route_quality_by_language"
 
 [[capability]]
 id = "sarif_ci_policy"
@@ -1611,7 +1970,8 @@ evidence = [
   "crates/ripr/src/cli/commands.rs wires ripr policy preview-promote with parser and write-path tests",
   "generated GitHub CI writes, uploads, indexes, and summarizes preview-promotion packets only when TypeScript or Python preview adapters are configured",
   "docs/OUTPUT_SCHEMA.md documents the implemented preview_evidence_promotion_packet JSON and Markdown shape",
-  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript and Python evidence advisory by default",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript, JavaScript, and Python evidence advisory by default",
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md defines proof criteria for fixture matrix coverage, dogfood receipts, related-test accuracy, static-limit taxonomy, false-positive review, false repair packet review, surface consistency, and policy-owner signoff before preview evidence can claim stronger status",
   "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep preview promotion split from later operator workflow and CI projection without actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview-eligibility mutation"
 ]

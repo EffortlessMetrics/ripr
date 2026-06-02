@@ -3,6 +3,20 @@
 Status: advisory
 Gate: acknowledgeable / acknowledged
 
+Start here:
+- Identity: new
+- Source: ripr_zero_status
+- Location: src/new.rs:4
+- Repair route: focused_test
+- Missing discriminator: new == 4
+- Suggested test: assert_eq!(new(), 4)
+- Related test: tests/new.rs::boundary
+- Verify command: `ripr agent verify --json`
+- Receipt state: receipt_missing
+- Agent handoff: `ripr agent start --root . --seam-id new --out target/ripr/workflow`
+- Boundary: advisory static evidence only; raw counts below are supporting evidence and gate authority remains separate.
+
+Supporting movement counts:
 | Measure | Count |
 | --- | ---: |
 | New policy-eligible gaps | 1 |
@@ -12,16 +26,6 @@ Gate: acknowledgeable / acknowledged
 | Suppressed gaps | 1 |
 | Blocking candidates | 0 |
 | Visible unresolved gaps | 4 |
-
-Top focused test to add:
-- src/new.rs:4
-  Evidence boundary:
-  - Receipt state: receipt_missing
-  Missing discriminator: new == 4
-  Suggested test: assert_eq!(new(), 4)
-  Related test: tests/new.rs::boundary
-  Verify: ripr agent verify --json
-  Agent: ripr agent start --root . --seam-id new --out target/ripr/workflow
 
 Receipts:
 - Gate decision: fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json

@@ -61,6 +61,7 @@
       "canonical_gap_id": null,
       "focused_test": "tests/new.rs::boundary",
       "receipt": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+      "receipt_state": "receipt_movement_improved",
       "seam_id": "new",
       "source": "agent_receipt",
       "static_movement": {

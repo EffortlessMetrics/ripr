@@ -2,17 +2,17 @@ use crate::domain::{ProbeFamily, ProbeId};
 use std::path::Path;
 
 pub fn diff_probe_id(path: &Path, line: usize, family: &ProbeFamily) -> ProbeId {
-    ProbeId(format!(
-        "probe:{}:{}:{}",
-        sanitize_path(path),
-        line,
-        family.as_str()
-    ))
+    probe_id("probe", path, line, family)
 }
 
 pub fn repo_probe_id(path: &Path, line: usize, family: &ProbeFamily) -> ProbeId {
+    probe_id("repo-probe", path, line, family)
+}
+
+fn probe_id(prefix: &str, path: &Path, line: usize, family: &ProbeFamily) -> ProbeId {
     ProbeId(format!(
-        "repo-probe:{}:{}:{}",
+        "{}:{}:{}:{}",
+        prefix,
         sanitize_path(path),
         line,
         family.as_str()

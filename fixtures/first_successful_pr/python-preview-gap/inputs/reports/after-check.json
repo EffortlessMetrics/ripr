@@ -1,0 +1,87 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-preview-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 1,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:app_pricing.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.86,
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "canonical_gap": {
+        "id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+        "language": "python",
+        "file": "app/pricing.py",
+        "owner": "calculate_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+      },
+      "probe": {
+        "id": "probe:app_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "app/pricing.py",
+        "line": 2,
+        "owner": "python:app/pricing.py::calculate_discount",
+        "expression": "if amount >= threshold:"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related Python test reaches calculate_discount."
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed predicate can alter branch selection."
+        },
+        "propagate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Changed branch can propagate through the return value."
+        },
+        "observe": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related test asserts the exact returned value."
+        },
+        "discriminate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Equality boundary is asserted."
+        }
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {
+          "name": "test_calculate_discount_smoke",
+          "file": "tests/test_pricing.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert calculate_discount(amount=100, threshold=100) == 90",
+          "relation_confidence": "high",
+          "relation_reason": "direct_owner_call"
+        }
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

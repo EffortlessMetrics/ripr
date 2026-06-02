@@ -1,0 +1,133 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-preview-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 0,
+    "weakly_exposed": 1,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:app_pricing.py:2:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.7,
+      "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "canonical_gap": {
+        "id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+        "language": "python",
+        "file": "app/pricing.py",
+        "owner": "calculate_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+      },
+      "probe": {
+        "id": "probe:app_pricing.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "app/pricing.py",
+        "line": 2,
+        "owner": "python:app/pricing.py::calculate_discount",
+        "expression": "if amount >= threshold:"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related Python test reaches calculate_discount."
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed predicate can alter branch selection."
+        },
+        "propagate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Changed branch can propagate through the return value."
+        },
+        "observe": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Related test uses only a broad smoke assertion."
+        },
+        "discriminate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "No test observes the equality boundary."
+        }
+      },
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "equality boundary not observed"
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_calculate_discount_smoke",
+          "file": "tests/test_pricing.py",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "relation_confidence": "high",
+          "relation_reason": "direct_owner_call"
+        }
+      ],
+      "python_repair_card": {
+        "card_version": "0.1",
+        "source": "predicate_boundary",
+        "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_static_advisory",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "python:app/pricing.py::calculate_discount",
+        "changed_behavior": "if amount >= threshold:",
+        "current_test_evidence": [
+          "tests/test_pricing.py::test_calculate_discount_smoke reaches calculate_discount",
+          "existing assertion is broad",
+          "no equality-boundary discriminator was found"
+        ],
+        "missing_discriminator": "amount == threshold",
+        "recommended_test_shape": "pytest exact boundary assertion",
+        "suggested_assertion": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+        "suggested_location": {
+          "test_file": "tests/test_pricing.py",
+          "test_name": "test_calculate_discount_smoke",
+          "source_file": "app/pricing.py"
+        },
+        "verify": {
+          "command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+          "confidence": "high"
+        },
+        "receipt": {
+          "status": "available",
+          "command": "ripr outcome --before fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json --after fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json --format json --out fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json"
+        },
+        "stop_conditions": [
+          "import cannot be resolved",
+          "expected value is ambiguous",
+          "production code edit appears necessary"
+        ],
+        "limits": [
+          "static advisory evidence only",
+          "does not run Python tests",
+          "does not prove correctness"
+        ]
+      },
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

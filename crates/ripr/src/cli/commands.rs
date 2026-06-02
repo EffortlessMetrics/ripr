@@ -1,412 +1,47 @@
-use crate::agent::{loop_commands, provenance};
+use crate::agent::loop_commands;
 use crate::analysis;
 use crate::app::agent_brief::{
-    AgentBriefChangedOwner, AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
-    select_agent_brief_seams,
+    AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
-    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
+    AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
     AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions, AgentVerifyOptions,
     parse_agent_args,
 };
+use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig,
-    apply_to_check_input, config_fingerprint, generated_init_config, load_for_root,
+    apply_to_check_input, generated_init_config, load_for_root,
 };
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
-#[derive(Debug, PartialEq, Eq)]
-struct InitOptions {
-    root: PathBuf,
-    dry_run: bool,
-    force: bool,
-    ci: Option<InitCi>,
-}
+use crate::cli::commands_agent_support::{
+    agent_brief_lines_from_diff, agent_brief_owners_for_lines, build_agent_receipt_provenance,
+    read_agent_verify_snapshot, resolve_agent_brief_working_set,
+    validate_agent_receipt_verify_path, validate_agent_verify_snapshot_path,
+};
+use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
+use crate::cli::commands_options::*;
+use crate::cli::commands_timestamps::generated_at_unix_ms;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum InitCi {
-    Github,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PilotOptions {
-    root: PathBuf,
-    out_dir: PathBuf,
-    mode: Mode,
-    explicit: CheckInputExplicit,
-    max_seams: usize,
-    timeout_ms: u64,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct OutcomeOptions {
-    before: PathBuf,
-    after: PathBuf,
-    format: OutcomeFormat,
-    out: Option<PathBuf>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct EvidenceHealthOptions {
-    root: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-    mutation_calibration: Option<PathBuf>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ReviewCommentsOptions {
-    root: PathBuf,
-    base: String,
-    head: String,
-    gap_ledger: Option<PathBuf>,
-    out: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct GateOptions {
-    input: output::gate::GateEvaluateInput,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineCreateOptions {
-    from: PathBuf,
-    out: PathBuf,
-    dry_run: bool,
-    force: bool,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineDiffOptions {
-    baseline: PathBuf,
-    current: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineUpdateOptions {
-    baseline: PathBuf,
-    current: PathBuf,
-    out: Option<PathBuf>,
-    remove_resolved: bool,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct RiprZeroStatusOptions {
-    baseline: Option<PathBuf>,
-    delta: PathBuf,
-    gap_ledger: Option<PathBuf>,
-    gate: Option<PathBuf>,
-    pr_guidance: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyReadinessOptions {
-    root: String,
-    gate_decision: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    waiver_aging: Option<PathBuf>,
-    suppression_health: Option<PathBuf>,
-    repo_config: Option<PathBuf>,
-    previous_readiness: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyOperationsOptions {
-    root: String,
-    policy_readiness: Option<PathBuf>,
-    waiver_aging: Option<PathBuf>,
-    suppression_health: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    preview_boundary: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyHistoryOptions {
-    root: String,
-    current: PathBuf,
-    history: Option<PathBuf>,
-    commit: Option<String>,
-    pr_number: Option<String>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyPromotionOptions {
-    root: String,
-    target_mode: String,
-    operations: PathBuf,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyPreviewPromotionOptions {
-    root: String,
-    language: String,
-    candidate_class: String,
-    evidence: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyWaiverAgingOptions {
-    root: String,
-    ledger: Option<PathBuf>,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicySuppressionHealthOptions {
-    root: PathBuf,
-    manifest: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrEvidenceLedgerOptions {
-    pr_number: String,
-    base: String,
-    head: String,
-    labels: Vec<String>,
-    gate: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    pr_guidance: Option<PathBuf>,
-    gap_ledger: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    agent_receipt: Option<PathBuf>,
-    coverage: Option<PathBuf>,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrCommentsPlanOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    existing_comments: Option<PathBuf>,
-    mode: output::pr_inline_comment_publish_plan::CommentMode,
-    pull_request: Option<u64>,
-    event_name: Option<String>,
-    head_repo: Option<String>,
-    base_repo: Option<String>,
-    token_available: bool,
-    write_permission: bool,
-    max_inline_comments: usize,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrReviewFrontPanelOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    first_action: Option<PathBuf>,
-    assistant_proof: Option<PathBuf>,
-    assistant_health: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ReportPacketIndexOptions {
-    root: String,
-    reports_dir: PathBuf,
-    review_dir: PathBuf,
-    receipts_dir: PathBuf,
-    workflow_dir: PathBuf,
-    agent_dir: PathBuf,
-    pilot_dir: PathBuf,
-    ci_dir: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct GapDecisionLedgerOptions {
-    root: String,
-    source: GapDecisionLedgerSource,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum GapDecisionLedgerSource {
-    Records(PathBuf),
-    RepoExposure(PathBuf),
-    CheckOutput(PathBuf),
-}
-
-impl GapDecisionLedgerSource {
-    fn path(&self) -> &Path {
-        match self {
-            Self::Records(path) | Self::RepoExposure(path) | Self::CheckOutput(path) => path,
-        }
-    }
-
-    fn kind(&self) -> output::gap_decision_ledger::GapDecisionLedgerSourceKind {
-        match self {
-            Self::Records(_) => output::gap_decision_ledger::GapDecisionLedgerSourceKind::Records,
-            Self::RepoExposure(_) => {
-                output::gap_decision_ledger::GapDecisionLedgerSourceKind::RepoExposure
-            }
-            Self::CheckOutput(_) => {
-                output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput
-            }
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Records(_) => "gap records",
-            Self::RepoExposure(_) => "repo exposure",
-            Self::CheckOutput(_) => "check output",
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct CoverageGripFrontierOptions {
-    coverage: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct AssistantLoopProofOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    agent_packet: Option<PathBuf>,
-    before: Option<PathBuf>,
-    after: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct AssistantLoopHealthOptions {
-    root: String,
-    proofs: Vec<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct FirstActionOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    assistant_proof: Option<PathBuf>,
-    gap_ledger: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    editor_context: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum OutcomeFormat {
-    Markdown,
-    Json,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct CalibrateOptions {
-    mutants_json: PathBuf,
-    repo_exposure_json: PathBuf,
-    format: CalibrateFormat,
-    out: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum CalibrateFormat {
-    Markdown,
-    Json,
-}
+#[path = "commands/agent_dispatch.rs"]
+mod agent_dispatch;
 
 pub(super) fn agent(args: &[String]) -> Result<(), String> {
-    match parse_agent_args(args)? {
-        AgentCommand::Help => {
-            help::print_agent_help();
-            Ok(())
-        }
-        AgentCommand::StartHelp => {
-            help::print_agent_start_help();
-            Ok(())
-        }
-        AgentCommand::BriefHelp => {
-            help::print_agent_brief_help();
-            Ok(())
-        }
-        AgentCommand::PacketHelp => {
-            help::print_agent_packet_help();
-            Ok(())
-        }
-        AgentCommand::VerifyHelp => {
-            help::print_agent_verify_help();
-            Ok(())
-        }
-        AgentCommand::ReceiptHelp => {
-            help::print_agent_receipt_help();
-            Ok(())
-        }
-        AgentCommand::StatusHelp => {
-            help::print_agent_status_help();
-            Ok(())
-        }
-        AgentCommand::ReviewSummaryHelp => {
-            help::print_agent_review_summary_help();
-            Ok(())
-        }
+    let command = parse_agent_args(args)?;
+    if let Some(result) = agent_dispatch::run_agent_help_command(&command) {
+        return result;
+    }
+
+    match command {
         AgentCommand::Start(options) => run_agent_start(options),
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
@@ -414,23 +49,51 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
         AgentCommand::Receipt(options) => run_agent_receipt(options),
         AgentCommand::Status(options) => run_agent_status(options),
         AgentCommand::ReviewSummary(options) => run_agent_review_summary(options),
+        help_command @ (AgentCommand::Help
+        | AgentCommand::StartHelp
+        | AgentCommand::BriefHelp
+        | AgentCommand::PacketHelp
+        | AgentCommand::VerifyHelp
+        | AgentCommand::ReceiptHelp
+        | AgentCommand::StatusHelp
+        | AgentCommand::ReviewSummaryHelp) => agent_dispatch::run_agent_help_command(&help_command)
+            .unwrap_or_else(|| Err("agent help command was not dispatched".to_string())),
+    }
+}
+
+pub(super) fn swarm(args: &[String]) -> Result<(), String> {
+    let Some((subcommand, rest)) = args.split_first() else {
+        help::print_swarm_help();
+        return Ok(());
+    };
+    match subcommand.as_str() {
+        "--help" | "-h" => {
+            help::print_swarm_help();
+            Ok(())
+        }
+        "queue" => {
+            if rest.iter().any(|arg| arg == "--help" || arg == "-h") {
+                help::print_swarm_queue_help();
+                return Ok(());
+            }
+            run_swarm_queue(parse_swarm_queue_options(rest)?)
+        }
+        "ingest" => {
+            if rest.iter().any(|arg| arg == "--help" || arg == "-h") {
+                help::print_swarm_ingest_help();
+                return Ok(());
+            }
+            run_swarm_ingest(parse_swarm_ingest_options(rest)?)
+        }
+        other => Err(format!(
+            "unknown swarm subcommand {other:?}; expected `queue` or `ingest`"
+        )),
     }
 }
 
 fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent start root {} is not a directory",
-            options.root.display()
-        ));
-    }
-
-    let config = load_for_root(&options.root)?;
-    let mut input = CheckInput {
-        root: options.root.clone(),
-        ..CheckInput::default()
-    };
-    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    ensure_command_root(&options.root, "agent start")?;
+    let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
     let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
@@ -486,19 +149,8 @@ fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
 }
 
 fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent brief root {} is not a directory",
-            options.root.display()
-        ));
-    }
-
-    let config = load_for_root(&options.root)?;
-    let mut input = CheckInput {
-        root: options.root.clone(),
-        ..CheckInput::default()
-    };
-    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    ensure_command_root(&options.root, "agent brief")?;
+    let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
     let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
@@ -520,16 +172,11 @@ fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
 }
 
 fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent packet root {} is not a directory",
-            options.root.display()
-        ));
-    }
+    ensure_command_root(&options.root, "agent packet")?;
 
     if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
         let rendered = render_agent_packet_from_gap_ledger(gap_ledger, gap_id)?;
-        println!("{rendered}");
+        print!("{rendered}");
         return Ok(());
     }
 
@@ -549,8 +196,269 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
     }
 
     let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
-    println!("{rendered}");
+    print!("{rendered}");
     Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SwarmQueueOptions {
+    root: PathBuf,
+    gap_ledger: PathBuf,
+    language: String,
+    top: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SwarmIngestOptions {
+    root: PathBuf,
+    result: PathBuf,
+}
+
+fn parse_swarm_queue_options(args: &[String]) -> Result<SwarmQueueOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut gap_ledger = PathBuf::from("target/ripr/reports/gap-decision-ledger.json");
+    let mut language = "python".to_string();
+    let mut top = 10usize;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                let value = expect_value(args, i, "--root")?;
+                if value.trim().is_empty() {
+                    return Err("swarm queue --root requires a non-empty path".to_string());
+                }
+                root = PathBuf::from(value);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                let value = expect_value(args, i, "--gap-ledger")?;
+                if value.trim().is_empty() {
+                    return Err("swarm queue --gap-ledger requires a non-empty path".to_string());
+                }
+                gap_ledger = PathBuf::from(value);
+            }
+            "--language" => {
+                i += 1;
+                let value = expect_value(args, i, "--language")?;
+                if value.trim().is_empty() {
+                    return Err("swarm queue --language requires a non-empty language".to_string());
+                }
+                language = value.to_string();
+            }
+            "--top" => {
+                i += 1;
+                top = parse_positive_usize(expect_value(args, i, "--top")?, "swarm queue --top")?;
+            }
+            "--format" => {
+                i += 1;
+                let value = expect_value(args, i, "--format")?;
+                if value != "json" {
+                    return Err(format!(
+                        "unknown swarm queue format {value:?}; expected `json`"
+                    ));
+                }
+            }
+            "--json" => {}
+            other => return Err(format!("unknown swarm queue argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(SwarmQueueOptions {
+        root,
+        gap_ledger,
+        language,
+        top,
+    })
+}
+
+fn parse_swarm_ingest_options(args: &[String]) -> Result<SwarmIngestOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut result = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                let value = expect_value(args, i, "--root")?;
+                if value.trim().is_empty() {
+                    return Err("swarm ingest --root requires a non-empty path".to_string());
+                }
+                root = PathBuf::from(value);
+            }
+            "--result" => {
+                i += 1;
+                let value = expect_value(args, i, "--result")?;
+                if value.trim().is_empty() {
+                    return Err("swarm ingest --result requires a non-empty path".to_string());
+                }
+                result = Some(PathBuf::from(value));
+            }
+            "--format" => {
+                i += 1;
+                let value = expect_value(args, i, "--format")?;
+                if value != "json" {
+                    return Err(format!(
+                        "unknown swarm ingest format {value:?}; expected `json`"
+                    ));
+                }
+            }
+            "--json" => {}
+            other => return Err(format!("unknown swarm ingest argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(SwarmIngestOptions {
+        root,
+        result: result.ok_or_else(|| "swarm ingest requires --result <path>".to_string())?,
+    })
+}
+
+fn run_swarm_queue(options: SwarmQueueOptions) -> Result<(), String> {
+    ensure_command_root(&options.root, "swarm queue")?;
+    let contents = std::fs::read_to_string(&options.gap_ledger).map_err(|err| {
+        format!(
+            "swarm queue --gap-ledger {} is invalid: read failed: {err}",
+            options.gap_ledger.display()
+        )
+    })?;
+    let rendered = render_swarm_queue_from_gap_ledger_contents(&options, &contents)?;
+    print!("{rendered}");
+    Ok(())
+}
+
+fn render_swarm_queue_from_gap_ledger_contents(
+    options: &SwarmQueueOptions,
+    contents: &str,
+) -> Result<String, String> {
+    let source =
+        output::gap_decision_ledger::parse_gap_record_source_json(contents).map_err(|err| {
+            format!(
+                "swarm queue --gap-ledger {} is invalid: {err}",
+                options.gap_ledger.display()
+            )
+        })?;
+    let root_display = output::outcome::display_path(&options.root);
+    let gap_ledger_display = output::outcome::display_path(&options.gap_ledger);
+    let rendered = match gap_ledger_root_status(&options.root, source.root.as_deref()) {
+        GapLedgerRootStatus::Missing => {
+            output::agent_seam_packets::render_agent_gap_record_queue_missing_root_json(
+                &root_display,
+                &gap_ledger_display,
+                source.generated_at.as_deref(),
+                &source.records,
+                &options.language,
+                options.top,
+            )?
+        }
+        GapLedgerRootStatus::Mismatch { ledger_root, .. } => {
+            output::agent_seam_packets::render_agent_gap_record_queue_wrong_root_json(
+                &root_display,
+                &gap_ledger_display,
+                &ledger_root,
+                source.generated_at.as_deref(),
+                &source.records,
+                &options.language,
+                options.top,
+            )?
+        }
+        GapLedgerRootStatus::Match => {
+            output::agent_seam_packets::render_agent_gap_record_queue_json(
+                &root_display,
+                &gap_ledger_display,
+                &source.records,
+                &options.language,
+                options.top,
+            )?
+        }
+    };
+    Ok(rendered)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum GapLedgerRootStatus {
+    Match,
+    Missing,
+    Mismatch { ledger_root: String, reason: String },
+}
+
+fn gap_ledger_root_status(requested_root: &Path, ledger_root: Option<&str>) -> GapLedgerRootStatus {
+    let Some(raw_ledger_root) = ledger_root.map(str::trim).filter(|root| !root.is_empty()) else {
+        return GapLedgerRootStatus::Missing;
+    };
+    let requested_root_display = output::outcome::display_path(requested_root);
+    let ledger_root_display = output::path::display_path_text(raw_ledger_root);
+    if requested_root_display == ledger_root_display {
+        return GapLedgerRootStatus::Match;
+    }
+
+    let requested_canonical = requested_root.canonicalize().ok();
+    let ledger_root_path = Path::new(raw_ledger_root);
+    let ledger_canonical = ledger_root_path.canonicalize().ok();
+    if requested_canonical.is_some()
+        && ledger_canonical.is_some()
+        && requested_canonical == ledger_canonical
+    {
+        return GapLedgerRootStatus::Match;
+    }
+
+    GapLedgerRootStatus::Mismatch {
+        ledger_root: ledger_root_display.clone(),
+        reason: format!(
+            "gap ledger root {ledger_root_display} does not match requested --root {requested_root_display}; regenerate the gap decision ledger for the selected root before assigning swarm work"
+        ),
+    }
+}
+
+fn run_swarm_ingest(options: SwarmIngestOptions) -> Result<(), String> {
+    ensure_command_root(&options.root, "swarm ingest")?;
+    let result_path = validate_swarm_ingest_result_path(&options.root, &options.result)?;
+    let contents = std::fs::read_to_string(&result_path).map_err(|err| {
+        format!(
+            "read swarm ingest --result {} failed: {err}",
+            options.result.display()
+        )
+    })?;
+    let rendered = output::swarm_ingest::render_swarm_ingest_json(
+        &contents,
+        &output::outcome::display_path(&options.result),
+    )?;
+    print!("{rendered}");
+    Ok(())
+}
+
+fn validate_swarm_ingest_result_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize swarm ingest root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize swarm ingest --result {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "swarm ingest --result {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
 }
 
 fn render_agent_packet_from_gap_ledger(gap_ledger: &Path, gap_id: &str) -> Result<String, String> {
@@ -591,17 +499,12 @@ fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
         output::outcome::display_path(&options.after),
     )?;
     let rendered = output::outcome::render_agent_verify_json(&report)?;
-    println!("{rendered}");
+    print!("{rendered}");
     Ok(())
 }
 
 fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent receipt root {} is not a directory",
-            options.root.display()
-        ));
-    }
+    ensure_command_root(&options.root, "agent receipt")?;
 
     let verify_path = validate_agent_receipt_verify_path(&options.root, &options.verify_json)?;
     let verify_json = std::fs::read_to_string(&verify_path).map_err(|err| {
@@ -650,12 +553,7 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
 }
 
 fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent status root {} is not a directory",
-            options.root.display()
-        ));
-    }
+    ensure_command_root(&options.root, "agent status")?;
 
     let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
     if options.json {
@@ -669,12 +567,7 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
 }
 
 fn run_agent_review_summary(options: AgentReviewSummaryOptions) -> Result<(), String> {
-    if !options.root.is_dir() {
-        return Err(format!(
-            "agent review-summary root {} is not a directory",
-            options.root.display()
-        ));
-    }
+    ensure_command_root(&options.root, "agent review-summary")?;
 
     let report =
         app::agent_review_summary::build_agent_review_summary_report(&options.root, &options.root);
@@ -710,317 +603,6 @@ fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
             output::outcome::display_path(path)
         )
     })
-}
-
-fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
-    let root = root.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent receipt root {} failed: {err}",
-            root.display()
-        )
-    })?;
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    };
-    let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent receipt --verify-json {} failed: {err}",
-            path.display()
-        )
-    })?;
-
-    if !candidate.starts_with(&root) {
-        return Err(format!(
-            "agent receipt --verify-json {} must stay under root {}",
-            path.display(),
-            root.display()
-        ));
-    }
-
-    Ok(candidate)
-}
-
-fn build_agent_receipt_provenance(
-    root: &Path,
-    verify_display_path: &Path,
-    verify_path: &Path,
-    input_paths: &output::agent_receipt::AgentReceiptInputPaths,
-) -> Result<output::agent_receipt::AgentReceiptProvenance, String> {
-    let before_artifact = agent_receipt_artifact_provenance(
-        root,
-        &input_paths.before,
-        "before artifact",
-        "before_artifact",
-    )?;
-    let after_artifact = agent_receipt_artifact_provenance(
-        root,
-        &input_paths.after,
-        "after artifact",
-        "after_artifact",
-    )?;
-    let verify_artifact = output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: output::outcome::display_path(verify_display_path),
-        sha256: provenance::sha256_file(verify_path)?,
-    };
-
-    Ok(output::agent_receipt::AgentReceiptProvenance {
-        ripr_version: env!("CARGO_PKG_VERSION").to_string(),
-        repo_root: output::outcome::display_path(root),
-        config_fingerprint: agent_receipt_config_fingerprint(root)?,
-        command_template_version: loop_commands::AGENT_LOOP_COMMAND_TEMPLATE_VERSION.to_string(),
-        generated_at: agent_receipt_generated_at()?,
-        workflow_artifact: None,
-        before_artifact,
-        after_artifact,
-        verify_artifact,
-    })
-}
-
-fn agent_receipt_artifact_provenance(
-    root: &Path,
-    display_path: &str,
-    role: &str,
-    output_name: &str,
-) -> Result<output::agent_receipt::AgentReceiptArtifactProvenance, String> {
-    let resolved = validate_agent_receipt_artifact_path(root, Path::new(display_path), role)?;
-    Ok(output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: display_path.replace('\\', "/"),
-        sha256: provenance::sha256_file(&resolved).map_err(|err| {
-            format!(
-                "hash agent receipt {output_name} {} failed: {err}",
-                display_path
-            )
-        })?,
-    })
-}
-
-fn validate_agent_receipt_artifact_path(
-    root: &Path,
-    path: &Path,
-    role: &str,
-) -> Result<PathBuf, String> {
-    let root = root.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent receipt root {} failed: {err}",
-            root.display()
-        )
-    })?;
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    };
-    let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent receipt {role} {} failed: {err}",
-            path.display()
-        )
-    })?;
-
-    if !candidate.starts_with(&root) {
-        return Err(format!(
-            "agent receipt {role} {} must stay under root {}",
-            path.display(),
-            root.display()
-        ));
-    }
-
-    Ok(candidate)
-}
-
-fn agent_receipt_config_fingerprint(root: &Path) -> Result<Option<String>, String> {
-    let path = root.join(CONFIG_FILE_NAME);
-    match std::fs::read_to_string(&path) {
-        Ok(text) => Ok(Some(config_fingerprint(&text))),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(err) => Err(format!("read {} failed: {err}", path.display())),
-    }
-}
-
-fn agent_receipt_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
-}
-
-fn validate_agent_verify_snapshot_path(
-    root: &Path,
-    path: &Path,
-    flag: &str,
-) -> Result<PathBuf, String> {
-    let root = root.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent verify root {} failed: {err}",
-            root.display()
-        )
-    })?;
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    };
-    let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent verify {flag} {} failed: {err}",
-            path.display()
-        )
-    })?;
-
-    if !candidate.starts_with(&root) {
-        return Err(format!(
-            "agent verify {flag} {} must stay under root {}",
-            path.display(),
-            root.display()
-        ));
-    }
-
-    Ok(candidate)
-}
-
-fn read_agent_verify_snapshot(path: &Path, label: &str) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|err| {
-        format!(
-            "read agent verify {label} snapshot {} failed: {err}",
-            output::outcome::display_path(path)
-        )
-    })
-}
-
-fn resolve_agent_brief_working_set(
-    root: &Path,
-    working_set: &AgentBriefWorkingSet,
-) -> Result<AgentBriefResolvedWorkingSet, String> {
-    match working_set {
-        AgentBriefWorkingSet::Diff(path) => {
-            let diff_path = validate_agent_brief_diff_path(root, path)?;
-            let diff_text = analysis::load_diff(root, None, Some(&diff_path))?;
-            let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
-            let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
-            Ok(AgentBriefResolvedWorkingSet::diff(
-                path.clone(),
-                changed_lines,
-            ))
-            .map(|working_set| working_set.with_changed_owners(changed_owners))
-        }
-        AgentBriefWorkingSet::Base(base) => {
-            let diff_text = analysis::load_diff(root, Some(base.as_str()), None)?;
-            let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
-            let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
-            Ok(AgentBriefResolvedWorkingSet::base(
-                base.clone(),
-                changed_lines,
-            ))
-            .map(|working_set| working_set.with_changed_owners(changed_owners))
-        }
-        AgentBriefWorkingSet::Files(files) => Ok(AgentBriefResolvedWorkingSet::files(
-            files
-                .iter()
-                .map(|file| normalize_agent_brief_path(root, file))
-                .collect(),
-        )),
-        AgentBriefWorkingSet::SeamId(seam_id) => {
-            Ok(AgentBriefResolvedWorkingSet::seam_id(seam_id.clone()))
-        }
-    }
-}
-
-fn validate_agent_brief_diff_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
-    let root = root.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent brief root {} failed: {err}",
-            root.display()
-        )
-    })?;
-    let candidate = if path.is_absolute() || path.exists() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    };
-    let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize agent brief diff {} failed: {err}",
-            path.display()
-        )
-    })?;
-
-    if !candidate.starts_with(&root) {
-        return Err(format!(
-            "agent brief --diff {} must stay under root {}",
-            path.display(),
-            root.display()
-        ));
-    }
-
-    Ok(candidate)
-}
-
-fn agent_brief_lines_from_diff(root: &Path, diff_text: &str) -> Vec<AgentBriefLine> {
-    analysis::parse_unified_diff(diff_text)
-        .into_iter()
-        .flat_map(|file| {
-            let path = normalize_agent_brief_path(root, &file.path);
-            file.added_lines
-                .into_iter()
-                .map(move |line| AgentBriefLine::new(path.clone(), line.line))
-        })
-        .collect()
-}
-
-fn agent_brief_owners_for_lines(
-    root: &Path,
-    lines: &[AgentBriefLine],
-) -> Vec<AgentBriefChangedOwner> {
-    let owner_inputs = lines
-        .iter()
-        .map(|line| (line.file.clone(), line.line))
-        .collect::<Vec<_>>();
-    let Ok(owners) = analysis::owner_symbols_for_lines(root, &owner_inputs) else {
-        return Vec::new();
-    };
-
-    owners
-        .into_iter()
-        .map(|owner| AgentBriefChangedOwner::new(owner.file, owner.line, owner.owner))
-        .collect()
-}
-
-fn normalize_agent_brief_path(root: &Path, path: &Path) -> PathBuf {
-    let path_text = normalized_path_text(path);
-    for root_text in normalized_root_prefixes(root) {
-        let prefix = format!("{root_text}/");
-        if let Some(stripped) = path_text.strip_prefix(&prefix) {
-            return PathBuf::from(stripped);
-        }
-    }
-    PathBuf::from(path_text)
-}
-
-fn normalized_root_prefixes(root: &Path) -> Vec<String> {
-    let mut prefixes = Vec::new();
-    push_unique_normalized_path(&mut prefixes, root);
-    if let Ok(root) = std::path::absolute(root) {
-        push_unique_normalized_path(&mut prefixes, &root);
-    }
-    if let Ok(root) = root.canonicalize() {
-        push_unique_normalized_path(&mut prefixes, &root);
-    }
-    prefixes
-}
-
-fn push_unique_normalized_path(prefixes: &mut Vec<String>, path: &Path) {
-    let text = normalized_path_text(path);
-    if !text.is_empty() && !prefixes.iter().any(|existing| existing == &text) {
-        prefixes.push(text);
-    }
-}
-
-fn normalized_path_text(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
-    text.strip_prefix("./").unwrap_or(&text).to_string()
 }
 
 pub(super) fn init(args: &[String]) -> Result<(), String> {
@@ -1811,7 +1393,7 @@ jobs:
             ripr "${first_action_args[@]}"
           else
             echo 'No RIPR first-useful-action inputs were available.'
-            echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
+            echo 'Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` after attaching at least one explicit input.'
           fi
 
       - name: Render RIPR PR review front panel
@@ -1878,7 +1460,7 @@ jobs:
             ripr "${front_panel_args[@]}"
           else
             echo 'No RIPR PR review front-panel inputs were available.'
-            echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
+            echo 'Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` after attaching at least one explicit input.'
           fi
 
       - name: Render RIPR first-pr start-here
@@ -2027,7 +1609,10 @@ jobs:
             echo '### Start here'
             echo '- Open `target/ripr/reports/start-here.md` first when it exists.'
             echo '- Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts.'
-            echo '- Repair route: use the repair, verify, receipt, or regeneration command shown in the start-here packet.'
+            echo '- Safe next action: repair one named gap, regenerate missing or malformed artifacts, refresh stale evidence, fix wrong-root setup, or stop on no-action.'
+            echo '- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence are explicit stop or regeneration states.'
+            echo '- Proof rail: verify command, receipt command, and receipt path are static movement evidence only.'
+            echo '- Preview boundary: preview-limited evidence stays syntax-first and advisory, with static limits before repair language.'
             echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
             if [ -f target/ripr/reports/start-here.md ]; then
               echo '- Start-here artifact: `target/ripr/reports/start-here.md`'
@@ -2054,13 +1639,15 @@ jobs:
               start_changed="$(jq -r '.selected.changed_behavior // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_evidence="$(jq -r '.selected.current_evidence_strength // .selected.state // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_missing="$(jq -r '.selected.missing_discriminator // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
-              start_proof="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_focused="$(jq -r '.selected.focused_proof_intent // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_boundary="$(jq -r '.selected.static_evidence_boundary // "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."' "$start_json" 2>/dev/null || echo unknown)"
               start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_limit="$(jq -r 'if .selected.static_limit_kind then (.selected.static_limit_kind + (if .selected.static_limit_detail then ": " + .selected.static_limit_detail else "" end)) else "none" end' "$start_json" 2>/dev/null || echo unknown)"
               start_verify="$(jq -r '.selected.verify_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_receipt="$(jq -r '.selected.receipt_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_receipt_path="$(jq -r '.selected.receipt_path // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_receipt_state="$(jq -r '.selected.receipt_state // "receipt_missing"' "$start_json" 2>/dev/null || echo unknown)"
               start_next="$(jq -r '.selected.next_command // .selected.regeneration_command // "none"' "$start_json" 2>/dev/null || echo unknown)"
               start_warnings="$(jq -r '(.warnings // [] | length)' "$start_json" 2>/dev/null || echo 0)"
@@ -2072,13 +1659,15 @@ jobs:
               start_changed="$(markdown_inline "$start_changed")"
               start_evidence="$(markdown_inline "$start_evidence")"
               start_missing="$(markdown_inline "$start_missing")"
-              start_proof="$(markdown_inline "$start_proof")"
               start_repair="$(markdown_inline "$start_repair")"
+              start_focused="$(markdown_inline "$start_focused")"
+              start_boundary="$(markdown_inline "$start_boundary")"
               start_target="$(markdown_inline "$start_target")"
               start_related="$(markdown_inline "$start_related")"
               start_limit="$(markdown_inline "$start_limit")"
               start_verify="$(markdown_inline "$start_verify")"
               start_receipt="$(markdown_inline "$start_receipt")"
+              start_receipt_path="$(markdown_inline "$start_receipt_path")"
               start_receipt_state="$(markdown_inline "$start_receipt_state")"
               start_next="$(markdown_inline "$start_next")"
               start_warnings="$(markdown_inline "$start_warnings")"
@@ -2087,18 +1676,20 @@ jobs:
               echo "- Canonical gap: \`$start_gap\`"
               echo "- Language: \`$start_language\`"
               echo "- Top gap/no-action: \`$start_kind\`"
+              echo "- Repair: \`$start_repair\`"
               echo "- Changed behavior: \`$start_changed\`"
               echo "- Current evidence strength: \`$start_evidence\`"
               echo "- Missing discriminator: \`$start_missing\`"
-              echo "- Focused proof intent: \`$start_proof\`"
-              echo "- Repair: \`$start_repair\`"
+              echo "- Focused proof intent: \`$start_focused\`"
+              echo "- Boundary: \`$start_boundary\`"
               echo "- Repair target: \`$start_target\`"
               echo "- Related test: \`$start_related\`"
               echo "- Static limit: \`$start_limit\`"
-              echo "- Verify: \`$start_verify\`"
-              echo "- Receipt: \`$start_receipt\`"
+              echo "- Verify command: \`$start_verify\`"
+              echo "- Receipt command: \`$start_receipt\`"
+              echo "- Receipt path: \`$start_receipt_path\`"
               echo "- Receipt state: \`$start_receipt_state\`"
-              echo "- Next command: \`$start_next\`"
+              echo "- Safe next action command: \`$start_next\`"
               echo "- Warnings: \`$start_warnings\`"
               echo "- Artifacts: \`target/ripr/reports/start-here.json\`, \`target/ripr/reports/start-here.md\`"
               echo "- Boundary: start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority when configured."
@@ -2139,7 +1730,7 @@ jobs:
               first_fallback="$(markdown_inline "$first_fallback")"
               first_warnings="$(markdown_inline "$first_warnings")"
               echo "- Status: \`$first_status\`"
-              echo "- Action: \`$first_action_kind\`"
+              echo "- Safe next action: \`$first_action_kind\`"
               echo "- Title: \`$first_title\`"
               echo "- Why: \`$first_why\`"
               echo "- Changed behavior: \`$first_changed\`"
@@ -2149,16 +1740,17 @@ jobs:
               echo "- Gap: \`$first_gap\`"
               echo "- Repair target: \`$first_target\`"
               echo "- Agent packet: \`$first_packet\`"
-              echo "- Verify: \`$first_verify\`"
-              echo "- Receipt: \`$first_receipt\`"
+              echo "- Verify command: \`$first_verify\`"
+              echo "- Receipt command: \`$first_receipt\`"
               echo "- Fallback/no-action: \`$first_fallback\`"
               echo "- Warnings: \`$first_warnings\`"
               echo "- Artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`, \`target/ripr/workflow/agent-packet.json\`"
               echo "- Boundary: advisory first-run path only; gate decision remains separate pass/fail authority when configured."
             else
               echo "- Status: \`missing_start_here\`"
-              echo "- Next command: \`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports\`."
-              echo "- Fallback first-action command: \`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\` (add other available inputs as needed)."
+              echo "- State: \`missing_artifact\`"
+              echo "- Safe next action: run \`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports\`."
+              echo "- Fallback safe next action: run \`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\` after attaching at least one explicit input."
               echo "- Boundary: missing start-here packet does not fail generated CI or create gate authority."
             fi
             echo
@@ -2182,11 +1774,24 @@ jobs:
                 || true
             )"
             if [ -n "$preview_languages" ]; then
+              grouped_preview_languages="$preview_languages"
+              if printf '%s\n' "$preview_languages" | tr ' ' '\n' | grep -qx 'typescript'; then
+                grouped_preview_languages="$grouped_preview_languages javascript"
+              fi
+              grouped_preview_languages="$(
+                printf '%s\n' $grouped_preview_languages \
+                  | sort -u \
+                  | tr '\n' ' ' \
+                  | sed 's/ $//' \
+                  || true
+              )"
               configured_inline="$(markdown_inline "$configured_languages")"
+              grouped_inline="$(markdown_inline "$grouped_preview_languages")"
               echo '### Language preview grouping'
               echo "- Configured languages: \`$configured_inline\`"
+              echo "- Grouped preview evidence languages: \`$grouped_inline\`"
               echo "- Boundary: preview-language groups are advisory presentation only; \`ripr gate evaluate\` remains pass/fail authority when explicitly configured."
-              for language in $preview_languages; do
+              for language in $grouped_preview_languages; do
                 language_inputs=()
                 if [ -f target/ripr/reports/repo-exposure.json ]; then
                   language_inputs+=(target/ripr/reports/repo-exposure.json)
@@ -2208,6 +1813,9 @@ jobs:
                 static_limit_entries=0
                 class_counts="none"
                 static_limit_kinds="none"
+                actionability_states="none"
+                actionability_categories="none"
+                repair_packet_ready_entries=0
                 if [ "${#language_inputs[@]}" -gt 0 ]; then
                   artifact_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                   preview_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? == "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
@@ -2215,6 +1823,9 @@ jobs:
                   static_limit_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .static_limit_kind? != null)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                   class_counts="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .classification? != null) | .classification] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
                   static_limit_kinds="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | .static_limit_kind? | select(. != null)] | unique | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  actionability_states="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | (.preview_actionability?.gap_state // .gap_state?) | select(. != null)] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  actionability_categories="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | (.preview_actionability?.actionability_category // .actionability_category?) | select(. != null)] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  repair_packet_ready_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .preview_actionability?.repair_packet_ready == true)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
                 fi
                 language_inline="$(markdown_inline "$language")"
                 artifact_entries="$(markdown_inline "$artifact_entries")"
@@ -2223,10 +1834,13 @@ jobs:
                 static_limit_entries="$(markdown_inline "$static_limit_entries")"
                 class_counts="$(markdown_inline "$class_counts")"
                 static_limit_kinds="$(markdown_inline "$static_limit_kinds")"
+                actionability_states="$(markdown_inline "$actionability_states")"
+                actionability_categories="$(markdown_inline "$actionability_categories")"
+                repair_packet_ready_entries="$(markdown_inline "$repair_packet_ready_entries")"
                 if [ "$artifact_entries" = "0" ]; then
-                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run."
+                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run; gate_impact=\`none\`."
                 else
-                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`"
+                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`, actionability_states=\`$actionability_states\`, actionability_categories=\`$actionability_categories\`, repair_packet_ready=\`$repair_packet_ready_entries\`, gate_impact=\`none\`"
                 fi
               done
               echo
@@ -2310,7 +1924,7 @@ jobs:
               fi
             else
               echo 'PR review summary was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
-              echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
+              echo 'Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` after attaching at least one explicit input.'
             fi
             echo
             echo '### Recommended next test'
@@ -2339,7 +1953,7 @@ jobs:
                 action_warning_count="$(markdown_inline "$action_warning_count")"
                 echo '#### Recommended next test at a glance'
                 echo "- Status: \`$action_status\`"
-                echo "- Action: \`$action_kind\`"
+                echo "- Safe next action: \`$action_kind\`"
                 echo "- Title: \`$action_title\`"
                 echo "- Why: \`$action_why\`"
                 echo "- Seam: \`$action_seam\`"
@@ -2357,7 +1971,7 @@ jobs:
               fi
             else
               echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
-              echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
+              echo 'Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` after attaching at least one explicit input.'
             fi
             echo
             echo '### Top recommendation'
@@ -3174,21 +2788,21 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
     std::fs::create_dir_all(&options.out_dir)
         .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
 
-    let context = output::pilot::PilotSummaryContext {
-        root: &input.root,
-        mode: &input.mode,
-        config_path: config.source_path(),
-        max_seams: options.max_seams,
-        timeout_ms: options.timeout_ms,
-        artifacts: &artifacts,
-    };
-
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
     let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
         analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
     })?;
     let PilotAnalysisResult::Complete(classified) = analysis_result else {
+        let context = output::pilot::PilotSummaryContext {
+            root: &input.root,
+            mode: &input.mode,
+            config_path: config.source_path(),
+            max_seams: options.max_seams,
+            timeout_ms: options.timeout_ms,
+            artifacts: &artifacts,
+            python_first_use: None,
+        };
         std::fs::write(
             &artifacts.pilot_summary_json,
             output::pilot::render_pilot_timeout_summary_json(context),
@@ -3211,6 +2825,18 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
         })?;
         print!("{}", output::pilot::render_pilot_timeout_terminal(context));
         return Ok(());
+    };
+
+    let python_first_use =
+        collect_pilot_python_first_use_with_timeout(&input, &config, options.timeout_ms);
+    let context = output::pilot::PilotSummaryContext {
+        root: &input.root,
+        mode: &input.mode,
+        config_path: config.source_path(),
+        max_seams: options.max_seams,
+        timeout_ms: options.timeout_ms,
+        artifacts: &artifacts,
+        python_first_use: python_first_use.as_ref(),
     };
 
     std::fs::write(
@@ -3272,6 +2898,67 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn collect_pilot_python_first_use_with_timeout(
+    input: &CheckInput,
+    config: &RiprConfig,
+    timeout_ms: u64,
+) -> Option<output::pilot::PilotPythonFirstUse> {
+    if !config
+        .languages()
+        .enabled()
+        .contains(&crate::domain::LanguageId::Python)
+    {
+        return None;
+    }
+
+    let check_input = input.clone();
+    let analysis_config = config.clone();
+    Some(run_pilot_python_first_use_with_timeout(
+        timeout_ms,
+        move || collect_pilot_python_first_use(check_input, analysis_config),
+    ))
+}
+
+fn collect_pilot_python_first_use(
+    input: CheckInput,
+    config: RiprConfig,
+) -> output::pilot::PilotPythonFirstUse {
+    let mut check_input = input;
+    check_input.format = OutputFormat::Json;
+    match app::check_workspace_with_config(check_input, &config) {
+        Ok(output) => output::pilot::PilotPythonFirstUse::from_check_output(&output),
+        Err(error) => output::pilot::PilotPythonFirstUse::analysis_unavailable(error),
+    }
+}
+
+fn run_pilot_python_first_use_with_timeout<F>(
+    timeout_ms: u64,
+    runner: F,
+) -> output::pilot::PilotPythonFirstUse
+where
+    F: FnOnce() -> output::pilot::PilotPythonFirstUse + Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = runner();
+        let _ignored = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(format!(
+                "pilot Python first-use analysis timed out after {timeout_ms} ms"
+            ))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(
+                "pilot Python first-use analysis stopped before producing a result".to_string(),
+            )
+        }
+    }
+}
+
 fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
     let mut options = PilotOptions {
         root: PathBuf::from("."),
@@ -3312,26 +2999,6 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
         i += 1;
     }
     Ok(options)
-}
-
-fn parse_positive_usize(value: &str, flag: &str) -> Result<usize, String> {
-    let parsed = value
-        .parse::<usize>()
-        .map_err(|err| format!("invalid {flag}: {err}"))?;
-    if parsed == 0 {
-        return Err(format!("invalid {flag}: expected a positive integer"));
-    }
-    Ok(parsed)
-}
-
-fn parse_positive_u64(value: &str, flag: &str) -> Result<u64, String> {
-    let parsed = value
-        .parse::<u64>()
-        .map_err(|err| format!("invalid {flag}: {err}"))?;
-    if parsed == 0 {
-        return Err(format!("invalid {flag}: expected a positive integer"));
-    }
-    Ok(parsed)
 }
 
 enum PilotAnalysisResult {
@@ -5320,35 +4987,75 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
 }
 
 fn parse_baseline_create_options(args: &[String]) -> Result<BaselineCreateOptions, String> {
-    let mut from = None;
-    let mut out = PathBuf::from(output::baseline::DEFAULT_BASELINE_OUT);
-    let mut dry_run = false;
-    let mut force = false;
+    let mut parse = BaselineCreateParseState::default();
 
     let mut i = 0usize;
     while i < args.len() {
-        match args[i].as_str() {
-            "--from" => {
-                i += 1;
-                from = Some(non_empty_path_arg(args, i, "--from", "baseline create")?);
-            }
-            "--out" => {
-                i += 1;
-                out = non_empty_path_arg(args, i, "--out", "baseline create")?;
-            }
-            "--dry-run" => dry_run = true,
-            "--force" => force = true,
-            other => return Err(format!("unknown baseline create argument {other:?}")),
-        }
+        parse.apply_arg(args, &mut i)?;
         i += 1;
     }
 
-    Ok(BaselineCreateOptions {
-        from: from.ok_or_else(|| "baseline create requires --from <path>".to_string())?,
-        out,
-        dry_run,
-        force,
-    })
+    parse.into_options()
+}
+
+#[derive(Debug)]
+struct BaselineCreateParseState {
+    from: Option<PathBuf>,
+    out: PathBuf,
+    dry_run: bool,
+    force: bool,
+}
+
+impl Default for BaselineCreateParseState {
+    fn default() -> Self {
+        Self {
+            from: None,
+            out: PathBuf::from(output::baseline::DEFAULT_BASELINE_OUT),
+            dry_run: false,
+            force: false,
+        }
+    }
+}
+
+impl BaselineCreateParseState {
+    fn apply_arg(&mut self, args: &[String], i: &mut usize) -> Result<(), String> {
+        match args[*i].as_str() {
+            "--from" => self.parse_from(args, i),
+            "--out" => self.parse_out(args, i),
+            "--dry-run" => {
+                self.dry_run = true;
+                Ok(())
+            }
+            "--force" => {
+                self.force = true;
+                Ok(())
+            }
+            other => Err(format!("unknown baseline create argument {other:?}")),
+        }
+    }
+
+    fn parse_from(&mut self, args: &[String], i: &mut usize) -> Result<(), String> {
+        *i += 1;
+        self.from = Some(non_empty_path_arg(args, *i, "--from", "baseline create")?);
+        Ok(())
+    }
+
+    fn parse_out(&mut self, args: &[String], i: &mut usize) -> Result<(), String> {
+        *i += 1;
+        self.out = non_empty_path_arg(args, *i, "--out", "baseline create")?;
+        Ok(())
+    }
+
+    fn into_options(self) -> Result<BaselineCreateOptions, String> {
+        Ok(BaselineCreateOptions {
+            from: self
+                .from
+                .ok_or_else(|| "baseline create requires --from <path>".to_string())?,
+            out: self.out,
+            dry_run: self.dry_run,
+            force: self.force,
+        })
+    }
 }
 
 fn parse_baseline_diff_options(args: &[String]) -> Result<BaselineDiffOptions, String> {
@@ -7121,67 +6828,35 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
 }
 
 fn baseline_created_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn first_action_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn pr_review_front_panel_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn comment_publish_plan_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn report_packet_index_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn gap_decision_ledger_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn policy_readiness_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn assistant_loop_health_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn read_optional_text_for_report(label: &str, path: &Path) -> Result<String, String> {
@@ -7530,6 +7205,8 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         }
     }
 
+    print_doctor_start_here_guidance(&root);
+
     if ok {
         println!("✓ doctor checks passed");
         Ok(())
@@ -7537,6 +7214,20 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
     }
+}
+
+fn print_doctor_start_here_guidance(root: &Path) {
+    println!("- Start-here packet: target/ripr/reports/start-here.md");
+    println!(
+        "- Safe next action: run `ripr first-pr --root {} --base origin/main --head HEAD` after setup passes",
+        root.display()
+    );
+    println!(
+        "- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence"
+    );
+    println!(
+        "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
+    );
 }
 
 fn report_config_status(root: &Path, ok: &mut bool) {
@@ -7605,6 +7296,9 @@ pub(super) fn lsp(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::agent_brief::AgentBriefLine;
+    use crate::cli::agent::AgentBriefWorkingSet;
+    use crate::cli::commands_agent_support::normalize_agent_brief_path;
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -8063,6 +7757,48 @@ mod tests {
     }
 
     #[test]
+    fn reports_gap_ledger_derives_python_static_limit_as_report_only() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger-python-static-limit");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create python static-limit gap ledger dir: {err}"))?;
+        let check_output =
+            repo_root().join("fixtures/python_dynamic_dispatch_limit/expected/check.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+
+        reports(&args(&[
+            "gap-ledger",
+            "--check-output",
+            &check_output.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read python static-limit gap ledger JSON: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&json_text)
+            .map_err(|err| format!("parse python static-limit gap ledger JSON: {err}"))?;
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["summary"]["records_total"], 1);
+        assert_eq!(value["summary"]["static_limitation_total"], 1);
+        assert_eq!(value["summary"]["projection_agent_packet_eligible"], 0);
+        assert_eq!(value["records"][0]["kind"], "StaticLimitation");
+        assert_eq!(value["records"][0]["repairability"], "analyzer_limitation");
+        assert_eq!(value["records"][0]["static_limit_kind"], "dynamic_dispatch");
+        assert_eq!(
+            value["records"][0]["projection_eligibility"]["agent_packet"]["eligible"],
+            false
+        );
+        assert!(value["records"][0].get("repair_route").is_none());
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove python static-limit gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn reports_gap_ledger_derives_repo_scoped_records_from_repo_exposure() -> Result<(), String> {
         let dir = unique_command_test_dir("gap-ledger-repo-exposure");
         std::fs::create_dir_all(&dir)
@@ -8334,6 +8070,22 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+    }
+
+    #[test]
+    fn pilot_python_first_use_timeout_returns_analysis_unavailable() {
+        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+        let result = run_pilot_python_first_use_with_timeout(1, move || {
+            let _ignored = hold_rx.recv();
+            output::pilot::PilotPythonFirstUse::analysis_unavailable(
+                "unexpected completion".to_string(),
+            )
+        });
+
+        assert_eq!(result.status.as_str(), "analysis_unavailable");
+        assert!(result.analysis_error.as_deref().is_some_and(|error| {
+            error.contains("pilot Python first-use analysis timed out after 1 ms")
+        }));
     }
 
     #[test]
@@ -10824,7 +10576,7 @@ language = "rust"
         let gap_ledger = root.join("gap-ledger.json");
         std::fs::write(
             &gap_ledger,
-            r#"{"records":[{"gap_id":"gap:pr:pricing","canonical_gap_id":"gap:rust:pricing","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}}]}"#,
+            r#"{"records":[{"gap_id":"gap:pr:pricing","canonical_gap_id":"gap:rust:pricing","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"receipt_command":"ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/gap-pr-pricing.targeted-test-outcome.json","projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}}]}"#,
         )
         .map_err(|err| format!("write gap ledger: {err}"))?;
 
@@ -10867,6 +10619,323 @@ language = "rust"
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
+    }
+
+    #[test]
+    fn swarm_queue_parses_gap_ledger_language_top_and_format() {
+        assert_eq!(
+            parse_swarm_queue_options(&args(&[
+                "--root",
+                ".",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
+                "--language",
+                "python",
+                "--top",
+                "3",
+                "--format",
+                "json",
+            ])),
+            Ok(SwarmQueueOptions {
+                root: PathBuf::from("."),
+                gap_ledger: PathBuf::from("target/ripr/reports/gap-decision-ledger.json"),
+                language: "python".to_string(),
+                top: 3,
+            })
+        );
+        assert_eq!(
+            parse_swarm_queue_options(&args(&["--format", "md"])),
+            Err("unknown swarm queue format \"md\"; expected `json`".to_string())
+        );
+        assert_eq!(
+            parse_swarm_queue_options(&args(&["--top", "0"])),
+            Err("invalid swarm queue --top: expected a positive integer".to_string())
+        );
+    }
+
+    fn python_swarm_queue_gap_ledger(root: &Path) -> String {
+        serde_json::json!({
+            "root": output::outcome::display_path(root),
+            "generated_at": "unix_ms:1778240100000",
+            "records": [{
+                "gap_id": "gap:python:pricing-boundary",
+                "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
+                "kind": "MissingBoundaryAssertion",
+                "language": "python",
+                "language_status": "preview",
+                "scope": "pr_local",
+                "evidence_class": "predicate_boundary",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "repairable",
+                "authority_boundary": "preview_static_advisory",
+                "anchor": {
+                    "file": "src/pricing.py",
+                    "line": 42,
+                    "owner": "calculate_discount",
+                    "dedupe_fingerprint": "gap:python:pricing"
+                },
+                "evidence_ids": ["evidence:pricing-boundary"],
+                "projection_eligibility": {
+                    "agent_packet": {
+                        "eligible": true,
+                        "reason": "repairable"
+                    }
+                },
+                "repair_route": {
+                    "route_kind": "StrengthenExistingTest",
+                    "target_file": "tests/test_pricing.py",
+                    "related_test": "tests/test_pricing.py::test_calculate_discount_smoke",
+                    "missing_discriminator": "amount == threshold",
+                    "assertion_shape": "assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount",
+                    "changed_behavior": "amount >= threshold",
+                    "stop_conditions": ["Stop if expected value is ambiguous."]
+                },
+                "verification_commands": ["pytest tests/test_pricing.py::test_calculate_discount_smoke"],
+                "receipt_command": "ripr outcome --before before.json --after after.json"
+            }]
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn swarm_queue_render_blocks_gap_ledger_from_wrong_root() -> Result<(), String> {
+        let temp = unique_command_test_dir("swarm-queue-render-wrong-root");
+        let requested = temp.join("requested");
+        let other = temp.join("other");
+        std::fs::create_dir_all(&requested).map_err(|err| format!("create requested: {err}"))?;
+        std::fs::create_dir_all(&other).map_err(|err| format!("create other: {err}"))?;
+        let options = SwarmQueueOptions {
+            root: requested.clone(),
+            gap_ledger: requested.join("gap-ledger.json"),
+            language: "python".to_string(),
+            top: 10,
+        };
+
+        let json = render_swarm_queue_from_gap_ledger_contents(
+            &options,
+            &python_swarm_queue_gap_ledger(&other),
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("queue JSON should parse: {err}"))?;
+        assert_eq!(
+            value.get("status").and_then(serde_json::Value::as_str),
+            Some("blocked")
+        );
+        assert_eq!(
+            value
+                .get("blocker")
+                .and_then(|blocker| blocker.get("kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("wrong_root")
+        );
+        assert_eq!(
+            value
+                .get("summary")
+                .and_then(|summary| summary.get("blocked_records_total"))
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+        assert!(
+            value
+                .get("packets")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(Vec::is_empty),
+            "wrong-root queue should not emit packets: {json}"
+        );
+
+        std::fs::remove_dir_all(&temp).map_err(|err| format!("remove temp: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn swarm_queue_render_blocks_gap_ledger_without_root() -> Result<(), String> {
+        let root = unique_command_test_dir("swarm-queue-render-missing-root");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let options = SwarmQueueOptions {
+            root: root.clone(),
+            gap_ledger: root.join("gap-ledger.json"),
+            language: "python".to_string(),
+            top: 10,
+        };
+        let mut ledger =
+            serde_json::from_str::<serde_json::Value>(&python_swarm_queue_gap_ledger(&root))
+                .map_err(|err| format!("parse fixture ledger: {err}"))?;
+        ledger
+            .as_object_mut()
+            .ok_or_else(|| "fixture ledger should be an object".to_string())?
+            .remove("root");
+
+        let json = render_swarm_queue_from_gap_ledger_contents(&options, &ledger.to_string())?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("queue JSON should parse: {err}"))?;
+        assert_eq!(
+            value.get("status").and_then(serde_json::Value::as_str),
+            Some("blocked")
+        );
+        assert_eq!(
+            value
+                .get("blocker")
+                .and_then(|blocker| blocker.get("kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("missing_root")
+        );
+        assert_eq!(
+            value
+                .get("summary")
+                .and_then(|summary| summary.get("blocked_records_total"))
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+        assert!(
+            value
+                .get("packets")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(Vec::is_empty),
+            "missing-root queue should not emit packets: {json}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn swarm_queue_render_emits_packets_for_matching_root() -> Result<(), String> {
+        let root = unique_command_test_dir("swarm-queue-render-matching-root");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let options = SwarmQueueOptions {
+            root: root.clone(),
+            gap_ledger: root.join("gap-ledger.json"),
+            language: "python".to_string(),
+            top: 10,
+        };
+
+        let json = render_swarm_queue_from_gap_ledger_contents(
+            &options,
+            &python_swarm_queue_gap_ledger(&root),
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("queue JSON should parse: {err}"))?;
+        assert_eq!(
+            value.get("status").and_then(serde_json::Value::as_str),
+            Some("advisory")
+        );
+        assert_eq!(
+            value
+                .get("summary")
+                .and_then(|summary| summary.get("returned"))
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            value
+                .get("packets")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|packets| packets.first())
+                .and_then(|packet| packet.get("allowed_files"))
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(serde_json::Value::as_str),
+            Some("tests/test_pricing.py")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn swarm_queue_root_status_detects_wrong_ledger_root() -> Result<(), String> {
+        let temp = unique_command_test_dir("swarm-queue-root-status");
+        let requested = temp.join("requested");
+        let other = temp.join("other");
+        std::fs::create_dir_all(&requested).map_err(|err| format!("create requested: {err}"))?;
+        std::fs::create_dir_all(&other).map_err(|err| format!("create other: {err}"))?;
+
+        assert_eq!(
+            gap_ledger_root_status(&requested, Some(&requested.display().to_string())),
+            GapLedgerRootStatus::Match
+        );
+        let mismatch = gap_ledger_root_status(&requested, Some(&other.display().to_string()));
+        match mismatch {
+            GapLedgerRootStatus::Mismatch {
+                ledger_root,
+                reason,
+            } => {
+                assert!(ledger_root.contains("other"));
+                assert!(reason.contains("does not match requested --root"));
+            }
+            other_status => return Err(format!("expected mismatch, got {other_status:?}")),
+        }
+        assert_eq!(
+            gap_ledger_root_status(&requested, None),
+            GapLedgerRootStatus::Missing
+        );
+
+        std::fs::remove_dir_all(&temp).map_err(|err| format!("remove temp: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn swarm_ingest_parses_result_and_format() {
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&[
+                "--root",
+                ".",
+                "--result",
+                "target/ripr/workflow/agent-result.json",
+                "--format",
+                "json",
+            ])),
+            Ok(SwarmIngestOptions {
+                root: PathBuf::from("."),
+                result: PathBuf::from("target/ripr/workflow/agent-result.json"),
+            })
+        );
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&["--format", "md"])),
+            Err("unknown swarm ingest format \"md\"; expected `json`".to_string())
+        );
+        assert_eq!(
+            parse_swarm_ingest_options(&args(&[])),
+            Err("swarm ingest requires --result <path>".to_string())
+        );
+    }
+
+    #[test]
+    fn swarm_queue_rejects_unknown_subcommands_and_missing_root() {
+        assert_eq!(
+            swarm(&args(&["unknown"])),
+            Err("unknown swarm subcommand \"unknown\"; expected `queue` or `ingest`".to_string())
+        );
+        assert_eq!(swarm(&args(&[])), Ok(()));
+        assert_eq!(swarm(&args(&["queue", "--help"])), Ok(()));
+        assert_eq!(swarm(&args(&["ingest", "--help"])), Ok(()));
+        assert_eq!(
+            swarm(&args(&[
+                "queue",
+                "--root",
+                "target/ripr/missing-swarm-queue-root",
+                "--language",
+                "python",
+            ])),
+            Err(
+                "swarm queue root target/ripr/missing-swarm-queue-root is not a directory"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            swarm(&args(&[
+                "ingest",
+                "--root",
+                "target/ripr/missing-swarm-ingest-root",
+                "--result",
+                "agent-result.json",
+            ])),
+            Err(
+                "swarm ingest root target/ripr/missing-swarm-ingest-root is not a directory"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
@@ -11543,12 +11612,12 @@ language = "rust"
 
         let first_action = workflow_step(&workflow, "Render RIPR first useful action");
         assert!(first_action.contains(
-            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+            "Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
         ));
 
         let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
         assert!(front_panel.contains(
-            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+            "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
         ));
 
         let first_pr = workflow_step(&workflow, "Render RIPR first-pr start-here");
@@ -11568,6 +11637,18 @@ language = "rust"
             "Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts."
         ));
         assert!(summary.contains(
+            "Safe next action: repair one named gap, regenerate missing or malformed artifacts"
+        ));
+        assert!(summary.contains(
+            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
+        ));
+        assert!(summary.contains(
+            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
+        ));
+        assert!(summary.contains(
+            "Preview boundary: preview-limited evidence stays syntax-first and advisory"
+        ));
+        assert!(summary.contains(
             "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
         ));
         assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
@@ -11582,16 +11663,33 @@ language = "rust"
         assert!(summary.contains(".selected.state // \"unknown\""));
         assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
         assert!(summary.contains(".selected.language + \" (\""));
+        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
+        assert!(summary.contains(
+            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
+        ));
+        assert!(summary.contains(
+            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
+        ));
         assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
         assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
         assert!(summary.contains(".selected.static_limit_kind"));
+        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
         assert!(summary.contains(".selected.receipt_state // \"receipt_missing\""));
         assert!(summary.contains("Canonical gap: \\`$start_gap\\`"));
         assert!(summary.contains("Language: \\`$start_language\\`"));
+        assert!(summary.contains("Changed behavior: \\`$start_changed\\`"));
+        assert!(summary.contains("Missing discriminator: \\`$start_missing\\`"));
+        assert!(summary.contains("Focused proof intent: \\`$start_focused\\`"));
+        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
         assert!(summary.contains("Repair target: \\`$start_target\\`"));
         assert!(summary.contains("Related test: \\`$start_related\\`"));
         assert!(summary.contains("Static limit: \\`$start_limit\\`"));
+        assert!(summary.contains("Verify command: \\`$start_verify\\`"));
+        assert!(summary.contains("Receipt command: \\`$start_receipt\\`"));
+        assert!(summary.contains("Receipt path: \\`$start_receipt_path\\`"));
         assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
+        assert!(summary.contains("Safe next action command: \\`$start_next\\`"));
         assert!(
             summary
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
@@ -11599,6 +11697,10 @@ language = "rust"
         assert!(summary.contains(".action_kind // \"unknown\""));
         assert!(summary.contains(".commands.context_packet // \"not_available\""));
         assert!(summary.contains("missing_start_here"));
+        assert!(summary.contains("State: \\`missing_artifact\\`"));
+        assert!(summary.contains(
+            "Safe next action: run \\`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
+        ));
         assert!(summary.contains(
             "start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority"
         ));
@@ -11606,10 +11708,10 @@ language = "rust"
             "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
         ));
         assert!(summary.contains(
-            "Fallback first-action command: \\`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\\`"
+            "Fallback safe next action: run \\`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\\`"
         ));
         assert!(summary.contains(
-            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+            "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
         ));
         assert!(summary.contains(
             "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
@@ -11630,6 +11732,16 @@ language = "rust"
         assert!(summary.contains(".language_status? != \"preview\""));
         assert!(summary.contains("configured preview/advisory"));
         assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
+        assert!(summary.contains("grouped_preview_languages=\"$preview_languages\""));
+        assert!(
+            summary.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
+        );
+        assert!(summary.contains("Grouped preview evidence languages"));
+        assert!(summary.contains("for language in $grouped_preview_languages; do"));
+        assert!(summary.contains("actionability_states"));
+        assert!(summary.contains("actionability_categories"));
+        assert!(summary.contains("repair_packet_ready_entries"));
+        assert!(summary.contains("gate_impact=\\`none\\`"));
         assert!(summary.contains(
             "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
         ));
@@ -12265,6 +12377,12 @@ language = "rust"
         assert!(summary.contains("#### Recommended next test at a glance"));
         assert!(summary.contains("#### First-run status"));
         assert!(summary.contains("Open `target/ripr/reports/start-here.md` first"));
+        assert!(summary.contains(
+            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
+        ));
+        assert!(summary.contains(
+            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
+        ));
         assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
         assert!(summary.contains("start_json=target/ripr/reports/start-here.json"));
         assert!(summary.contains(".selected.state // \"unknown\""));
@@ -12272,13 +12390,23 @@ language = "rust"
         assert!(summary.contains(
             ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
         ));
+        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
+        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
+        assert!(summary.contains(
+            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
+        ));
+        assert!(summary.contains(
+            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
+        ));
         assert!(summary.contains(".selected.verify_command // \"not_available\""));
         assert!(summary.contains(".selected.receipt_command // \"not_available\""));
+        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
         assert!(
             summary
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
         );
         assert!(summary.contains("cat target/ripr/reports/start-here.md"));
+        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
         assert!(summary.contains("missing_start_here"));
         assert!(summary.contains(
             "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
@@ -12292,6 +12420,7 @@ language = "rust"
         assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
         assert!(summary.contains(".action_kind // \"unknown\""));
+        assert!(summary.contains("Safe next action: \\`$first_action_kind\\`"));
         assert!(summary.contains(".commands.verify // \"not_available\""));
         assert!(summary.contains(".commands.receipt // \"not_available\""));
         assert!(summary.contains(".fallback.kind // \"none\""));

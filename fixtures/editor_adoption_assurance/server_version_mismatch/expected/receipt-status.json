@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1",
   "fixture": "editor_adoption_assurance/server_version_mismatch",
-  "receipt_state": "not_projected",
+  "receipt_state": "receipt_not_applicable",
   "runtime_adequacy_claim": false,
   "mutation_proof_claim": false,
   "gate_eligibility_claim": false,

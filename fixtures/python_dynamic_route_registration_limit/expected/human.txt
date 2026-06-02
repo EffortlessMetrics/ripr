@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_dynamic_route_registration_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE app/checkout.py:17
+
+Changed
+  after:          return {"detail": "coupon expired"}
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  python:app/checkout.py::checkout
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach weak: 1 heuristic Python test link(s) found for owner `checkout`; relation is uncertain
+  - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `decorator_indirection` prevents a safe Python propagation claim.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator unknown: Static limit `decorator_indirection` prevents a safe Python discriminator claim.
+  - related test tests/test_checkout.py:1 test_expired_coupon_response_smoke uses unknown unknown oracle
+
+Weakness
+  - Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a concrete route path.
+
+Stop reasons:
+  - static_probe_unknown

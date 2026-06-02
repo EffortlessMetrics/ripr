@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_pricing.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/pricing.py:calculate_total:return_value:return_value:amount+7",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pricing.py:calculate_total:return_value:return_value:amount+7",
+        "language": "python",
+        "file": "src/pricing.py",
+        "owner": "calculate_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount+7"
+
+      },
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,17 +29,19 @@
         "delta": "value",
         "file": "src/pricing.py",
         "line": 2,
-        "expression": "    return amount + 7"
+        "expression": "    return amount + 7",
+        "owner": "python:src/pricing.py::calculate_total"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `calculate_total`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount + 7`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
-        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach no: 0 related Python test(s) found for owner `calculate_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."],
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `calculate_total`", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount + 7 (line 2)"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return amount + 7","line":2}
       ],
       "evidence": ["owner: calculate_total", "owner_kind: function"],
       "missing": ["No Python test references `calculate_total(`; add a pytest or unittest test that calls the changed owner."],
@@ -46,8 +60,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
-      "suggested_next_action": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

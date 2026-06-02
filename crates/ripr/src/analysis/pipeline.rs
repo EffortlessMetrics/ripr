@@ -26,7 +26,7 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
     for language in languages {
         let result = match language {
             LanguageId::Rust => RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?,
-            LanguageId::TypeScript => {
+            LanguageId::TypeScript | LanguageId::JavaScript => {
                 analyze_typescript_diff(options, oracle_policy, &changed_files)?
             }
             LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files)?,
@@ -54,7 +54,9 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     for language in languages {
         let result = match language {
             LanguageId::Rust => RustAdapter.analyze_repo(options, oracle_policy)?,
-            LanguageId::TypeScript => analyze_typescript_repo(options, oracle_policy)?,
+            LanguageId::TypeScript | LanguageId::JavaScript => {
+                analyze_typescript_repo(options, oracle_policy)?
+            }
             LanguageId::Python => analyze_python_repo(options, oracle_policy)?,
         };
         findings.extend(result.findings);

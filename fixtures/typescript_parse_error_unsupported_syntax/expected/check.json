@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_parse_error_unsupported_syntax/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "src/broken.ts",
+        "line": 2,
+        "expression": "  const next = ;"
+       },
+      "ripr": {
+        "reach": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
+        "observe": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"}
+       },
+      "evidence_path": ["reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "propagation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["static_limit unsupported_syntax: 1 parser error(s)", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:2:typescript_preview_unsupported_syntax"],
+      "missing": ["Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.", "TypeScript preview actionability `static_limitation` / `unsupported_syntax`: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s). Repair route: fix or isolate the unsupported syntax before relying on repair guidance"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "static_unknown changed at src/broken.ts:2: `const next = ;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "none",
+        "owner": "unknown",
+        "owner_kind": null,
+        "probe_family": "static_unknown",
+        "related_test": null,
+        "repair_packet_ready": false,
+        "repair_route": "fix or isolate the unsupported syntax before relying on repair guidance",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "unsupported_syntax"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)"
+      },
+      "preview_actionability": {
+        "actionability_category": "unsupported_syntax",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/broken.ts",
+            "kind": "typescript_preview_probe",
+            "line": 2,
+            "owner": null,
+            "raw": "file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+            "source_id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "fix or isolate the unsupported syntax before relying on repair guidance",
+        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)"
+      },
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.",
+      "language": "typescript",
+      "language_status": "preview",
+      "static_limit_kind": "unsupported_syntax"
+    }
+  ]
+}

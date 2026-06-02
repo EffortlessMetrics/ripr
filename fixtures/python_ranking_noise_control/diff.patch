@@ -1,0 +1,30 @@
+diff --git a/src/a_dynamic.py b/src/a_dynamic.py
+index 0000000..1111111 100644
+--- a/src/a_dynamic.py
++++ b/src/a_dynamic.py
+@@ -1,2 +1,2 @@
+ def call_named(client, method_name):
++    return getattr(client, method_name)()
+diff --git a/src/b_observed.py b/src/b_observed.py
+index 0000000..1111111 100644
+--- a/src/b_observed.py
++++ b/src/b_observed.py
+@@ -1,2 +1,2 @@
+ def calculate_fee(amount):
++    return amount + 5
+diff --git a/src/c_discount.py b/src/c_discount.py
+index 0000000..1111111 100644
+--- a/src/c_discount.py
++++ b/src/c_discount.py
+@@ -1,4 +1,4 @@
+ def calculate_discount(amount, threshold):
++    if amount >= threshold:
+         return amount - 10
+     return amount
+diff --git a/src/d_isolated.py b/src/d_isolated.py
+index 0000000..1111111 100644
+--- a/src/d_isolated.py
++++ b/src/d_isolated.py
+@@ -1,2 +1,2 @@
+ def isolated_total(amount):
++    return amount + 1

@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_monkeypatch_module_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_service.py:10:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_service.py:10:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/service.py",
+        "line": 10,
+        "expression": "    return remote_total_with_tax()",
+        "owner": "python:src/service.py::fetch_total"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `fetch_total`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `mocked_module` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `mocked_module` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `mocked_module` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `fetch_total`", "infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.", "propagation unknown: Static limit `mocked_module` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `mocked_module` prevents a safe Python discriminator claim.", "related test tests/test_service.py:4 test_fetch_total_monkeypatches_remote_total uses strong exact value oracle: assert fetch_total() == 10"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: fetch_total", "owner_kind: function", "static_limit mocked_module: related test uses patch/mock/monkeypatch module syntax", "test_framework: pytest (test_fetch_total_monkeypatches_remote_total)", "test_fixtures: monkeypatch (test_fetch_total_monkeypatches_remote_total)", "test_verify_command: pytest tests/test_service.py::test_fetch_total_monkeypatches_remote_total (test_fetch_total_monkeypatches_remote_total)", "related_test_relation: syntactic_call (test_fetch_total_monkeypatches_remote_total)", "test_oracle: exact_value strong (test_fetch_total_monkeypatches_remote_total)"],
+      "missing": ["Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_fetch_total_monkeypatches_remote_total",
+          "file": "tests/test_service.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert fetch_total() == 10"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "mocked_module"
+    }
+  ]
+}

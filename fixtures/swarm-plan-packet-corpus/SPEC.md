@@ -18,11 +18,13 @@ Each case pins one packet shape and its expected planning outcome:
 
 - high-confidence boundary assertion packet;
 - exact error variant packet;
+- static-only predicate-boundary packet requiring operator judgment;
 - output observer packet;
 - blocked static limitation packet;
 - missing verify command packet;
 - missing receipt command packet;
-- missing must-not-change boundary packet.
+- missing must-not-change boundary packet;
+- missing allowed-edit-surface packet.
 
 ## Must Not
 

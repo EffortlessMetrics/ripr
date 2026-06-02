@@ -30,6 +30,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Reports(args) => commands::reports(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
+        CliCommand::Swarm(args) => commands::swarm(&args),
         CliCommand::Check(args) => commands::check(&args),
         CliCommand::Explain(args) => commands::explain(&args),
         CliCommand::Context(args) => commands::context(&args),
@@ -150,6 +151,10 @@ mod tests {
                 "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
                     .to_string()
             )
+        );
+        assert_eq!(
+            execute(CliCommand::Swarm(args(&["queue", "--top", "0"]))),
+            Err("invalid swarm queue --top: expected a positive integer".to_string())
         );
     }
 

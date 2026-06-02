@@ -50,6 +50,7 @@
   },
   "status": "advisory",
   "summary": {
+    "receipt_state": "receipt_movement_unchanged",
     "next_action": {
       "kind": "unchanged",
       "recommended_action": "Add the missing discriminator or stronger assertion named by the packet.",

@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1",
   "fixture": "editor_actionable_gap_queue/stale_actionable_packet",
-  "receipt_state": "not_projected",
+  "receipt_state": "receipt_not_applicable",
   "movement": "not_available",
   "runtime_adequacy_claim": false,
   "mutation_proof_claim": false,

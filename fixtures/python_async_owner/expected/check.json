@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_loading.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2",
+        "language": "python",
+        "file": "src/loading.py",
+        "owner": "load_total",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "await_client.total+2"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
@@ -17,19 +29,21 @@
         "delta": "value",
         "file": "src/loading.py",
         "line": 2,
-        "expression": "    return await client.total() + 2"
+        "expression": "    return await client.total() + 2",
+        "owner": "python:src/loading.py::load_total"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `load_total`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return await client.total() + 2`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `load_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_loading.py:4 test_load_total_includes_fee uses strong exact value oracle: assert await load_total(client) == 12"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `load_total`", "infection yes: Changed Python return expression can alter the owner return value: `return await client.total() + 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return await client.total() + 2 (line 2)", "related test tests/test_loading.py:4 test_load_total_includes_fee uses strong exact value oracle: assert await load_total(client) == 12"],
       "flow_sinks": [
+        {"kind":"return_value","text":"return await client.total() + 2","line":2}
       ],
-      "evidence": ["owner: load_total", "owner_kind: function", "owner_decorators: async_def", "test_framework: pytest (test_load_total_includes_fee)", "related_test_relation: syntactic_call (test_load_total_includes_fee)", "test_oracle: exact_value strong (test_load_total_includes_fee)"],
+      "evidence": ["owner: load_total", "owner_kind: function", "owner_decorators: async_def", "test_framework: pytest (test_load_total_includes_fee)", "test_fixtures: client (test_load_total_includes_fee)", "test_verify_command: pytest tests/test_loading.py::test_load_total_includes_fee (test_load_total_includes_fee)", "related_test_relation: syntactic_call (test_load_total_includes_fee)", "test_oracle: exact_value strong (test_load_total_includes_fee)"],
       "missing": ["Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -54,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

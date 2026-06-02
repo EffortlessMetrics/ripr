@@ -35,7 +35,7 @@ Every label is defined in `policy/ci-budget.toml` `[[label]]` entries:
 | Label             | Effect on the guard                                                |
 | ----------------- | ------------------------------------------------------------------ |
 | `full-ci`         | Maps the forecast to the `release` band; suppresses the warning.   |
-| `release-check`   | Same band mapping as `full-ci`; runs release readiness lanes.      |
+| `release-check`   | Maps the forecast to the `release` band; runs currently wired release-surface proof. |
 | `ci-budget-ack`   | Acknowledges the overrun at the `large` band; budget-neutral.      |
 | `vscode`          | Maps to `large` band when an editor lane is forced on.             |
 | `coverage`        | Maps to `large` band when coverage is forced on.                   |

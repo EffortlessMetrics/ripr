@@ -1,7 +1,7 @@
-test("rejects missing profile id", () => {
-    expect(() => loadProfile("")).toThrow("missing id");
+test("rejects missing profile id broadly", async () => {
+    await expect(loadProfile("")).rejects.toThrow();
 });
 
-test("rejects missing publish id", () => {
-    expect(() => publishProfile("", { publish: async () => {} })).toThrow("missing id");
+test("rejects missing publish id exactly", async () => {
+    await expect(publishProfile("", { publish: async () => {} })).rejects.toThrow("missing id");
 });

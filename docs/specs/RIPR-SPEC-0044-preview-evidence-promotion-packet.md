@@ -4,10 +4,10 @@ Status: proposed
 
 ## Problem
 
-TypeScript and Python preview evidence is intentionally useful before it is
-policy-authoritative. RIPR can surface preview findings in reports, summaries,
-and editor surfaces, but preview evidence must not become gate-eligible, RIPR
-Zero blocking debt, or calibrated confidence by accident.
+TypeScript, JavaScript, and Python preview evidence is intentionally useful
+before it is policy-authoritative. RIPR can surface preview findings in
+reports, summaries, and editor surfaces, but preview evidence must not become
+gate-eligible, RIPR Zero blocking debt, or calibrated confidence by accident.
 
 Maintainers still need a future path to ask:
 
@@ -74,6 +74,30 @@ The report contract is satisfied only when implementation can show:
   history, source, gate, RIPR Zero, calibrated-confidence, or preview
   eligibility mutation.
 
+### Promotion Proof Criteria
+
+Promotion proof is policy-owned. The existence of a parser adapter, route,
+fixture, report, or editor action does not by itself make preview evidence
+policy-eligible. A future policy review must close every required criterion for
+the requested language/class scope before a stronger status can even be
+considered:
+
+| Criterion | Required proof | Must not infer |
+| --- | --- | --- |
+| Fixture corpus coverage | Representative fixtures cover emitted evidence, no-output states, malformed inputs, disabled language, unavailable adapter, and known static-limit states for the candidate class. | Fixture existence alone is not language maturity. |
+| Dogfood receipts | External-style receipts show the start-here loop on normal repository shapes and failure states for the candidate language/class. | Repo-local happy-path output is not adoption proof. |
+| Related-test accuracy review | Maintainer-reviewed samples show related-test routing points to the intended test or proof surface. | A syntactic neighbor is not automatically a safe repair target. |
+| Static-limit taxonomy | Parser, adapter, import-graph, dynamic-dispatch, metaprogramming, unsupported-syntax, and language-specific limits are covered, excluded, or labeled. | Unknown static limits must not disappear into confidence language. |
+| False-positive review | Maintainers review and record over-reporting risk for the class. | Advisory usefulness is not policy precision. |
+| False repair packet review | Maintainers review packets that looked actionable but should remain advisory, static-limited, or suppressed. | Preview packets must not invent safe repairs. |
+| Surface consistency review | Generated CI, PR evidence, CLI, editor, receipts, docs, and report indexes preserve the same preview/advisory boundary. | One stronger surface cannot promote the class for all surfaces. |
+| Policy signoff | A policy owner explicitly signs off on the narrow scope, required rollback, baseline, waiver, suppression, and generated-CI posture. | Signoff is not automatic config mutation or gate enablement. |
+
+JavaScript is part of the TypeScript-family preview adapter surface, but it is
+not promoted by a TypeScript-only packet. A later packet must explicitly name
+JavaScript, JavaScript React, or an adapter-family scope before JavaScript
+evidence can be reviewed for stronger status.
+
 ## Inputs
 
 The planned command is:
@@ -94,7 +118,7 @@ Input parameters:
 
 | Input | Required? | Purpose |
 | --- | --- | --- |
-| Language | required | Preview language under review, initially `typescript` or `python`. |
+| Language | required | Preview language under review, initially `typescript` or `python` in the command surface; JavaScript remains preview and requires an explicit future packet or adapter-family scope before promotion review. |
 | Candidate class | required | Evidence class under review, for example `boundary_gap`. |
 | Evidence receipts | optional | Explicit artifact for fixture coverage, static limits, false-positive review, calibration, baseline behavior, waiver/suppression behavior, rollback, and generated CI posture. Missing receipts block promotion. |
 

@@ -1,0 +1,10 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 89c4b4a..c466f7a 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -1,4 +1,4 @@
+ def calculate_discount(amount, threshold):
+-    if amount > threshold:
++    if amount >= threshold:
+         return amount - 10
+     return amount

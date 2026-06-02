@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_discount.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
+        "language": "python",
+        "file": "src/discount.py",
+        "owner": "apply_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=threshold"
+
+      },
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
@@ -17,19 +29,21 @@
         "delta": "control",
         "file": "src/discount.py",
         "line": 2,
-        "expression": "    if amount >= threshold:"
+        "expression": "    if amount >= threshold:",
+        "owner": "python:src/discount.py::apply_discount"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if amount >= threshold:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= threshold: (line 2)", "related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90"],
       "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= threshold:","line":2}
       ],
-      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary)", "related_test_relation: syntactic_call (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary)", "test_verify_command: pytest tests/test_discount.py::test_apply_discount_boundary (test_apply_discount_boundary)", "related_test_relation: syntactic_call (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
       "missing": ["Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -54,8 +68,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

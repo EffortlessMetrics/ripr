@@ -12,10 +12,23 @@ Changed
 Probe
   family: predicate
   delta:  control
+  owner:  typescript:src/parser.ts::parseUser
 
 Language
   language: typescript
   status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: missing_target_shape
+  repair packet ready: false
+  why not actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  repair route: add probe-specific discriminator extraction for this expression before repair packet projection
+  missing fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries
+  raw evidence: src/parser.ts:2 (typescript_preview_probe) source=probe:src_parser.ts:2:typescript_preview owner=parseUser
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -29,7 +42,24 @@ Evidence
   - related test tests/parser.test.ts:3 empty user throws uses weak broad error oracle: expect(...).toThrow()
 
 Weakness
-  - Related test reaches `parseUser` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `parseUser` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: parseUser
+  owner kind: function
+  changed behavior: predicate changed at src/parser.ts:2: `if (input.trim() === "") {`
+  related test: tests/parser.test.ts:3 empty user throws
+  oracle: broad_error (weak)
+  suggested assertion shape: Use literal toThrow/rejects.toThrow or rejects.toMatchObject payload evidence; broad error checks stay weak.
+  repair packet ready: false
+  why not actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  repair route: add probe-specific discriminator extraction for this expression before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
 
 Next step
-  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
+  TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.

@@ -4,33 +4,34 @@
   "mode": "fast",
   "root": "fixtures/python_unsupported_syntax_limit/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
       "id": "probe:src_mapper.py:2:python_preview",
-      "classification": "exposed",
-      "severity": "info",
-      "confidence": 0.60,
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
       "probe": {
         "id": "probe:src_mapper.py:2:python_preview",
         "family": "return_value",
         "delta": "value",
         "file": "src/mapper.py",
         "line": 2,
-        "expression": "    return lambda value: value + 2"
+        "expression": "    return lambda value: value + 2",
+        "owner": "python:src/mapper.py::make_mapper"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `make_mapper`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python propagation claim."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
-        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python discriminator claim."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `make_mapper`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `make_mapper`", "infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.", "propagation unknown: Static limit `unsupported_syntax` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `unsupported_syntax` prevents a safe Python discriminator claim.", "related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
-      "missing": ["Related Python test reaches `make_mapper` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
+      "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
+      "missing": ["Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
       "activation": {
         "observed_values": [
         ],
@@ -51,11 +52,11 @@
           "oracle": "assert make_mapper()(1) == 3"
         }
       ],
-      "stop_reasons": [],
+      "stop_reasons": ["static_probe_unknown"],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

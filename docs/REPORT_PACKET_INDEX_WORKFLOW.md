@@ -90,6 +90,14 @@ merge readiness, generated-clean, badge diff policy, command catalog coverage,
 critic, receipts, suggested fixes, and `check-pr` artifacts.
 They are advisory navigation metadata, not pass/fail authority.
 
+`cargo xtask reports index` also projects Lane 1 evidence readiness into
+`lane1_readiness` and the Lane 1 Evidence Readiness table. It checks only the
+known artifact paths for evidence-health, Lane 1 evidence audit,
+actionable-gaps, evidence-quality scorecard, evidence-quality trend, and
+badge-basis reports. Missing or limited Lane 1 artifacts make the index warn
+and list regeneration commands, but the index does not run those expensive
+reports or create badge/gate authority.
+
 Use `cargo xtask cockpit` when you need a repo-level operating packet before
 choosing board or branch work. Use `cargo xtask pr-ready` when you already know
 the active PR branch and need the local pre-review packet.

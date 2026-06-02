@@ -1,0 +1,93 @@
+name: Implementation slice
+description: Define one PR-sized step linked to proposal, spec, proof, and rollback.
+title: "slice: "
+labels: ["implementation-slice"]
+body:
+  - type: input
+    id: work_item
+    attributes:
+      label: Work item
+      description: Work-item ID from `.ripr/goals/active.toml` or the linked plan.
+      placeholder: "first-pr/front-door-polish"
+    validations:
+      required: true
+  - type: input
+    id: linked_proposal
+    attributes:
+      label: Linked proposal
+      placeholder: "RIPR-PROP-00NN"
+    validations:
+      required: true
+  - type: input
+    id: linked_spec
+    attributes:
+      label: Linked spec
+      placeholder: "RIPR-SPEC-00NN"
+    validations:
+      required: true
+  - type: input
+    id: plan_item
+    attributes:
+      label: Plan item
+      description: Path or ID of the PR-sized implementation plan item.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_files
+    attributes:
+      label: Expected files
+      description: Which files or modules should change?
+    validations:
+      required: true
+  - type: textarea
+    id: required_behavior
+    attributes:
+      label: Required behavior
+      description: What exact behavior or artifact state does this slice add?
+    validations:
+      required: true
+  - type: textarea
+    id: proof_commands
+    attributes:
+      label: Proof commands
+      value: |
+        ```bash
+        cargo xtask check-pr
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: support_tier_impact
+    attributes:
+      label: Support-tier impact
+      description: Say none, or name the support-tier row/claim this slice updates.
+    validations:
+      required: true
+  - type: textarea
+    id: policy_impact
+    attributes:
+      label: Policy impact
+      description: Say none, or name the policy ledger this slice updates.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this PR not include?
+    validations:
+      required: true
+  - type: textarea
+    id: claim_boundary
+    attributes:
+      label: Claim boundary
+      description: What does this slice not prove?
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback
+      description: How should this slice be reverted safely?
+    validations:
+      required: true

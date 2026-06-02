@@ -1,6 +1,11 @@
 # RIPR-PROP-0014: RIPR Swarm Repair Loop
 
-Status: proposed
+Status: accepted
+
+Accepted: 2026-05-20 after the 0.7 swarm repair-loop dogfood and release
+readiness closeout recorded fixture-backed planning, dry-run attempt,
+outcome-join, human workflow, and external-agent handoff proof while preserving
+the advisory, dry-run-first, source-edit-free boundary.
 
 Owner: Lane 1 - Evidence Accuracy / ripr-swarm
 
@@ -11,6 +16,7 @@ Target campaign: RIPR Swarm Repair Loop
 Linked specs:
 
 - `RIPR-SPEC-0057`: RIPR swarm repair loop
+- `RIPR-SPEC-0058`: RIPR swarm external agent handoff
 
 Linked ADRs:
 
@@ -27,6 +33,7 @@ Linked work items:
 - `docs/RIPR_SWARM_HUMAN_WORKFLOW.md`: human workflow for one bounded repair
   attempt
 - Follow-up: `dogfood: close real actionable packets`
+- #52 `docs(spec): define ripr-swarm external agent handoff`
 
 ## Problem
 
@@ -119,7 +126,8 @@ existing actionable packet artifacts:
 5. add dry-run commands for planning and one-packet attempt context;
 6. document the human workflow;
 7. dogfood a few real repairs and record receipts;
-8. only then define external agent handoff and readiness metrics.
+8. define the external agent handoff without adding provider integration;
+9. only then define readiness metrics.
 
 The first useful artifact should answer:
 
@@ -145,9 +153,9 @@ Which packets are missing verify or receipt paths?
 
 - `RIPR-SPEC-0057`: RIPR swarm repair loop.
 
-Future implementation specs may split packet ranking, dry-run attempts,
-outcome joins, and external agent handoff if those contracts grow beyond
-`RIPR-SPEC-0057`.
+Future implementation specs may split packet ranking, dry-run attempts, and
+outcome joins if those contracts grow beyond `RIPR-SPEC-0057`.
+`RIPR-SPEC-0058` now owns the external-agent handoff boundary.
 
 ## Architecture decisions needed
 
@@ -234,6 +242,9 @@ This proposal can move to `accepted` when:
 - actionable-gap outcome reporting joins receipts to canonical gaps;
 - dry-run plan and attempt commands exist and do not edit files by default;
 - docs explain the human repair workflow;
+- external-agent handoff has a spec that preserves operator review and excludes
+  provider SDKs, autonomous merge, default production-code edits, and unbounded
+  retries;
 - dogfood records 3-5 real packet repairs with receipt and evidence movement;
 - readiness metrics show swarm-ready, blocked, missing verify, missing receipt,
   static limitation, improved, unchanged, regressed, and failed attempt counts;

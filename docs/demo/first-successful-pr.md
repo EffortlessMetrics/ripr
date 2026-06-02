@@ -5,7 +5,7 @@ This demo shows the adopter path that `ripr first-pr` is meant to make obvious:
 ```text
 one PR
 -> one start-here packet
--> one repairable Rust gap or a clear no-action state
+-> one repairable stable Rust gap, preview Python gap, or a clear no-action state
 -> one repair route
 -> one verification command
 -> one receipt trail
@@ -42,11 +42,10 @@ The checked golden version is:
 fixtures/first_successful_pr/boundary-gap/expected/start-here.md
 ```
 
-The checked ten-minute story that ties this front door to the outcome receipt
-is:
+The case-local demo script is:
 
 ```text
-fixtures/first_successful_pr/boundary-gap/expected/ten-minute-demo.md
+fixtures/first_successful_pr/boundary-gap/README.md
 ```
 
 ## Demo Cases
@@ -55,6 +54,7 @@ fixtures/first_successful_pr/boundary-gap/expected/ten-minute-demo.md
 | --- | --- | --- | --- | --- |
 | `boundary-gap` | Changed Rust behavior is reached by a related test, but the equality boundary is not checked. | Top gap: missing boundary assertion for `amount >= threshold`. | `AddBoundaryAssertion` in `tests/pricing.rs`. | `cargo xtask fixtures boundary_gap` |
 | `output-contract-gap` | User-facing output text changed without checked output or golden evidence. | Top gap: missing output contract for `APPLE_M3_AIR_DEVICE_LABELS_TEXT`. | `AddOutputGolden` in the expected output fixture. | `cargo xtask goldens check` |
+| `python-preview-gap` | Changed Python behavior is reached by a related pytest context, but the equality boundary is not checked. | Top gap: preview-limited missing boundary assertion for `amount >= threshold`. | `StrengthenExistingTest` in `tests/test_pricing.py`. | `pytest tests/test_pricing.py::test_calculate_discount_smoke` |
 | `empty-diff` | The PR has no changed behavior to inspect. | Successful no-action state. | No repair selected. | No-action is advisory, not adequacy proof. |
 | `blocked-ledger` | The gap ledger cannot be trusted yet. | Blocked state with a regeneration command. | Refresh the ledger before assigning repair work. | `ripr reports gap-ledger ...` |
 
@@ -81,33 +81,48 @@ The useful output is not the raw finding. It is the bounded work order:
 what changed, why it matters, where to repair, and which command verifies
 movement.
 
-The repair itself happens outside RIPR. For this demo, the focused proof is one
-boundary assertion:
-
-```rust
-assert_eq!(discount(100, 100), 90);
-```
-
-After adding that proof, emit a reviewer-native receipt from the checked
-before/after static snapshots:
+After the focused proof is added outside RIPR, emit the reviewer receipt:
 
 ```bash
+cargo xtask fixtures boundary_gap
+
 ripr outcome \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
-  --format md \
-  --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.md
+  --out target/ripr/demo/boundary-gap/targeted-test-outcome.md
 ```
 
-The expected receipt is checked at:
+The checked receipt is:
 
 ```text
 fixtures/boundary_gap/calibration/targeted-test-outcome.md
 ```
 
-That receipt tells a reviewer what RIPR flagged before, what focused proof is
-visible in the after snapshot, what static movement changed, what remains weak
-or unknown, and what the reviewer should not believe.
+That receipt records static before/after movement. It does not claim runtime
+mutation confirmation, coverage adequacy, correctness, or merge approval.
+
+## Python Preview Gap Story
+
+The Python preview case proves the same first-run packet can route an explicit
+preview gap-ledger record without requiring a Cargo workspace:
+
+```text
+Changed behavior:
+  if amount >= threshold:
+
+Why it matters:
+  A related Python test reaches the change, but no boundary discriminator was
+  found.
+
+Repair:
+  Strengthen the existing pytest test with an assertion for amount == threshold.
+
+Verify:
+  pytest tests/test_pricing.py::test_calculate_discount_smoke
+```
+
+The packet stays `preview_limited`, labels the language status as `preview`,
+and keeps the static/advisory boundary visible before repair guidance.
 
 ## Output Contract Story
 

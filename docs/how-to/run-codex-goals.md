@@ -25,7 +25,7 @@ cargo xtask check-pr
 cargo xtask pr-summary
 cargo xtask receipts
 cargo xtask receipts check
-cargo xtask check-campaign
+cargo xtask check-goals
 cargo xtask goals next
 ```
 

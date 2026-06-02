@@ -8,6 +8,18 @@
   "findings": [
     {
       "id": "probe:src_quantity.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+        "language": "python",
+        "file": "src/quantity.py",
+        "owner": "normalize_quantity",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "value<=0"
+
+      },
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
@@ -17,29 +29,41 @@
         "delta": "control",
         "file": "src/quantity.py",
         "line": 2,
-        "expression": "    if value <= 0:"
+        "expression": "    if value <= 0:",
+        "owner": "python:src/quantity.py::normalize_quantity"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `normalize_quantity`"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
-        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if value <= 0:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `broad_error` (rank 3)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `value == 0`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize_quantity`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize_quantity`", "infection yes: Changed Python predicate can alter branch selection: `if value <= 0:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `value == 0`.", "local flow reaches unknown sink: if value <= 0: (line 2)", "related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)", "missing discriminator value == 0: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
+        {"kind":"unknown","text":"if value <= 0:","line":2}
       ],
-      "evidence": ["owner: normalize_quantity", "owner_kind: function", "test_framework: pytest (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)"],
-      "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: normalize_quantity", "owner_kind: function", "missing_discriminator: value == 0", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_quantity.py", "suggested_test_name: test_rejects_zero_quantity", "suggested_test_node_id: tests/test_quantity.py::test_rejects_zero_quantity", "suggested_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_quantity)", "test_verify_command: pytest tests/test_quantity.py::test_rejects_zero_quantity (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)", "test_oracle_shape: exception_assertion (test_rejects_zero_quantity)"],
+      "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the changed boundary."],
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "value == 0",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if value <= 0:","line":2}
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "value == 0",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if value <= 0:","line":2}
+        }
       ],
       "related_tests": [
         {
@@ -51,11 +75,49 @@
           "oracle": "pytest.raises(ValueError)"
         }
       ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_quantity.py",
+        "suggested_test_name": "test_rejects_zero_quantity",
+        "suggested_test_node_id": "tests/test_quantity.py::test_rejects_zero_quantity",
+        "verify_command": "pytest tests/test_quantity.py::test_rejects_zero_quantity",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/quantity.py:normalize_quantity:predicate_boundary:predicate:value<=0",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "normalize_quantity",
+        "changed_behavior": "predicate_boundary changed at src/quantity.py:2: `if value <= 0:`",
+        "current_test_evidence": "tests/test_quantity.py:6 test_rejects_zero_quantity currently has oracle_strength=weak, oracle_kind=broad_error: pytest.raises(ValueError)",
+        "missing_discriminator": "value == 0",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `value == 0`. Keep the equality case as the minimum repair; optional pytest parameterization can add `-1`, `0`, and `1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `value == 0` first. Optional pytest shape: @pytest.mark.parametrize(\"value, expected\", [(-1, ...), (0, ...), (1, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_quantity.py",
+          "test_name": "test_rejects_zero_quantity",
+          "pytest_node_id": "tests/test_quantity.py::test_rejects_zero_quantity"
+         },
+        "verify": {
+          "command": "pytest tests/test_quantity.py::test_rejects_zero_quantity",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
-      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

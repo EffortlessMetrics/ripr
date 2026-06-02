@@ -69,11 +69,43 @@ path = ".ripr/suppressions.toml"
 
 [languages]
 # Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters when the ripr binary was built with
-# the matching Cargo feature (`lang-typescript` or `lang-python`).
+# `python` to opt into preview adapters when the ripr binary was built with the
+# matching Cargo feature (`lang-typescript` or `lang-python`). When this file is
+# absent, Python project markers can enable Python preview analysis
+# automatically for the detected repository root; this explicit list remains
+# authoritative when present.
 # Valid values: rust, typescript, python.
 enabled = ["rust"]
 "#;
+
+const PYTHON_PROJECT_MARKERS: &[&str] = &[
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "requirements.txt",
+    "pytest.ini",
+    "tox.ini",
+    "noxfile.py",
+];
+const PYTHON_SOURCE_DIR_MARKERS: &[&str] = &["src", "tests"];
+const PYTHON_PROJECT_EXCLUDED_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    ".ripr",
+    ".direnv",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".tox",
+    ".nox",
+    "site-packages",
+    ".pytest_cache",
+    ".mypy_cache",
+    "dist",
+    "build",
+];
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RiprConfig {
@@ -421,13 +453,29 @@ pub(crate) struct CheckInputExplicit {
 pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
     let path = root.join(CONFIG_FILE_NAME);
     if !path.exists() {
-        return Ok(RiprConfig::default());
+        return default_config_for_root(root);
     }
     let text = std::fs::read_to_string(&path)
         .map_err(|err| format!("read {} failed: {err}", path.display()))?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;
     config.source_path = Some(path);
     config.source_text = Some(text);
+    Ok(config)
+}
+
+fn default_config_for_root(root: &Path) -> Result<RiprConfig, String> {
+    let mut config = RiprConfig::default();
+    if detect_python_project(root) {
+        if !LanguageId::Python.is_available() {
+            return Err(
+                "Python project markers were detected, but this ripr binary was built without Cargo feature `lang-python`; use a Python-enabled ripr binary or add `ripr.toml` with `[languages] enabled = [\"rust\"]` to keep Python preview disabled"
+                    .to_string(),
+            );
+        }
+        if !config.languages.enabled.contains(&LanguageId::Python) {
+            config.languages.enabled.push(LanguageId::Python);
+        }
+    }
     Ok(config)
 }
 
@@ -466,6 +514,66 @@ pub(crate) fn apply_to_check_input(
 fn parse_config(text: &str) -> Result<RiprConfig, String> {
     let raw: RawConfig = toml::from_str(text).map_err(|err| format!("invalid ripr.toml: {err}"))?;
     RiprConfig::from_raw(raw)
+}
+
+pub(crate) fn detect_python_project(root: &Path) -> bool {
+    PYTHON_PROJECT_MARKERS
+        .iter()
+        .any(|marker| root.join(marker).is_file())
+        || PYTHON_SOURCE_DIR_MARKERS
+            .iter()
+            .any(|marker| dir_contains_python_source(&root.join(marker)))
+}
+
+fn dir_contains_python_source(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            if is_python_project_excluded_dir(name) {
+                continue;
+            }
+            if dir_contains_python_source(&path) {
+                return true;
+            }
+        } else if file_type.is_file()
+            && is_python_source_file(&path)
+            && !is_detectable_generated_python_file(&path)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_python_project_excluded_dir(name: &str) -> bool {
+    PYTHON_PROJECT_EXCLUDED_DIRS.contains(&name)
+}
+
+fn is_python_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension == "py")
+}
+
+fn is_detectable_generated_python_file(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    name.ends_with("_pb2.py")
+        || name.ends_with("_pb2_grpc.py")
+        || name.ends_with(".generated.py")
+        || name.ends_with("_generated.py")
+        || name.starts_with("generated_")
 }
 
 #[cfg(test)]
@@ -872,6 +980,14 @@ mod tests {
         Ok(root)
     }
 
+    fn write_file(path: &Path, text: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
+    }
+
     #[test]
     fn missing_config_uses_behavior_preserving_defaults() -> Result<(), String> {
         let root = temp_root("missing")?;
@@ -885,6 +1001,105 @@ mod tests {
             DEFAULT_CONTEXT_RELATED_TESTS
         );
         assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn missing_config_detects_root_python_project_markers() -> Result<(), String> {
+        for marker in PYTHON_PROJECT_MARKERS {
+            let root = temp_root(&format!("python-marker-{}", marker.replace('.', "-")))?;
+            write_file(&root.join(marker), "")?;
+
+            let config = load_for_root(&root)?;
+
+            assert!(config.source_path().is_none());
+            assert_eq!(
+                config.languages().enabled_owned(),
+                vec![LanguageId::Rust, LanguageId::Python],
+                "{marker} should enable Python preview defaults"
+            );
+            let _ = fs::remove_dir_all(&root);
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn missing_config_detects_python_source_under_src_or_tests() -> Result<(), String> {
+        for source_dir in PYTHON_SOURCE_DIR_MARKERS {
+            let root = temp_root(&format!("python-source-{source_dir}"))?;
+            write_file(
+                &root.join(source_dir).join("pricing.py"),
+                "def price():\n    return 1\n",
+            )?;
+
+            let config = load_for_root(&root)?;
+
+            assert_eq!(
+                config.languages().enabled_owned(),
+                vec![LanguageId::Rust, LanguageId::Python],
+                "{source_dir}/ with Python files should enable Python preview defaults"
+            );
+            let _ = fs::remove_dir_all(&root);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_config_does_not_treat_empty_src_or_tests_as_python() -> Result<(), String> {
+        let root = temp_root("empty-python-marker-dirs")?;
+        fs::create_dir_all(root.join("src")).map_err(|err| format!("create src failed: {err}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|err| format!("create tests failed: {err}"))?;
+        write_file(&root.join("src/lib.rs"), "pub fn price() -> u32 { 1 }\n")?;
+
+        let config = load_for_root(&root)?;
+
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn missing_config_ignores_excluded_python_directories_and_generated_files() -> Result<(), String>
+    {
+        let root = temp_root("excluded-python-sources")?;
+        for excluded_dir in PYTHON_PROJECT_EXCLUDED_DIRS {
+            write_file(
+                &root.join("src").join(excluded_dir).join("ignored.py"),
+                "x = 1\n",
+            )?;
+        }
+        write_file(&root.join("src/generated_client.py"), "x = 1\n")?;
+        write_file(&root.join("tests/service_pb2.py"), "x = 1\n")?;
+
+        let config = load_for_root(&root)?;
+
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn explicit_config_keeps_python_preview_disabled_even_with_project_markers()
+    -> Result<(), String> {
+        let root = temp_root("explicit-rust-only-python-root")?;
+        write_file(
+            &root.join("pyproject.toml"),
+            "[project]\nname = \"sample\"\n",
+        )?;
+        write_file(
+            &root.join(CONFIG_FILE_NAME),
+            "[languages]\nenabled = [\"rust\"]\n",
+        )?;
+
+        let config = load_for_root(&root)?;
+
+        assert!(config.source_path().is_some());
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        let _ = fs::remove_dir_all(&root);
         Ok(())
     }
 

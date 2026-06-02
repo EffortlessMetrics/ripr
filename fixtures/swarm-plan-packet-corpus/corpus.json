@@ -35,9 +35,19 @@
           "file": "tests/pricing.rs",
           "name": "pricing_threshold"
         },
+        "allowed_edit_surface": [
+          "tests/pricing.rs"
+        ],
         "confidence_basis": "fixture_backed",
         "must_not_change": [
           "Do not edit production code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.rs",
+            "line": 42,
+            "kind": "weakly_exposed"
+          }
         ],
         "raw_findings": [
           {
@@ -93,9 +103,19 @@
           "file": "tests/parser.rs",
           "name": "parser_missing_input"
         },
+        "allowed_edit_surface": [
+          "tests/parser.rs"
+        ],
         "confidence_basis": "calibrated",
         "must_not_change": [
           "Do not edit parser production code."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/parser.rs",
+            "line": 18,
+            "kind": "weakly_exposed"
+          }
         ],
         "raw_findings": [
           {
@@ -129,6 +149,73 @@
       ]
     },
     {
+      "id": "static_only_predicate_boundary_packet",
+      "description": "Static-only predicate-boundary packet stays blocked for operator judgment even when repair, verify, receipt, and related-test fields exist.",
+      "packet": {
+        "canonical_gap_id": "gap:static-only-boundary",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "actionability": "extend_related_test",
+        "source_file": "src/pricing.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+        },
+        "verify_command": "cargo test -p ripr pricing_threshold",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/pricing.rs",
+          "name": "pricing_threshold"
+        },
+        "confidence_basis": "static_only",
+        "must_not_change": [
+          "Do not edit production code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.rs",
+            "line": 42,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 42,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_operator_judgment",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [],
+        "blocked_reasons": [
+          "static_only_predicate_boundary_requires_operator_judgment"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not rank static-only predicate-boundary packets as swarm-ready without stronger evidence.",
+        "Do not imply a boundary assertion can resolve a derived static predicate without fixture-backed or calibrated evidence."
+      ]
+    },
+    {
       "id": "output_observer_packet",
       "description": "Output observer packet with report golden target and bounded verification.",
       "packet": {
@@ -151,9 +238,19 @@
           "file": "tests/report_golden.rs",
           "name": "renders_config_label"
         },
+        "allowed_edit_surface": [
+          "tests/report_golden.rs"
+        ],
         "confidence_basis": "fixture_backed",
         "must_not_change": [
           "Do not edit production report rendering code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/report.rs",
+            "line": 64,
+            "kind": "exposed"
+          }
         ],
         "raw_findings": [
           {
@@ -187,6 +284,76 @@
       ]
     },
     {
+      "id": "public_projection_excluded_packet",
+      "description": "Complete packet marked ineligible by the public actionable projection stays blocked and cannot become swarm-ready.",
+      "packet": {
+        "canonical_gap_id": "gap:suppressed-repair",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "actionability": "suppressed_by_policy",
+        "source_file": "src/parser.rs",
+        "repair_kind": "add_exact_error_variant",
+        "target_test_type": "error_variant",
+        "assertion_shape": "matches!(parse(input), Err(Error::Suppressed))",
+        "repair_route": {
+          "repair_kind": "add_exact_error_variant",
+          "target_test_type": "error_variant",
+          "assertion_shape": "matches!(parse(input), Err(Error::Suppressed))"
+        },
+        "verify_command": "cargo test -p ripr parser_suppressed",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/parser.rs",
+          "name": "parser_suppressed"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit parser production code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/parser.rs",
+            "line": 28,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/parser.rs",
+            "line": 28,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": false,
+        "projection_exclusion_reasons": [
+          "suppressed"
+        ]
+      },
+      "expected": {
+        "swarm_state": "blocked_by_public_projection_exclusion",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [],
+        "blocked_reasons": [
+          "public_projection_excluded"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not route public-projection-excluded packets as swarm-ready.",
+        "Do not override projection_exclusion_reasons in the swarm plan."
+      ]
+    },
+    {
       "id": "blocked_static_limitation_packet",
       "description": "Static limitation packet stays blocked even when repair, verify, and receipt fields exist.",
       "packet": {
@@ -212,6 +379,13 @@
         "confidence_basis": "static_only",
         "must_not_change": [
           "Do not edit production code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/config.rs",
+            "line": 27,
+            "kind": "static_unknown"
+          }
         ],
         "raw_findings": [
           {
@@ -252,6 +426,154 @@
       ]
     },
     {
+      "id": "activation_boundary_input_unresolved_packet",
+      "description": "Unresolved iterator-derived activation-boundary operands stay blocked as a named limitation even if stale boundary repair fields are present.",
+      "packet": {
+        "canonical_gap_id": "gap:activation-boundary-input-unresolved",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "static_limitation",
+        "actionability": "static_limitation",
+        "source_file": "src/window.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(window[idx], expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(window[idx], expected)"
+        },
+        "verify_command": "cargo test -p ripr activation_boundary_input_unresolved",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/window.rs",
+          "name": "activation_boundary_input_unresolved"
+        },
+        "confidence_basis": "limitation_fixture",
+        "must_not_change": [
+          "Do not edit production iterator or boundary behavior."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/window.rs",
+            "line": 44,
+            "kind": "static_unknown"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/window.rs",
+            "line": 44,
+            "kind": "static_unknown"
+          }
+        ],
+        "static_limitations": [
+          {
+            "category": "activation_boundary_input_unresolved",
+            "repair_route": "analysis/iterator-boundary-operand-resolution"
+          }
+        ],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_static_limitation",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "actionable_gap_state"
+        ],
+        "blocked_reasons": [
+          "static_limitation_present"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 1,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not route unresolved iterator or local boundary operands as swarm-ready.",
+        "Do not infer exact candidate boundary values from unresolved activation inputs."
+      ]
+    },
+    {
+      "id": "local_computed_activation_boundary_input_unresolved_packet",
+      "description": "Unresolved local/computed activation-boundary operands stay blocked as a named limitation even if stale boundary repair fields are present.",
+      "packet": {
+        "canonical_gap_id": "gap:local-computed-activation-boundary-input-unresolved",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "static_limitation",
+        "actionability": "static_limitation",
+        "source_file": "src/pricing.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+        },
+        "verify_command": "cargo test -p ripr local_computed_activation_boundary_input_unresolved",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/pricing.rs",
+          "name": "local_computed_activation_boundary_input_unresolved"
+        },
+        "confidence_basis": "limitation_fixture",
+        "must_not_change": [
+          "Do not edit production computed-boundary behavior."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.rs",
+            "line": 44,
+            "kind": "static_unknown"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 44,
+            "kind": "static_unknown"
+          }
+        ],
+        "static_limitations": [
+          {
+            "category": "activation_boundary_input_unresolved",
+            "repair_route": "analysis/local-computed-boundary-operand-resolution"
+          }
+        ],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_static_limitation",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "actionable_gap_state"
+        ],
+        "blocked_reasons": [
+          "static_limitation_present"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 1,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not route unresolved local/computed boundary operands as swarm-ready.",
+        "Do not infer exact candidate boundary values from unresolved activation inputs."
+      ]
+    },
+    {
       "id": "missing_verify_command_packet",
       "description": "Packet without verify route is blocked and not high confidence.",
       "packet": {
@@ -277,6 +599,13 @@
         "confidence_basis": "fixture_backed",
         "must_not_change": [
           "Do not edit production event code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/events.rs",
+            "line": 33,
+            "kind": "weakly_exposed"
+          }
         ],
         "raw_findings": [
           {
@@ -340,6 +669,13 @@
         "must_not_change": [
           "Do not edit production auth code by default."
         ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/auth.rs",
+            "line": 55,
+            "kind": "weakly_exposed"
+          }
+        ],
         "raw_findings": [
           {
             "file": "src/auth.rs",
@@ -376,6 +712,144 @@
       ]
     },
     {
+      "id": "inconsistent_repair_route_packet",
+      "description": "Packet with a structured repair route that disagrees with root handoff fields is blocked even when all required fields are present.",
+      "packet": {
+        "canonical_gap_id": "gap:inconsistent-repair-route",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "actionability": "extend_related_test",
+        "source_file": "src/limits.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(limit(threshold), expected)",
+        "repair_route": {
+          "repair_kind": "add_output_observer",
+          "target_test_type": "output_observer",
+          "assertion_shape": "assert!(output.contains(expected))"
+        },
+        "verify_command": "cargo test -p ripr limit_threshold",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/limits.rs",
+          "name": "limit_threshold"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/limits.rs",
+            "line": 71,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/limits.rs",
+            "line": 71,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "repair_route_consistency"
+        ],
+        "blocked_reasons": [
+          "missing_repair_route_consistency"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not route a packet with mismatched repair_kind or target_test_type as swarm-ready.",
+        "Do not trust stale structured repair_route fields over the canonical packet handoff fields."
+      ]
+    },
+    {
+      "id": "receipt_path_without_receipt_command_packet",
+      "description": "Packet with only a receipt path hint is blocked until it carries an executable receipt_command.",
+      "packet": {
+        "canonical_gap_id": "gap:receipt-path-only",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "actionability": "add_exact_error_variant",
+        "source_file": "src/auth.rs",
+        "repair_kind": "add_exact_error_variant",
+        "target_test_type": "error_variant",
+        "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))",
+        "repair_route": {
+          "repair_kind": "add_exact_error_variant",
+          "target_test_type": "error_variant",
+          "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))"
+        },
+        "verify_command": "cargo test -p ripr revoked_token",
+        "receipt_command_or_path": "target/ripr/receipts/receipt-path-only.json",
+        "related_test_or_observer": {
+          "file": "tests/auth.rs",
+          "name": "revoked_token"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production auth code by default."
+        ],
+        "raw_evidence_refs": [
+          {
+            "file": "src/auth.rs",
+            "line": 55,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "raw_findings": [
+          {
+            "file": "src/auth.rs",
+            "line": 55,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "receipt_command"
+        ],
+        "blocked_reasons": [
+          "missing_receipt_command"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 1,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not treat a receipt path as an executable receipt_command.",
+        "Do not route path-only receipt context as swarm-ready."
+      ]
+    },
+    {
       "id": "must_not_change_boundary_packet",
       "description": "Boundary packet without must-not-change boundaries is blocked even when repair, verify, and receipt exist.",
       "packet": {
@@ -400,6 +874,13 @@
         },
         "confidence_basis": "fixture_backed",
         "must_not_change": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/limits.rs",
+            "line": 71,
+            "kind": "weakly_exposed"
+          }
+        ],
         "raw_findings": [
           {
             "file": "src/limits.rs",

@@ -3,26 +3,26 @@
 Status: advisory
 State: actionable
 
-## Top Gap
+## Start Here
 
-ripr gap: missing output contract
-
-One-screen recommendation:
+- State: `top_gap`
+- Output state: `actionable_gap`
+- Safe next action: repair one named stable Rust gap.
+- Top actionable gap: missing output contract
 - Changed behavior: `APPLE_M3_AIR_DEVICE_LABELS_TEXT`
-- Current evidence strength: actionable repairable static gap in pr_local scope
-- Missing discriminator: golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT
-- Focused proof intent: Add or update `fixtures/device-labels/expected/human.txt` so it checks `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.
+- Why this matters: User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text.
+- Current evidence strength: Static evidence found changed user-facing output, but no checked output or golden proof is attached.
+- Missing discriminator: Checked output or golden proof for the changed text.
+- Focused proof intent: Add or update the output proof in `fixtures/device-labels/expected/human.txt` so `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.
 - Verify command: `cargo xtask goldens check`
-- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md`
-- Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.
+- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
+- Receipt path: `target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
+- Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
 Evidence boundary:
 - Canonical gap: `gap:rust:output:device-label`
 - Language: `rust` (stable)
 - Receipt state: `receipt_missing`
-
-Changed behavior:
-`APPLE_M3_AIR_DEVICE_LABELS_TEXT`
 
 Why this matters:
 User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text.
@@ -32,13 +32,13 @@ Repair:
 - Target: `fixtures/device-labels/expected/human.txt`
 - Assertion: `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`
 
-Verify:
+Verify command:
 `cargo xtask goldens check`
 
-Receipt:
-`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format md --out target/ripr/receipts/gap-pr-output-device-label.md`
+Receipt command:
+`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
 
-Agent packet:
+Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json`
 
 ## Artifacts
