@@ -3996,10 +3996,21 @@ fn best_oracle(test: &TestSummary, seam: &RepoSeam) -> (OracleKind, OracleStreng
 // from getting tangled in `Probe`-flavored helpers.
 
 fn call_arguments(text: &str, callee: &str) -> Option<Vec<String>> {
-    let needle = format!("{callee}(");
-    let start = text.find(&needle)? + callee.len();
+    let start = named_call_open_paren_index(text, callee)?;
     let inside = delimited_contents_at(text, start)?;
     Some(split_top_level_commas(&inside))
+}
+
+fn named_call_open_paren_index(text: &str, callee: &str) -> Option<usize> {
+    text.match_indices(callee).find_map(|(start, _)| {
+        let before = text[..start].chars().next_back();
+        if before.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+            return None;
+        }
+        let after_start = start + callee.len();
+        let after = &text[after_start..];
+        after.starts_with('(').then_some(after_start)
+    })
 }
 
 fn delimited_contents_at(text: &str, start: usize) -> Option<String> {
@@ -4145,6 +4156,16 @@ mod tests {
             index.files.insert(path.clone(), facts);
         }
         Ok(index)
+    }
+
+    #[test]
+    fn call_arguments_uses_identifier_boundary_for_callee_name() {
+        let text = "fn borrowed_amount_matches() { let amount = 100; let actual = amount_matches(&amount); }";
+
+        assert_eq!(
+            call_arguments(text, "amount_matches"),
+            Some(vec!["&amount".to_string()])
+        );
     }
 
     #[test]
@@ -12646,6 +12667,43 @@ mod tests {
         assert!(
             values.iter().any(|v| v == "100"),
             "let-resolved 100 must appear in observed values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_shared_borrowed_let_binding_when_owner_call_uses_reference_then_observed_value_is_resolved()
+    -> Result<(), String> {
+        let prod_src = "pub fn amount_matches(amount: &i32) -> bool { amount == &100 }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn borrowed_amount_reference() { \
+                 let amount = 100; \
+                 let actual = amount_matches(&amount); \
+                 assert!(actual); \
+             }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let values: Vec<String> = evidence
+            .observed_values
+            .iter()
+            .map(|value| value.value.clone())
+            .collect();
+        assert!(
+            values.iter().any(|value| value == "100"),
+            "borrowed let binding literal must appear in observed values; got {values:?}; activation: {}; related: {:?}",
+            evidence.activate.summary,
+            evidence.related_tests
         );
         Ok(())
     }

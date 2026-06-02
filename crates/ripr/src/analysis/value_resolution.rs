@@ -28,7 +28,9 @@
 //!    plus bare `Path::new(L)` / `PathBuf::from(L)` only when the
 //!    test file syntactically imports those std path types without a
 //!    same-file shadow
-//! 8. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
+//! 8. shared-borrowed forms such as `&IDENT` / `&Path::new(L)`
+//!    resolve one level into the same syntactic chain
+//! 9. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
 //!    same test body
 //!
 //! Builder method values (`.amount(100).threshold(100)`) are handled
@@ -150,44 +152,13 @@ impl<'a> ValueEnv<'a> {
     #[cfg(test)]
     pub(crate) fn resolve(&self, arg: &str) -> Vec<(String, ValueContext)> {
         let trimmed = arg.trim().trim_end_matches([',', ';']);
-        // 1. Literal argument (delegate to existing scanner upstream
-        // - caller still calls scalar_values first; this resolver
-        // only handles the cases scalar_values rejects).
-        if trimmed.is_empty() {
-            return Vec::new();
-        }
-
-        // 6. Option/Result constructor unwrap (one level): try inner
-        // arg recursively. Catches `Some(threshold)` -> resolve
-        // `threshold`. Stays one level deep - no transitive peeling.
-        if let Some(inner) = unwrap_option_or_result(trimmed) {
-            // Recurse once. The inner can itself be a literal, a let,
-            // a const, etc.
-            return self.resolve_identifier_or_literal_at(
-                inner.as_str(),
-                SourcePosition {
-                    line: usize::MAX,
-                    column: usize::MAX,
-                },
-            );
-        }
-        if let Some(inner) = unwrap_path_literal_constructor(trimmed, self.facts) {
-            return self.resolve_identifier_or_literal_at(
-                inner.as_str(),
-                SourcePosition {
-                    line: usize::MAX,
-                    column: usize::MAX,
-                },
-            );
-        }
-
-        // Bare identifier: priority 2-5.
-        self.resolve_identifier_or_literal_at(
+        self.resolve_expr_at_position(
             trimmed,
             SourcePosition {
                 line: usize::MAX,
                 column: usize::MAX,
             },
+            true,
         )
     }
 
@@ -218,8 +189,20 @@ impl<'a> ValueEnv<'a> {
         call_position: SourcePosition,
     ) -> Vec<(String, ValueContext)> {
         let trimmed = arg.trim().trim_end_matches([',', ';']);
+        self.resolve_expr_at_position(trimmed, call_position, true)
+    }
+
+    fn resolve_expr_at_position(
+        &self,
+        trimmed: &str,
+        call_position: SourcePosition,
+        allow_shared_borrow: bool,
+    ) -> Vec<(String, ValueContext)> {
         if trimmed.is_empty() {
             return Vec::new();
+        }
+        if allow_shared_borrow && let Some(inner) = unwrap_shared_borrow(trimmed) {
+            return self.resolve_expr_at_position(inner, call_position, false);
         }
         if let Some(inner) = unwrap_option_or_result(trimmed) {
             return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
@@ -1176,6 +1159,14 @@ fn unwrap_path_literal_constructor(text: &str, facts: &ValueEnvFacts) -> Option<
     None
 }
 
+fn unwrap_shared_borrow(text: &str) -> Option<&str> {
+    let rest = text.trim().strip_prefix('&')?.trim_start();
+    if rest.starts_with("mut ") {
+        return None;
+    }
+    (!rest.is_empty()).then_some(rest)
+}
+
 fn looks_like_literal(expr: &str) -> bool {
     let trimmed = expr.trim().trim_end_matches([',', ';']);
     if trimmed.is_empty() {
@@ -1599,6 +1590,29 @@ mod tests {
         assert!(
             env.resolve("make_case().amount").is_empty(),
             "helper-built fixture projections must remain opaque"
+        );
+    }
+
+    #[test]
+    fn resolve_shared_borrowed_identifier_once() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts {
+            let_bindings: BTreeMap::from([("amount".to_string(), "100".to_string())]),
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert_eq!(
+            env.resolve("&amount"),
+            vec![("100".to_string(), ValueContext::FunctionArgument)]
+        );
+        assert!(
+            env.resolve("&mut amount").is_empty(),
+            "mutable borrows stay opaque until mutation ordering is tracked"
+        );
+        assert!(
+            env.resolve("&make_amount()").is_empty(),
+            "borrowed helper expressions must not invent activation values"
         );
     }
 
