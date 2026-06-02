@@ -2121,7 +2121,11 @@ fn assertion_target_tokens(seam: &RepoSeam) -> BTreeSet<String> {
         }
         _ => required_discriminator_tokens(seam),
     };
-    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
+    let sink_tokens = if seam.kind() == SeamKind::MatchArm {
+        Vec::new()
+    } else {
+        extract_identifier_tokens(seam.expected_sink().as_str())
+    };
     let filters_generic_call_tokens = seam.kind() == SeamKind::CallPresence;
     discriminator_tokens
         .into_iter()
@@ -12558,6 +12562,51 @@ fn mentions_json_variant() {
                 .iter()
                 .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity),
             "specific enum variant should still support assertion-target affinity: {:?}",
+            evidence.related_tests
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_match_arm_expected_sink_token_when_related_tests_are_ranked_then_assertion_target_affinity_does_not_fire()
+    -> Result<(), String> {
+        let prod_src = r#"
+pub fn parse_c_escape(ch: char) -> char {
+    match ch {
+        '"' => '"',
+        '\\' => '\\',
+        _ => ch,
+    }
+}
+"#;
+        let test = (
+            "tests/path_contract.rs",
+            r#"
+#[test]
+fn return_value_word_is_not_match_arm_evidence() {
+    let return_value = '"';
+    assert_eq!(return_value, '"');
+}
+"#,
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/diff_path.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/diff_path.rs")], &index);
+        let quote_arm = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::MatchArm && s.expression().contains("'\"'"))
+            .ok_or_else(|| "expected quote match-arm seam".to_string())?;
+        let evidence = evidence_for_seam(quote_arm, &index);
+
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .all(|test| { test.relation_reason != RelationReason::AssertionTargetAffinity }),
+            "generic expected-sink token should not create match-arm assertion-target affinity: {:?}",
             evidence.related_tests
         );
         Ok(())
