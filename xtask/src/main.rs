@@ -1170,6 +1170,7 @@ struct DogfoodPythonRepairRoutingQualitySummary {
     top_3_ranked_findings_checked: usize,
     top_3_actionable_usable: usize,
     top_3_cases_with_ranked_capture: usize,
+    full_top_3_capture_cases: usize,
     unsupported_limitation_distribution: Vec<(String, usize)>,
     gate_status: String,
     gate_reason: String,
@@ -45863,6 +45864,9 @@ fn dogfood_python_repair_routing_quality_summary(
         if !run.ranked_top_3_findings.is_empty() {
             summary.top_3_cases_with_ranked_capture += 1;
         }
+        if run.ranked_top_3_findings.len() == 3 {
+            summary.full_top_3_capture_cases += 1;
+        }
         summary.top_3_ranked_findings_checked += run.ranked_top_3_findings.len();
         summary.top_3_actionable_usable += run
             .ranked_top_3_findings
@@ -45889,6 +45893,7 @@ fn dogfood_python_repair_routing_quality_summary(
         || summary.crashes > 0
         || summary.receipt_closed == 0
         || summary.top_3_cases_with_ranked_capture != summary.cases
+        || summary.full_top_3_capture_cases == 0
         || summary.top_3_ranked_findings_checked == 0
         || summary.top_3_actionable_usable != summary.top_3_ranked_findings_checked;
     if missing_quality {
@@ -49694,6 +49699,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         python_repair_quality.top_3_ranked_findings_checked
     ));
     body.push_str(&format!(
+        "- Full top-3 capture cases: {} / {} evals - at least one eval must preserve all three ranked repair cards.\n\n",
+        python_repair_quality.full_top_3_capture_cases, python_repair_quality.cases
+    ));
+    body.push_str(&format!(
         "- Static-limit no-action cases: {} - tracked separately from repair-card success metrics.\n\n",
         python_static_limit_eval_runs.len()
     ));
@@ -49711,6 +49720,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         "| Top-3 actionable precision | {} / {} |\n",
         python_repair_quality.top_3_actionable_usable,
         python_repair_quality.top_3_ranked_findings_checked
+    ));
+    body.push_str(&format!(
+        "| Full top-3 capture cases | {} / {} |\n",
+        python_repair_quality.full_top_3_capture_cases, python_repair_quality.cases
     ));
     body.push_str(&format!(
         "| Verify-command validity | {} / {} |\n",
@@ -52078,6 +52091,16 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         true,
         "ranked Python repair-card findings within the top-3 window are usable, concrete, placed, verifiable, and false-positive clean",
     );
+    body.push_str(&format!(
+        "      \"full_top_3_capture_cases\": {{ \"status\": \"{}\", \"count\": {}, \"checked\": {}, \"reason\": \"at least one eval preserves all three ranked Python repair cards for direct top-3 precision review\" }},\n",
+        if python_repair_quality.full_top_3_capture_cases > 0 {
+            "pass"
+        } else {
+            "review"
+        },
+        python_repair_quality.full_top_3_capture_cases,
+        python_repair_quality.cases
+    ));
     dogfood_push_python_quality_ratio_json(
         &mut body,
         "verify_command_validity",
@@ -73311,24 +73334,55 @@ fn exact_owner_call_has_external_expected_value() {
                 "scoped repair routing is usable alpha; broader Python static facts remain preview/advisory"
                     .to_string(),
             unsupported_limitations: Vec::new(),
-            ranked_top_3_findings: vec![super::DogfoodPythonRankedFinding {
-                rank: 1,
-                canonical_gap_id:
-                    "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+            ranked_top_3_findings: vec![
+                super::DogfoodPythonRankedFinding {
+                    rank: 1,
+                    canonical_gap_id:
+                        "gap:python:app/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold"
+                            .to_string(),
+                    repair_card_present: true,
+                    usability: "usable".to_string(),
+                    missing_discriminator: "amount == threshold".to_string(),
+                    suggested_test_file: "tests/test_pricing.py".to_string(),
+                    verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
                         .to_string(),
-                repair_card_present: true,
-                usability: "usable".to_string(),
-                missing_discriminator: "amount == threshold".to_string(),
-                suggested_test_file: "tests/test_pricing.py".to_string(),
-                verify_command: "pytest tests/test_pricing.py::test_calculate_discount_smoke"
-                    .to_string(),
-                false_positive_notes: "none observed".to_string(),
-                reason: "rank 1 repair card matched the closed Python receipt".to_string(),
-            }],
-            ranked_top_3_limit_reason: Some(
-                "focused eval emitted one Python repair card; no rank 2 or 3 repairable finding was present"
-                    .to_string(),
-            ),
+                    false_positive_notes: "none observed".to_string(),
+                    reason: "rank 1 repair card matched the closed Python receipt".to_string(),
+                },
+                super::DogfoodPythonRankedFinding {
+                    rank: 2,
+                    canonical_gap_id:
+                        "gap:python:app/invoice.py:invoice_total:return_value:return_value:subtotal+tax+service_fee"
+                            .to_string(),
+                    repair_card_present: true,
+                    usability: "usable".to_string(),
+                    missing_discriminator: "return value == subtotal + tax + service_fee"
+                        .to_string(),
+                    suggested_test_file: "tests/test_invoice.py".to_string(),
+                    verify_command: "pytest tests/test_invoice.py::test_invoice_total_smoke"
+                        .to_string(),
+                    false_positive_notes: "none observed".to_string(),
+                    reason: "rank 2 repair card was concrete, placed, and verifiable"
+                        .to_string(),
+                },
+                super::DogfoodPythonRankedFinding {
+                    rank: 3,
+                    canonical_gap_id:
+                        "gap:python:app/validation.py:require_positive:exception_path:error_path:valueerror_positive_required"
+                            .to_string(),
+                    repair_card_present: true,
+                    usability: "usable".to_string(),
+                    missing_discriminator: "raises ValueError matching \"positive required\""
+                        .to_string(),
+                    suggested_test_file: "tests/test_validation.py".to_string(),
+                    verify_command: "pytest tests/test_validation.py::test_rejects_zero_amount"
+                        .to_string(),
+                    false_positive_notes: "none observed".to_string(),
+                    reason: "rank 3 repair card was concrete, placed, and verifiable"
+                        .to_string(),
+                },
+            ],
+            ranked_top_3_limit_reason: None,
             claim_boundary: vec![
                 "Broader Python static facts remain preview/advisory".to_string(),
                 "No arbitrary imports or tests were run by RIPR".to_string(),
@@ -73566,7 +73620,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("heuristic_only"));
         assert!(markdown.contains("unresolved_pytest_fixture"));
         assert!(markdown.contains("Python Repair-Routing Quality Metrics"));
-        assert!(markdown.contains("Top-3 actionable precision: 1 / 1 ranked findings"));
+        assert!(markdown.contains("Top-3 actionable precision: 3 / 3 ranked findings"));
+        assert!(markdown.contains("Full top-3 capture cases: 1 / 1 evals"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
@@ -73854,6 +73909,14 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_eq!(
             python_quality["summary"]["top_3_actionable_precision"]["count"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(
+            python_quality["summary"]["full_top_3_capture_cases"]["status"],
+            serde_json::Value::from("pass")
+        );
+        assert_eq!(
+            python_quality["summary"]["full_top_3_capture_cases"]["count"],
             serde_json::Value::from(1)
         );
         assert_eq!(
@@ -74638,6 +74701,10 @@ fn exact_owner_call_has_external_expected_value() {
             assert_eq!(quality.crashes, 0);
             assert!(quality.receipt_closed > 0);
             assert!(
+                quality.full_top_3_capture_cases > 0,
+                "Python real-repo eval receipts should include a full top-3 repair-card capture"
+            );
+            assert!(
                 quality
                     .unsupported_limitation_distribution
                     .iter()
@@ -74768,6 +74835,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(quality.cases, 8);
         assert_eq!(quality.top_1_actionable_usable, 6);
         assert_eq!(quality.top_3_cases_with_ranked_capture, 8);
+        assert_eq!(quality.full_top_3_capture_cases, 0);
         assert_eq!(quality.top_3_ranked_findings_checked, 8);
         assert_eq!(quality.top_3_actionable_usable, 8);
         assert_eq!(quality.verify_command_valid, 7);
@@ -75399,6 +75467,12 @@ fn exact_owner_call_has_external_expected_value() {
                 .errors
                 .is_empty()
         );
+        let quality =
+            dogfood_python_repair_routing_quality_summary(&[dogfood_python_real_repo_eval_run(
+                &valid_top_3,
+            )]);
+        assert_eq!(quality.full_top_3_capture_cases, 1);
+        assert_eq!(quality.gate_status, "pass");
 
         let mut missing_limit_reason = valid_python_real_repo_eval_scenario();
         missing_limit_reason.ranked_top_3_limit_reason = None;
