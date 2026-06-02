@@ -2260,6 +2260,13 @@ The security workflow currently runs:
 cargo-deny check advisories licenses bans sources
 ```
 
+The coverage and Test Analytics workflows run on `ubuntu-latest`. Both lanes
+remain advisory, but release candidates need an observable green boundary; these
+lanes must not depend on self-hosted runner availability just to prove that the
+current workspace can produce coverage and JUnit artifacts. The jobs still run
+only on pull requests, pushes to `main`/`master`, and manual dispatches, and
+Codecov upload remains non-blocking.
+
 It installs `cargo-deny` as a normal command-line binary before running the
 check, so self-hosted runners do not need Docker just to execute the security
 workflow. The job also installs the Rust toolchain because `cargo-deny` shells

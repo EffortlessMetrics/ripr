@@ -16,9 +16,7 @@ concurrency:
 jobs:
   coverage:
     name: rust-coverage
-    runs-on:
-      group: em-ci-small
-      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-heavy-medium]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
