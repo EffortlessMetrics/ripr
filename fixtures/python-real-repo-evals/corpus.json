@@ -336,6 +336,71 @@
       "reason": "The run proves a Python CLI/output-style change can produce a bounded output/call-effect repair card, pass the focused pytest verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "log_output_pytest_receipt",
+      "repo_shape": "log_output_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/log-output-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/log-output-receipt --base HEAD~1 --format json",
+      "runtime_ms": 900,
+      "top_finding_summary": "Python log-output repair card for warn_coupon coupon-expired warning",
+      "canonical_gap_id": "gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest caplog assertion for log contains \"coupon expired\".",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/log-output-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired --json",
+      "agent_packet_allowed_files": [
+        "tests/test_notifications.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/notifications.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected log text is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/notifications.py::warn_coupon",
+      "missing_discriminator": "log contains \"coupon expired\"",
+      "suggested_test_file": "tests/test_notifications.py",
+      "suggested_test_name": "test_warn_coupon_logs_expired_message",
+      "verify_command": "pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 2.87s; scratch verification set the caplog handler formatter in the test so exact static log evidence matched pytest runtime output without editing production code",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/log-output-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 900,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "pytest caplog scratch repo with a logging.warning side effect; RIPR did not import logging, execute tests, or format runtime logs during analysis",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "log contains \"coupon expired\"",
+          "suggested_test_file": "tests/test_notifications.py",
+          "verify_command": "pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python log-output receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused log-output eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Human-run pytest configured caplog formatting in the test; RIPR did not execute logging",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to a pytest caplog repair: RIPR routes the changed logger.warning output to one existing pytest test, exports a bounded test-only packet, verifies with focused pytest, and closes the canonical Python call/output-effect gap through an outcome receipt."
+    },
+    {
       "id": "argparse_cli_output_pytest_receipt",
       "repo_shape": "argparse_cli_output_pytest",
       "source_kind": "scratch_repo",
