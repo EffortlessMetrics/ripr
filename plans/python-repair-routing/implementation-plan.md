@@ -1541,6 +1541,12 @@ git diff --check
   and the dogfood report records no repair card, no agent packet,
   not-applicable verify/receipt results, and no receipt movement because there
   is no missing proof to route.
+- The corpus now records `heuristic_only_no_packet_eval` under
+  `no_action_cases` as an ordinary fail-closed no-action eval: RIPR reports
+  `weakly_exposed` for a changed Python owner with only heuristic pytest
+  test-name similarity, and the dogfood report records no repair card, no agent
+  packet, not-applicable verify/receipt results, and no receipt movement
+  because uncertain related-test proximity is not safe repair-routing evidence.
 - Dogfood quality metrics now include agent-packet boundary validity so a
   future eval that lacks packet scope, stop conditions, or forbidden-file
   protection fails the checked quality gate instead of counting as usable.

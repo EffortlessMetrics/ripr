@@ -18,7 +18,8 @@ after check run, and before/after outcome receipt. Static-limit cases record
 the changed owner, typed limitation, stop reason, related test context when
 available, and the reason no repair card, packet, verify command, or receipt
 movement is emitted. Ordinary no-action cases record non-limitation routing
-stops such as no related static test path or already-observed exact evidence.
+stops such as no related static test path, already-observed exact evidence, or
+heuristic-only related-test proximity.
 
 ## Then
 
@@ -63,9 +64,10 @@ record unsupported-syntax no-action cases so syntax gaps stay fail-closed
 instead of becoming implied repair work.
 
 Ordinary no-action cases are also not counted as successful repair
-recommendations. The checked corpus must include both a `no_related_test`
-example and an `already_observed` example so no-path evidence and already-strong
-evidence stay visible without inflating repair-card or packet success metrics.
+recommendations. The checked corpus must include `no_related_test`,
+`already_observed`, and `heuristic_only` examples so no-path evidence,
+already-strong evidence, and uncertain related-test proximity stay visible
+without inflating repair-card or packet success metrics.
 
 ## Must Not
 

@@ -1917,6 +1917,40 @@
         "No arbitrary imports or tests were run by RIPR"
       ],
       "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: when exact current test evidence already observes the changed behavior, RIPR keeps the finding visible but does not route redundant human or agent test-repair work."
+    },
+    {
+      "id": "heuristic_only_no_packet_eval",
+      "repo_shape": "pytest_test_name_similarity",
+      "source_kind": "local_repo",
+      "source_ref": "fixtures/python_related_test_name_similarity",
+      "command": "ripr check --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --format json",
+      "runtime_ms": 361,
+      "finding_id": "probe:src_pricing.py:2:python_preview",
+      "changed_owner": "python:src/pricing.py::apply_discount",
+      "no_action_kind": "heuristic_only",
+      "classification": "weakly_exposed",
+      "stop_reasons": [
+        "heuristic_only_related_test_link"
+      ],
+      "related_test_file": "tests/test_checkout.py",
+      "related_test_name": "test_apply_discount_boundary_case",
+      "why_not_actionable": "no_action heuristic_only prevents bounded repair routing because the related pytest test is linked only by test-name similarity and does not statically call the changed owner",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_no_action",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_no_action",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "RIPR reports weakly_exposed for the changed apply_discount return because only heuristic pytest test-name similarity links the test file; no repair card, agent packet, verify success, or receipt movement is claimed because the relation is not safe enough to route.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR"
+      ],
+      "reason": "The run records an ordinary Python no-action state separate from static analyzer limitations: heuristic-only related-test proximity stays visible as weak evidence but does not route bounded human or agent test-repair work."
     }
   ]
 }
