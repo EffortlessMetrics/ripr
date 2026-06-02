@@ -264,10 +264,11 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
     error_context: &str,
 ) -> Result<TimedFileOutput, String> {
     let started = Instant::now();
-    let stdout_file = fs::File::create(stdout_path).map_err(|err| {
+    let stdout_tmp_path = stdout_capture_temp_path(stdout_path);
+    let stdout_file = fs::File::create(&stdout_tmp_path).map_err(|err| {
         format!(
             "failed to create stdout file {} for {error_context}: {err}",
-            stdout_path.display()
+            stdout_tmp_path.display()
         )
     })?;
     let mut command = Command::new(program);
@@ -276,10 +277,13 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
     for (name, value) in envs {
         command.env(name, value);
     }
-    let mut child = command
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let mut child = match command.stderr(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let _ = fs::remove_file(&stdout_tmp_path);
+            return Err(format!("failed to run {error_context}: {err}"));
+        }
+    };
     let stdout = child
         .stdout
         .take()
@@ -301,7 +305,14 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
     });
 
     let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
-    let stdout_bytes = join_stream_file_writer(stdout_writer, "stdout", error_context)?;
+    let stdout_bytes = match join_stream_file_writer(stdout_writer, "stdout", error_context) {
+        Ok(stdout_bytes) => stdout_bytes,
+        Err(err) => {
+            let _ = fs::remove_file(&stdout_tmp_path);
+            return Err(err);
+        }
+    };
+    publish_stdout_capture(&stdout_tmp_path, stdout_path, error_context)?;
     let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
     Ok(TimedFileOutput {
         status: Some(wait_outcome.status),
@@ -309,6 +320,45 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
         duration: wait_outcome.duration,
         timed_out: wait_outcome.timed_out,
         stdout_bytes,
+    })
+}
+
+fn stdout_capture_temp_path(stdout_path: &Path) -> std::path::PathBuf {
+    let file_name = stdout_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("stdout");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    stdout_path.with_file_name(format!(
+        ".{file_name}.{}.{}.tmp",
+        std::process::id(),
+        unique
+    ))
+}
+
+fn publish_stdout_capture(
+    tmp_path: &Path,
+    stdout_path: &Path,
+    error_context: &str,
+) -> Result<(), String> {
+    match fs::remove_file(stdout_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(format!(
+                "failed to remove stale stdout file {} for {error_context}: {err}",
+                stdout_path.display()
+            ));
+        }
+    }
+    fs::rename(tmp_path, stdout_path).map_err(|err| {
+        format!(
+            "failed to publish stdout file {} for {error_context}: {err}",
+            stdout_path.display()
+        )
     })
 }
 
@@ -822,8 +872,26 @@ mod tests {
         }
         let captured = fs::read_to_string(&path)
             .map_err(|err| format!("failed to read streamed stdout file: {err}"))?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| "streamed stdout path should have a parent".to_string())?;
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "streamed stdout path should have a UTF-8 file name".to_string())?;
+        let temp_prefix = format!(".{file_name}.");
+        let leaked_temp = fs::read_dir(parent)
+            .map_err(|err| format!("failed to inspect streamed stdout parent: {err}"))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .find(|name| name.starts_with(&temp_prefix) && name.ends_with(".tmp"));
         fs::remove_file(&path)
             .map_err(|err| format!("failed to remove streamed stdout file: {err}"))?;
+        if let Some(leaked_temp) = leaked_temp {
+            return Err(format!(
+                "streamed stdout should publish through temp file without leaving {leaked_temp}"
+            ));
+        }
         if captured.contains("stale output") {
             return Err(format!(
                 "captured stdout should overwrite stale file contents: {captured}"
