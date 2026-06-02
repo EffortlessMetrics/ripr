@@ -142,6 +142,71 @@
       "reason": "The run proves a pyproject-based pytest app can produce a bounded strengthen-existing-test repair card, pass the verify command, and close the canonical Python gap through an outcome receipt."
     },
     {
+      "id": "async_return_pytest_receipt",
+      "repo_shape": "async_return_pytest",
+      "source_kind": "scratch_repo",
+      "source_ref": "target/ripr/python-real-repo-evals/async-return-receipt",
+      "command": "ripr check --root target/ripr/python-real-repo-evals/async-return-receipt --base HEAD~1 --format json",
+      "runtime_ms": 481,
+      "top_finding_summary": "Python async return-value repair card for load_total await client.total() + 2",
+      "canonical_gap_id": "gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2",
+      "repair_card_present": true,
+      "repair_action": "strengthen_existing_test",
+      "agent_packet_present": true,
+      "agent_packet_task": "Strengthen the existing pytest async-return test with an exact return-value assertion.",
+      "agent_packet_command": "ripr agent packet --root target/ripr/python-real-repo-evals/async-return-receipt --gap-ledger gap-ledger.json --gap-id gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2 --json",
+      "agent_packet_allowed_files": [
+        "tests/test_loading.py"
+      ],
+      "agent_packet_forbidden_files": [
+        "app/loading.py"
+      ],
+      "agent_packet_stop_if": [
+        "import cannot be resolved",
+        "expected async return value is ambiguous",
+        "production code edit appears necessary"
+      ],
+      "changed_owner": "python:app/loading.py::load_total",
+      "missing_discriminator": "return value == await client.total() + 2",
+      "suggested_test_file": "tests/test_loading.py",
+      "suggested_test_name": "test_load_total_smoke",
+      "verify_command": "pytest tests/test_loading.py::test_load_total_smoke",
+      "verify_result": "pass",
+      "verify_summary": "1 passed in 0.56s; scratch verification used asyncio.run in a normal pytest test instead of requiring pytest-asyncio",
+      "after_command": "ripr check --root target/ripr/python-real-repo-evals/async-return-receipt --base HEAD~1 --format json",
+      "after_runtime_ms": 4084,
+      "receipt_command": "ripr outcome --before before-check.json --after after-check.json --format json",
+      "receipt_result": "pass",
+      "gap_movement": "closed",
+      "closed_gaps": 1,
+      "usability": "usable",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "async-return scratch repo keeps RIPR static/advisory: the human-run pytest command used asyncio.run for verification, while RIPR did not execute imports, tests, or event-loop behavior",
+      "unsupported_limitations": [],
+      "ranked_top_3_findings": [
+        {
+          "rank": 1,
+          "canonical_gap_id": "gap:python:app/loading.py:load_total:return_value:return_value:await_client.total+2",
+          "repair_card_present": true,
+          "usability": "usable",
+          "missing_discriminator": "return value == await client.total() + 2",
+          "suggested_test_file": "tests/test_loading.py",
+          "verify_command": "pytest tests/test_loading.py::test_load_total_smoke",
+          "false_positive_notes": "none observed",
+          "reason": "Rank 1 repair card matched the closed Python async return-value receipt."
+        }
+      ],
+      "ranked_top_3_limit_reason": "Focused async-return eval emitted one Python repair card; no rank 2 or rank 3 repairable Python finding was present.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No arbitrary imports or tests were run by RIPR",
+        "The human-run pytest command verified only the suggested test",
+        "Scratch verification used asyncio.run in a normal pytest test instead of requiring pytest-asyncio",
+        "No support-tier promotion"
+      ],
+      "reason": "The run extends post-usable-alpha stability evidence to an async Python owner: RIPR detects the async return-value change, routes a weak asyncio.run pytest smoke assertion to a bounded strengthen-existing-test packet, verifies with focused pytest, and closes the canonical Python return-value gap through an outcome receipt."
+    },
+    {
       "id": "parametrized_boundary_pytest_receipt",
       "repo_shape": "parametrized_boundary_pytest",
       "source_kind": "scratch_repo",
