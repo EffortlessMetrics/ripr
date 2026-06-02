@@ -7435,6 +7435,7 @@ fn check_workflows_impl() -> Result<(), String> {
             &text,
             &runtime_allowlist,
         ));
+        violations.extend(workflow_bare_self_hosted_violations(&normalized, &text));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -7485,6 +7486,62 @@ fn check_workflows_impl() -> Result<(), String> {
     )
 }
 
+fn workflow_bare_self_hosted_violations(path: &str, text: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    let lines: Vec<&str> = text.lines().collect();
+    for (index, line) in lines.iter().enumerate() {
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("runs-on:")
+            && lower.contains('[')
+            && lower.contains("self-hosted")
+            && lower.contains("linux")
+            && lower.contains("x64")
+        {
+            violations.push(format!(
+                "{path}:{} bare inline self-hosted/linux/x64 runs-on is forbidden; use explicit group and capacity labels",
+                index + 1
+            ));
+        }
+
+        if line.trim() != "- self-hosted" {
+            continue;
+        }
+        let end = (index + 17).min(lines.len());
+        let start = index.saturating_sub(8);
+        let window = &lines[start..end];
+        let has_linux = window.iter().any(|candidate| candidate.trim() == "- linux");
+        let has_x64 = window.iter().any(|candidate| candidate.trim() == "- x64");
+        let has_group = window
+            .iter()
+            .any(|candidate| candidate.trim_start().starts_with("group: em-ci-"));
+        let has_capacity = window.iter().any(|candidate| {
+            matches!(
+                candidate.trim(),
+                "- em-ci"
+                    | "- ci-nano"
+                    | "- policy-nano"
+                    | "- workflow-nano"
+                    | "- rust-tiny"
+                    | "- rust-medium"
+                    | "- rust-large"
+                    | "- rust-16gb"
+                    | "- cx23"
+                    | "- cx33"
+                    | "- cx43"
+                    | "- cx53"
+                    | "- cpx42"
+            )
+        });
+        if has_linux && has_x64 && !(has_group && has_capacity) {
+            violations.push(format!(
+                "{path}:{} bare self-hosted block lacks group/capacity labels",
+                index + 1
+            ));
+        }
+    }
+    violations
+}
+
 fn routed_rust_workflow_contract_violations_for_repo() -> Result<Vec<String>, String> {
     let workflow_path = Path::new(".github/workflows/routed-rust.yml");
     if !workflow_path.exists() {
@@ -7530,20 +7587,27 @@ fn routed_rust_workflow_contract_violations(
         ("runner API fallback reason", "runner_api_failed"),
         ("no-idle fallback reason", "no_idle_runner"),
         (
-            "runner image readiness fallback reason",
-            "runner_image_unavailable",
+            "runner capacity fallback reason",
+            "runner_capacity_unavailable",
         ),
-        ("CX53 idle route reason", "cx53_idle"),
         ("CX43 idle route reason", "cx43_idle"),
-        ("CX53 readiness label", "em-ci-rust-1.95"),
+        ("CPX42 idle route reason", "cpx42_idle"),
+        ("CX53 idle route reason", "cx53_idle"),
+        ("CX43 capacity label", "rust-medium"),
+        ("CPX42 capacity label", "rust-16gb"),
+        ("CX53 capacity label", "rust-large"),
         ("normalized result job", "name: Ripr Rust Small Result"),
-        (
-            "CX53 conditional implementation job",
-            "if: needs.route.outputs.router_target == 'cx53'",
-        ),
         (
             "CX43 conditional implementation job",
             "if: needs.route.outputs.router_target == 'cx43'",
+        ),
+        (
+            "CPX42 conditional implementation job",
+            "if: needs.route.outputs.router_target == 'cpx42'",
+        ),
+        (
+            "CX53 conditional implementation job",
+            "if: needs.route.outputs.router_target == 'cx53'",
         ),
         (
             "hosted fallback conditional job",
@@ -7597,8 +7661,9 @@ fn routed_rust_workflow_contract_violations(
         }
         for forbidden in [
             "Route Ripr Rust Small",
-            "Ripr Rust Small on CX53",
             "Ripr Rust Small on CX43",
+            "Ripr Rust Small on CPX42",
+            "Ripr Rust Small on CX53",
             "Ripr Rust Small on GitHub Hosted",
         ] {
             if settings.contains(forbidden) {
@@ -65200,9 +65265,10 @@ mod tests {
         validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
-        workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
-        write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
+        workflow_bare_self_hosted_violations, workflow_runtime_violations, worktree,
+        worktree_doctor_findings, write_badge_artifacts_after_build,
+        write_badge_artifacts_from_diff, write_evidence_health_report_with_runner,
+        write_evidence_health_report_with_runners,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
         write_repo_exposure_summary_report_with_runner,
     };
@@ -70923,6 +70989,47 @@ jobs:
     }
 
     #[test]
+    fn workflow_bare_self_hosted_policy_rejects_linux_x64_without_group() {
+        let workflow = r#"
+jobs:
+  inline:
+    runs-on: [self-hosted, linux, x64]
+  block:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+"#;
+
+        let violations = workflow_bare_self_hosted_violations(".github/workflows/ci.yml", workflow);
+
+        assert_eq!(violations.len(), 2);
+    }
+
+    #[test]
+    fn workflow_bare_self_hosted_policy_accepts_capacity_group() {
+        let workflow = r#"
+jobs:
+  rust:
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
+"#;
+
+        let violations =
+            workflow_bare_self_hosted_violations(".github/workflows/routed-rust.yml", workflow);
+
+        assert!(violations.is_empty());
+    }
+
+    #[test]
     fn routed_rust_workflow_contract_accepts_swarm_shape() {
         let workflow = r#"
 jobs:
@@ -70939,14 +71046,17 @@ jobs:
           gh api --paginate orgs/EffortlessMetrics/actions/runners
           reason=runner_api_failed
           reason=no_idle_runner
-          reason=runner_image_unavailable
-          reason=cx53_idle
+          reason=runner_capacity_unavailable
           reason=cx43_idle
-          echo em-ci-rust-1.95
-  rust-cx53:
-    if: needs.route.outputs.router_target == 'cx53'
+          reason=cpx42_idle
+          reason=cx53_idle
+          echo rust-medium rust-16gb rust-large
   rust-cx43:
     if: needs.route.outputs.router_target == 'cx43'
+  rust-cpx42:
+    if: needs.route.outputs.router_target == 'cpx42'
+  rust-cx53:
+    if: needs.route.outputs.router_target == 'cx53'
   rust-github:
     if: needs.route.outputs.router_target == 'github'
   result:

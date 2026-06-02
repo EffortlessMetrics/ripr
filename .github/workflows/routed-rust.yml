@@ -30,12 +30,12 @@ jobs:
       run_id: ${{ steps.route.outputs.run_id }}
       runner_query: ${{ steps.route.outputs.runner_query }}
       runner_total: ${{ steps.route.outputs.runner_total }}
-      cx53_online: ${{ steps.route.outputs.cx53_online }}
-      cx53_idle_ready: ${{ steps.route.outputs.cx53_idle_ready }}
-      cx53_online_without_image: ${{ steps.route.outputs.cx53_online_without_image }}
       cx43_online: ${{ steps.route.outputs.cx43_online }}
       cx43_idle_ready: ${{ steps.route.outputs.cx43_idle_ready }}
-      cx43_online_without_image: ${{ steps.route.outputs.cx43_online_without_image }}
+      cpx42_online: ${{ steps.route.outputs.cpx42_online }}
+      cpx42_idle_ready: ${{ steps.route.outputs.cpx42_idle_ready }}
+      cx53_online: ${{ steps.route.outputs.cx53_online }}
+      cx53_idle_ready: ${{ steps.route.outputs.cx53_idle_ready }}
     steps:
       - name: Select runner
         id: route
@@ -46,153 +46,32 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          target=github
-          reason=runner_api_failed
-          runner_query=not_attempted
-          runner_total=not_available cx53_online=not_available cx53_idle_ready=not_available cx53_online_without_image=not_available
-          cx43_online=not_available cx43_idle_ready=not_available cx43_online_without_image=not_available
+          target=github reason=runner_api_failed runner_query=not_attempted runner_total=not_available
+          cx43_online=not_available cx43_idle_ready=not_available cpx42_online=not_available cpx42_idle_ready=not_available cx53_online=not_available cx53_idle_ready=not_available
+          count() { printf '%s' "$runners" | jq -s "$1"; }
+          idle() { printf '%s' "$runners" | jq -e --arg model "$1" --arg cap "$2" '.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("em-ci") and index($model) and index($cap)))' >/dev/null; }
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
-            reason=fork_or_untrusted_pr
-            runner_query=skipped_untrusted_pr
-          else
-            if runners="$(gh api --paginate orgs/EffortlessMetrics/actions/runners 2>/tmp/runners.err)"; then
-              runner_query=ok
-              runner_total="$(printf '%s' "$runners" | jq -s '[.[].runners[]?] | length')"
-              cx53_online="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("cx53")))] | length')"
-              cx53_idle_ready="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx53") and index("em-ci-rust-1.95")))] | length')"
-              cx53_online_without_image="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("cx53") and (index("em-ci-rust-1.95") | not)))] | length')"
-              cx43_online="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("cx43")))] | length')"
-              cx43_idle_ready="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx43") and index("em-ci-rust-1.95")))] | length')"
-              cx43_online_without_image="$(printf '%s' "$runners" | jq -s '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("cx43") and (index("em-ci-rust-1.95") | not)))] | length')"
-              if printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx53") and index("em-ci-rust-1.95")))' >/dev/null; then
-                target=cx53
-                reason=cx53_idle
-              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx43") and index("em-ci-rust-1.95")))' >/dev/null; then
-                target=cx43
-                reason=cx43_idle
-              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | ((index("cx53") or index("cx43")) and (index("em-ci-rust-1.95") | not))))' >/dev/null; then
-                reason=runner_image_unavailable
-              else
-                reason=no_idle_runner
-              fi
-            else
-              runner_query=failed
-              reason=runner_api_failed
+            reason=fork_or_untrusted_pr runner_query=skipped_untrusted_pr
+          elif runners="$(gh api --paginate 'orgs/EffortlessMetrics/actions/runners?per_page=100' 2>/tmp/runners.err)"; then
+            runner_query=ok
+            runner_total="$(count '[.[].runners[]?] | length')"
+            cx43_online="$(count '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cx43")))] | length')"
+            cx43_idle_ready="$(count '[.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cx43") and index("rust-medium")))] | length')"
+            cpx42_online="$(count '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cpx42")))] | length')"
+            cpx42_idle_ready="$(count '[.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cpx42") and index("rust-16gb")))] | length')"
+            cx53_online="$(count '[.[].runners[]? | select(.status == "online" and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cx53")))] | length')"
+            cx53_idle_ready="$(count '[.[].runners[]? | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("em-ci") and index("cx53") and index("rust-large")))] | length')"
+            if idle cx43 rust-medium; then target=cx43 reason=cx43_idle
+            elif idle cpx42 rust-16gb; then target=cpx42 reason=cpx42_idle
+            elif idle cx53 rust-large; then target=cx53 reason=cx53_idle
+            elif [ "$cx43_online$cx43_idle_ready$cpx42_online$cpx42_idle_ready$cx53_online$cx53_idle_ready" != "000000" ]; then reason=runner_capacity_unavailable
+            else reason=no_idle_runner
             fi
+          else
+            runner_query=failed reason=runner_api_failed
           fi
-          {
-            echo "router_target=$target"
-            echo "router_reason=$reason"
-            repo=$REPOSITORY workflow=routed-rust run_id=$RUN_ID
-            for name in repo workflow run_id runner_query runner_total cx53_online cx53_idle_ready cx53_online_without_image cx43_online cx43_idle_ready cx43_online_without_image; do
-              echo "$name=${!name}"
-            done
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "### Ripr Rust Small Router"
-            echo ""
-            echo "- repo: \`$REPOSITORY\`"
-            echo "- workflow: \`routed-rust\`"
-            echo "- run: \`$RUN_ID\`"
-            echo "- target: \`$target\`"
-            echo "- reason: \`$reason\`"
-            for row in "runner query:$runner_query" "visible runners:$runner_total" "cx53 online:$cx53_online" "cx53 idle image-ready:$cx53_idle_ready" "cx53 online missing image:$cx53_online_without_image" "cx43 online:$cx43_online" "cx43 idle image-ready:$cx43_idle_ready" "cx43 online missing image:$cx43_online_without_image"; do
-              echo "- ${row%%:*}: \`${row#*:}\`"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  rust-cx53:
-    name: Ripr Rust Small on CX53
-    needs: route
-    if: needs.route.outputs.router_target == 'cx53'
-    runs-on:
-      group: em-ci-small
-      labels: [self-hosted, Linux, X64, CX53, em-ci-rust-1.95]
-    env:
-      CARGO_BUILD_JOBS: "12"
-      CARGO_HOME: /mnt/ci-cache/cargo-home
-      SCCACHE_DIR: /mnt/ci-cache/sccache
-      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
-      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Prepare scratch
-        run: |
-          ci-disk-guard /mnt/ci-scratch 100
-          ci-disk-guard /mnt/docker 20
-          ci-disk-guard /mnt/ci-cache 20
-          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
-      - name: Required Rust gates
-        run: |
-          cargo fmt --check
-          cargo check --workspace --all-targets
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
-          cargo xtask check-dependencies
-          cargo xtask check-process-policy
-          cargo xtask check-network-policy
-      - name: Advisory reports
-        if: always()
-        run: |
-          cargo xtask test-efficiency-report || true
-          cargo xtask badge-artifacts || true
-          cargo xtask pr-summary || true
-          cargo xtask receipts || true
-          cargo xtask reports index || true
-      - name: PR evidence
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
-        run: |
-          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask impacted-evidence
-          cargo xtask impacted-evidence --check
-          cargo xtask ripr-pr-summary
-          cargo xtask ripr-pr-summary --check
-          cargo xtask ripr-annotations
-          cargo xtask ripr-annotations --check
-      - name: Remove RIPR analysis cache before artifact upload
-        if: always()
-        run: rm -rf target/ripr/cache
-      - name: Upload ripr reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ripr-rust-small-cx53
-          path: |
-            target/ripr/reports/
-            target/ripr/receipts/
-            target/ripr/pr/
-            target/ripr/review/
-            target/xtask/impacted-evidence/
-          if-no-files-found: ignore
-      - name: Clean scratch
-        if: always()
-        run: |
-          cargo clean || true
-          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+          { echo "router_target=$target"; echo "router_reason=$reason"; repo=$REPOSITORY workflow=routed-rust run_id=$RUN_ID; for name in repo workflow run_id runner_query runner_total cx43_online cx43_idle_ready cpx42_online cpx42_idle_ready cx53_online cx53_idle_ready; do echo "$name=${!name}"; done; } >> "$GITHUB_OUTPUT"
+          { echo "### Ripr Rust Small Router"; echo ""; echo "- repo: \`$REPOSITORY\`"; echo "- workflow: \`routed-rust\`"; echo "- run: \`$RUN_ID\`"; echo "- target: \`$target\`"; echo "- reason: \`$reason\`"; for row in "runner query:$runner_query" "visible runners:$runner_total" "cx43 online:$cx43_online" "cx43 idle ready:$cx43_idle_ready" "cpx42 online:$cpx42_online" "cpx42 idle ready:$cpx42_idle_ready" "cx53 online:$cx53_online" "cx53 idle ready:$cx53_idle_ready"; do echo "- ${row%%:*}: \`${row#*:}\`"; done; } >> "$GITHUB_STEP_SUMMARY"
 
   rust-cx43:
     name: Ripr Rust Small on CX43
@@ -200,7 +79,7 @@ jobs:
     if: needs.route.outputs.router_target == 'cx43'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, Linux, X64, CX43, em-ci-rust-1.95]
+      labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -211,12 +90,16 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
       - name: Prepare scratch
         run: |
           ci-disk-guard /mnt/ci-scratch 100
-          ci-disk-guard /mnt/docker 20
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          free -h || true
       - name: Required Rust gates
         run: |
           cargo fmt --check
@@ -286,6 +169,204 @@ jobs:
         run: |
           cargo clean || true
           rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+
+  rust-cpx42:
+    name: Ripr Rust Small on CPX42
+    needs: route
+    if: needs.route.outputs.router_target == 'cpx42'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
+    env:
+      CARGO_BUILD_JOBS: "8"
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+      - name: Prepare CPX42 scratch
+        run: |
+          ci-disk-guard /mnt/ci-scratch 80
+          ci-disk-guard /mnt/ci-cache 20
+          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          free -h || true
+          du -sh "$CARGO_HOME" "$SCCACHE_DIR" 2>/dev/null || true
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-rust-small-cpx42
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+      - name: Clean CPX42 scratch
+        if: always()
+        run: |
+          cargo clean || true
+          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+
+  rust-cx53:
+    name: Ripr Rust Small on CX53
+    needs: route
+    if: needs.route.outputs.router_target == 'cx53'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
+    env:
+      CARGO_BUILD_JOBS: "12"
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+      - name: Prepare scratch
+        run: |
+          ci-disk-guard /mnt/ci-scratch 100
+          ci-disk-guard /mnt/ci-cache 20
+          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          free -h || true
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-rust-small-cx53
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+      - name: Clean scratch
+        if: always()
+        run: |
+          cargo clean || true
+          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
 
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
@@ -296,7 +377,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-swarm-rust-small-${{ runner.os }}
@@ -368,7 +451,7 @@ jobs:
 
   result:
     name: Ripr Rust Small Result
-    needs: [route, rust-cx53, rust-cx43, rust-github]
+    needs: [route, rust-cx43, rust-cpx42, rust-cx53, rust-github]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -377,17 +460,18 @@ jobs:
           TARGET: ${{ needs.route.outputs.router_target }}
           REASON: ${{ needs.route.outputs.router_reason }}
           ROUTE_RESULT: ${{ needs.route.result }}
-          CX53_RESULT: ${{ needs.rust-cx53.result }}
           CX43_RESULT: ${{ needs.rust-cx43.result }}
+          CPX42_RESULT: ${{ needs.rust-cpx42.result }}
+          CX53_RESULT: ${{ needs.rust-cx53.result }}
           GITHUB_RESULT: ${{ needs.rust-github.result }}
           RUNNER_QUERY: ${{ needs.route.outputs.runner_query }}
           RUNNER_TOTAL: ${{ needs.route.outputs.runner_total }}
-          CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
-          CX53_IDLE_READY: ${{ needs.route.outputs.cx53_idle_ready }}
-          CX53_ONLINE_WITHOUT_IMAGE: ${{ needs.route.outputs.cx53_online_without_image }}
           CX43_ONLINE: ${{ needs.route.outputs.cx43_online }}
           CX43_IDLE_READY: ${{ needs.route.outputs.cx43_idle_ready }}
-          CX43_ONLINE_WITHOUT_IMAGE: ${{ needs.route.outputs.cx43_online_without_image }}
+          CPX42_ONLINE: ${{ needs.route.outputs.cpx42_online }}
+          CPX42_IDLE_READY: ${{ needs.route.outputs.cpx42_idle_ready }}
+          CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
+          CX53_IDLE_READY: ${{ needs.route.outputs.cx53_idle_ready }}
         run: |
           status=pass
           message="selected implementation job succeeded"
@@ -396,46 +480,16 @@ jobs:
             message="route job result was $ROUTE_RESULT"
           else
             case "$TARGET" in
-              cx53)
-                if [ "$CX53_RESULT" != "success" ]; then
-                  status=fail
-                  message="CX53 job result was $CX53_RESULT"
-                fi
-                ;;
-              cx43)
-                if [ "$CX43_RESULT" != "success" ]; then
-                  status=fail
-                  message="CX43 job result was $CX43_RESULT"
-                fi
-                ;;
-              github)
-                if [ "$GITHUB_RESULT" != "success" ]; then
-                  status=fail
-                  message="GitHub-hosted job result was $GITHUB_RESULT"
-                fi
-                ;;
-              *)
-                status=fail
-                message="unknown routed target: $TARGET"
-                ;;
+              cx43) [ "$CX43_RESULT" = "success" ] || { status=fail; message="CX43 job result was $CX43_RESULT"; } ;;
+              cpx42) [ "$CPX42_RESULT" = "success" ] || { status=fail; message="CPX42 job result was $CPX42_RESULT"; } ;;
+              cx53) [ "$CX53_RESULT" = "success" ] || { status=fail; message="CX53 job result was $CX53_RESULT"; } ;;
+              github) [ "$GITHUB_RESULT" = "success" ] || { status=fail; message="GitHub-hosted job result was $GITHUB_RESULT"; } ;;
+              *) status=fail; message="unknown routed target: $TARGET" ;;
             esac
           fi
           echo "### Ripr Rust Small Result" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- target: \`$TARGET\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- reason: \`$REASON\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- status: \`$status\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- message: \`$message\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- route: \`$ROUTE_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx53: \`$CX53_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx43: \`$CX43_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- github: \`$GITHUB_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- runner query: \`$RUNNER_QUERY\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- visible runners: \`$RUNNER_TOTAL\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx53 online: \`$CX53_ONLINE\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx53 idle image-ready: \`$CX53_IDLE_READY\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx53 online missing image: \`$CX53_ONLINE_WITHOUT_IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx43 online: \`$CX43_ONLINE\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx43 idle image-ready: \`$CX43_IDLE_READY\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- cx43 online missing image: \`$CX43_ONLINE_WITHOUT_IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          for row in "target:$TARGET" "reason:$REASON" "status:$status" "message:$message" "route:$ROUTE_RESULT" "cx43:$CX43_RESULT" "cpx42:$CPX42_RESULT" "cx53:$CX53_RESULT" "github:$GITHUB_RESULT" "runner query:$RUNNER_QUERY" "visible runners:$RUNNER_TOTAL" "cx43 online:$CX43_ONLINE" "cx43 idle ready:$CX43_IDLE_READY" "cpx42 online:$CPX42_ONLINE" "cpx42 idle ready:$CPX42_IDLE_READY" "cx53 online:$CX53_ONLINE" "cx53 idle ready:$CX53_IDLE_READY"; do
+            echo "- ${row%%:*}: \`${row#*:}\`" >> "$GITHUB_STEP_SUMMARY"
+          done
           [ "$status" = "pass" ]
