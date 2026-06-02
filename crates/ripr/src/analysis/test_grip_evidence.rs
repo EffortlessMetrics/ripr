@@ -11203,6 +11203,93 @@ mod tests {
     }
 
     #[test]
+    fn given_call_presence_when_same_file_method_chain_owner_through_helpers_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/canonical_gap.rs");
+        let source_src = r#"
+enum RequiredDiscriminator {
+    BoundaryValue { description: String },
+    ErrorVariant { variant: String },
+}
+
+struct RepoSeam {
+    discriminator: RequiredDiscriminator,
+}
+
+impl RepoSeam {
+    fn required_discriminator(&self) -> &RequiredDiscriminator {
+        &self.discriminator
+    }
+}
+
+struct ClassifiedSeam {
+    seam: RepoSeam,
+}
+
+fn canonical_gap_identity(entry: &ClassifiedSeam) -> String {
+    missing_discriminator_key(entry)
+}
+
+fn missing_discriminator_key(entry: &ClassifiedSeam) -> String {
+    required_discriminator_text(entry.seam.required_discriminator())
+}
+
+fn required_discriminator_text(discriminator: &RequiredDiscriminator) -> String {
+    match discriminator {
+        RequiredDiscriminator::BoundaryValue { description } => description.clone(),
+        RequiredDiscriminator::ErrorVariant { variant } => variant.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_gap_uses_required_discriminator_text() {
+        let entry = ClassifiedSeam {
+            seam: RepoSeam {
+                discriminator: RequiredDiscriminator::BoundaryValue {
+                    description: "threshold".to_string(),
+                },
+            },
+        };
+        assert_eq!(canonical_gap_identity(&entry), "threshold");
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/canonical_gap.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::required_discriminator_text")
+                    && s.expression().contains("description.clone()")
+            })
+            .ok_or_else(|| "expected required_discriminator_text call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected same-file method-chain helper owner-call relation; got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "method-chain helper activation must not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_call_presence_when_same_file_wrapper_skips_owner_then_activation_stays_unknown()
     -> Result<(), String> {
         let source = PathBuf::from("src/pipeline.rs");

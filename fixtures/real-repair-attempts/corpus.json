@@ -552,6 +552,41 @@
       "reason": "The report layer now keeps the analyzer route split visible in plan and readiness projections instead of collapsing the method-chain subroute back into the generic same-file route."
     },
     {
+      "id": "same_file_method_chain_owner_call_helper_tests_improved",
+      "source_ref": "local:same-file-method-chain-owner-call-helper-tests-2026-06-01",
+      "canonical_gap_id": "gap:activation-owner-call-absent-same-file-method-chain-helper-tests",
+      "packet_id": "limitation:activation_owner_call_absent_same_file_only:same_file_only_call_presence_method_chain_missing_owner_call:analysis-same-file-method-chain-owner-call-tracing",
+      "repair_kind": "sharpen_static_limitation_route",
+      "target_test_or_observer_shape": "same-file call-presence method-chain owner-call fixtures that exercise source-shaped helper paths through canonical gap discriminator text and activation alias helper functions",
+      "verify_command": "cargo test -p ripr same_file_method_chain_owner --lib -- --test-threads=1",
+      "verify_result": "pass",
+      "receipt_command": "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS=240000 cargo xtask lane1-evidence-audit && cargo xtask ripr-swarm plan --top 10 && cargo xtask actionable-gap-outcomes && cargo xtask ripr-swarm readiness",
+      "receipt_path": "target/ripr/reports/lane1-evidence-audit.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "static_limitation",
+      "after_gap_state": "static_limitation",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Added source-shaped analyzer tests for same-file method-chain owner-call helper paths without broadening owner-call inference.",
+      "evidence_movement": "improved: added source-shaped analyzer guard coverage for same-file method-chain helper owner-call paths and if-let boundary operand aliases without claiming sampled-count movement.",
+      "operator_note": "This is analyzer dogfood. It improves regression coverage only; remaining same-file method-chain cases stay non-actionable until direct or helper owner calls are observed.",
+      "must_not_change": [
+        "do not treat same-file proximity alone as owner-call activation",
+        "do not promote method-chain limitations to public repair packets",
+        "do not infer lazy fallback closure calls as unconditional owner calls",
+        "do not invent observed values for call-presence arguments",
+        "do not change gate or badge semantics"
+      ],
+      "raw_evidence_refs": [
+        "crates/ripr/src/analysis/classify/activation.rs::tests::same_file_method_chain_owner_call_tracing_covers_activation_alias_helpers",
+        "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_call_presence_when_same_file_method_chain_owner_through_helpers_then_activation_is_yes",
+        "target/ripr/reports/lane1-evidence-audit.json:finding_alignment_static_limitation_total",
+        "target/ripr/reports/swarm-plan.json:analysis/same-file-method-chain-owner-call-tracing"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "A local analyzer test slice covers source-shaped same-file method-chain helper paths while preserving static-limitation routing for unresolved owner-call cases."
+    },
+    {
       "id": "same_file_dotted_non_call_subroute_guard",
       "source_ref": "local:same-file-dotted-non-call-subroute-2026-06-01",
       "canonical_gap_id": "gap:activation-owner-call-absent-same-file-dotted-non-call",
