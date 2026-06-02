@@ -818,6 +818,10 @@ Project Python repair cards consistently across output surfaces.
 
 - Eligible `python_repair_card` findings now project into diff-scoped SARIF
   properties with the same advisory card fields as check JSON.
+- Python preview static-limit findings now project explicit diff-scoped SARIF
+  `python_no_action` properties with `repairability = "analyzer_limitation"`,
+  no verify command, no receipt command, no repair card, and no packet-ready
+  authority.
 - GitHub annotation output now includes a concise Python repair-card sentence
   with the missing discriminator, suggested test target, verify command, and
   preview/advisory boundary.
