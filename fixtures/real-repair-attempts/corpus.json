@@ -1919,6 +1919,45 @@
       "reason": "A real merged TypeScript preview PR improved module-initializer analyzer routing while preserving the non-actionable boundary until a full repair packet contract exists."
     },
     {
+      "id": "typescript_method_receiver_observer_route_improved",
+      "source_ref": "fixtures/typescript_owner_kinds",
+      "canonical_gap_id": "gap:typescript-preview-method-receiver-observer-route",
+      "packet_id": "limitation:typescript-preview-method-receiver-observer-route",
+      "language": "typescript",
+      "evidence_class": "method_receiver",
+      "source_file": "src/owners.ts",
+      "repair_kind": "route_typescript_method_receiver_observer",
+      "target_test_or_observer_shape": "TypeScript preview method evidence recognizes direct `new ClassName(...)` receiver observers as related advisory context while factories, dependency injection, mocked classes, prototype aliases, and dynamic property access remain non-actionable.",
+      "verify_command": "cargo test -p ripr find_related_tests_matches_bounded_method_receiver_calls --lib",
+      "verify_result": "pass",
+      "receipt_command": "cargo xtask fixtures typescript_owner_kinds",
+      "receipt_path": "fixtures/typescript_owner_kinds/expected/check.json",
+      "receipt_state": "receipt_movement_improved",
+      "actor_kind": "codex",
+      "before_gap_state": "advisory",
+      "after_gap_state": "advisory",
+      "outcome": "evidence_improved",
+      "attempted_repair": "Recorded bounded TypeScript method-receiver related-test matching for direct new-instance observers, while preserving the incomplete repair-packet boundary for the preview finding.",
+      "evidence_movement": "improved: the Cart.total fixture records a related method receiver smoke observer and exact missing return-value discriminator without promoting the item beyond advisory preview.",
+      "operator_note": "This is TypeScript enablement dogfood for useful advisory guidance. The route is more precise, but it deliberately remains non-actionable because canonical packet fields, verify and receipt authority, edit boundaries, and stronger oracle proof are still required for public delegation.",
+      "must_not_change": [
+        "do not promote TypeScript preview method-receiver evidence to public repair packets",
+        "do not infer through factories, dependency injection, mocked classes, prototype aliases, or dynamic property access",
+        "do not treat smoke-only receiver evidence as exact proof",
+        "do not change badge or CI gate semantics",
+        "do not add provider calls, generated tests, source edits, runtime Jest/Vitest execution, or mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:7:typescript_preview",
+        "fixtures/typescript_owner_kinds/expected/human.txt",
+        "fixtures/typescript-preview-false-actionable-audit/corpus.json",
+        "crates/ripr/src/analysis/language/typescript.rs",
+        "docs/lanes/TYPESCRIPT_ENABLEMENT.md"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "The method-receiver preview route is useful and fixture-backed, but this receipt keeps it advisory until strict TypeScript repair-packet fields and stronger observer proof exist."
+    },
+    {
       "id": "typescript_preview_weak_oracle_downgrade_unchanged",
       "source_ref": "fixtures/typescript_jest_vitest_assertion_facts",
       "canonical_gap_id": "gap:typescript-preview-weak-oracle-downgrade",
