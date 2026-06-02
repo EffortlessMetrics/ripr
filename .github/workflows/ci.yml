@@ -21,7 +21,10 @@ concurrency:
 jobs:
   rust:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-medium]
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -154,7 +157,10 @@ jobs:
 
   msrv:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-small]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.95.0
@@ -166,7 +172,10 @@ jobs:
 
   vscode:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-small]
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: editors/vscode

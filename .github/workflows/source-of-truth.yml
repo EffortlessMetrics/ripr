@@ -12,7 +12,10 @@ permissions:
 jobs:
   source-of-truth:
     name: source-of-truth
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-tiny
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-tiny]
+    timeout-minutes: 20
     continue-on-error: true
 
     steps:

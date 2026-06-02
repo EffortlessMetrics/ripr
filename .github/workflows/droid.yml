@@ -42,7 +42,10 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
 
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
+    timeout-minutes: 30
 
     env:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

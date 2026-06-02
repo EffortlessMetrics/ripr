@@ -25,7 +25,10 @@ permissions:
 jobs:
   pr-plan:
     name: pr-plan
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-nano
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, workflow-nano]
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6

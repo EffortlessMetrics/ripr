@@ -645,6 +645,46 @@ the same file to Codecov Test Analytics only when `CODECOV_TOKEN` is available
 on trusted runs. Fork pull requests still run tests and upload the artifact, but
 skip the Codecov test-results upload because repository secrets are unavailable.
 
+### Self-Hosted Runner Placement
+
+The everyday required Rust gate routes through `routed-rust.yml`
+(`CX53 -> CX43 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
+and scratch cleanup) and exposes the single branch-protection check
+`Ripr Rust Small Result`. That lane is the migrated reference and is not changed
+by routine runner-placement edits.
+
+The remaining (non-required) self-hosted lanes route to the smallest safe EM
+shared self-hosted tier by actual workload, each with explicit
+`group` + `labels` and a per-job `timeout-minutes` hang guard. No
+`ubuntu-latest` fallback is added; queueing on these groups is acceptable
+backpressure and these lanes are advisory or label/push gated, so they do not
+block merge.
+
+| Workflow / job | Group | Tier label |
+| --- | --- | --- |
+| `ci.yml` `rust` | `em-ci-small` | `rust-medium` |
+| `ci.yml` `msrv`, `vscode` | `em-ci-small` | `rust-small` |
+| `coverage.yml` | `em-ci-small` | `rust-heavy-medium` |
+| `test-analytics.yml` | `em-ci-small` | `rust-medium` |
+| `future-clippy.yml` | `em-ci-small` | `rust-medium` |
+| `security.yml` `cargo-deny` | `em-ci-tiny` | `rust-tiny` |
+| `source-of-truth.yml`, `badge-endpoints.yml` | `em-ci-tiny` | `rust-tiny` |
+| `security.yml` `dependency-review` | `em-ci-nano` | `policy-nano` |
+| `pr-plan.yml` | `em-ci-nano` | `workflow-nano` |
+| `droid-review`, `droid`, `droid-security-scan` | `em-ci-review` | `droid-review` |
+
+All self-hosted lanes carry the `trusted-pr` label and keep their existing
+fork/untrusted-PR `if:` guards, so fork code cannot reach trusted self-hosted
+runners. `rust-large` is intentionally not used here; it is reserved org-wide
+for the single heaviest lane. Build-heavy lanes still use `Swatinem/rust-cache`;
+moving them onto the shared `sccache`/`/mnt/ci-cache` path used by
+`routed-rust.yml` is a tracked follow-up rather than part of this placement
+change.
+
+Release and publish workflows (`publish-extension.yml`,
+`release-server-binaries.yml`) and branch protection (`.github/settings.yml`)
+are intentionally out of scope for this placement change.
+
 ## SARIF and Policy Contract
 
 Campaign 5B SARIF work is governed by

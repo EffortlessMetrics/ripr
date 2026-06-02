@@ -15,7 +15,10 @@ concurrency:
 jobs:
   rust-tests:
     name: rust-tests-junit
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, rust, rust-medium]
+    timeout-minutes: 30
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
