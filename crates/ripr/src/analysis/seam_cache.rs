@@ -47,6 +47,7 @@ use std::path::{Path, PathBuf};
 /// of the new shape; the version bump routes new entries to a fresh
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
 pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -269,6 +270,12 @@ impl<'a> WorkspaceState<'a> {
 /// in but not in-memory state; safe to construct cheaply per call.
 pub(crate) struct RepoSeamFactCache {
     dir: PathBuf,
+    sharded_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CacheStoreStatus {
+    pub(crate) label: String,
 }
 
 impl RepoSeamFactCache {
@@ -289,13 +296,13 @@ impl RepoSeamFactCache {
     }
 
     fn at_named(workspace_root: &Path, cache_name: &str, schema_version: &str) -> Self {
+        let cache_root = workspace_root.join("target").join("ripr").join("cache");
         Self {
-            dir: workspace_root
-                .join("target")
-                .join("ripr")
-                .join("cache")
-                .join(cache_name)
-                .join(schema_version),
+            dir: cache_root.join(cache_name).join(schema_version),
+            sharded_dir: cache_root
+                .join(format!("{cache_name}-sharded"))
+                .join(schema_version)
+                .join(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION),
         }
     }
 
@@ -303,13 +310,26 @@ impl RepoSeamFactCache {
     /// avoid touching the real workspace).
     #[cfg(test)]
     pub(crate) fn at_dir(dir: PathBuf) -> Self {
-        Self { dir }
+        Self {
+            sharded_dir: dir.join("sharded"),
+            dir,
+        }
     }
 
     /// Look up classified seams by key. `Miss` is returned for both
     /// "no file" and "different key", so callers do not have to
     /// distinguish in v1. `CorruptIgnored` carries a reason for logs.
     pub(crate) fn load_classified_seams(
+        &self,
+        key: &RepoSeamCacheKey,
+    ) -> CacheLoad<Vec<ClassifiedSeam>> {
+        match self.load_single_classified_seams(key) {
+            CacheLoad::Miss => self.load_sharded_classified_seams(key),
+            other => other,
+        }
+    }
+
+    fn load_single_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
     ) -> CacheLoad<Vec<ClassifiedSeam>> {
@@ -343,7 +363,7 @@ impl RepoSeamFactCache {
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
         store_limit: usize,
-    ) -> Result<(), String> {
+    ) -> Result<CacheStoreStatus, String> {
         self.store_classified_seams_with_limit(key, seams, store_limit)
     }
 
@@ -352,13 +372,12 @@ impl RepoSeamFactCache {
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
         store_limit: usize,
-    ) -> Result<(), String> {
+    ) -> Result<CacheStoreStatus, String> {
+        if store_limit == 0 {
+            return Err("classified seam cache store limit must be positive".to_string());
+        }
         if seams.len() > store_limit {
-            return Err(format!(
-                "skipped_large_entry_seams_{}_limit_{}",
-                seams.len(),
-                store_limit
-            ));
+            return self.store_sharded_classified_seams_with_limit(key, seams, store_limit);
         }
         std::fs::create_dir_all(&self.dir)
             .map_err(|err| format!("create cache dir failed: {err}"))?;
@@ -366,11 +385,162 @@ impl RepoSeamFactCache {
         let bytes = codec::encode(&envelope)?;
         let path = self.entry_path(key);
         std::fs::write(&path, &bytes).map_err(|err| format!("write cache failed: {err}"))?;
-        Ok(())
+        Ok(CacheStoreStatus {
+            label: "ok".to_string(),
+        })
     }
 
     fn entry_path(&self, key: &RepoSeamCacheKey) -> PathBuf {
         self.dir.join(key.filename())
+    }
+
+    fn load_sharded_classified_seams(
+        &self,
+        key: &RepoSeamCacheKey,
+    ) -> CacheLoad<Vec<ClassifiedSeam>> {
+        let manifest_path = self.sharded_manifest_path(key);
+        let bytes = match std::fs::read(&manifest_path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
+            Err(err) => {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!("read sharded manifest failed: {err}"),
+                };
+            }
+        };
+        let manifest = match codec::decode_sharded_manifest(&bytes) {
+            Ok(manifest) => manifest,
+            Err(reason) => return CacheLoad::CorruptIgnored { reason },
+        };
+        if !manifest.matches_key(key) {
+            return CacheLoad::Miss;
+        }
+        if manifest.shards.is_empty() && manifest.total_seams != 0 {
+            return CacheLoad::CorruptIgnored {
+                reason: "sharded manifest has no shards for non-empty seam payload".to_string(),
+            };
+        }
+        if manifest.shard_count != manifest.shards.len() {
+            return CacheLoad::CorruptIgnored {
+                reason: format!(
+                    "sharded manifest expected {} shards but listed {}",
+                    manifest.shard_count,
+                    manifest.shards.len()
+                ),
+            };
+        }
+
+        let mut seams = Vec::with_capacity(manifest.total_seams);
+        for (index, shard) in manifest.shards.iter().enumerate() {
+            if shard.index != index {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!(
+                        "sharded manifest index mismatch at position {index}: {}",
+                        shard.index
+                    ),
+                };
+            }
+            let shard_path = self.sharded_entry_dir(key).join(&shard.file);
+            let bytes = match std::fs::read(&shard_path) {
+                Ok(bytes) => bytes,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    return CacheLoad::CorruptIgnored {
+                        reason: format!("missing sharded cache file {}", shard_path.display()),
+                    };
+                }
+                Err(err) => {
+                    return CacheLoad::CorruptIgnored {
+                        reason: format!("read sharded cache file failed: {err}"),
+                    };
+                }
+            };
+            let envelope = match codec::decode_shard(&bytes) {
+                Ok(envelope) => envelope,
+                Err(reason) => return CacheLoad::CorruptIgnored { reason },
+            };
+            if !envelope.matches_key(key) {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!("sharded cache key mismatch in {}", shard.file),
+                };
+            }
+            if envelope.sharded_cache_schema_version != manifest.sharded_cache_schema_version
+                || envelope.shard_index != shard.index
+                || envelope.shard_count != manifest.shard_count
+            {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!("sharded cache metadata mismatch in {}", shard.file),
+                };
+            }
+            if envelope.classified_seams.len() != shard.seams {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!(
+                        "sharded cache file {} carried {} seams but manifest expected {}",
+                        shard.file,
+                        envelope.classified_seams.len(),
+                        shard.seams
+                    ),
+                };
+            }
+            seams.extend(envelope.classified_seams);
+        }
+        if seams.len() != manifest.total_seams {
+            return CacheLoad::CorruptIgnored {
+                reason: format!(
+                    "sharded cache loaded {} seams but manifest expected {}",
+                    seams.len(),
+                    manifest.total_seams
+                ),
+            };
+        }
+        CacheLoad::Hit(seams)
+    }
+
+    fn store_sharded_classified_seams_with_limit(
+        &self,
+        key: &RepoSeamCacheKey,
+        seams: &[ClassifiedSeam],
+        store_limit: usize,
+    ) -> Result<CacheStoreStatus, String> {
+        std::fs::create_dir_all(self.sharded_entry_dir(key))
+            .map_err(|err| format!("create sharded cache dir failed: {err}"))?;
+        let shard_count = seams.len().div_ceil(store_limit);
+        let mut shard_refs = Vec::with_capacity(shard_count);
+        for (index, chunk) in seams.chunks(store_limit).enumerate() {
+            let file = format!("shard-{index:05}.json");
+            let envelope =
+                ShardedCacheEnvelope::new(key.clone(), index, shard_count, chunk.to_vec());
+            let bytes = codec::encode_shard(&envelope)?;
+            let path = self.sharded_entry_dir(key).join(&file);
+            std::fs::write(&path, &bytes)
+                .map_err(|err| format!("write sharded cache file failed: {err}"))?;
+            shard_refs.push(ShardedCacheShardRef {
+                index,
+                file,
+                seams: chunk.len(),
+            });
+        }
+        let manifest = ShardedCacheManifest::new(key.clone(), seams.len(), shard_count, shard_refs);
+        let bytes = codec::encode_sharded_manifest(&manifest)?;
+        let manifest_path = self.sharded_manifest_path(key);
+        std::fs::write(&manifest_path, bytes)
+            .map_err(|err| format!("write sharded cache manifest failed: {err}"))?;
+        Ok(CacheStoreStatus {
+            label: format!(
+                "sharded_ok_seams_{}_shards_{}_limit_{}",
+                seams.len(),
+                shard_count,
+                store_limit
+            ),
+        })
+    }
+
+    fn sharded_entry_dir(&self, key: &RepoSeamCacheKey) -> PathBuf {
+        self.sharded_dir
+            .join(key.filename().trim_end_matches(".json"))
+    }
+
+    fn sharded_manifest_path(&self, key: &RepoSeamCacheKey) -> PathBuf {
+        self.sharded_entry_dir(key).join("manifest.json")
     }
 }
 
@@ -633,12 +803,123 @@ impl CacheEnvelope {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ShardedCacheManifest {
+    sharded_cache_schema_version: String,
+    schema_version: String,
+    analyzer_version: String,
+    workspace_root_hash: String,
+    files_content_hash: String,
+    cfg_features_hash: String,
+    config_hash: String,
+    test_intent_hash: String,
+    suppressions_hash: String,
+    total_seams: usize,
+    shard_count: usize,
+    shards: Vec<ShardedCacheShardRef>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ShardedCacheShardRef {
+    index: usize,
+    file: String,
+    seams: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ShardedCacheEnvelope {
+    sharded_cache_schema_version: String,
+    schema_version: String,
+    analyzer_version: String,
+    workspace_root_hash: String,
+    files_content_hash: String,
+    cfg_features_hash: String,
+    config_hash: String,
+    test_intent_hash: String,
+    suppressions_hash: String,
+    shard_index: usize,
+    shard_count: usize,
+    classified_seams: Vec<ClassifiedSeam>,
+}
+
+impl ShardedCacheManifest {
+    fn new(
+        key: RepoSeamCacheKey,
+        total_seams: usize,
+        shard_count: usize,
+        shards: Vec<ShardedCacheShardRef>,
+    ) -> Self {
+        Self {
+            sharded_cache_schema_version: SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION.to_string(),
+            schema_version: key.schema_version,
+            analyzer_version: key.analyzer_version,
+            workspace_root_hash: key.workspace_root_hash,
+            files_content_hash: key.files_content_hash,
+            cfg_features_hash: key.cfg_features_hash,
+            config_hash: key.config_hash,
+            test_intent_hash: key.test_intent_hash,
+            suppressions_hash: key.suppressions_hash,
+            total_seams,
+            shard_count,
+            shards,
+        }
+    }
+
+    fn matches_key(&self, key: &RepoSeamCacheKey) -> bool {
+        self.sharded_cache_schema_version == SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION
+            && self.schema_version == key.schema_version
+            && self.analyzer_version == key.analyzer_version
+            && self.workspace_root_hash == key.workspace_root_hash
+            && self.files_content_hash == key.files_content_hash
+            && self.cfg_features_hash == key.cfg_features_hash
+            && self.config_hash == key.config_hash
+            && self.test_intent_hash == key.test_intent_hash
+            && self.suppressions_hash == key.suppressions_hash
+    }
+}
+
+impl ShardedCacheEnvelope {
+    fn new(
+        key: RepoSeamCacheKey,
+        shard_index: usize,
+        shard_count: usize,
+        classified_seams: Vec<ClassifiedSeam>,
+    ) -> Self {
+        Self {
+            sharded_cache_schema_version: SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION.to_string(),
+            schema_version: key.schema_version,
+            analyzer_version: key.analyzer_version,
+            workspace_root_hash: key.workspace_root_hash,
+            files_content_hash: key.files_content_hash,
+            cfg_features_hash: key.cfg_features_hash,
+            config_hash: key.config_hash,
+            test_intent_hash: key.test_intent_hash,
+            suppressions_hash: key.suppressions_hash,
+            shard_index,
+            shard_count,
+            classified_seams,
+        }
+    }
+
+    fn matches_key(&self, key: &RepoSeamCacheKey) -> bool {
+        self.sharded_cache_schema_version == SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION
+            && self.schema_version == key.schema_version
+            && self.analyzer_version == key.analyzer_version
+            && self.workspace_root_hash == key.workspace_root_hash
+            && self.files_content_hash == key.files_content_hash
+            && self.cfg_features_hash == key.cfg_features_hash
+            && self.config_hash == key.config_hash
+            && self.test_intent_hash == key.test_intent_hash
+            && self.suppressions_hash == key.suppressions_hash
+    }
+}
+
 /// Codec module — the only place serialization format is decided.
 /// Switching to `postcard` for binary v2 is a localized change here.
 mod codec {
     #[cfg(test)]
     use super::CountCacheEnvelope;
-    use super::{CacheEnvelope, FileFactCacheEnvelope};
+    use super::{CacheEnvelope, FileFactCacheEnvelope, ShardedCacheEnvelope, ShardedCacheManifest};
 
     pub(super) fn encode(envelope: &CacheEnvelope) -> Result<Vec<u8>, String> {
         serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode failed: {err}"))
@@ -646,6 +927,28 @@ mod codec {
 
     pub(super) fn decode(bytes: &[u8]) -> Result<CacheEnvelope, String> {
         serde_json::from_slice(bytes).map_err(|err| format!("decode failed: {err}"))
+    }
+
+    pub(super) fn encode_sharded_manifest(
+        manifest: &ShardedCacheManifest,
+    ) -> Result<Vec<u8>, String> {
+        serde_json::to_vec_pretty(manifest)
+            .map_err(|err| format!("encode sharded manifest failed: {err}"))
+    }
+
+    pub(super) fn decode_sharded_manifest(bytes: &[u8]) -> Result<ShardedCacheManifest, String> {
+        serde_json::from_slice(bytes)
+            .map_err(|err| format!("decode sharded manifest failed: {err}"))
+    }
+
+    pub(super) fn encode_shard(envelope: &ShardedCacheEnvelope) -> Result<Vec<u8>, String> {
+        serde_json::to_vec_pretty(envelope)
+            .map_err(|err| format!("encode sharded cache file failed: {err}"))
+    }
+
+    pub(super) fn decode_shard(bytes: &[u8]) -> Result<ShardedCacheEnvelope, String> {
+        serde_json::from_slice(bytes)
+            .map_err(|err| format!("decode sharded cache file failed: {err}"))
     }
 
     #[cfg(test)]
@@ -799,25 +1102,69 @@ mod tests {
     }
 
     #[test]
-    fn given_large_classified_entry_when_cache_store_runs_then_write_is_skipped()
+    fn given_large_classified_entry_when_cache_store_runs_then_shards_are_written()
     -> Result<(), String> {
-        let dir = isolated_dir("large-skip");
+        let dir = isolated_dir("large-shard");
         let _ = std::fs::remove_dir_all(&dir);
         let cache = RepoSeamFactCache::at_dir(dir.clone());
         let key = empty_state().cache_key();
         let seams = vec![sample_classified(); 2];
-        let err = match cache.store_classified_seams_with_limit(&key, &seams, 1) {
-            Ok(()) => return Err("large classified seam cache entries should be skipped".into()),
+        let status = cache
+            .store_classified_seams_with_limit(&key, &seams, 1)
+            .map_err(|err| format!("large classified seam cache should shard: {err}"))?;
+
+        assert_eq!(status.label, "sharded_ok_seams_2_shards_2_limit_1");
+        assert!(
+            !cache.entry_path(&key).exists(),
+            "sharded cache store should not write a monolithic classified seam entry"
+        );
+        assert!(
+            cache.sharded_manifest_path(&key).exists(),
+            "sharded cache store should write a manifest"
+        );
+        assert!(
+            cache
+                .sharded_entry_dir(&key)
+                .join("shard-00000.json")
+                .exists(),
+            "sharded cache store should write the first shard"
+        );
+        assert!(
+            cache
+                .sharded_entry_dir(&key)
+                .join("shard-00001.json")
+                .exists(),
+            "sharded cache store should write the second shard"
+        );
+
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            other => return Err(format!("expected sharded cache hit, got {other:?}")),
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_cache_store_limit_rejects_zero_direct_limit() -> Result<(), String> {
+        let dir = isolated_dir("zero-limit");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let err = match cache.store_classified_seams_with_limit(&key, &[sample_classified()], 0) {
+            Ok(status) => {
+                return Err(format!(
+                    "zero direct cache limit should fail, got {}",
+                    status.label
+                ));
+            }
             Err(err) => err,
         };
 
         assert!(
-            err.contains("skipped_large_entry_seams_2_limit_1"),
-            "skip reason should be machine-readable: {err}"
-        );
-        assert!(
-            !cache.entry_path(&key).exists(),
-            "skipped cache store should not write a classified seam entry"
+            err.contains("positive"),
+            "zero direct cache limit should produce positive-limit diagnostic: {err}"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -933,28 +1280,59 @@ mod tests {
     }
 
     #[test]
-    fn compact_cache_store_limit_controls_skip_reason() -> Result<(), String> {
-        let dir = isolated_dir("compact-large-skip");
+    fn compact_cache_store_limit_controls_shard_size() -> Result<(), String> {
+        let dir = isolated_dir("compact-large-shard");
         let _ = std::fs::remove_dir_all(&dir);
         let cache = RepoSeamFactCache::at_dir(dir.clone());
         let key = empty_state().cache_key();
         let seams = vec![sample_classified(); 2];
 
-        let err = match cache.store_compact_classified_seams_with_limit(&key, &seams, 1) {
-            Ok(()) => {
-                return Err("configured compact cache limit should skip oversized entry".into());
-            }
-            Err(err) => err,
-        };
+        let status = cache
+            .store_compact_classified_seams_with_limit(&key, &seams, 1)
+            .map_err(|err| format!("configured compact cache limit should shard: {err}"))?;
 
-        assert!(
-            err.contains("skipped_large_entry_seams_2_limit_1"),
-            "skip reason should carry configured limit: {err}"
-        );
+        assert_eq!(status.label, "sharded_ok_seams_2_shards_2_limit_1");
         assert!(
             !cache.entry_path(&key).exists(),
-            "skipped compact cache store should not write an entry"
+            "sharded compact cache store should not write a monolithic entry"
         );
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            other => return Err(format!("expected compact sharded cache hit: {other:?}")),
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn given_missing_sharded_cache_file_when_loading_then_corrupt_ignored_is_reported()
+    -> Result<(), String> {
+        let dir = isolated_dir("missing-shard");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified(); 2];
+
+        cache
+            .store_classified_seams_with_limit(&key, &seams, 1)
+            .map_err(|err| format!("large classified seam cache should shard: {err}"))?;
+        std::fs::remove_file(cache.sharded_entry_dir(&key).join("shard-00001.json"))
+            .map_err(|err| format!("remove shard fixture: {err}"))?;
+
+        match cache.load_classified_seams(&key) {
+            CacheLoad::CorruptIgnored { reason } => {
+                assert!(
+                    reason.contains("missing sharded cache file"),
+                    "missing shard should be named in corrupt reason: {reason}"
+                );
+            }
+            other => {
+                return Err(format!(
+                    "expected CorruptIgnored for missing sharded cache file, got {other:?}"
+                ));
+            }
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())

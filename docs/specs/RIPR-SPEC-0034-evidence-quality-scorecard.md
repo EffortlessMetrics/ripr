@@ -155,12 +155,16 @@ Completeness-affecting audit limitations such as
 `lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`,
 `lane1_repo_exposure_large_cache_preflight_skip`, and audit regeneration failure
 must surface as unknowns and must not let zero or partial counts masquerade as
-complete repo truth. Completed-audit run limitations such as
-`lane1_repo_exposure_cache_store_skipped_large_entry` remain visible as named
-static limitations without marking the audit input limited. Named audit run
-limitations that appear in `static_limitations.by_category` must contribute to
-the scorecard static-limitation headline even when an older or partial audit
-summary left `summary.static_limitations_total` at zero.
+complete repo truth. Compatibility completed-audit run limitations from older
+cache-store traces, such as
+`lane1_repo_exposure_cache_store_skipped_large_entry`, remain visible as named
+static limitations without marking the audit input limited. Current repo seam
+cache entries larger than `RIPR_REPO_SEAM_CACHE_LIMIT` are written as bounded
+shards instead of producing that skip solely because they exceed the default
+limit. Named audit run limitations that appear in
+`static_limitations.by_category` must contribute to the scorecard
+static-limitation headline even when an older or partial audit summary left
+`summary.static_limitations_total` at zero.
 If the current scorecard carries limited-input unknowns such as
 `lane1_evidence_audit_limited`, `evidence_health_limited`, or
 `evidence_quality_scorecard_audit_regeneration_failed`,

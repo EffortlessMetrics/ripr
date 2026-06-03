@@ -4462,3 +4462,74 @@ Closeout:
 - #909, #908, #910, and #911 remain broader follow-up routes for scalable seam
   cache, cross-language oracle graph proof, and language-aware repair target
   inference. They are not completed by this closeout.
+
+## Lane 1 Campaign: Large-Repo Runtime Completeness
+
+Campaign ID: `lane1-large-repo-runtime-completeness`
+
+Status: active. `.ripr/goals/active.toml` selects this campaign after
+`lane1-real-repo-trust-readiness` closed with `no_current_goal = true`.
+
+This campaign is scoped to the live #909 follow-up: make large-repo
+repo-exposure warm paths useful without turning sampled, timeout, incomplete,
+or otherwise limited runs into full repo truth. It does not reopen the
+published 0.8.0 release claim boundary and does not claim full large-monorepo
+optimization until diff-scoped review runtime is separately validated.
+
+Objective:
+
+```text
+Make the full classified seam cache usable for large repo-exposure results by
+storing entries above RIPR_REPO_SEAM_CACHE_LIMIT as bounded shard files, loading
+only complete key-matched shard sets, and keeping the remaining large-repo
+runtime work visible as named follow-ups.
+```
+
+End state:
+
+- Full classified seam cache entries larger than the active limit write a
+  manifest plus bounded shard files under `target/ripr/cache` instead of
+  skipping the entire cache store.
+- Warm loads stitch shards only when the manifest and every shard match the
+  current cache key.
+- Missing, corrupt, or mismatched shard sets are ignored as corrupt cache state
+  and fall back to cold compute.
+- `RIPR_REPO_SEAM_CACHE_LIMIT` remains a positive integer tuning knob, now
+  bounding shard size rather than silently disabling large cache entries.
+- Cache report shard summaries and diff-scoped large-repo review fast paths
+  remain explicit follow-ups until validated.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `cache/large-repo-sharded-seam-cache` | done | Full repo seam cache entries above `RIPR_REPO_SEAM_CACHE_LIMIT` now write and reload bounded shard files; corrupt/incomplete shard sets fail closed; docs describe shard-size semantics. |
+| `report/large-repo-cache-shard-summary` | ready | Summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and orphan/incomplete shard sets. |
+| `analysis/diff-scoped-large-repo-review-fast-path` | blocked | Review a tiny diff in a large repo through changed seams and bounded immediate callers while reporting the narrowed input as scoped rather than full-repo truth; blocked by the shard-summary report. |
+
+Commands:
+
+```bash
+rtk cargo test -p ripr seam_cache -- --test-threads=1
+rtk cargo test -p ripr seam_inventory -- --test-threads=1
+rtk cargo test -p xtask cache -- --test-threads=1
+rtk cargo xtask cache report
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- representing sampled, stale, timeout, runner-failure, incomplete, or
+  cache-preflight-limited runs as full;
+- using raw findings as product truth without canonical evidence items;
+- creating public repair packets from static limitations;
+- claiming full large-monorepo optimization before diff-scoped review runtime
+  is validated;
+- changing source release, publish, signing, marketplace, or install-doc
+  behavior without explicit release authorization.

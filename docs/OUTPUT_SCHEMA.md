@@ -2514,15 +2514,16 @@ Field contract:
   `lane1_repo_exposure_large_cache_preflight_skip` with `run_status =
   "limited_large_cache_skip"`, `downstream_consumable = false`, and a repair
   route through `cargo xtask cache report` and `cargo xtask cache gc --dry-run`.
-  A completed audit may also report
+  Current repo seam cache writes entries larger than
+  `RIPR_REPO_SEAM_CACHE_LIMIT` as bounded shard files under `target/ripr/cache`.
+  Older audit artifacts or older cache-store implementations may still report
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
-  seam cache store because the entry exceeded the bounded cache-store limit.
-  That cache-store limitation carries structured `observed_seams` and
-  `cache_limit` fields in addition to the compatibility `input` string, and
-  its repair route names `cargo xtask cache report` plus
+  seam cache store. That compatibility limitation carries structured
+  `observed_seams` and `cache_limit` fields in addition to the compatibility
+  `input` string, and its repair route names `cargo xtask cache report` plus
   `RIPR_REPO_SEAM_CACHE_LIMIT` configuration when a machine has enough
-  disk/time budget for the larger full-cache write.
+  disk/time budget for larger cache shard writes.
   The default sampled repo-exposure path records `limited_sampled_input` with
   `lane1_repo_exposure_sampled` and input such as
   `repo-exposure-json:limit_5000_of_39685`; sampled counts are useful
