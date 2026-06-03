@@ -4635,3 +4635,94 @@ Closeout:
   `.ripr/goals/archive/2026-06-03-lane1-language-aware-placement-navigation.toml`.
 - Future cross-language oracle graph work should continue through #908/#910 or
   fresh issue-backed manifests rather than extending this closed #911 campaign.
+
+## Lane 1 Campaign: Cross-Language Oracle Graph Readiness
+
+Campaign ID: `lane1-cross-language-oracle-graph-readiness`
+
+Status: active. `.ripr/goals/active.toml` selects this campaign after
+`lane1-language-aware-placement-navigation` closed with
+`no_current_goal = true`.
+
+This campaign is scoped to live #910 and related #908: Rust seams exercised by
+TypeScript, binding, or FFI surfaces need an explicit oracle graph before RIPR
+can treat external evidence as more than advisory limitation context. It follows
+#930, #938, and #940: unresolved oracle visibility and target placement already
+fail closed, while the next work must name the graph shape needed to unlock
+trustworthy actionability. It does not reopen the published 0.8.0 release claim
+boundary and does not promote TypeScript or JavaScript preview evidence to a
+support tier.
+
+Objective:
+
+```text
+Make cross-language oracle visibility explicit for Rust seams exercised by
+TypeScript, binding, or FFI surfaces: distinguish missing external
+discriminators, unknown bridge routes, and complete advisory witnesses, then
+only move toward actionability when the Rust seam, binding edge, external
+callsite, external assertion/oracle, verify command, receipt command, raw
+evidence refs, and edit constraints are all named.
+```
+
+End state:
+
+- TS-tested Rust seam samples carry a bounded oracle graph shape: Rust seam,
+  boundary, binding or FFI edge, external callsite, external assertion or
+  oracle, and raw evidence refs.
+- Complete configured external witnesses can be reported as advisory external
+  observation without creating public repair packets, generated tests, gates,
+  badges, baselines, or support-tier promotion.
+- Missing discriminator, mention-only, unknown bridge, and unresolved target
+  cases stay static limitations with named repair routes and samples.
+- Readiness, scorecard, review, LSP, and PR surfaces preserve cross-language
+  oracle routes as limitations until public repair-packet fields exist.
+- Full actionability remains blocked unless verify command, receipt command,
+  allowed edit surface, must-not-change guardrails, confidence, and raw evidence
+  refs are present.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/cross-language-oracle-graph-activation` | done | Select #910/#908 as the next Lane 1 successor after `lane1-language-aware-placement-navigation` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority. |
+| `spec/cross-language-oracle-graph-v1` | ready | Define the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior. |
+| `fixtures/cross-language-oracle-graph-corpus` | blocked | Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability. |
+| `analysis/cross-language-ts-discriminator-witness` | blocked | For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets. |
+| `analysis/cross-language-binding-route-witness` | blocked | Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than `no_static_path` or actionable repair work. |
+| `report/cross-language-oracle-route-quality` | blocked | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
+| `campaign/cross-language-oracle-graph-closeout` | blocked | Close the #910/#908 campaign with issue state, claim boundaries, validation evidence, remaining non-claims, and no successor unless current repo-owned state selects one. |
+
+Commands:
+
+```bash
+rtk cargo xtask check-spec-format
+rtk cargo xtask check-spec-numbering
+rtk cargo xtask check-traceability
+rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
+rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+rtk cargo xtask ripr-swarm readiness
+rtk cargo xtask evidence-quality-scorecard
+rtk cargo xtask check-output-contracts
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- classifying TS-tested Rust seams as actionable from preview evidence alone;
+- suggesting Rust or external-language test targets without explicit bridge and
+  observer evidence;
+- inventing binding edges, external callsites, external oracles, verify
+  commands, receipt commands, candidate values, or allowed edit surfaces;
+- creating public repair packets from advisory cross-language witnesses;
+- claiming full cross-language oracle graph proof or runtime coverage proof
+  before the graph is explicitly named and verified;
+- changing provider, autonomous edit, mutation-execution, badge, default CI
+  blocking, support tier, source release, publishing, signing, marketplace, or
+  install-doc behavior without explicit authorization.

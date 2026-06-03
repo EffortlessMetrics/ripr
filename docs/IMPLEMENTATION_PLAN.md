@@ -72,16 +72,23 @@ than one behavior contract or touches repo shape.
 | Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 | Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
+| Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Active: `.ripr/goals/active.toml` selects #910/#908 after the language-aware placement closeout. The first ready slice is `spec/cross-language-oracle-graph-v1`, which should define required graph legs, allowed states, and fail-closed behavior before a corpus or analyzer change. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it records `status = "closed"` and `no_current_goal = true` for
-`lane1-language-aware-placement-navigation`. The
-[closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md)
-records that the #911 successor campaign closed after #938 made explicit
-external observer target evidence navigation-only across review-comments, LSP,
-and packet-adjacent output, #940 summarized those limitations in readiness and
-scorecard surfaces, and #941 advanced the closeout item. #908 and #910 remain
-the open cross-language oracle graph work. The closed
+it records `status = "active"` for
+`lane1-cross-language-oracle-graph-readiness`. That #910/#908 successor campaign is
+scoped to cross-language oracle visibility after the #911 placement campaign
+closed: complete configured external witnesses may become advisory external
+observation, but missing discriminators, mention-only samples, unknown bridges,
+and unresolved targets remain named limitations until the Rust seam, binding or
+FFI edge, external callsite, external assertion or oracle, raw evidence refs,
+verify command, receipt command, and edit constraints are all explicit. The
+closed
+`lane1-language-aware-placement-navigation` campaign records that #938 made
+explicit external observer target evidence navigation-only across
+review-comments, LSP, and packet-adjacent output, #940 summarized those
+limitations in readiness and scorecard surfaces, and #942 closed #911. The
+closed
 `lane1-large-repo-runtime-completeness`
 campaign records the #909 post-0.8 trust-debt PR chain through #935, including
 explicit large-cache skip state, sharded classified seam cache storage,
