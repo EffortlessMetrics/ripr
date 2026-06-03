@@ -71,9 +71,24 @@ const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// audits should surface a named cache-store limitation instead of spending the
 /// remaining audit budget on full-evidence JSON serialization.
 pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 20_000;
+pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str = "RIPR_REPO_SEAM_CACHE_LIMIT";
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str =
     "RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS";
+
+pub(crate) fn classified_seam_cache_store_limit() -> Result<usize, String> {
+    classified_seam_cache_store_limit_from_env(std::env::var(CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV))
+}
+
+fn classified_seam_cache_store_limit_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    seam_cache_store_limit_from_env(
+        value,
+        CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV,
+        CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+    )
+}
 
 pub(crate) fn compact_classified_seam_cache_store_limit() -> Result<usize, String> {
     compact_classified_seam_cache_store_limit_from_env(std::env::var(
@@ -84,24 +99,32 @@ pub(crate) fn compact_classified_seam_cache_store_limit() -> Result<usize, Strin
 fn compact_classified_seam_cache_store_limit_from_env(
     value: Result<String, std::env::VarError>,
 ) -> Result<usize, String> {
+    seam_cache_store_limit_from_env(
+        value,
+        COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV,
+        COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+    )
+}
+
+fn seam_cache_store_limit_from_env(
+    value: Result<String, std::env::VarError>,
+    env_name: &str,
+    default_limit: usize,
+) -> Result<usize, String> {
     match value {
-        Ok(value) => parse_compact_classified_seam_cache_store_limit(&value),
-        Err(std::env::VarError::NotPresent) => Ok(COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT),
-        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
-            "{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be valid UTF-8"
-        )),
+        Ok(value) => parse_positive_seam_cache_store_limit(&value, env_name),
+        Err(std::env::VarError::NotPresent) => Ok(default_limit),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
     }
 }
 
-fn parse_compact_classified_seam_cache_store_limit(value: &str) -> Result<usize, String> {
+fn parse_positive_seam_cache_store_limit(value: &str, env_name: &str) -> Result<usize, String> {
     let trimmed = value.trim();
-    let parsed = trimmed.parse::<usize>().map_err(|err| {
-        format!("{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be a positive integer: {err}")
-    })?;
+    let parsed = trimmed
+        .parse::<usize>()
+        .map_err(|err| format!("{env_name} must be a positive integer: {err}"))?;
     if parsed == 0 {
-        return Err(format!(
-            "{COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV} must be a positive integer"
-        ));
+        return Err(format!("{env_name} must be a positive integer"));
     }
     Ok(parsed)
 }
@@ -315,18 +338,6 @@ impl RepoSeamFactCache {
         }
     }
 
-    /// Persist classified seams under `key`. Best-effort: a failure to
-    /// write does not poison analysis (the caller has the result in
-    /// memory anyway), but it is returned so the caller can surface a
-    /// log line.
-    pub(crate) fn store_classified_seams(
-        &self,
-        key: &RepoSeamCacheKey,
-        seams: &[ClassifiedSeam],
-    ) -> Result<(), String> {
-        self.store_classified_seams_with_limit(key, seams, CLASSIFIED_SEAM_CACHE_STORE_LIMIT)
-    }
-
     pub(crate) fn store_compact_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
@@ -336,7 +347,7 @@ impl RepoSeamFactCache {
         self.store_classified_seams_with_limit(key, seams, store_limit)
     }
 
-    fn store_classified_seams_with_limit(
+    pub(crate) fn store_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
@@ -756,7 +767,7 @@ mod tests {
         let key = empty_state().cache_key();
         let seams = vec![sample_classified()];
         cache
-            .store_classified_seams(&key, &seams)
+            .store_classified_seams_with_limit(&key, &seams, CLASSIFIED_SEAM_CACHE_STORE_LIMIT)
             .map_err(|err| format!("store should succeed: {err}"))?;
         let result = match cache.load_classified_seams(&key) {
             CacheLoad::Hit(loaded) => {
@@ -808,6 +819,71 @@ mod tests {
             !cache.entry_path(&key).exists(),
             "skipped cache store should not write a classified seam entry"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_cache_store_limit_defaults_to_20k_when_env_missing() -> Result<(), String> {
+        let limit =
+            classified_seam_cache_store_limit_from_env(Err(std::env::VarError::NotPresent))?;
+
+        assert_eq!(limit, CLASSIFIED_SEAM_CACHE_STORE_LIMIT);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_cache_store_limit_accepts_positive_env_override() -> Result<(), String> {
+        let limit = classified_seam_cache_store_limit_from_env(Ok("25000".to_string()))?;
+
+        assert_eq!(limit, 25_000);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_cache_store_limit_rejects_invalid_env_override() -> Result<(), String> {
+        for value in ["", "0", "not-a-number"] {
+            let err = match classified_seam_cache_store_limit_from_env(Ok(value.to_string())) {
+                Ok(limit) => {
+                    return Err(format!(
+                        "invalid classified cache env value {value:?} should fail, got limit {limit}"
+                    ));
+                }
+                Err(err) => err,
+            };
+            assert!(
+                err.contains(CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV),
+                "diagnostic should name env var for {value:?}: {err}"
+            );
+            assert!(
+                err.contains("positive integer"),
+                "diagnostic should describe expected value for {value:?}: {err}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn classified_cache_store_limit_can_be_raised_for_large_entries() -> Result<(), String> {
+        let dir = isolated_dir("classified-raised-limit");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified(); 2];
+
+        cache
+            .store_classified_seams_with_limit(&key, &seams, 2)
+            .map_err(|err| format!("raised classified cache limit should allow store: {err}"))?;
+
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            other => {
+                return Err(format!(
+                    "expected classified cache hit after raised limit: {other:?}"
+                ));
+            }
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
@@ -927,7 +1003,11 @@ mod tests {
         }
         .cache_key();
         cache
-            .store_classified_seams(&original_key, &[sample_classified()])
+            .store_classified_seams_with_limit(
+                &original_key,
+                &[sample_classified()],
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
             .map_err(|err| format!("store original: {err}"))?;
         let new_files = [(path, b"fn foo() { let x = 1; }\n".to_vec())];
         let new_key = WorkspaceState {
@@ -1110,7 +1190,11 @@ mod tests {
         }
         .cache_key();
         cache
-            .store_classified_seams(&key_a, &[sample_classified()])
+            .store_classified_seams_with_limit(
+                &key_a,
+                &[sample_classified()],
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
             .map_err(|err| format!("store under key_a: {err}"))?;
         // Write key_a's envelope under key_b's filename — simulates a
         // hash collision or stale entry.

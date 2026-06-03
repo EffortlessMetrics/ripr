@@ -19914,6 +19914,8 @@ struct Lane1EvidenceAuditRunLimitation {
     category: String,
     phase: String,
     input: String,
+    observed_seams: Option<usize>,
+    cache_limit: Option<usize>,
     summary: String,
     repair_route: String,
     timeout_ms: Option<u128>,
@@ -20205,6 +20207,8 @@ fn lane1_repo_exposure_large_cache_preflight_limitation_for_root(
         category: "lane1_repo_exposure_large_cache_preflight_skip".to_string(),
         phase: "repo_seam_facts_cache".to_string(),
         input: normalize_report_path(&cache_root.display().to_string()),
+        observed_seams: None,
+        cache_limit: None,
         summary: format!(
             "Lane 1 repo-exposure generation was skipped because target/ripr/cache contains {} bytes across {} files, above the configured {} byte cache budget. No user test debt is claimed from this limited artifact.",
             footprint.bytes, footprint.files, max_bytes
@@ -20558,6 +20562,8 @@ fn lane1_limited_repo_exposure_run_limitation(
         category: limitation.category.to_string(),
         phase: "repo_exposure_generation".to_string(),
         input: "repo-exposure-json".to_string(),
+        observed_seams: None,
+        cache_limit: None,
         summary: limitation.summary.to_string(),
         repair_route: limitation.repair_route.to_string(),
         timeout_ms: Some(generation.timeout_ms),
@@ -20582,6 +20588,8 @@ fn lane1_repo_exposure_sample_limit_limitation(
         category: "lane1_repo_exposure_sampled".to_string(),
         phase: "repo_exposure_generation".to_string(),
         input: format!("repo-exposure-json:{}", trace.status),
+        observed_seams: None,
+        cache_limit: None,
         summary: format!(
             "Lane 1 repo-exposure analyzed the bounded seam sample recorded as {}; counts are useful partial evidence and must not be treated as full-repo debt totals.",
             trace.status
@@ -20894,18 +20902,38 @@ fn lane1_repo_exposure_cache_store_limitation(
                 .status
                 .starts_with("ignored_skipped_large_entry_seams_")
     })?;
-    let input = trace
-        .status
-        .strip_prefix("ignored_skipped_large_entry_seams_")
-        .map(|suffix| format!("classified_seams_{suffix}"))
-        .unwrap_or_else(|| trace.status.clone());
+    let parsed = lane1_parse_cache_store_skip_status(&trace.status);
+    let input = match parsed {
+        Some((observed_seams, cache_limit)) => {
+            format!("classified_seams_{observed_seams}_limit_{cache_limit}")
+        }
+        None => trace
+            .status
+            .strip_prefix("ignored_skipped_large_entry_seams_")
+            .map(|suffix| format!("classified_seams_{suffix}"))
+            .unwrap_or_else(|| trace.status.clone()),
+    };
+    let summary = match parsed {
+        Some((observed_seams, cache_limit)) => format!(
+            "Lane 1 repo-exposure skipped the full classified seam cache store because the observed classified seam count ({observed_seams}) exceeded the configured full-cache store limit ({cache_limit}); evidence was still emitted, but later full audit runs may cold-compute until the full cache path is narrowed or configured for this repo."
+        ),
+        None => "Lane 1 repo-exposure skipped the full classified seam cache store because the classified seam count exceeded the bounded full-cache store limit; evidence was still emitted, but later full audit runs may cold-compute until the full cache path is narrowed or configured for this repo.".to_string(),
+    };
+    let repair_route = match parsed {
+        Some((observed_seams, _)) => format!(
+            "run cargo xtask cache report, then set RIPR_REPO_SEAM_CACHE_LIMIT={observed_seams} or higher only when disk and time budget allow; otherwise keep the run limited until cache sharding or payload narrowing lands"
+        ),
+        None => "run cargo xtask cache report, then configure RIPR_REPO_SEAM_CACHE_LIMIT only when disk and time budget allow; otherwise keep the run limited until cache sharding or payload narrowing lands".to_string(),
+    };
 
     Some(Lane1EvidenceAuditRunLimitation {
         category: "lane1_repo_exposure_cache_store_skipped_large_entry".to_string(),
         phase: "repo_exposure_cache_store".to_string(),
         input,
-        summary: "Lane 1 repo-exposure skipped the full classified seam cache store because the classified seam count exceeded the bounded full-cache store limit; evidence was still emitted, but later full audit runs may cold-compute until the full cache path is narrowed.".to_string(),
-        repair_route: "keep using compact/count caches for count-only surfaces; add fixture-backed bounded full-cache serialization or payload narrowing before raising the full classified seam cache store limit".to_string(),
+        observed_seams: parsed.map(|(observed_seams, _)| observed_seams),
+        cache_limit: parsed.map(|(_, cache_limit)| cache_limit),
+        summary,
+        repair_route,
         timeout_ms: Some(generation.timeout_ms),
         duration_ms: Some(generation.duration_ms),
         command: Some(generation.command.clone()),
@@ -20914,6 +20942,12 @@ fn lane1_repo_exposure_cache_store_limitation(
         stderr_bytes: Some(generation.stderr_bytes),
         latency_trace_tail: generation.latency_trace_tail.clone(),
     })
+}
+
+fn lane1_parse_cache_store_skip_status(status: &str) -> Option<(usize, usize)> {
+    let suffix = status.strip_prefix("ignored_skipped_large_entry_seams_")?;
+    let (observed, limit) = suffix.split_once("_limit_")?;
+    Some((observed.parse().ok()?, limit.parse().ok()?))
 }
 
 struct Lane1LimitedRepoExposureLimitation {
@@ -22275,14 +22309,24 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
 
     if !report.run_limitations.is_empty() {
         out.push_str("## Run Limitations\n\n");
-        out.push_str("| Category | Phase | Input | Repair route |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str(
+            "| Category | Phase | Input | Observed seams | Cache limit | Repair route |\n",
+        );
+        out.push_str("| --- | --- | --- | ---: | ---: | --- |\n");
         for limitation in &report.run_limitations {
             out.push_str(&format!(
-                "| `{}` | `{}` | `{}` | {} |\n",
+                "| `{}` | `{}` | `{}` | {} | {} | {} |\n",
                 audit_markdown_cell(&limitation.category),
                 audit_markdown_cell(&limitation.phase),
                 audit_markdown_cell(&limitation.input),
+                limitation
+                    .observed_seams
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                limitation
+                    .cache_limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
                 audit_markdown_cell(&limitation.repair_route)
             ));
         }
@@ -23503,13 +23547,21 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
 
     if !report.run_limitations.is_empty() {
         out.push_str("## Run Limitations\n\n");
-        out.push_str("| Category | Phase | Repair route |\n");
-        out.push_str("| --- | --- | --- |\n");
+        out.push_str("| Category | Phase | Observed seams | Cache limit | Repair route |\n");
+        out.push_str("| --- | --- | ---: | ---: | --- |\n");
         for limitation in &report.run_limitations {
             out.push_str(&format!(
-                "| `{}` | `{}` | {} |\n",
+                "| `{}` | `{}` | {} | {} | {} |\n",
                 audit_markdown_cell(&limitation.category),
                 audit_markdown_cell(&limitation.phase),
+                limitation
+                    .observed_seams
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                limitation
+                    .cache_limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
                 audit_markdown_cell(&limitation.repair_route)
             ));
         }
@@ -31571,6 +31623,8 @@ fn lane1_evidence_audit_run_limitation_json(limitation: &Lane1EvidenceAuditRunLi
         "input": limitation.input,
         "input_kind": runtime_status.input_kind,
         "input_path": runtime_status.input_path,
+        "observed_seams": limitation.observed_seams,
+        "cache_limit": limitation.cache_limit,
         "summary": limitation.summary,
         "repair_route": limitation.repair_route,
         "timeout_ms": limitation.timeout_ms,
@@ -33365,6 +33419,8 @@ fn evidence_quality_scorecard_audit_regeneration_failure_report(
             category: EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED.to_string(),
             phase: "scorecard_missing_audit_regeneration".to_string(),
             input: "lane1-evidence-audit.json".to_string(),
+            observed_seams: None,
+            cache_limit: None,
             summary: format!(
                 "Evidence-quality scorecard could not regenerate the required Lane 1 audit: {summary}. No user test debt is claimed from this limited scorecard."
             ),
@@ -88019,14 +88075,32 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(limitation.phase, "repo_exposure_cache_store");
         assert_eq!(limitation.input, "classified_seams_38927_limit_20000");
+        assert_eq!(limitation.observed_seams, Some(38_927));
+        assert_eq!(limitation.cache_limit, Some(20_000));
         assert!(
             limitation
                 .repair_route
-                .contains("bounded full-cache serialization"),
-            "repair route should point at analyzer/cache work, got {}",
+                .contains("RIPR_REPO_SEAM_CACHE_LIMIT=38927"),
+            "repair route should name the configurable cache limit, got {}",
             limitation.repair_route
         );
         Ok(())
+    }
+
+    #[test]
+    fn lane1_cache_store_skip_status_parser_rejects_malformed_statuses() {
+        for status in [
+            "ignored_skipped_large_entry_seams_38927",
+            "ignored_skipped_large_entry_seams_38927_limit_",
+            "ignored_skipped_large_entry_seams_not-a-number_limit_20000",
+            "skipped_large_entry_seams_38927_limit_20000",
+        ] {
+            assert_eq!(
+                super::lane1_parse_cache_store_skip_status(status),
+                None,
+                "malformed cache-store skip status should not parse: {status}"
+            );
+        }
     }
 
     #[test]
@@ -88179,6 +88253,19 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["run_limitations"][0]["input"],
             "classified_seams_38927_limit_20000"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["observed_seams"],
+            serde_json::Value::from(38_927)
+        );
+        assert_eq!(
+            value["run_limitations"][0]["cache_limit"],
+            serde_json::Value::from(20_000)
+        );
+        assert!(
+            value["run_limitations"][0]["repair_route"]
+                .as_str()
+                .is_some_and(|route| route.contains("RIPR_REPO_SEAM_CACHE_LIMIT=38927"))
         );
         assert_eq!(
             value["inputs"]["repo_exposure_generation"]["status"],

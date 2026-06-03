@@ -2480,6 +2480,13 @@ tests = [
   "xtask::tests::lane1_evidence_audit_repo_exposure_generation_limits_missing_success_json",
   "xtask::tests::lane1_repo_exposure_large_cache_preflight_skip_becomes_named_run_limitation",
   "xtask::tests::lane1_repo_exposure_large_cache_preflight_ignores_missing_cache",
+  "xtask::tests::lane1_repo_exposure_cache_store_skip_becomes_named_run_limitation",
+  "xtask::tests::lane1_cache_store_skip_status_parser_rejects_malformed_statuses",
+  "xtask::tests::lane1_evidence_audit_complete_report_counts_cache_store_run_limitation",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::classified_cache_store_limit_defaults_to_20k_when_env_missing",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::classified_cache_store_limit_accepts_positive_env_override",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::classified_cache_store_limit_rejects_invalid_env_override",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::classified_cache_store_limit_can_be_raised_for_large_entries",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::repo_exposure_seam_limit_parser_accepts_positive_integer_only",
   "xtask::run::tests::capture_stdout_to_file_with_timeout_streams_stdout_to_file",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
@@ -2491,6 +2498,8 @@ fixtures = [
   "fixtures/actionable-gap-outcomes-corpus",
 ]
 code = [
+  "crates/ripr/src/analysis/seam_cache.rs",
+  "crates/ripr/src/analysis/seam_inventory.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
   "xtask/src/main.rs",
@@ -2501,11 +2510,14 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md",
   "docs/specs/README.md",
+  "docs/CONFIGURATION.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "policy/process_allowlist.txt",
+  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]

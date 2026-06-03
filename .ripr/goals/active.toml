@@ -62,7 +62,7 @@ commands = [
 
 [[work_item]]
 id = "report/review-comments-source-locations"
-status = "active"
+status = "done"
 branch = "report-review-comments-source-locations"
 stackable = false
 acceptance = "review-comments Markdown rows show file:line or explicit unknown source-location limitation next to seam IDs, and JSON/Markdown fixture coverage proves no seam row is location-free."
@@ -75,12 +75,12 @@ commands = [
 
 [[work_item]]
 id = "cache/large-seam-cache-skip-limitation"
-status = "ready"
+status = "active"
 branch = "cache-large-seam-cache-skip-limitation"
 stackable = false
 acceptance = "Repos exceeding the seam-cache entry limit emit a named large-cache limitation with observed seam count, cache limit, downstream consumability, repair route, configurable limit, and scorecard/readiness preservation of limited state."
 commands = [
-  "cargo test -p ripr repo_seam_cache -- --test-threads=1",
+  "cargo test -p ripr seam_cache -- --test-threads=1",
   "cargo xtask cache report",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",

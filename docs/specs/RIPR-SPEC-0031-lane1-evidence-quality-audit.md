@@ -103,7 +103,10 @@ and a repair route through `cargo xtask cache report` and
 classified seam cache store because the cache entry exceeds the bounded
 full-cache store limit, the audit records
 `lane1_repo_exposure_cache_store_skipped_large_entry` with the cache-store phase,
-classified seam count/limit input, latency trace tail, and a repair route.
+classified seam count/limit input, structured `observed_seams` and
+`cache_limit` fields, latency trace tail, and a repair route through
+`cargo xtask cache report` plus `RIPR_REPO_SEAM_CACHE_LIMIT` when the operator
+chooses to raise the full-cache store limit.
 
 ## JSON Contract
 
@@ -311,7 +314,9 @@ under `run_limitations[]` with category
 `lane1_repo_exposure_cache_store_skipped_large_entry`, report
 `run_status = "limited_large_cache_skip"`, and keep
 `runtime_status.downstream_consumable = true` because the evidence was emitted
-rather than hiding the cache-store limitation in stderr.
+rather than hiding the cache-store limitation in stderr. The row must expose the
+observed seam count and configured cache limit as structured fields, while
+retaining the count/limit input string for older consumers.
 
 Given a repo-exposure subprocess that exits successfully but leaves an empty,
 malformed, or otherwise incomplete captured JSON artifact, the audit treats that

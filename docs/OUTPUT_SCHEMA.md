@@ -2518,6 +2518,11 @@ Field contract:
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
   seam cache store because the entry exceeded the bounded cache-store limit.
+  That cache-store limitation carries structured `observed_seams` and
+  `cache_limit` fields in addition to the compatibility `input` string, and
+  its repair route names `cargo xtask cache report` plus
+  `RIPR_REPO_SEAM_CACHE_LIMIT` configuration when a machine has enough
+  disk/time budget for the larger full-cache write.
   The default sampled repo-exposure path records `limited_sampled_input` with
   `lane1_repo_exposure_sampled` and input such as
   `repo-exposure-json:limit_5000_of_39685`; sampled counts are useful

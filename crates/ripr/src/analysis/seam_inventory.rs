@@ -22,9 +22,11 @@ use super::rust_index::{
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
 #[cfg(test)]
+use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
+#[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamFactCache, WorkspaceState,
+    CacheLoad, RepoSeamFactCache, WorkspaceState, classified_seam_cache_store_limit,
     compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
@@ -105,6 +107,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         trace_latency_phase("total", "sampled_computed", total_started.elapsed());
         return Ok(classified);
     }
+    let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
     trace_latency_phase(
         "cache_load",
@@ -148,11 +151,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         &format!(
             "start_classified_{}_limit_{}",
             classified.len(),
-            CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+            store_limit
         ),
         Duration::ZERO,
     );
-    let store_status = match cache.store_classified_seams(&key, &classified) {
+    let store_status = match cache.store_classified_seams_with_limit(&key, &classified, store_limit)
+    {
         Ok(()) => "ok".to_string(),
         Err(reason) => {
             eprintln!("ripr: repo seam cache store ignored ({reason})");

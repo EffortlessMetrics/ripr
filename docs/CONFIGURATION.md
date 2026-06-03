@@ -48,7 +48,7 @@ need to run it.
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
 | Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
-| Cache | Compact repo seam cache stores up to `100000` seams by default; large repos can opt into a higher process-local limit. |
+| Cache | Full repo seam cache stores up to `20000` seams by default, compact repo seam cache stores up to `100000` seams by default, and large repos can opt into higher process-local limits. |
 | CI | Generated GitHub workflows upload advisory pilot/report/agent artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
 
@@ -142,11 +142,20 @@ that needs the tuning.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
+| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count that the full repo seam cache may store for a completed repo-exposure run. Raise this only when the machine has enough disk and time budget for the full cache write. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 | `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count that the compact repo seam cache may store. Raise this for large repos when the machine has enough disk and time budget for the initial cache write. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 
-The compact repo seam cache skip reason includes the active limit, for example
-`skipped_large_entry_seams_135812_limit_100000`. To opt into caching that repo on
-a machine with enough headroom:
+Repo seam cache skip reasons include the active limit, for example
+`skipped_large_entry_seams_135812_limit_20000`. Lane 1 audit reports preserve
+the observed seam count and configured limit as `observed_seams` and
+`cache_limit` so large-repo skips are visible instead of silently disappearing.
+To opt into full caching for that repo on a machine with enough headroom:
+
+```bash
+RIPR_REPO_SEAM_CACHE_LIMIT=150000 ripr check --root . --format repo-exposure-json
+```
+
+To opt into compact caching for that repo:
 
 ```bash
 RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 ripr check --root . --format repo-badge-json
