@@ -4547,3 +4547,53 @@ metrics = [
   "swarm_static_limitation_packets",
   "blocked_state_routes",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0062"
+name = "Cross-language oracle graph"
+spec = "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip",
+  "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip",
+  "xtask/src/main.rs::tests::typescript_bun_ub_calibration_cases_are_checked",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_cross_language_target_unresolved_packet",
+]
+fixtures = [
+  "fixtures/typescript-bun-ub-calibration",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript.rs",
+  "crates/ripr/src/output/typescript_preview_card.rs",
+  "crates/ripr/src/output/review_comments.rs",
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
+  "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  ".ripr/goals/active.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "language_adapter_typescript_bun_ub_array_buffer_facts",
+  "language_adapter_typescript_bun_ub_stable_byte_oracle_facts",
+  "language_adapter_typescript_bun_ub_bridge_hints",
+  "language_adapter_typescript_bun_ub_cross_language_grip_states",
+  "cross_language_oracle_visibility_unresolved_signals",
+  "cross_language_oracle_visibility_route_signals",
+  "cross_language_target_unresolved_signals",
+  "cross_language_test_target_inference_route_signals",
+  "cross_language_projection_exclusions",
+  "cross_language_oracle_graph_complete_advisory_witnesses",
+  "cross_language_oracle_graph_missing_discriminator_limitations",
+  "cross_language_oracle_graph_bridge_unknown_limitations",
+  "cross_language_oracle_graph_mention_only_limitations",
+  "cross_language_oracle_graph_public_packet_exclusions",
+]

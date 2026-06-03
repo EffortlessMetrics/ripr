@@ -70,7 +70,7 @@ commands = [
 
 [[work_item]]
 id = "spec/cross-language-oracle-graph-v1"
-status = "ready"
+status = "done"
 branch = "spec-cross-language-oracle-graph-v1"
 stackable = false
 acceptance = "Define the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior."
@@ -86,10 +86,9 @@ commands = [
 
 [[work_item]]
 id = "fixtures/cross-language-oracle-graph-corpus"
-status = "blocked"
+status = "ready"
 branch = "fixtures-cross-language-oracle-graph-corpus"
 stackable = false
-blocked_by = ["spec/cross-language-oracle-graph-v1"]
 acceptance = "Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability."
 commands = [
   "cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1",

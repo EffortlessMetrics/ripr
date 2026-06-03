@@ -4648,10 +4648,11 @@ This campaign is scoped to live #910 and related #908: Rust seams exercised by
 TypeScript, binding, or FFI surfaces need an explicit oracle graph before RIPR
 can treat external evidence as more than advisory limitation context. It follows
 #930, #938, and #940: unresolved oracle visibility and target placement already
-fail closed, while the next work must name the graph shape needed to unlock
-trustworthy actionability. It does not reopen the published 0.8.0 release claim
-boundary and does not promote TypeScript or JavaScript preview evidence to a
-support tier.
+fail closed, while
+[RIPR-SPEC-0062: Cross-Language Oracle Graph](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
+now names the bounded Bun Blob graph shape needed to unlock trustworthy
+actionability. It does not reopen the published 0.8.0 release claim boundary and
+does not promote TypeScript or JavaScript preview evidence to a support tier.
 
 Objective:
 
@@ -4685,8 +4686,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `goals/cross-language-oracle-graph-activation` | done | Select #910/#908 as the next Lane 1 successor after `lane1-language-aware-placement-navigation` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority. |
-| `spec/cross-language-oracle-graph-v1` | ready | Define the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior. |
-| `fixtures/cross-language-oracle-graph-corpus` | blocked | Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability. |
+| `spec/cross-language-oracle-graph-v1` | done | [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md) defines the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior. |
+| `fixtures/cross-language-oracle-graph-corpus` | ready | Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability. |
 | `analysis/cross-language-ts-discriminator-witness` | blocked | For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets. |
 | `analysis/cross-language-binding-route-witness` | blocked | Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than `no_static_path` or actionable repair work. |
 | `report/cross-language-oracle-route-quality` | blocked | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
