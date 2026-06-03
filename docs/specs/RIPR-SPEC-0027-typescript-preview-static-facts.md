@@ -133,10 +133,14 @@ TypeScript facts for the Blob / ArrayBuffer calibration route: syntactic
 `maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views,
 view-backed `Blob(...)` input, `blob.arrayBuffer()` observers, stable byte/text
 assertions, weak byte/text smoke or snapshot oracles, byte/text read-only
-mentions without assertions, and `maxByteLength` mention-only controls. These
-facts are not a public output-schema extension and do not promote TypeScript
-preview evidence into repair packets, gates, badges, baselines, RIPR Zero, or
-support-tier claims.
+mentions without assertions, and `maxByteLength` mention-only controls. A
+bounded internal Bun Blob bridge profile may combine those facts into
+evidence-only `configured_hint` / `bridge_unknown` advisory lines for
+`Blob::from_js_without_defer_gc` and the
+`array_buffer.shared || array_buffer.resizable` Rust boundary. These facts and
+bridge hints are not a public output-schema extension and do not promote
+TypeScript preview evidence into repair packets, gates, badges, baselines, RIPR
+Zero, or support-tier claims.
 
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
@@ -320,3 +324,6 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_probe_mock_interaction`
 - `language_adapter_typescript_probe_ambiguous_suppressed`
 - `language_adapter_typescript_static_limit_mocked_module`
+- `language_adapter_typescript_bun_ub_array_buffer_facts`
+- `language_adapter_typescript_bun_ub_stable_byte_oracle_facts`
+- `language_adapter_typescript_bun_ub_bridge_hints`
