@@ -19755,6 +19755,12 @@ const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_S
 const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT: usize = 5_000;
 const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
 const CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY: &str = "cross_language_target_unresolved";
+const CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE: &str =
+    "analysis/cross-language-test-target-inference";
+const CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY: &str =
+    "cross_language_oracle_visibility_unresolved";
+const CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE: &str =
+    "analysis/cross-language-oracle-visibility";
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
 
@@ -23332,6 +23338,12 @@ fn static_limitation_why_not_actionable(category: &str) -> &'static str {
         "observer_target_unknown" => {
             "the analyzer cannot name a bounded observer target for a safe repair packet"
         }
+        CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY => {
+            "binding, FFI, or external-language target placement is unresolved, so RIPR cannot choose a safe test edit surface"
+        }
+        CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY => {
+            "external-language oracle visibility is unresolved, so static evidence cannot prove the external assertion path"
+        }
         _ => "static evidence is insufficient to provide a bounded repair packet",
     }
 }
@@ -23382,6 +23394,16 @@ fn static_limitation_unlock_condition(
                 "implement `{repair_route}` so the observer target and assertion surface are explicit"
             )
         }
+        CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY => {
+            format!(
+                "implement `{repair_route}` with explicit binding or external observer target evidence before any repair packet names an edit surface"
+            )
+        }
+        CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY => {
+            format!(
+                "implement `{repair_route}` so the Rust seam, binding edge, external callsite, and external oracle can be named before actionability is considered"
+            )
+        }
         _ => format!(
             "implement `{repair_route}` and preserve the item as non-actionable until the packet contract is complete"
         ),
@@ -23422,6 +23444,18 @@ fn static_limitation_backlog_packet_non_claims(
         && subroute.is_some_and(|subroute| subroute.contains("receiver_method"))
     {
         claims.push("do not treat receiver method text as owner-call evidence".to_string());
+    }
+    if category == CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY {
+        claims.push("do not infer TypeScript, Python, or other external test targets".to_string());
+        claims.push("do not suggest unrelated Rust test files".to_string());
+        claims
+            .push("do not promote navigation-only target evidence into repair action".to_string());
+    }
+    if category == CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY {
+        claims.push("do not claim full cross-language oracle proof".to_string());
+        claims.push(
+            "do not count external tests as gripped until the oracle edge is explicit".to_string(),
+        );
     }
     claims
 }
@@ -28331,6 +28365,9 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         "language_repair_route_quality": ripr_swarm_repair_route_quality_json(
             &report.language_repair_route_quality
         ),
+        "limitation_route_quality": ripr_swarm_limitation_route_quality_json(
+            &report.top_limitation_routes
+        ),
         "top_failing_repair_routes": ripr_swarm_repair_route_quality_json(
             &report.top_failing_repair_routes
         ),
@@ -29136,6 +29173,94 @@ fn ripr_swarm_limitation_routes_json(rows: &[RiprSwarmLimitationRouteRow]) -> Ve
             })
         })
         .collect()
+}
+
+fn ripr_swarm_limitation_route_quality_json(rows: &[RiprSwarmLimitationRouteRow]) -> Vec<Value> {
+    rows.iter()
+        .map(|row| {
+            serde_json::json!({
+                "repair_route": row.repair_route,
+                "quality_basis": "static_limitation_backlog",
+                "route_state": "non_actionable_limitation",
+                "signal_count": row.signal_count,
+                "sample_packet_id": row.sample_packet_id,
+                "sample_limitation_category": row.sample_limitation_category,
+                "sample_limitation_subroute": row.sample_limitation_subroute,
+                "dominant_evidence_class": row.dominant_evidence_class,
+                "sample_canonical_gap_ids": row.sample_canonical_gap_ids,
+                "sample_sources": row
+                    .sample_sources
+                    .iter()
+                    .map(lane1_static_limitation_backlog_sample_json)
+                    .collect::<Vec<_>>(),
+                "language_aware_placement": ripr_swarm_limitation_route_language_aware_placement_json(row),
+                "why_not_actionable": row.why_not_actionable,
+                "unlock_condition": row.unlock_condition,
+                "packet_policy": "not_public_repair_packet",
+                "non_claims": row.non_claims,
+            })
+        })
+        .collect()
+}
+
+fn ripr_swarm_limitation_route_language_aware_placement_json(
+    row: &RiprSwarmLimitationRouteRow,
+) -> Value {
+    serde_json::json!({
+        "applies": ripr_swarm_limitation_route_is_language_aware(row),
+        "status": ripr_swarm_limitation_route_language_aware_status(row),
+        "navigation_only_external_target_status":
+            ripr_swarm_limitation_route_navigation_only_target_status(row),
+        "repair_route": row.repair_route,
+        "category": row.sample_limitation_category,
+        "non_claim": "navigation-only target evidence is context only until explicit target, verify, receipt, and edit-surface fields are present"
+    })
+}
+
+fn ripr_swarm_limitation_route_is_language_aware(row: &RiprSwarmLimitationRouteRow) -> bool {
+    matches!(
+        row.sample_limitation_category.as_deref(),
+        Some(CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY)
+            | Some(CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY)
+    ) || matches!(
+        row.repair_route.as_str(),
+        CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+            | CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+    )
+}
+
+fn ripr_swarm_limitation_route_language_aware_status(
+    row: &RiprSwarmLimitationRouteRow,
+) -> &'static str {
+    if row.sample_limitation_category.as_deref() == Some(CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY)
+        || row.repair_route == CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+    {
+        "cross_language_target_inference_unresolved"
+    } else if row.sample_limitation_category.as_deref()
+        == Some(CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY)
+        || row.repair_route == CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+    {
+        "cross_language_oracle_visibility_unresolved"
+    } else {
+        "not_language_aware_placement_route"
+    }
+}
+
+fn ripr_swarm_limitation_route_navigation_only_target_status(
+    row: &RiprSwarmLimitationRouteRow,
+) -> &'static str {
+    if row.sample_limitation_category.as_deref() == Some(CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY)
+        || row.repair_route == CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+    {
+        "requires_explicit_external_observer_target_evidence"
+    } else if row.sample_limitation_category.as_deref()
+        == Some(CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY)
+        || row.repair_route == CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+    {
+        "target_context_is_not_oracle_proof"
+    } else {
+        "not_applicable"
+    }
 }
 
 fn ripr_swarm_readiness_top_failing_repair_routes(
@@ -30269,6 +30394,10 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     ripr_swarm_readiness_push_blocked_state_routes_table(&mut out, &report.blocked_state_routes);
     ripr_swarm_push_static_limitation_backlog_markdown(&mut out, &report.static_limitation_backlog);
     ripr_swarm_readiness_push_top_limitation_routes_table(&mut out, &report.top_limitation_routes);
+    ripr_swarm_readiness_push_limitation_route_quality_table(
+        &mut out,
+        &report.top_limitation_routes,
+    );
     out.push_str("\n## Repair Route Quality\n\n");
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
     out.push_str("## Repair Route Quality By Language\n\n");
@@ -30378,6 +30507,37 @@ fn ripr_swarm_readiness_push_top_limitation_routes_table(
                     .unwrap_or("inspect the analyzer route before attempting repairs")
             ),
             audit_markdown_cell(&row.non_claims.join(", "))
+        ));
+    }
+    out.push('\n');
+}
+
+fn ripr_swarm_readiness_push_limitation_route_quality_table(
+    out: &mut String,
+    rows: &[RiprSwarmLimitationRouteRow],
+) {
+    out.push_str("\n## Limitation Route Quality\n\n");
+    if rows.is_empty() {
+        out.push_str("No limitation-route quality rows are available.\n\n");
+        return;
+    }
+    out.push_str("Limitation-route quality summarizes analyzer backlog routes. These rows are not repair attempts, not public repair packets, and not badge or gate inputs.\n\n");
+    out.push_str("| Repair route | Signals | Route state | Language-aware status | Navigation-only target status | Packet policy | Sample packet | Sample sources | Unlock condition |\n");
+    out.push_str("| --- | ---: | --- | --- | --- | --- | --- | --- | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| `{}` | {} | `non_actionable_limitation` | `{}` | `{}` | `not_public_repair_packet` | `{}` | {} | {} |\n",
+            audit_markdown_cell(&row.repair_route),
+            row.signal_count,
+            audit_markdown_cell(ripr_swarm_limitation_route_language_aware_status(row)),
+            audit_markdown_cell(ripr_swarm_limitation_route_navigation_only_target_status(row)),
+            audit_markdown_cell(row.sample_packet_id.as_deref().unwrap_or("unknown")),
+            audit_markdown_cell(&ripr_swarm_limitation_route_sample_sources_markdown(row)),
+            audit_markdown_cell(
+                row.unlock_condition
+                    .as_deref()
+                    .unwrap_or("inspect the analyzer route before attempting repairs")
+            ),
         ));
     }
     out.push('\n');
@@ -32861,6 +33021,10 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
+        CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY => CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
+        CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY => {
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+        }
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
         "opaque_helper_call" => "analysis/oracle-semantics-audit-fixes",
         "dynamic_dispatch" => "calibration/runtime-fixtures-v3",
@@ -33325,6 +33489,7 @@ struct EvidenceQualityScorecardReport {
     actionable_gap_top_lists: Value,
     actionable_gap_packet_public_projection: Value,
     evidence_class_work_queue: Value,
+    language_aware_placement_route_quality: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -33697,6 +33862,8 @@ fn evidence_quality_scorecard_from_values(
             &["finding_alignment", "coverage", "evidence_class_work_queue"],
             serde_json::json!([]),
         ),
+        language_aware_placement_route_quality:
+            evidence_quality_language_aware_placement_route_quality(audit),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -33957,6 +34124,116 @@ fn evidence_quality_scorecard_static_limitations_total(audit: &Value) -> usize {
         })
         .unwrap_or(0);
     summary_total.max(category_total)
+}
+
+fn evidence_quality_language_aware_placement_route_quality(audit: &Value) -> Value {
+    let target_unresolved_signals = scorecard_count_at(
+        audit,
+        &[
+            "static_limitations",
+            "by_category",
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY,
+        ],
+    );
+    let target_route_signals = scorecard_count_at(
+        audit,
+        &[
+            "static_limitations",
+            "repair_routes",
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
+        ],
+    );
+    let oracle_unresolved_signals = scorecard_count_at(
+        audit,
+        &[
+            "static_limitations",
+            "by_category",
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_UNRESOLVED_CATEGORY,
+        ],
+    );
+    let oracle_route_signals = scorecard_count_at(
+        audit,
+        &[
+            "static_limitations",
+            "repair_routes",
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE,
+        ],
+    );
+    let navigation_only_external_target_packets =
+        scorecard_navigation_only_external_target_packet_count(audit, false);
+    let navigation_only_external_target_public_promotions =
+        scorecard_navigation_only_external_target_packet_count(audit, true);
+    let projection_exclusions = audit_count_rows_map(
+        audit,
+        &[
+            "finding_alignment",
+            "actionable_gap_packet_public_projection",
+            "projection_exclusion_reasons",
+        ],
+    );
+    let cross_language_projection_exclusions = projection_exclusions
+        .get(CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY)
+        .copied()
+        .unwrap_or_default();
+    let total_language_aware_signals = target_unresolved_signals
+        + target_route_signals
+        + oracle_unresolved_signals
+        + oracle_route_signals
+        + navigation_only_external_target_packets;
+    let status = if navigation_only_external_target_packets > 0 {
+        "navigation_only_context_visible"
+    } else if total_language_aware_signals > 0 {
+        "static_limitation_route_visible"
+    } else {
+        "no_current_signal"
+    };
+    let navigation_only_external_target_status = if navigation_only_external_target_packets > 0 {
+        "explicit_navigation_context_only"
+    } else if target_unresolved_signals > 0 || target_route_signals > 0 {
+        "target_unresolved_no_navigation_target_in_audit"
+    } else {
+        "not_applicable"
+    };
+
+    serde_json::json!({
+        "status": status,
+        "repair_route": CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
+        "cross_language_target_unresolved_signals": target_unresolved_signals,
+        "cross_language_test_target_inference_route_signals": target_route_signals,
+        "cross_language_oracle_visibility_unresolved_signals": oracle_unresolved_signals,
+        "cross_language_oracle_visibility_route_signals": oracle_route_signals,
+        "cross_language_projection_exclusions": cross_language_projection_exclusions,
+        "navigation_only_external_target_packets": navigation_only_external_target_packets,
+        "navigation_only_external_target_public_promotions":
+            navigation_only_external_target_public_promotions,
+        "navigation_only_external_target_status": navigation_only_external_target_status,
+        "calibration_boundary": "static placement limitations and navigation-only targets are not runtime calibration or public repair packets",
+        "non_claims": [
+            "not a public repair packet",
+            "not swarm-ready work",
+            "do not infer external test targets without explicit observer evidence",
+            "do not promote navigation-only context into verify, receipt, or allowed edit surface",
+            "do not claim full cross-language oracle proof"
+        ],
+    })
+}
+
+fn scorecard_navigation_only_external_target_packet_count(
+    audit: &Value,
+    public_only: bool,
+) -> usize {
+    [
+        &["finding_alignment", "actionable_gap_packets"][..],
+        &["actionable_gap_packets"][..],
+        &["packets"][..],
+    ]
+    .iter()
+    .flat_map(|path| audit_array(audit, path))
+    .filter(|packet| audit_get(packet, &["navigation_only_target"]).is_some())
+    .filter(|packet| {
+        !public_only || audit_bool(packet, &["public_projection_eligible"]).unwrap_or(false)
+    })
+    .count()
 }
 
 fn finding_alignment_summary_usize(
@@ -34886,6 +35163,7 @@ fn evidence_quality_scorecard_json(
         "actionable_gap_top_lists": report.actionable_gap_top_lists,
         "actionable_gap_packet_public_projection": report.actionable_gap_packet_public_projection,
         "evidence_class_work_queue": report.evidence_class_work_queue,
+        "language_aware_placement_route_quality": report.language_aware_placement_route_quality,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -35215,6 +35493,79 @@ fn scorecard_push_top_count_table(out: &mut String, heading: &str, value: &Value
     out.push('\n');
 }
 
+fn scorecard_push_language_aware_placement_route_quality(out: &mut String, value: &Value) {
+    out.push_str("## Language-Aware Placement Route Quality\n\n");
+    out.push_str("This section summarizes cross-language placement and navigation-only target evidence as analyzer route-quality context. It does not create public repair packets, verify commands, receipt commands, or allowed edit surfaces.\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        out,
+        "Cross-language target unresolved signals",
+        audit_usize(value, &["cross_language_target_unresolved_signals"]).unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Cross-language target-inference route signals",
+        audit_usize(
+            value,
+            &["cross_language_test_target_inference_route_signals"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Cross-language oracle visibility unresolved signals",
+        audit_usize(
+            value,
+            &["cross_language_oracle_visibility_unresolved_signals"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Navigation-only external target packets",
+        audit_usize(value, &["navigation_only_external_target_packets"]).unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Navigation-only public promotions",
+        audit_usize(
+            value,
+            &["navigation_only_external_target_public_promotions"],
+        )
+        .unwrap_or_default(),
+    );
+    out.push('\n');
+    out.push_str(&format!(
+        "- status: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- repair_route: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("repair_route")
+                .and_then(Value::as_str)
+                .unwrap_or(CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE)
+        )
+    ));
+    out.push_str(&format!(
+        "- navigation_only_external_target_status: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("navigation_only_external_target_status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str("- calibration_boundary: static placement limitations and navigation-only targets are not runtime calibration or public repair packets.\n\n");
+}
+
 fn scorecard_push_evidence_class_work_queue_table(out: &mut String, value: &Value) {
     let rows = value.as_array().map_or(&[][..], Vec::as_slice);
     if rows.is_empty() {
@@ -35540,6 +35891,11 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         "Projection exclusion reason",
         &report.actionable_gap_packet_public_projection,
         "projection_exclusion_reasons",
+    );
+
+    scorecard_push_language_aware_placement_route_quality(
+        &mut out,
+        &report.language_aware_placement_route_quality,
     );
 
     out.push_str("## Evidence Class Work Queue\n\n");
@@ -95239,6 +95595,172 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn ripr_swarm_readiness_surfaces_language_aware_limitation_route_quality() -> Result<(), String>
+    {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "swarm_ready_packets": 0,
+                "blocked_packets": 0,
+                "static_limitation_backlog_packets": 1,
+                "static_limitation_backlog_signals": 7
+            },
+            "source_summary": {
+                "actionable_gaps": 0,
+                "public_projection_eligible_packets": 0
+            },
+            "static_limitation_backlog": {
+                "source": "lane1-evidence-audit.static_limitations",
+                "top_categories": [
+                    {
+                        "category": "cross_language_target_unresolved",
+                        "count": 7,
+                        "repair_route": "analysis/cross-language-test-target-inference"
+                    }
+                ],
+                "top_repair_routes": [
+                    {
+                        "repair_route": "analysis/cross-language-test-target-inference",
+                        "count": 7
+                    }
+                ],
+                "limitation_backlog_packets": [
+                    {
+                        "packet_id": "limitation:cross-language-target:analysis-cross-language-test-target-inference",
+                        "limitation_category": "cross_language_target_unresolved",
+                        "limitation_subroute": "binding_ffi_target_unresolved",
+                        "repair_route": "analysis/cross-language-test-target-inference",
+                        "signal_count": 7,
+                        "dominant_evidence_class": "call_presence",
+                        "why_not_actionable": "external target placement is unresolved",
+                        "unlock_condition": "add explicit external observer target evidence before suggesting edits",
+                        "non_claims": [
+                            "not a public repair packet",
+                            "not swarm-ready work"
+                        ],
+                        "sample_canonical_gap_ids": ["gap:binding-target"],
+                        "sample_sources": [
+                            {
+                                "canonical_gap_id": "gap:binding-target",
+                                "source_file": "src/binding.rs",
+                                "evidence_class": "call_presence",
+                                "line": 88,
+                                "expression": "exported_binding()",
+                                "limitation_reason": "Rust seam is on a binding surface without Rust-side test context"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "top_ready_packets": []
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "outcomes_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            }
+        });
+        let attempt_ledger = serde_json::json!({
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": {
+                "state": "full",
+                "downstream_consumable": true
+            },
+            "summary": {
+                "attempts_total": 0,
+                "canonical_gaps_total": 0,
+                "not_attempted": 0,
+                "orphaned_receipts": 0
+            },
+            "attempts": []
+        });
+
+        let report = ripr_swarm_readiness_from_values(
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-plan.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&swarm_plan),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&outcomes),
+            },
+            RiprSwarmReadinessInput {
+                path: "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+                state: "read".to_string(),
+                limitation: None,
+                value: Some(&attempt_ledger),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&ripr_swarm_readiness_json(&report)?)
+            .map_err(|err| err.to_string())?;
+        assert_eq!(value["summary"]["swarm_ready_packets"], 0);
+        assert_eq!(value["summary"]["public_projection_eligible_packets"], 0);
+        assert_eq!(
+            value["limitation_route_quality"][0]["repair_route"],
+            "analysis/cross-language-test-target-inference"
+        );
+        assert_eq!(
+            value["limitation_route_quality"][0]["route_state"],
+            "non_actionable_limitation"
+        );
+        assert_eq!(
+            value["limitation_route_quality"][0]["language_aware_placement"]["status"],
+            "cross_language_target_inference_unresolved"
+        );
+        assert_eq!(
+            value["limitation_route_quality"][0]["language_aware_placement"]["navigation_only_external_target_status"],
+            "requires_explicit_external_observer_target_evidence"
+        );
+        assert_eq!(
+            value["limitation_route_quality"][0]["packet_policy"],
+            "not_public_repair_packet"
+        );
+        assert!(
+            value["limitation_route_quality"][0]
+                .get("public_projection_eligible")
+                .is_none()
+        );
+        assert!(
+            value["limitation_route_quality"][0]
+                .get("swarm_ready")
+                .is_none()
+        );
+        assert!(
+            value["repair_route_quality"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        );
+        assert!(value["top_next_action"]["kind"] == "route_static_limitation_backlog");
+
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("## Limitation Route Quality"));
+        assert!(markdown.contains("analysis/cross-language-test-target-inference"));
+        assert!(markdown.contains("cross_language_target_inference_unresolved"));
+        assert!(markdown.contains("requires_explicit_external_observer_target_evidence"));
+        assert!(markdown.contains("not_public_repair_packet"));
+        assert!(markdown.contains("src/binding.rs:88"));
+        Ok(())
+    }
+
+    #[test]
     fn ripr_swarm_readiness_hardens_legacy_limitation_backlog_packets() -> Result<(), String> {
         let swarm_plan = serde_json::json!({
             "report": "swarm-plan",
@@ -102409,6 +102931,11 @@ covered_by = ["cargo xtask check-file-policy"]
                 .is_some()
         );
         assert!(value.get("evidence_class_work_queue").is_some());
+        assert!(
+            value
+                .get("language_aware_placement_route_quality")
+                .is_some()
+        );
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -102771,6 +103298,7 @@ covered_by = ["cargo xtask check-file-policy"]
             "Repair kind",
             "Actionable Gap Packet Public Projection Readiness",
             "Projection exclusion reason",
+            "Language-Aware Placement Route Quality",
             "Evidence Class Work Queue",
             "Dominant signal",
             "Maturity By Class",
@@ -103008,6 +103536,131 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Actionable Gap Packet Public Projection Readiness"));
         assert!(markdown.contains("Public projection eligible packets"));
         assert!(markdown.contains("missing_receipt_command"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_summarizes_language_aware_placement_route_quality()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 7, 0, 0, 7);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "static_limitations".to_string(),
+                serde_json::json!({
+                    "by_reason": [],
+                    "by_stage": {},
+                    "by_category": {
+                        "cross_language_target_unresolved": 7,
+                        "cross_language_oracle_visibility_unresolved": 2
+                    },
+                    "repair_routes": {
+                        "analysis/cross-language-test-target-inference": 7,
+                        "analysis/cross-language-oracle-visibility": 2
+                    }
+                }),
+            );
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 7,
+                        "canonical_items": 7,
+                        "actionable_gaps": 0,
+                        "static_limitations": 7
+                    },
+                    "coverage": {
+                        "static_unknown_without_named_limitation": 0,
+                        "canonical_items_without_repair_route": 0,
+                        "canonical_items_without_verify_command": 0
+                    },
+                    "actionable_gap_packet_public_projection": {
+                        "scope": "emitted_actionable_gap_packets",
+                        "public_projection_eligible_packets": 0,
+                        "public_projection_excluded_packets": 1,
+                        "projection_exclusion_reasons": [
+                            {"label": "cross_language_target_unresolved", "count": 1}
+                        ]
+                    },
+                    "actionable_gap_packets": [
+                        {
+                            "canonical_gap_id": "gap:nav-only",
+                            "public_projection_eligible": false,
+                            "projection_exclusion_reasons": [
+                                "cross_language_target_unresolved"
+                            ],
+                            "navigation_only_target": {
+                                "file": "test/js/web/fetch/blob.test.ts",
+                                "line": 41,
+                                "language": "typescript",
+                                "repair_packet_ready": false
+                            }
+                        }
+                    ]
+                }),
+            );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let placement = &value["language_aware_placement_route_quality"];
+
+        assert_eq!(placement["status"], "navigation_only_context_visible");
+        assert_eq!(
+            placement["repair_route"],
+            "analysis/cross-language-test-target-inference"
+        );
+        assert_eq!(
+            placement["cross_language_target_unresolved_signals"],
+            serde_json::Value::from(7)
+        );
+        assert_eq!(
+            placement["cross_language_test_target_inference_route_signals"],
+            serde_json::Value::from(7)
+        );
+        assert_eq!(
+            placement["cross_language_oracle_visibility_unresolved_signals"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            placement["navigation_only_external_target_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            placement["navigation_only_external_target_public_promotions"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            placement["navigation_only_external_target_status"],
+            "explicit_navigation_context_only"
+        );
+        assert!(placement["non_claims"].as_array().is_some_and(|claims| {
+            claims
+                .iter()
+                .any(|claim| claim == "not a public repair packet")
+        }));
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_unresolved_canonical_gaps"],
+            serde_json::Value::from(0)
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("## Language-Aware Placement Route Quality"));
+        assert!(markdown.contains("analysis/cross-language-test-target-inference"));
+        assert!(markdown.contains("Navigation-only external target packets"));
+        assert!(markdown.contains("navigation_only_external_target_status"));
+        assert!(markdown.contains("not runtime calibration or public repair packets"));
         Ok(())
     }
 
