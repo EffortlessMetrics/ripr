@@ -4375,7 +4375,9 @@ Blocking conditions:
 
 Campaign ID: `lane1-real-repo-trust-readiness`
 
-Status: active.
+Status: closed. `.ripr/goals/active.toml` now records `status = "closed"`
+and `no_current_goal = true`; the closeout audit is
+[Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md).
 
 The self-hosted routed runner proof campaign is closed and archived. Live
 release handoff state says source `ripr` 0.8.0 has already been tagged and
@@ -4427,7 +4429,7 @@ Work items:
 | `report/review-comments-source-locations` | done | Review-comments Markdown rows now carry file:line/span or an explicit unknown-location limitation route. |
 | `cache/large-seam-cache-skip-limitation` | done | Large seam-cache skips are named, counted, configured, and preserved as limited state. |
 | `analysis/cross-language-oracle-visibility-limitation` | done | TS-tested Rust and binding/FFI seams route to named limitations when external oracle visibility is unresolved. |
-| `report/binding-ffi-target-placement-fail-closed` | active | Suppress unrelated Rust suggested-test placement for binding/FFI or externally tested seams. |
+| `report/binding-ffi-target-placement-fail-closed` | done | Suppress unrelated Rust suggested-test placement for binding/FFI or externally tested seams. |
 
 Commands:
 
@@ -4451,3 +4453,12 @@ Blocking conditions:
 - changing provider, autonomous edit, mutation-execution, badge, default CI
   blocking, source release, publishing, signing, marketplace, or install-doc
   behavior without explicit authorization.
+
+Closeout:
+
+- [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md)
+- The closed manifest archive is
+  `.ripr/goals/archive/2026-06-03-lane1-real-repo-trust-readiness.toml`.
+- #909, #908, #910, and #911 remain broader follow-up routes for scalable seam
+  cache, cross-language oracle graph proof, and language-aware repair target
+  inference. They are not completed by this closeout.
