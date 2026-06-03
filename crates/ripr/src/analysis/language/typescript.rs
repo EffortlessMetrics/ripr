@@ -343,7 +343,7 @@ impl TypeScriptBunBridgeVerdict {
 
     fn expected_action(self) -> &'static str {
         match self {
-            Self::TsDiscriminated => "no_new_test_needed",
+            Self::TsDiscriminated => "no_missing_bridge_discriminator",
             Self::TsMissingResizable => "add_resizable_array_buffer_blob_case",
             Self::TsMissingShared => "add_shared_array_buffer_blob_case",
             Self::TsMissingSharedAndResizable => "add_shared_and_resizable_blob_cases",
@@ -4968,7 +4968,7 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         assert_evidence_contains(&finding, "rust_owner=Blob::from_js_without_defer_gc");
         assert_evidence_contains(
             &finding,
-            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_new_test_needed",
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
         );
         assert_evidence_contains(
             &finding,
