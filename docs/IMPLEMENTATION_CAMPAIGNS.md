@@ -4549,8 +4549,12 @@ Closeout:
 
 Campaign ID: `lane1-language-aware-placement-navigation`
 
-Status: active. `.ripr/goals/active.toml` selects this campaign after
-`lane1-large-repo-runtime-completeness` closed with `no_current_goal = true`.
+Status: complete. The
+[Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md)
+records the closed campaign; `.ripr/goals/active.toml` now records
+`status = "closed"` and `no_current_goal = true`, with the closed manifest
+archived at
+`.ripr/goals/archive/2026-06-03-lane1-language-aware-placement-navigation.toml`.
 
 This campaign is scoped to live #911: suggested-test placement must stop being
 confident in the wrong language or crate, while still becoming more useful when
@@ -4590,7 +4594,7 @@ Work items:
 | `goals/language-aware-placement-navigation-activation` | done | Select #911 as the first Lane 1 successor after `lane1-large-repo-runtime-completeness` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, or source distribution authority. |
 | `report/language-aware-placement-navigation` | done | #938 surfaces explicit configured external observer target evidence as navigation-only limitation context in review-comments, LSP static-limit notes, and packet-adjacent targeted-test briefs, while unknown targets keep a named blocked route and no repair action, verify command, receipt command, or allowed edit surface. |
 | `report/language-aware-placement-route-quality` | done | #940 summarizes language-aware placement limits and navigation-only external target evidence in readiness, route-quality, and calibration outputs without promoting unresolved or preview external targets into public repair packets. |
-| `campaign/language-aware-placement-closeout` | ready | Close #911 with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one. |
+| `campaign/language-aware-placement-closeout` | done | Close #911 with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one. |
 
 Commands:
 
@@ -4623,3 +4627,11 @@ Blocking conditions:
 - changing provider, autonomous edit, mutation-execution, badge, default CI
   blocking, source release, publishing, signing, marketplace, or install-doc
   behavior without explicit authorization.
+
+Closeout:
+
+- [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md)
+- The closed manifest archive is
+  `.ripr/goals/archive/2026-06-03-lane1-language-aware-placement-navigation.toml`.
+- Future cross-language oracle graph work should continue through #908/#910 or
+  fresh issue-backed manifests rather than extending this closed #911 campaign.

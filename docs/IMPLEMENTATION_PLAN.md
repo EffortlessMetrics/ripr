@@ -71,18 +71,17 @@ than one behavior contract or touches repo shape.
 | Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Complete: [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md) records CX53/CX43 routed proof, #24/#34 issue-ledger updates, unchanged branch-protection boundary, and remaining non-goal follow-ups. |
 | Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
-| Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Active: `.ripr/goals/active.toml` selects #911 after the large-repo runtime closeout. The navigation-only placement slice landed in #938; the next ready slice should summarize those language-aware placement limitations in readiness, route-quality, and calibration outputs without promoting unresolved or preview external targets into public repair packets. |
+| Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it records `status = "active"` for
-`lane1-language-aware-placement-navigation`. That #911 successor campaign is
-scoped to suggested-test placement safety after #931 made binding/FFI placement
-fail closed: explicit external observer target evidence may become
-navigation-only limitation context, but unknown external targets must remain
-blocked with no public repair packet, no verify command, no receipt command,
-and no allowed edit surface. #938 landed the first navigation-only placement
-surface across review-comments, LSP, and packet-adjacent output; the next ready
-slice is route-quality/readiness summarization for those limitations. The closed
+it records `status = "closed"` and `no_current_goal = true` for
+`lane1-language-aware-placement-navigation`. The
+[closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md)
+records that the #911 successor campaign closed after #938 made explicit
+external observer target evidence navigation-only across review-comments, LSP,
+and packet-adjacent output, #940 summarized those limitations in readiness and
+scorecard surfaces, and #941 advanced the closeout item. #908 and #910 remain
+the open cross-language oracle graph work. The closed
 `lane1-large-repo-runtime-completeness`
 campaign records the #909 post-0.8 trust-debt PR chain through #935, including
 explicit large-cache skip state, sharded classified seam cache storage,

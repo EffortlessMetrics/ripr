@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Lane 1 Language-Aware Placement Navigation closeout](2026-06-03-lane1-language-aware-placement-navigation-closeout.md)
 - [Lane 1 Large-Repo Runtime Completeness closeout](2026-06-03-lane1-large-repo-runtime-completeness-closeout.md)
 - [Lane 1 Real-Repo Trust Readiness closeout](2026-06-03-lane1-real-repo-trust-readiness-closeout.md)
 - [Bun UB TypeScript Preview closeout](2026-06-03-bun-ub-typescript-preview-closeout.md)
