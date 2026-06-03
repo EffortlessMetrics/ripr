@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Bun UB TypeScript Preview closeout](2026-06-03-bun-ub-typescript-preview-closeout.md)
 - [Self-Hosted Routed Runner Proof closeout](2026-06-03-self-hosted-routed-runner-proof-closeout.md)
 - [0.8.0 source release](2026-06-02-0.8.0-source-release.md)
 - [0.8.0 release freeze](2026-06-02-0.8.0-release-freeze.md)
