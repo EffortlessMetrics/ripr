@@ -150,6 +150,13 @@ ArrayBuffer route, the top placement remains
 discriminator. These facts, bridge hints, placement hints, and card fields do
 not promote TypeScript preview evidence into repair packets, generated tests,
 source edits, gates, badges, baselines, RIPR Zero, or support-tier claims.
+Repositories may opt into a Bun stable-byte review profile with
+`[profiles.bun_ub]` in `ripr.toml`; that profile records TypeScript-family
+`test_roots` and a repo-relative `bridge_hints` file for advisory operator
+workflow only. The profile does not enable TypeScript by itself, does not add a
+separate `javascript` language key, and does not execute `tsc`, `tsserver`,
+Bun/Jest/Vitest, mutation, generated tests, source edits, gates, badges,
+baselines, RIPR Zero, or support-tier promotion.
 
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at

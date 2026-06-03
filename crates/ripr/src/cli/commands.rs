@@ -7225,6 +7225,16 @@ fn report_config_status(root: &Path, ok: &mut bool) {
                 .collect::<Vec<_>>()
                 .join(", ");
             println!("- Enabled languages: {languages}");
+            if let Some(profile) = config.profiles().bun_ub() {
+                println!("- Bun UB profile: configured (preview advisory only)");
+                println!("- Bun UB test roots: {}", profile.test_roots().join(", "));
+                println!("- Bun UB bridge hints: {}", profile.display_bridge_hints());
+                println!(
+                    "- Bun UB authority: no runtime Bun, tsc, tsserver, generated tests, gates, badges, baselines, or support-tier promotion"
+                );
+            } else {
+                println!("- Bun UB profile: not configured");
+            }
         }
         Err(err) => {
             println!("! Config: invalid {CONFIG_FILE_NAME}");

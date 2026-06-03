@@ -59,3 +59,14 @@ path = ".ripr/suppressions.toml"
 # authoritative when present.
 # Valid values: rust, typescript, python.
 enabled = ["rust"]
+
+# Optional Bun stable-byte UB advisory profile. Leave this commented unless the
+# repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
+# JavaScript test files are covered by the `typescript` adapter.
+#
+# [profiles.bun_ub]
+# test_roots = [
+#   "test/js/**/*.test.ts",
+#   "test/js/**/*.test.js",
+# ]
+# bridge_hints = "ripr.bun.bridge.toml"

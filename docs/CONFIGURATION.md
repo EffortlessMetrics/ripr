@@ -656,6 +656,36 @@ adapters the repo wants to inspect:
 enabled = ["rust", "typescript", "python"]
 ```
 
+### `[profiles.bun_ub]`
+
+The Bun UB profile is an opt-in advisory profile for Bun stable-byte review.
+It records where TypeScript-family integration tests and Bun bridge hints live
+so operators can run the calibrated Blob / ArrayBuffer cross-language preview
+without changing Rust defaults.
+
+```toml
+[languages]
+enabled = ["rust", "typescript"]
+
+[profiles.bun_ub]
+test_roots = [
+  "test/js/**/*.test.ts",
+  "test/js/**/*.test.js",
+]
+bridge_hints = "ripr.bun.bridge.toml"
+```
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `test_roots` | non-empty array of repo-relative glob strings | none; required when the profile is present | Names the TypeScript-family Bun integration tests to inspect. JavaScript test files are covered by the `typescript` adapter. |
+| `bridge_hints` | repo-relative path | none; required when the profile is present | Points to the opt-in Bun TS-to-Rust bridge-hint file. |
+
+This profile is read-only configuration. It does not enable TypeScript by
+itself, run `tsc`, start `tsserver`, execute Bun/Jest/Vitest, generate tests,
+edit source, contribute to gates, badges, baselines, or RIPR Zero, or promote
+TypeScript/JavaScript out of preview. `ripr doctor` reports whether the profile
+is configured and repeats that authority boundary.
+
 See [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for how to
 read preview labels, static limits, generated-CI grouping, editor projection,
 and rollback.
