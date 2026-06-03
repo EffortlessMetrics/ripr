@@ -1,39 +1,38 @@
-id = "lane1-large-repo-runtime-completeness"
-title = "Lane 1 Large-Repo Runtime Completeness"
-status = "closed"
+id = "lane1-language-aware-placement-navigation"
+title = "Lane 1 Language-Aware Placement Navigation"
+status = "active"
 lane = "lane1"
-issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/909"
-no_current_goal = true
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/911"
+no_current_goal = false
 
-# Selected after Lane 1 Real-Repo Trust Readiness closed with
-# `no_current_goal = true`. Live repo state on 2026-06-03 shows #909 remains
-# open as the canonical large-repo cache/scaling follow-up after #928 made
-# cache skips explicit and #932 closed the trust-readiness campaign. The
-# selected work items landed through #935; no successor campaign is selected
-# by this closeout.
+# Selected after Lane 1 Large-Repo Runtime Completeness closed with
+# `no_current_goal = true`. Live repo state on 2026-06-03 shows #911 remains
+# open as the narrow language-aware suggested-test placement follow-up after
+# #931 made binding/FFI target placement fail closed. This campaign may improve
+# navigation only when target evidence is explicit; it must not create public
+# repair packets or claim full cross-language oracle proof.
 
 objective = """
-Make large-repo repo-exposure warm paths usable without representing limited
-or sampled input as full truth: the full classified seam cache should avoid
-all-or-nothing store skips on large monorepos, cache reports/GC should keep
-new cache files visible, and remaining fast-path or scaling work should stay
-named instead of becoming fake actionability.
+Make suggested-test placement safe and useful for binding, FFI, and externally
+tested seams by routing known external target evidence as navigation-only
+limitation context, while keeping unknown targets fail-closed instead of
+emitting unrelated Rust test files or repair packets.
 """
 
 end_state = [
-  "full classified seam cache stores large repo-exposure results in bounded shards instead of silently skipping the entire cache entry",
-  "warm repo-exposure loads stitch shard files only when the manifest and every shard match the current cache key",
-  "cache report and GC continue to scan every shard under target/ripr/cache without touching reports, receipts, build output, workflow artifacts, or source files",
-  "RIPR_REPO_SEAM_CACHE_LIMIT remains a positive integer tuning knob with documented default behavior and clear invalid-value diagnostics",
-  "large-repo runtime reports keep full, sampled, stale, timeout, incomplete, runner-failure, and large-cache states explicit",
-  "diff-scoped large-repo review fast paths report changed production files plus bounded immediate callers as scoped review evidence instead of full-repo truth",
+  "ordinary Rust seams with direct Rust-side test context continue to suggest only locally supported Rust test targets",
+  "binding, FFI, or externally tested seams with explicit configured external observer evidence can surface a navigation-only target file and route without becoming public repair packets",
+  "binding, FFI, or externally tested seams without explicit target evidence keep suggested test placement unknown or not applicable with a named blocked route",
+  "LSP, review-comments, and agent packet surfaces suppress repair actions whenever allowed_edit_surface, verify_command, receipt_command, or target shape are unresolved",
+  "readiness and route-quality surfaces preserve language-aware target-placement limitations as limitations rather than actionability",
 ]
 
 hard_rules = [
-  "do not represent sampled, stale, timeout, runner-failure, incomplete, or cache-limited runs as full",
-  "do not count raw findings as product truth",
-  "do not create public repair packets from static limitations",
-  "do not claim full large-monorepo optimization is complete before diff-scoped review runtime is validated",
+  "do not suggest unrelated Rust test files for binding or FFI seams",
+  "do not infer TypeScript, Python, or other external test targets without explicit bridge or observer evidence",
+  "do not create public repair packets from navigation-only external target evidence",
+  "do not invent verify commands, receipt commands, candidate values, or allowed edit surfaces for unresolved external targets",
+  "do not claim full cross-language oracle graph proof or runtime coverage proof",
   "do not claim 0.8.0 on crates.io includes post-release swarm fixes",
   "source ripr remains release, signing, publishing, and distribution authority",
 ]
@@ -44,52 +43,69 @@ non_goals = [
   "no mutation execution",
   "no default blocking CI or badge semantic switch",
   "no full cross-language oracle proof",
-  "no language-aware external test target placement",
+  "no generated tests",
   "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
 ]
 
 [[work_item]]
-id = "cache/large-repo-sharded-seam-cache"
+id = "goals/language-aware-placement-navigation-activation"
 status = "done"
-branch = "cache-large-repo-sharded-seam-cache"
+branch = "campaign-language-aware-placement-navigation"
 stackable = false
-acceptance = "Full repo seam cache entries larger than RIPR_REPO_SEAM_CACHE_LIMIT are written and reloaded as bounded shard files; corrupt or incomplete shard sets fail closed to cold compute; cache report/gc still see the files under target/ripr/cache; docs preserve the default and non-claims."
+acceptance = "Select #911 as the first Lane 1 successor after lane1-large-repo-runtime-completeness closed with no_current_goal=true, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, or source distribution authority."
 commands = [
-  "cargo test -p ripr seam_cache -- --test-threads=1",
-  "cargo test -p ripr seam_inventory -- --test-threads=1",
-  "cargo test -p xtask cache -- --test-threads=1",
-  "cargo xtask cache report",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "report/large-repo-cache-shard-summary"
-status = "done"
-branch = "report-large-repo-cache-shard-summary"
+id = "report/language-aware-placement-navigation"
+status = "ready"
+branch = "report-language-aware-placement-navigation"
 stackable = false
-blocked_by = ["cache/large-repo-sharded-seam-cache"]
-acceptance = "Cache reports summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and any orphan or incomplete shard sets without reading source or build artifacts."
+acceptance = "Review-comments, LSP, and packet-adjacent output can surface explicit external observer target evidence as navigation-only limitation context for configured binding/FFI routes, while unknown external targets keep a named blocked route and no repair action, no verify command, no receipt command, and no allowed edit surface."
 commands = [
-  "cargo test -p xtask cache -- --test-threads=1",
-  "cargo xtask cache report",
+  "cargo test -p ripr suggested_test -- --test-threads=1",
+  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
+  "cargo test -p ripr lsp --lib",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "analysis/diff-scoped-large-repo-review-fast-path"
-status = "done"
-branch = "analysis-diff-scoped-large-repo-review-fast-path"
+id = "report/language-aware-placement-route-quality"
+status = "blocked"
+branch = "report-language-aware-placement-route-quality"
 stackable = false
-blocked_by = ["report/large-repo-cache-shard-summary"]
-acceptance = "A tiny diff in a large repo can review only changed seams plus bounded immediate callers when the full repo path is too expensive, while reporting the narrowed input as limited or scoped rather than full-repo truth."
+blocked_by = ["report/language-aware-placement-navigation"]
+acceptance = "Readiness, route-quality, and calibration outputs summarize language-aware placement limits and navigation-only external target evidence without promoting unresolved or preview external targets into public repair packets."
 commands = [
-  "cargo test -p ripr review_comments -- --test-threads=1",
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask evidence-quality-scorecard",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/language-aware-placement-closeout"
+status = "blocked"
+branch = "campaign-language-aware-placement-closeout"
+stackable = false
+blocked_by = ["report/language-aware-placement-navigation", "report/language-aware-placement-route-quality"]
+acceptance = "Close the #911 campaign with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one."
+commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
   "cargo xtask check-pr",
 ]

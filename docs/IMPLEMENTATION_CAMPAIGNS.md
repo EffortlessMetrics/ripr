@@ -4544,3 +4544,82 @@ Closeout:
 - Future cross-language oracle graph or language-aware placement work should
   open a successor issue-backed manifest rather than extending this closed
   #909 campaign.
+
+## Lane 1 Campaign: Language-Aware Placement Navigation
+
+Campaign ID: `lane1-language-aware-placement-navigation`
+
+Status: active. `.ripr/goals/active.toml` selects this campaign after
+`lane1-large-repo-runtime-completeness` closed with `no_current_goal = true`.
+
+This campaign is scoped to live #911: suggested-test placement must stop being
+confident in the wrong language or crate, while still becoming more useful when
+RIPR has explicit external observer target evidence. It follows #931, which
+made binding/FFI target placement fail closed. It does not reopen the published
+0.8.0 release claim boundary and does not claim full cross-language oracle graph
+proof.
+
+Objective:
+
+```text
+Make suggested-test placement safe and useful for binding, FFI, and externally
+tested seams by routing known external target evidence as navigation-only
+limitation context, while keeping unknown targets fail-closed instead of
+emitting unrelated Rust test files or repair packets.
+```
+
+End state:
+
+- Ordinary Rust seams with direct Rust-side test context continue to suggest
+  only locally supported Rust test targets.
+- Binding, FFI, or externally tested seams with explicit configured external
+  observer evidence can surface a navigation-only target file and route without
+  becoming public repair packets.
+- Binding, FFI, or externally tested seams without explicit target evidence keep
+  suggested test placement unknown or not applicable with a named blocked route.
+- LSP, review-comments, and agent packet surfaces suppress repair actions
+  whenever allowed edit surface, verify command, receipt command, or target
+  shape is unresolved.
+- Readiness and route-quality surfaces preserve language-aware target-placement
+  limitations as limitations rather than actionability.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/language-aware-placement-navigation-activation` | done | Select #911 as the first Lane 1 successor after `lane1-large-repo-runtime-completeness` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, or source distribution authority. |
+| `report/language-aware-placement-navigation` | ready | Surface explicit external observer target evidence as navigation-only limitation context for configured binding/FFI routes, while unknown external targets keep a named blocked route and no repair action, verify command, receipt command, or allowed edit surface. |
+| `report/language-aware-placement-route-quality` | blocked | Summarize language-aware placement limits and navigation-only external target evidence in readiness, route-quality, and calibration outputs without promoting unresolved or preview external targets into public repair packets. Blocked by `report/language-aware-placement-navigation`. |
+| `campaign/language-aware-placement-closeout` | blocked | Close #911 with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one. Blocked by the two report slices above. |
+
+Commands:
+
+```bash
+rtk cargo test -p ripr suggested_test -- --test-threads=1
+rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+rtk cargo test -p ripr lsp --lib
+rtk cargo xtask ripr-swarm readiness
+rtk cargo xtask evidence-quality-scorecard
+rtk cargo xtask check-output-contracts
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- suggesting unrelated Rust test files for binding or FFI seams;
+- inferring TypeScript, Python, or other external test targets without explicit
+  bridge or observer evidence;
+- creating public repair packets from navigation-only external target evidence;
+- inventing verify commands, receipt commands, candidate values, or allowed edit
+  surfaces for unresolved external targets;
+- claiming full cross-language oracle graph proof or runtime coverage proof;
+- changing provider, autonomous edit, mutation-execution, badge, default CI
+  blocking, source release, publishing, signing, marketplace, or install-doc
+  behavior without explicit authorization.
