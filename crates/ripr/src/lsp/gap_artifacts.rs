@@ -1835,6 +1835,22 @@ mod tests {
     }
 
     #[test]
+    fn actionable_gaps_report_rejects_cross_language_target_unresolved_packet() {
+        let mut artifact = actionable_gaps_report();
+        artifact["packets"][0]["public_projection_eligible"] = json!(false);
+        artifact["packets"][0]["projection_exclusion_reasons"] =
+            json!(["cross_language_target_unresolved"]);
+        artifact["packets"][0]["allowed_edit_surface"] = json!([]);
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedArtifact(
+                "actionable packet must be public_projection_eligible"
+            ))
+        );
+    }
+
+    #[test]
     fn actionable_gaps_report_rejects_missing_repair_guidance() {
         let mut artifact = actionable_gaps_report();
         artifact["packets"][0]["repair_kind"] = json!("repair_route_unknown");

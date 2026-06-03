@@ -19754,6 +19754,7 @@ const LANE1_BYTES_PER_GB: u64 = 1024 * 1024 * 1024;
 const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_SAMPLE_SEAMS";
 const LANE1_EVIDENCE_AUDIT_SAMPLE_SEAM_LIMIT: usize = 5_000;
 const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
+const CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY: &str = "cross_language_target_unresolved";
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
 
@@ -21730,14 +21731,6 @@ impl Lane1EvidenceAuditBuilder {
             audit_actionable_gap_related_test_or_observer(record, canonical_item);
         let candidate_value_or_observer =
             audit_actionable_gap_candidate_value_or_observer(record, canonical_item);
-        let typed_related_target_available = related_test_or_observer
-            .as_ref()
-            .and_then(ripr_swarm_plan_related_target_file)
-            .is_some()
-            || candidate_value_or_observer
-                .as_ref()
-                .and_then(|candidate| ripr_swarm_attempt_related_target_file(candidate))
-                .is_some();
         let raw_evidence_refs = audit_json_array_owned(canonical_item, &["raw_evidence_refs"])
             .or_else(|| audit_json_array_owned(canonical_item, &["raw_findings"]))
             .or_else(|| audit_json_array_owned(record, &["raw_evidence_refs"]))
@@ -21746,6 +21739,19 @@ impl Lane1EvidenceAuditBuilder {
         let static_limitations = audit_json_array_owned(canonical_item, &["static_limitations"])
             .or_else(|| audit_json_array_owned(record, &["static_limitations"]))
             .unwrap_or_default();
+        let cross_language_target_unresolved = audit_static_limitations_has_category(
+            &static_limitations,
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY,
+        );
+        let typed_related_target_available = !cross_language_target_unresolved
+            && (related_test_or_observer
+                .as_ref()
+                .and_then(ripr_swarm_plan_related_target_file)
+                .is_some()
+                || candidate_value_or_observer
+                    .as_ref()
+                    .and_then(|candidate| ripr_swarm_attempt_related_target_file(candidate))
+                    .is_some());
         let confidence_basis = audit_non_empty_string(canonical_item, &["confidence", "basis"])
             .or_else(|| audit_non_empty_string(record, &["calibration", "confidence"]))
             .unwrap_or_else(|| "unknown".to_string());
@@ -21757,6 +21763,7 @@ impl Lane1EvidenceAuditBuilder {
             record,
             canonical_item,
             &related_test_or_observer,
+            cross_language_target_unresolved,
         );
         let gap_state = audit_non_empty_string(canonical_item, &["gap_state"])
             .unwrap_or_else(|| "gap_state_unknown".to_string());
@@ -21787,6 +21794,7 @@ impl Lane1EvidenceAuditBuilder {
                     &raw_evidence_refs,
                 ),
                 static_limitations_count: static_limitations.len(),
+                cross_language_target_unresolved,
             });
         let public_projection_eligible = projection_exclusion_reasons.is_empty();
 
@@ -25030,7 +25038,12 @@ fn ripr_swarm_plan_related_target_file(value: &Value) -> Option<String> {
 }
 
 fn ripr_swarm_plan_allowed_edit_surface(packet: &Value) -> Vec<String> {
-    if ripr_swarm_readiness_packet_projection_exclusion(packet, "missing_allowed_edit_surface") {
+    if ripr_swarm_readiness_packet_projection_exclusion(packet, "missing_allowed_edit_surface")
+        || ripr_swarm_readiness_packet_projection_exclusion(
+            packet,
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY,
+        )
+    {
         return Vec::new();
     }
 
@@ -32042,6 +32055,7 @@ struct AuditActionableGapProjectionInput<'a> {
     allowed_edit_surface_count: usize,
     raw_evidence_refs_count: usize,
     static_limitations_count: usize,
+    cross_language_target_unresolved: bool,
 }
 
 fn audit_actionable_gap_projection_exclusion_reasons(
@@ -32138,6 +32152,12 @@ fn audit_actionable_gap_projection_exclusion_reasons(
     if input.allowed_edit_surface_count == 0 {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_allowed_edit_surface");
     }
+    if input.cross_language_target_unresolved {
+        audit_push_projection_exclusion_reason(
+            &mut reasons,
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY,
+        );
+    }
     if input.raw_evidence_refs_count == 0 {
         audit_push_projection_exclusion_reason(&mut reasons, "missing_raw_evidence_refs");
     }
@@ -32181,6 +32201,13 @@ fn audit_push_projection_exclusion_reason(reasons: &mut Vec<String>, reason: &st
     }
 }
 
+fn audit_static_limitations_has_category(values: &[Value], category: &str) -> bool {
+    values.iter().any(|value| {
+        value.as_str().is_some_and(|value| value == category)
+            || audit_non_empty_string(value, &["category"]).is_some_and(|value| value == category)
+    })
+}
+
 fn audit_actionable_gap_related_test_or_observer(
     record: &Value,
     canonical_item: &Value,
@@ -32197,7 +32224,12 @@ fn audit_actionable_gap_allowed_edit_surface(
     record: &Value,
     canonical_item: &Value,
     related_test_or_observer: &Option<Value>,
+    cross_language_target_unresolved: bool,
 ) -> Vec<String> {
+    if cross_language_target_unresolved {
+        return Vec::new();
+    }
+
     let mut values = audit_string_array(canonical_item, &["allowed_edit_surface"])
         .or_else(|| audit_string_array(record, &["allowed_edit_surface"]))
         .unwrap_or_default();
@@ -91399,6 +91431,114 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_actionable_gap_packets_fail_closed_for_cross_language_target_unresolved()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-cross-language-target-unresolved");
+        write(&root.join("test/js/web/fetch/blob.test.ts"), "");
+        let root = root.to_string_lossy().to_string();
+        let report = lane1_evidence_audit_from_repo_exposure(
+            &root,
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "packet-cross-language-target-unresolved",
+                  "headline_eligible": true,
+                  "file": "src/jsc/Blob.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "packet-cross-language-target-unresolved",
+                    "canonical_gap_id": "gap:packet-cross-language-target-unresolved",
+                    "location": {"file": "src/jsc/Blob.rs", "line": 88},
+                    "raw_findings": [
+                      {"file": "src/jsc/Blob.rs", "line": 88, "kind": "weakly_exposed", "expression": "array_buffer.shared || array_buffer.resizable"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:packet-cross-language-target-unresolved",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "add_focused_test",
+                      "raw_findings": [
+                        {"file": "src/jsc/Blob.rs", "line": 88, "kind": "weakly_exposed", "expression": "array_buffer.shared || array_buffer.resizable"}
+                      ],
+                      "why": "binding seam has unresolved cross-language test target placement",
+                      "recommended_repair": "Route target inference before suggesting a test file.",
+                      "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "suggested_assertion": "assert_eq!(blob_behavior(), expected)"
+                      },
+                      "related_test_or_observer": {
+                        "file": "test/js/web/fetch/blob.test.ts",
+                        "name": "blob copies shared buffers",
+                        "line": 41
+                      },
+                      "verify_command": "cargo xtask evidence-quality-scorecard",
+                      "receipt_command": "cargo xtask receipts check",
+                      "confidence": {"basis": "fixture_backed", "notes": []},
+                      "static_limitations": [
+                        {
+                          "stage": "cross_language_test_target",
+                          "state": "unknown",
+                          "category": "cross_language_target_unresolved",
+                          "repair_route": "analysis/cross-language-test-target-inference",
+                          "reason": "external test target visibility is unresolved"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let packet_json = lane1_actionable_gap_packets_json(&report)?;
+        let packet_value: serde_json::Value =
+            serde_json::from_str(&packet_json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            packet_value["packets"][0]["related_test_or_observer"]["file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["allowed_edit_surface"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            packet_value["packets"][0]["public_projection_eligible"],
+            serde_json::Value::Bool(false)
+        );
+        assert!(
+            packet_value["packets"][0]["projection_exclusion_reasons"]
+                .as_array()
+                .is_some_and(|reasons| reasons
+                    .iter()
+                    .any(|reason| reason == "cross_language_target_unresolved")),
+            "expected cross_language_target_unresolved in {}",
+            packet_value["packets"][0]["projection_exclusion_reasons"]
+        );
+
+        let swarm_plan = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &packet_value,
+        );
+        let blocked = ripr_swarm_plan_blocked_packets(&swarm_plan);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_static_limitation");
+        assert_eq!(blocked[0].allowed_edit_surface, Vec::<String>::new());
+        assert!(
+            blocked[0]
+                .projection_exclusion_reasons
+                .iter()
+                .any(|reason| reason == "cross_language_target_unresolved")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lane1_actionable_gap_packets_exclude_missing_canonical_gap_id() -> Result<(), String> {
         let root = temp_dir("lane1-missing-canonical-gap-id");
         write(&root.join("tests/pricing.rs"), "");
@@ -91498,6 +91638,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91528,6 +91669,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91558,6 +91700,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 0,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91588,6 +91731,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91618,6 +91762,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91648,6 +91793,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 
@@ -91703,6 +91849,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
         assert!(reasons.is_empty());
@@ -91734,6 +91881,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 allowed_edit_surface_count: 1,
                 raw_evidence_refs_count: 1,
                 static_limitations_count: 0,
+                cross_language_target_unresolved: false,
             },
         );
 

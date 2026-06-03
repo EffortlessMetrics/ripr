@@ -14,6 +14,7 @@ use crate::domain::OracleStrength;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
+use crate::output::evidence_record::cross_language_test_target_unresolved;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -166,6 +167,9 @@ fn push_seam_actions(
         INSPECT_SEAM_PACKET_TITLE,
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
+    if cross_language_test_target_unresolved(context.seam) {
+        return;
+    }
     if suggested_assertion.is_some() || related_test.is_some() {
         actions.push(copy_targeted_test_brief_action(
             context.seam,
@@ -270,57 +274,62 @@ fn push_gap_actions(
     params: &CodeActionParams,
     context: GapActionContext<'_>,
 ) {
-    if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            COPY_FIRST_REPAIR_PACKET_TITLE,
-            COPY_FIRST_REPAIR_PACKET_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = python_agent_packet_target(params, context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            COPY_PYTHON_AGENT_PACKET_TITLE,
-            COPY_PYTHON_AGENT_PACKET_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            INSPECT_GAP_PACKET_TITLE,
-            INSPECT_GAP_PACKET_COMMAND_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
-        actions.push(copy_python_repair_card_action(target));
-    }
-    if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
-        actions.push(copy_python_pytest_skeleton_action(target));
-    }
-    if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
-        actions.push(open_related_test_action(target));
-    }
-    let verify_command = first_safe_command_at(
-        context.snapshot.root.as_path(),
-        context.data,
-        &["verification_commands"],
-    );
-    if let Some(command) = &verify_command {
-        actions.push(copy_agent_loop_command_action(
-            AGENT_VERIFY_COMMAND_TITLE,
-            COPY_AGENT_VERIFY_COMMAND,
-            gap_command_target(context.diagnostic, "gap_verify", command),
-        ));
-    }
-    if verify_command.is_some()
-        && let Some(command) =
-            first_safe_receipt_command(context.snapshot.root.as_path(), context.data)
-    {
-        actions.push(copy_agent_loop_command_action(
-            AGENT_RECEIPT_COMMAND_TITLE,
-            COPY_AGENT_RECEIPT_COMMAND,
-            gap_command_target(context.diagnostic, "gap_receipt", &command),
-        ));
+    if !gap_cross_language_target_unresolved(context.data) {
+        if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
+            actions.push(copy_context_action(
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) =
+            python_agent_packet_target(params, context.snapshot, context.diagnostic)
+        {
+            actions.push(copy_context_action(
+                COPY_PYTHON_AGENT_PACKET_TITLE,
+                COPY_PYTHON_AGENT_PACKET_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic)
+        {
+            actions.push(copy_context_action(
+                INSPECT_GAP_PACKET_TITLE,
+                INSPECT_GAP_PACKET_COMMAND_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
+            actions.push(copy_python_repair_card_action(target));
+        }
+        if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
+            actions.push(copy_python_pytest_skeleton_action(target));
+        }
+        if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
+            actions.push(open_related_test_action(target));
+        }
+        let verify_command = first_safe_command_at(
+            context.snapshot.root.as_path(),
+            context.data,
+            &["verification_commands"],
+        );
+        if let Some(command) = &verify_command {
+            actions.push(copy_agent_loop_command_action(
+                AGENT_VERIFY_COMMAND_TITLE,
+                COPY_AGENT_VERIFY_COMMAND,
+                gap_command_target(context.diagnostic, "gap_verify", command),
+            ));
+        }
+        if verify_command.is_some()
+            && let Some(command) =
+                first_safe_receipt_command(context.snapshot.root.as_path(), context.data)
+        {
+            actions.push(copy_agent_loop_command_action(
+                AGENT_RECEIPT_COMMAND_TITLE,
+                COPY_AGENT_RECEIPT_COMMAND,
+                gap_command_target(context.diagnostic, "gap_receipt", &command),
+            ));
+        }
     }
     if let Some(target) = static_limit_note_target(context.diagnostic) {
         actions.push(copy_context_action(
@@ -1128,6 +1137,33 @@ fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
         "note": note,
         "limits_note": "Static evidence only; no runtime adequacy claim.",
     }))
+}
+
+fn gap_cross_language_target_unresolved(data: &Value) -> bool {
+    const CATEGORY: &str = "cross_language_target_unresolved";
+    string_at(data, &["static_limit_kind"]) == Some(CATEGORY)
+        || string_at(data, &["static_limit_category"]) == Some(CATEGORY)
+        || value_at(data, &["projection_exclusion_reasons"])
+            .and_then(Value::as_array)
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some(CATEGORY))
+            })
+        || limitation_array_contains_category(data, &["static_limits"], CATEGORY)
+        || limitation_array_contains_category(data, &["static_limitations"], CATEGORY)
+}
+
+fn limitation_array_contains_category(data: &Value, path: &[&str], category: &str) -> bool {
+    value_at(data, path)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                string_at(item, &["static_limit_kind"]) == Some(category)
+                    || string_at(item, &["static_limit_category"]) == Some(category)
+                    || string_at(item, &["category"]) == Some(category)
+            })
+        })
 }
 
 fn static_limit_note(data: &Value) -> Option<String> {

@@ -22,7 +22,8 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{
-    cross_language_oracle_visibility_unresolved, evidence_record_for, evidence_record_json_value,
+    CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, cross_language_oracle_visibility_unresolved,
+    cross_language_test_target_unresolved, evidence_record_for, evidence_record_json_value,
 };
 use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
@@ -755,6 +756,12 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
         display_path_text(&outline.suggested_file)
     ));
     out.push_str(&format!("- Suggested name: {}\n", outline.suggested_name));
+    if outline.suggested_file == "not_applicable" {
+        out.push_str(&format!(
+            "- Target-placement route: {}\n",
+            outline.suggested_reason
+        ));
+    }
     if let Some(value) = outline.candidate_value.as_ref() {
         out.push_str(&format!("- Candidate value: {value}\n"));
     }
@@ -783,6 +790,7 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
 pub(crate) struct TargetedTestBriefOutline {
     pub(crate) suggested_file: String,
     pub(crate) suggested_name: String,
+    pub(crate) suggested_reason: String,
     pub(crate) candidate_value: Option<String>,
     pub(crate) assertion_shape: String,
 }
@@ -801,6 +809,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
     TargetedTestBriefOutline {
         suggested_file: recommended.file,
         suggested_name: recommended.name,
+        suggested_reason: recommended.reason,
         candidate_value,
         assertion_shape: assertion_shape.example,
     }
@@ -1292,7 +1301,9 @@ fn is_actionable(class: SeamGripClass) -> bool {
 }
 
 fn is_actionable_entry(entry: &ClassifiedSeam) -> bool {
-    is_actionable(entry.class) && !cross_language_oracle_visibility_unresolved(entry)
+    is_actionable(entry.class)
+        && !cross_language_oracle_visibility_unresolved(entry)
+        && !cross_language_test_target_unresolved(entry)
 }
 
 fn task_for(class: SeamGripClass) -> &'static str {
@@ -1608,6 +1619,16 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
         snake_case_token(owner_short),
         test_name_suffix_for(entry.seam.kind())
     );
+    if cross_language_test_target_unresolved(entry) {
+        return RecommendedTest {
+            name: "not_applicable".to_string(),
+            file: "not_applicable".to_string(),
+            reason: format!(
+                "cross-language target is unresolved; route to `{}` before suggesting a test target",
+                CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+            ),
+        };
+    }
     if let Some(test) = nearest_strong_test_to_imitate(&entry.evidence) {
         return RecommendedTest {
             name,
@@ -2077,7 +2098,7 @@ fn predicate_boundary_assertion_hint(
 mod tests {
     use super::*;
     use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
-    use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
+    use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationReason, TestGripEvidence};
     use crate::domain::{
         Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence,
         StageState, ValueContext, ValueFact,
@@ -3720,6 +3741,96 @@ mod tests {
                     "cross-language binding seam should not emit {forbidden:?}: {json}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_brief_fails_closed_for_cross_language_target_unresolved() -> Result<(), String>
+    {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let brief = targeted_test_brief_for_classified_seam(&classified_with(
+            seam,
+            SeamGripClass::Ungripped,
+            Vec::new(),
+        ));
+
+        for needle in [
+            "- Suggested file: not_applicable",
+            "- Suggested name: not_applicable",
+            "analysis/cross-language-test-target-inference",
+        ] {
+            if !brief.contains(needle) {
+                return Err(format!(
+                    "missing target-unresolved brief text {needle:?} in:\n{brief}"
+                ));
+            }
+        }
+        for forbidden in ["tests/blob_tests.rs", "tests/Blob_tests.rs"] {
+            if brief.contains(forbidden) {
+                return Err(format!(
+                    "cross-language binding seam should not infer {forbidden:?}:\n{brief}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_queue_excludes_binding_seam_with_unrelated_rust_test_context() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let mut unrelated_rust_test = related_test_with(
+            "blob_module_smoke",
+            OracleKind::BroadError,
+            OracleStrength::Smoke,
+            crate::analysis::test_grip_evidence::RelationConfidence::Medium,
+        );
+        unrelated_rust_test.file = PathBuf::from("tests/blob_smoke.rs");
+        unrelated_rust_test.relation_reason = RelationReason::SameModule;
+        let entry = classified_with(
+            seam,
+            SeamGripClass::WeaklyGripped,
+            vec![unrelated_rust_test],
+        );
+
+        let json = render_agent_seam_packets_json(std::slice::from_ref(&entry));
+        for needle in ["\"packets_total\": 0", "\"packets\": []"] {
+            if !json.contains(needle) {
+                return Err(format!("missing packet exclusion {needle:?} in: {json}"));
+            }
+        }
+        let brief = targeted_test_brief_for_classified_seam(&entry);
+        for forbidden in ["tests/blob_smoke.rs", "tests/blob_tests.rs"] {
+            if brief.contains(forbidden) || json.contains(forbidden) {
+                return Err(format!(
+                    "binding seam should not suggest unrelated Rust target {forbidden:?}; brief:\n{brief}\njson:\n{json}"
+                ));
+            }
+        }
+        if !brief.contains("- Suggested file: not_applicable") {
+            return Err(format!("missing fail-closed target in:\n{brief}"));
         }
         Ok(())
     }

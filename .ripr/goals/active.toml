@@ -89,7 +89,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-visibility-limitation"
-status = "active"
+status = "done"
 branch = "analysis-cross-language-oracle-visibility-limitation"
 stackable = false
 acceptance = "TS-tested Rust and binding/FFI seam fixtures fail closed as named cross-language limitations with source samples and no public repair packet, wrong Rust target, or verify command against unrelated Rust tests."
@@ -104,7 +104,7 @@ commands = [
 
 [[work_item]]
 id = "report/binding-ffi-target-placement-fail-closed"
-status = "ready"
+status = "active"
 branch = "report-binding-ffi-target-placement-fail-closed"
 stackable = false
 acceptance = "Suggested-test placement distinguishes ordinary Rust seams from binding/FFI or externally tested seams, suppresses unrelated Rust test targets, exposes cross_language_target_unresolved, and keeps LSP repair actions unavailable for blocked packets."

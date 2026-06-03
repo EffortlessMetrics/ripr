@@ -25,6 +25,10 @@ pub(crate) const CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY: &str =
     "cross_language_oracle_visibility_unresolved";
 pub(crate) const CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE: &str =
     "analysis/cross-language-oracle-visibility";
+pub(crate) const CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY: &str =
+    "cross_language_target_unresolved";
+pub(crate) const CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE: &str =
+    "analysis/cross-language-test-target-inference";
 
 const MAX_RELATED_TESTS_PER_EVIDENCE_RECORD: usize = 8;
 const VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
@@ -764,6 +768,7 @@ fn alignment_confidence_for(
 
 fn is_static_limited(entry: &ClassifiedSeam) -> bool {
     cross_language_oracle_visibility_unresolved(entry)
+        || cross_language_test_target_unresolved(entry)
         || matches!(entry.class, SeamGripClass::Opaque)
         || [
             &entry.evidence.reach,
@@ -788,13 +793,38 @@ pub(crate) fn cross_language_oracle_visibility_unresolved(entry: &ClassifiedSeam
     cross_language_surface_hint(entry) && !has_rust_related_test(entry)
 }
 
+pub(crate) fn cross_language_test_target_unresolved(entry: &ClassifiedSeam) -> bool {
+    if !entry.class.is_headline_eligible() && !matches!(entry.class, SeamGripClass::Opaque) {
+        return false;
+    }
+
+    (has_external_language_related_test(entry) || cross_language_surface_hint(entry))
+        && !has_rust_side_target_context(entry)
+}
+
 fn has_rust_related_test(entry: &ClassifiedSeam) -> bool {
+    entry
+        .evidence
+        .related_tests
+        .iter()
+        .any(related_test_is_rust)
+}
+
+fn has_rust_side_target_context(entry: &ClassifiedSeam) -> bool {
     entry.evidence.related_tests.iter().any(|test| {
-        test.file
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+        related_test_is_rust(test)
+            && matches!(
+                test.relation_reason,
+                RelationReason::DirectOwnerCall | RelationReason::HelperOwnerCall
+            )
     })
+}
+
+fn related_test_is_rust(test: &crate::analysis::test_grip_evidence::RelatedTestGrip) -> bool {
+    test.file
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
 }
 
 fn has_external_language_related_test(entry: &ClassifiedSeam) -> bool {
@@ -996,6 +1026,16 @@ fn static_limitations_for(entry: &ClassifiedSeam) -> Vec<EvidenceRecordStaticLim
             reason: "Rust seam is on a binding, FFI, or external-language surface, and RIPR cannot prove the external oracle path from Rust static evidence.".to_string(),
             category: CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY.to_string(),
             repair_route: CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE.to_string(),
+        });
+    }
+    if cross_language_test_target_unresolved(entry) {
+        limitations.push(EvidenceRecordStaticLimitation {
+            stage: "cross_language_test_target".to_string(),
+            state: "unknown".to_string(),
+            reason: "Rust seam is on a binding, FFI, or external-language surface without Rust-side test context, so RIPR cannot select a safe repair target."
+                .to_string(),
+            category: CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY.to_string(),
+            repair_route: CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE.to_string(),
         });
     }
     push_stage_limitation(&mut limitations, "reach", &entry.evidence.reach, entry);
@@ -1927,8 +1967,20 @@ mod tests {
             CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
         );
         assert_eq!(
+            json["static_limitations"][1]["category"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
+        );
+        assert_eq!(
+            json["static_limitations"][1]["repair_route"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+        );
+        assert_eq!(
             json["canonical_item"]["static_limitations"][0]["category"],
             CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][1]["category"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
         );
         assert!(
             json["canonical_item"]["recommended_repair"]
@@ -1938,6 +1990,29 @@ mod tests {
         assert_eq!(
             json["related_tests"][0]["file"],
             "test/js/web/fetch/blob.test.ts"
+        );
+    }
+
+    #[test]
+    fn evidence_record_routes_binding_seam_without_rust_test_context_to_target_limitation() {
+        let entry = sample_cross_language_classified(SeamGripClass::Ungripped, Vec::new());
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(
+            json["static_limitations"][1]["category"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
+        );
+        assert_eq!(
+            json["static_limitations"][1]["repair_route"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][1]["category"],
+            CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
         );
     }
 
