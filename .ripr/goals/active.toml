@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "report/language-aware-placement-route-quality"
-status = "ready"
+status = "done"
 branch = "report-language-aware-placement-route-quality"
 stackable = false
 acceptance = "Readiness, route-quality, and calibration outputs summarize language-aware placement limits and navigation-only external target evidence without promoting unresolved or preview external targets into public repair packets."
@@ -94,7 +94,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/language-aware-placement-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-language-aware-placement-closeout"
 stackable = false
 blocked_by = ["report/language-aware-placement-navigation", "report/language-aware-placement-route-quality"]
