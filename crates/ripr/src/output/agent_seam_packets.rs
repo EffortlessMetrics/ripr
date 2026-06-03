@@ -20,7 +20,7 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
-use crate::analysis::test_grip_evidence::TestGripEvidence;
+use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, cross_language_oracle_visibility_unresolved,
     cross_language_test_target_unresolved, evidence_record_for, evidence_record_json_value,
@@ -716,6 +716,7 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
     let patterns_to_imitate = patterns_to_imitate_for(evidence);
     let patterns_to_avoid = patterns_to_avoid_for(entry);
     let outline = targeted_test_brief_outline_for_classified_seam(entry);
+    let navigation_target = navigation_only_external_target_for(entry);
 
     let mut out = String::new();
     out.push_str("Target seam:\n");
@@ -750,7 +751,11 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
         ));
     }
 
-    out.push_str("\nAdd a targeted test:\n");
+    if outline.suggested_file == "not_applicable" {
+        out.push_str("\nTarget placement blocked:\n");
+    } else {
+        out.push_str("\nAdd a targeted test:\n");
+    }
     out.push_str(&format!(
         "- Suggested file: {}\n",
         display_path_text(&outline.suggested_file)
@@ -766,6 +771,22 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
         out.push_str(&format!("- Candidate value: {value}\n"));
     }
     out.push_str(&format!("- Assertion shape: {}\n", outline.assertion_shape));
+
+    if let Some(target) = navigation_target.as_ref() {
+        out.push_str("\nExternal observer target (navigation only):\n");
+        out.push_str(&format!("- Target: {}:{}\n", target.file, target.line));
+        out.push_str(&format!("- Test: {}\n", target.test_name));
+        out.push_str(&format!("- Language: {}\n", target.language));
+        out.push_str(&format!("- Evidence: {}\n", target.evidence_summary));
+        out.push_str(&format!(
+            "- Limitation route: {}\n",
+            target.limitation_route
+        ));
+        out.push_str(&format!(
+            "- Authority: {}; repair_packet_ready={}\n",
+            target.authority_boundary, target.repair_packet_ready
+        ));
+    }
 
     if !patterns_to_imitate.is_empty() {
         out.push_str("\nImitate:\n");
@@ -1597,6 +1618,23 @@ pub(crate) struct RecommendedTest {
     pub(crate) reason: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct NavigationOnlyExternalTarget {
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) test_name: String,
+    pub(crate) language: String,
+    pub(crate) oracle_kind: String,
+    pub(crate) oracle_strength: String,
+    pub(crate) evidence_summary: String,
+    pub(crate) relation_reason: String,
+    pub(crate) relation_confidence: String,
+    pub(crate) authority_boundary: &'static str,
+    pub(crate) repair_packet_ready: bool,
+    pub(crate) reason: String,
+    pub(crate) limitation_route: &'static str,
+}
+
 pub(crate) struct AssertionShape {
     pub(crate) kind: &'static str,
     pub(crate) example: String,
@@ -1650,6 +1688,96 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
         file: inferred_test_file(entry.seam.file(), owner_short),
         reason: "no related test file was visible; inferred from the production seam file"
             .to_string(),
+    }
+}
+
+pub(crate) fn navigation_only_external_target_for(
+    entry: &ClassifiedSeam,
+) -> Option<NavigationOnlyExternalTarget> {
+    if !cross_language_test_target_unresolved(entry) {
+        return None;
+    }
+    let test = entry
+        .evidence
+        .related_tests
+        .iter()
+        .find(|test| explicit_external_observer_target(test))?;
+    let language = external_language_for_related_test(test)?;
+    Some(NavigationOnlyExternalTarget {
+        file: display_path(&test.file),
+        line: test.line,
+        test_name: test.test_name.clone(),
+        language: language.to_string(),
+        oracle_kind: test.oracle_kind.as_str().to_string(),
+        oracle_strength: test.oracle_strength.as_str().to_string(),
+        evidence_summary: test.evidence_summary.clone(),
+        relation_reason: test.relation_reason.as_str().to_string(),
+        relation_confidence: test.relation_confidence.as_str().to_string(),
+        authority_boundary: "navigation_only_external_observer_context",
+        repair_packet_ready: false,
+        reason: format!(
+            "external {language} observer target is visible, but binding/FFI repair placement is unresolved"
+        ),
+        limitation_route: CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
+    })
+}
+
+pub(crate) fn navigation_only_external_target_json(
+    target: &NavigationOnlyExternalTarget,
+) -> serde_json::Value {
+    json!({
+        "file": target.file.as_str(),
+        "line": target.line,
+        "test_name": target.test_name.as_str(),
+        "language": target.language.as_str(),
+        "oracle_kind": target.oracle_kind.as_str(),
+        "oracle_strength": target.oracle_strength.as_str(),
+        "evidence_summary": target.evidence_summary.as_str(),
+        "relation_reason": target.relation_reason.as_str(),
+        "relation_confidence": target.relation_confidence.as_str(),
+        "authority_boundary": target.authority_boundary,
+        "repair_packet_ready": target.repair_packet_ready,
+        "reason": target.reason.as_str(),
+        "limitation_route": target.limitation_route,
+    })
+}
+
+fn explicit_external_observer_target(test: &RelatedTestGrip) -> bool {
+    let Some(_language) = external_language_for_related_test(test) else {
+        return false;
+    };
+    let summary = test.evidence_summary.to_ascii_lowercase();
+    let explicit_bridge_hint = summary.contains("configured")
+        || summary.contains("bridge")
+        || summary.contains("binding")
+        || summary.contains("ffi");
+    explicit_bridge_hint
+        && matches!(
+            test.relation_reason,
+            crate::analysis::test_grip_evidence::RelationReason::DirectOwnerCall
+                | crate::analysis::test_grip_evidence::RelationReason::HelperOwnerCall
+        )
+        && matches!(
+            test.relation_confidence,
+            crate::analysis::test_grip_evidence::RelationConfidence::High
+        )
+        && matches!(test.oracle_strength, crate::domain::OracleStrength::Strong)
+}
+
+fn external_language_for_related_test(test: &RelatedTestGrip) -> Option<&'static str> {
+    match test
+        .file
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ts" | "tsx") => Some("typescript"),
+        Some("js" | "jsx" | "mjs" | "cjs") => Some("javascript"),
+        Some("py") => Some("python"),
+        Some("rb") => Some("ruby"),
+        Some("java") => Some("java"),
+        _ => None,
     }
 }
 
@@ -3781,6 +3909,65 @@ mod tests {
             if brief.contains(forbidden) {
                 return Err(format!(
                     "cross-language binding seam should not infer {forbidden:?}:\n{brief}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_brief_surfaces_external_observer_as_navigation_only() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let external_target = RelatedTestGrip {
+            test_name: "blob copies resizable buffers".to_string(),
+            file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
+            line: 41,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            evidence_summary: "configured TypeScript bridge exact value observer".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
+        };
+        assert!(explicit_external_observer_target(&external_target));
+        let mut unconfigured_external_target = external_target.clone();
+        unconfigured_external_target.evidence_summary =
+            "TypeScript exact value observer".to_string();
+        assert!(!explicit_external_observer_target(
+            &unconfigured_external_target
+        ));
+        let entry = classified_with(seam, SeamGripClass::Ungripped, vec![external_target]);
+        let brief = targeted_test_brief_for_classified_seam(&entry);
+
+        for needle in [
+            "Target placement blocked:",
+            "- Suggested file: not_applicable",
+            "External observer target (navigation only):",
+            "- Target: test/js/web/fetch/blob.test.ts:41",
+            "- Test: blob copies resizable buffers",
+            "- Language: typescript",
+            "- Authority: navigation_only_external_observer_context; repair_packet_ready=false",
+        ] {
+            if !brief.contains(needle) {
+                return Err(format!(
+                    "missing navigation-only target text {needle:?} in:\n{brief}"
+                ));
+            }
+        }
+        for forbidden in ["tests/blob_tests.rs", "ripr agent verify"] {
+            if brief.contains(forbidden) {
+                return Err(format!(
+                    "navigation-only target should not become repair guidance {forbidden:?}:\n{brief}"
                 ));
             }
         }

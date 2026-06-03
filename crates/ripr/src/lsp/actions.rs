@@ -1128,7 +1128,7 @@ fn path_matches_diagnostic_language(data: &Value, path: &str) -> bool {
 fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     let note = static_limit_note(data)?;
-    Some(serde_json::json!({
+    let mut target = serde_json::json!({
         "label": "static_limit_note",
         "gap_id": string_at(data, &["gap_id"]),
         "canonical_gap_id": string_at(data, &["canonical_gap_id"]),
@@ -1136,7 +1136,13 @@ fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
         "language_status": string_at(data, &["language_status"]),
         "note": note,
         "limits_note": "Static evidence only; no runtime adequacy claim.",
-    }))
+    });
+    if let Some(navigation_target) = value_at(data, &["navigation_only_target"]).cloned()
+        && let Some(object) = target.as_object_mut()
+    {
+        object.insert("navigation_only_target".to_string(), navigation_target);
+    }
+    Some(target)
 }
 
 fn gap_cross_language_target_unresolved(data: &Value) -> bool {
@@ -1184,12 +1190,41 @@ fn static_limit_note(data: &Value) -> Option<String> {
             }
         }
     }
+    if let Some(target_lines) = navigation_only_target_lines(data) {
+        lines.extend(target_lines);
+    }
     if lines.is_empty() {
         None
     } else {
         lines.push("Boundary: static evidence only; advisory action.".to_string());
         Some(lines.join("\n"))
     }
+}
+
+fn navigation_only_target_lines(data: &Value) -> Option<Vec<String>> {
+    let target = value_at(data, &["navigation_only_target"])?;
+    let file = string_at(target, &["file"])?;
+    let line = target
+        .get("line")
+        .and_then(Value::as_u64)
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut lines = vec![format!("Navigation-only target: {file}:{line}")];
+    if let Some(test_name) = string_at(target, &["test_name"]) {
+        lines.push(format!("External observer: {test_name}"));
+    }
+    if let Some(language) = string_at(target, &["language"]) {
+        lines.push(format!("External language: {language}"));
+    }
+    if let Some(route) = string_at(target, &["limitation_route"]) {
+        lines.push(format!("Limitation route: {route}"));
+    }
+    let ready = target
+        .get("repair_packet_ready")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    lines.push(format!("Repair packet ready: {ready}"));
+    Some(lines)
 }
 
 fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {

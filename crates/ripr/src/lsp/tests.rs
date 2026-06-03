@@ -1773,6 +1773,15 @@ fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved
     data["static_limit_kind"] = serde_json::json!("cross_language_target_unresolved");
     data["static_limit_detail"] = serde_json::json!("binding/FFI target placement is unresolved");
     data["projection_exclusion_reasons"] = serde_json::json!(["cross_language_target_unresolved"]);
+    data["navigation_only_target"] = serde_json::json!({
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 41,
+        "test_name": "blob copies resizable buffers",
+        "language": "typescript",
+        "authority_boundary": "navigation_only_external_observer_context",
+        "repair_packet_ready": false,
+        "limitation_route": "analysis/cross-language-test-target-inference"
+    });
     let mut snapshot = sample_analysis_snapshot(
         root.path().to_path_buf(),
         uri.clone(),
@@ -1799,11 +1808,22 @@ fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved
         "target-unresolved gap diagnostics must not expose repair packets, verify, receipt, or edit actions"
     );
     assert!(
-        commands[0].2[0]["note"]
-            .as_str()
-            .is_some_and(|note| note.contains("cross_language_target_unresolved")),
+        commands[0].2[0]["note"].as_str().is_some_and(|note| {
+            note.contains("cross_language_target_unresolved")
+                && note.contains("Navigation-only target: test/js/web/fetch/blob.test.ts:41")
+                && note.contains("External observer: blob copies resizable buffers")
+                && note.contains("Repair packet ready: false")
+        }),
         "expected static-limit note, got {:?}",
         commands[0].2[0]
+    );
+    assert_eq!(
+        commands[0].2[0]["navigation_only_target"]["file"],
+        "test/js/web/fetch/blob.test.ts"
+    );
+    assert_eq!(
+        commands[0].2[0]["navigation_only_target"]["repair_packet_ready"],
+        false
     );
     Ok(())
 }
