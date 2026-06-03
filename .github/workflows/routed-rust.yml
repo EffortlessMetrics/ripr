@@ -97,7 +97,7 @@ jobs:
           toolchain: 1.95.0
       - name: Prepare scratch
         run: |
-          ci-disk-guard /mnt/ci-scratch 100
+          ci-disk-guard /mnt/ci-scratch 90
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true

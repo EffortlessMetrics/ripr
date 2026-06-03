@@ -7639,6 +7639,18 @@ fn routed_rust_workflow_contract_violations(
             "hosted fallback conditional job",
             "if: needs.route.outputs.router_target == 'github'",
         ),
+        (
+            "CX43 scratch free-space floor",
+            "ci-disk-guard /mnt/ci-scratch 90",
+        ),
+        (
+            "CPX42 scratch free-space floor",
+            "ci-disk-guard /mnt/ci-scratch 80",
+        ),
+        (
+            "CX53 scratch free-space floor",
+            "ci-disk-guard /mnt/ci-scratch 100",
+        ),
     ];
 
     for (label, snippet) in required_workflow_snippets {
@@ -71541,6 +71553,8 @@ jobs:
     steps:
       - name: Prepare toolchain temp
         run: mkdir -p "$TMPDIR"
+      - name: Prepare scratch
+        run: ci-disk-guard /mnt/ci-scratch 90
       - name: Clean scratch
         run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cpx42:
@@ -71550,6 +71564,8 @@ jobs:
     steps:
       - name: Prepare toolchain temp
         run: mkdir -p "$TMPDIR"
+      - name: Prepare CPX42 scratch
+        run: ci-disk-guard /mnt/ci-scratch 80
       - name: Clean scratch
         run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cx53:
@@ -71559,6 +71575,8 @@ jobs:
     steps:
       - name: Prepare toolchain temp
         run: mkdir -p "$TMPDIR"
+      - name: Prepare scratch
+        run: ci-disk-guard /mnt/ci-scratch 100
       - name: Clean scratch
         run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-github:
