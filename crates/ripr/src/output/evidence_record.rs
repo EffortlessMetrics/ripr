@@ -21,6 +21,10 @@ use crate::output::agent_seam_packets::{
 use serde_json::{Value, json};
 
 pub(crate) const EVIDENCE_RECORD_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY: &str =
+    "cross_language_oracle_visibility_unresolved";
+pub(crate) const CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE: &str =
+    "analysis/cross-language-oracle-visibility";
 
 const MAX_RELATED_TESTS_PER_EVIDENCE_RECORD: usize = 8;
 const VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
@@ -759,7 +763,8 @@ fn alignment_confidence_for(
 }
 
 fn is_static_limited(entry: &ClassifiedSeam) -> bool {
-    matches!(entry.class, SeamGripClass::Opaque)
+    cross_language_oracle_visibility_unresolved(entry)
+        || matches!(entry.class, SeamGripClass::Opaque)
         || [
             &entry.evidence.reach,
             &entry.evidence.activate,
@@ -769,6 +774,102 @@ fn is_static_limited(entry: &ClassifiedSeam) -> bool {
         ]
         .iter()
         .any(|stage| matches!(stage.state, StageState::Opaque | StageState::Unknown))
+}
+
+pub(crate) fn cross_language_oracle_visibility_unresolved(entry: &ClassifiedSeam) -> bool {
+    if !entry.class.is_headline_eligible() && !matches!(entry.class, SeamGripClass::Opaque) {
+        return false;
+    }
+
+    if has_external_language_related_test(entry) {
+        return true;
+    }
+
+    cross_language_surface_hint(entry) && !has_rust_related_test(entry)
+}
+
+fn has_rust_related_test(entry: &ClassifiedSeam) -> bool {
+    entry.evidence.related_tests.iter().any(|test| {
+        test.file
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+    })
+}
+
+fn has_external_language_related_test(entry: &ClassifiedSeam) -> bool {
+    entry.evidence.related_tests.iter().any(|test| {
+        test.file
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                matches!(
+                    extension.to_ascii_lowercase().as_str(),
+                    "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "rb" | "java"
+                )
+            })
+    })
+}
+
+fn cross_language_surface_hint(entry: &ClassifiedSeam) -> bool {
+    let file = display_path(entry.seam.file()).to_ascii_lowercase();
+    let owner = entry.seam.owner().to_ascii_lowercase();
+    let expression = entry.seam.expression().to_ascii_lowercase();
+
+    path_has_cross_language_segment(&file)
+        || text_has_cross_language_marker(&owner)
+        || text_has_cross_language_marker(&expression)
+}
+
+fn path_has_cross_language_segment(file: &str) -> bool {
+    let normalized = file.replace('\\', "/");
+    normalized.split('/').any(|segment| {
+        matches!(
+            segment,
+            "ffi"
+                | "binding"
+                | "bindings"
+                | "napi"
+                | "neon"
+                | "wasm"
+                | "wasm_bindgen"
+                | "pyo3"
+                | "python"
+                | "jni"
+                | "uniffi"
+                | "cxx"
+                | "node"
+                | "jsc"
+                | "javascriptcore"
+        )
+    })
+}
+
+fn text_has_cross_language_marker(text: &str) -> bool {
+    [
+        "from_js",
+        "to_js",
+        "jsvalue",
+        "js_value",
+        "jsc::",
+        "javascriptcore",
+        "napi",
+        "wasm_bindgen",
+        "extern \"c\"",
+        "extern_c",
+        "no_mangle",
+        "export_name",
+        "ffi",
+        "binding",
+        "pyo3",
+        "python",
+        "node_api",
+        "jni",
+        "uniffi",
+        "cxx::bridge",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
 }
 
 fn weak_related_oracle(entry: &ClassifiedSeam) -> bool {
@@ -888,6 +989,15 @@ fn oracle_semantics_record(
 
 fn static_limitations_for(entry: &ClassifiedSeam) -> Vec<EvidenceRecordStaticLimitation> {
     let mut limitations = Vec::new();
+    if cross_language_oracle_visibility_unresolved(entry) {
+        limitations.push(EvidenceRecordStaticLimitation {
+            stage: "cross_language_oracle_visibility".to_string(),
+            state: "unknown".to_string(),
+            reason: "Rust seam is on a binding, FFI, or external-language surface, and RIPR cannot prove the external oracle path from Rust static evidence.".to_string(),
+            category: CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY.to_string(),
+            repair_route: CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE.to_string(),
+        });
+    }
     push_stage_limitation(&mut limitations, "reach", &entry.evidence.reach, entry);
     push_stage_limitation(
         &mut limitations,
@@ -1527,6 +1637,65 @@ mod tests {
         }
     }
 
+    fn sample_cross_language_classified(
+        class: SeamGripClass,
+        related_tests: Vec<RelatedTestGrip>,
+    ) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        ClassifiedSeam {
+            evidence: TestGripEvidence {
+                seam_id: seam.id().clone(),
+                related_tests,
+                reach: stage(
+                    StageState::Yes,
+                    "binding seam is visible through external tests",
+                ),
+                activate: stage(
+                    StageState::Yes,
+                    "configured binding route reaches the Rust seam",
+                ),
+                propagate: stage(StageState::Yes, "external call reaches the Rust boundary"),
+                observe: stage(
+                    StageState::Weak,
+                    "external oracle path remains unresolved in Rust static evidence",
+                ),
+                discriminate: stage(StageState::Weak, "external discriminator is unresolved"),
+                observed_values: Vec::new(),
+                missing_discriminators: vec![MissingDiscriminatorFact {
+                    value: "resizable_array_buffer".to_string(),
+                    reason: "external TypeScript oracle visibility is unresolved".to_string(),
+                    flow_sink: None,
+                }],
+            },
+            seam,
+            class,
+        }
+    }
+
+    fn external_typescript_related_test() -> RelatedTestGrip {
+        RelatedTestGrip {
+            test_name: "blob copies shared buffers".to_string(),
+            file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
+            line: 41,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            evidence_summary: "TypeScript exact value oracle".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: RelationConfidence::High,
+        }
+    }
+
     fn sample_call_presence_classified() -> ClassifiedSeam {
         let seam = RepoSeam::new(
             "src/agent_paths.rs",
@@ -1729,6 +1898,47 @@ mod tests {
         );
         assert_eq!(json["calibration"]["agreement"], "no_runtime_data");
         assert_eq!(json["static_limitations"].as_array().map(Vec::len), Some(0));
+    }
+
+    #[test]
+    fn evidence_record_routes_ts_tested_rust_binding_seam_to_cross_language_limitation() {
+        let entry = sample_cross_language_classified(
+            SeamGripClass::WeaklyGripped,
+            vec![external_typescript_related_test()],
+        );
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["actionability"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(json["raw_findings"][0]["file"], "src/jsc/Blob.rs");
+        assert_eq!(json["raw_findings"][0]["line"], 88);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+        );
+        assert_eq!(
+            json["canonical_item"]["static_limitations"][0]["category"],
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+        );
+        assert!(
+            json["canonical_item"]["recommended_repair"]
+                .as_str()
+                .is_some_and(|text| text.contains(CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE))
+        );
+        assert_eq!(
+            json["related_tests"][0]["file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
     }
 
     #[test]

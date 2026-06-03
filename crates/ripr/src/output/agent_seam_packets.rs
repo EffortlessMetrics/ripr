@@ -21,7 +21,9 @@ use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
-use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
+use crate::output::evidence_record::{
+    cross_language_oracle_visibility_unresolved, evidence_record_for, evidence_record_json_value,
+};
 use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
@@ -62,7 +64,7 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
 
     let actionable: Vec<&ClassifiedSeam> = classified
         .iter()
-        .filter(|entry| is_actionable(entry.class))
+        .filter(|entry| is_actionable_entry(entry))
         .collect();
 
     out.push_str(&format!("  \"packets_total\": {},\n", actionable.len()));
@@ -1287,6 +1289,10 @@ fn is_actionable(class: SeamGripClass) -> bool {
     // `Intentional` and `Suppressed` are governance classes; the
     // agent should not be told to "fix" them.
     class.is_headline_eligible() || matches!(class, SeamGripClass::Opaque)
+}
+
+fn is_actionable_entry(entry: &ClassifiedSeam) -> bool {
+    is_actionable(entry.class) && !cross_language_oracle_visibility_unresolved(entry)
 }
 
 fn task_for(class: SeamGripClass) -> &'static str {
@@ -3676,6 +3682,42 @@ mod tests {
             if !json.contains(needle) {
                 return Err(format!(
                     "missing inferred recommendation {needle:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_queue_excludes_cross_language_binding_seam_without_rust_test_context()
+    -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let json = render_agent_seam_packets_json(&[classified_with(
+            seam,
+            SeamGripClass::Ungripped,
+            Vec::new(),
+        )]);
+
+        for needle in ["\"packets_total\": 0", "\"packets\": []"] {
+            if !json.contains(needle) {
+                return Err(format!("missing packet exclusion {needle:?} in: {json}"));
+            }
+        }
+        for forbidden in ["\"task\":", "tests/blob_tests.rs", "recommended_test"] {
+            if json.contains(forbidden) {
+                return Err(format!(
+                    "cross-language binding seam should not emit {forbidden:?}: {json}"
                 ));
             }
         }

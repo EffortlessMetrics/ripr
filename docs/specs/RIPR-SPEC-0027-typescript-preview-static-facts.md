@@ -142,14 +142,13 @@ cross-language preview projection may surface those lines in the advisory
 TypeScript preview card as `rust_ungripped_ts_discriminated`,
 `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, or
 `bridge_unknown` state for the configured Bun Blob route. Missing-discriminator
-Bun Blob bridge findings may also carry an advisory TypeScript observer
-placement ranking that prefers the configured bridge `suggested_test_files`,
-same JS API surface, and same boundary vocabulary; for the calibrated Blob /
-ArrayBuffer route, the top placement remains
-`test/js/web/fetch/blob.test.ts` with a reason tied to the missing
-discriminator. These facts, bridge hints, placement hints, and card fields do
-not promote TypeScript preview evidence into repair packets, generated tests,
-source edits, gates, badges, baselines, RIPR Zero, or support-tier claims.
+Bun Blob bridge findings must fail closed as
+`cross_language_oracle_visibility_unresolved` until the binding route, external
+callsite, and external oracle are proven; their suggested test file remains
+`not_applicable` instead of selecting a TypeScript or Rust repair target. These
+facts, bridge hints, limitation routes, and card fields do not promote
+TypeScript preview evidence into repair packets, generated tests, source edits,
+gates, badges, baselines, RIPR Zero, or support-tier claims.
 Repositories may opt into a Bun stable-byte review profile with
 `[profiles.bun_ub]` in `ripr.toml`; that profile records TypeScript-family
 `test_roots` and a repo-relative `bridge_hints` file for advisory operator

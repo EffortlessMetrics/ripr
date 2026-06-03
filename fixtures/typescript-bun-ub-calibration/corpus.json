@@ -90,9 +90,9 @@
         "resizable_array_buffer"
       ],
       "bridge_confidence": "configured_hint",
-      "expected_action": "add_resizable_array_buffer_blob_case",
-      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
-      "suggested_shape": "new ArrayBuffer(16, { maxByteLength: 32 }) passed through Blob/view with a stable-byte assertion after resize-relevant mutation",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": "analysis/cross-language-oracle-visibility must prove the binding route, external callsite, and oracle before placement is suggested",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
       "non_claims": [
@@ -137,9 +137,9 @@
         "shared_array_buffer"
       ],
       "bridge_confidence": "configured_hint",
-      "expected_action": "add_shared_array_buffer_blob_case",
-      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
-      "suggested_shape": "new SharedArrayBuffer(16) passed through Blob/view with a stable-byte assertion",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": "analysis/cross-language-oracle-visibility must prove the binding route, external callsite, and oracle before placement is suggested",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
       "non_claims": [
@@ -185,9 +185,9 @@
         "resizable_array_buffer"
       ],
       "bridge_confidence": "configured_hint",
-      "expected_action": "add_shared_and_resizable_blob_cases",
-      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
-      "suggested_shape": "separate SharedArrayBuffer and resizable ArrayBuffer Blob/view cases with stable-byte assertions",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": "analysis/cross-language-oracle-visibility must prove the binding route, external callsite, and oracle before placement is suggested",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
       "non_claims": [

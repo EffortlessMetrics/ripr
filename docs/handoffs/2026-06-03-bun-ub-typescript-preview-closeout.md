@@ -34,12 +34,12 @@ merge authority.
 
 | Surface | Evidence |
 | --- | --- |
-| Calibration fixture | `fixtures/typescript-bun-ub-calibration/corpus.json` pins the known-good Blob / shared+resizable case, stripped shared/resizable variants, mention-not-observer control, bridge-unknown state, and TypeScript test placement. |
+| Calibration fixture | `fixtures/typescript-bun-ub-calibration/corpus.json` pins the known-good Blob / shared+resizable case, stripped shared/resizable variants routed as oracle-visibility limitations, mention-not-observer control, and bridge-unknown state. |
 | TypeScript discriminator facts | `crates/ripr/src/analysis/language/typescript.rs` extracts `SharedArrayBuffer`, resizable `ArrayBuffer` through `maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views, view-backed `Blob(...)` input, and `blob.arrayBuffer()` observers. |
 | Stable-byte oracle classification | The TypeScript adapter distinguishes stable byte/text/value observers from smoke, snapshot, byte-read, and token-only evidence so a `maxByteLength` mention cannot stand in for a Blob observer. |
 | Bun bridge hints | The bounded internal Bun Blob profile maps `src/jsc/Blob.rs`, `Blob::from_js_without_defer_gc`, the Rust boundary text, and `test/js/web/fetch/blob.test.ts` into evidence-only `configured_hint` or `bridge_unknown` lines. |
 | Cross-language grip states | Changed Rust Blob boundary lines project advisory states for `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and `bridge_unknown`. |
-| TypeScript placement ranking | Missing-discriminator cases rank `test/js/web/fetch/blob.test.ts` first with a reason tied to the missing shared/resizable discriminator, while keeping Rust-test placement suppressed. |
+| Cross-language limitation route | Missing-discriminator cases keep `suggested_test_file=not_applicable` and route to `analysis/cross-language-oracle-visibility` before any TypeScript or Rust repair target is suggested. |
 | Opt-in profile | `[profiles.bun_ub]` records TypeScript-family test roots and a repo-relative bridge-hints path for operators; the profile is absent by default and does not enable runtime Bun, `tsc`, `tsserver`, generated tests, gates, badges, baselines, RIPR Zero, or support-tier promotion. |
 
 ## PR Chain

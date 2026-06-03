@@ -46669,7 +46669,7 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
             require_typescript_bun_ub_missing(
                 case,
                 "resizable_array_buffer",
-                "test/js/web/fetch/blob.test.ts",
+                "not_applicable",
                 &mut errors,
             );
         }
@@ -46682,7 +46682,7 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
             require_typescript_bun_ub_missing(
                 case,
                 "shared_array_buffer",
-                "test/js/web/fetch/blob.test.ts",
+                "not_applicable",
                 &mut errors,
             );
         }
@@ -46694,12 +46694,7 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
                 );
             }
             for missing in ["shared_array_buffer", "resizable_array_buffer"] {
-                require_typescript_bun_ub_missing(
-                    case,
-                    missing,
-                    "test/js/web/fetch/blob.test.ts",
-                    &mut errors,
-                );
+                require_typescript_bun_ub_missing(case, missing, "not_applicable", &mut errors);
             }
         }
         "ts_mention_not_observer" => {
@@ -46743,7 +46738,7 @@ fn require_typescript_bun_ub_missing(
     }
     if case.suggested_test_file != suggested_test_file {
         errors.push(format!(
-            "{} must suggest {}",
+            "{} must keep suggested_test_file={}",
             case.expected_verdict, suggested_test_file
         ));
     }
@@ -76425,7 +76420,7 @@ fn exact_owner_call_has_external_expected_value() {
         missing_resizable.expected_verdict = "ts_missing_resizable".to_string();
         missing_resizable.shared_array_buffer = false;
         missing_resizable.resizable_array_buffer = true;
-        missing_resizable.suggested_test_file = "not_applicable".to_string();
+        missing_resizable.suggested_test_file = "test/js/web/fetch/blob.test.ts".to_string();
         let errors = super::typescript_bun_ub_calibration_case_errors(&missing_resizable);
         assert_contains_error(
             &errors,
@@ -76437,14 +76432,14 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_contains_error(
             &errors,
-            "ts_missing_resizable must suggest test/js/web/fetch/blob.test.ts",
+            "ts_missing_resizable must keep suggested_test_file=not_applicable",
         );
 
         let mut missing_shared = valid_typescript_bun_ub_calibration_case();
         missing_shared.expected_verdict = "ts_missing_shared".to_string();
         missing_shared.shared_array_buffer = true;
         missing_shared.resizable_array_buffer = false;
-        missing_shared.suggested_test_file = "not_applicable".to_string();
+        missing_shared.suggested_test_file = "test/js/web/fetch/blob.test.ts".to_string();
         let errors = super::typescript_bun_ub_calibration_case_errors(&missing_shared);
         assert_contains_error(
             &errors,
@@ -76456,7 +76451,7 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_contains_error(
             &errors,
-            "ts_missing_shared must suggest test/js/web/fetch/blob.test.ts",
+            "ts_missing_shared must keep suggested_test_file=not_applicable",
         );
 
         let mut missing_both = valid_typescript_bun_ub_calibration_case();

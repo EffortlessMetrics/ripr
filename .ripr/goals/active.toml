@@ -75,7 +75,7 @@ commands = [
 
 [[work_item]]
 id = "cache/large-seam-cache-skip-limitation"
-status = "active"
+status = "done"
 branch = "cache-large-seam-cache-skip-limitation"
 stackable = false
 acceptance = "Repos exceeding the seam-cache entry limit emit a named large-cache limitation with observed seam count, cache limit, downstream consumability, repair route, configurable limit, and scorecard/readiness preservation of limited state."
@@ -89,7 +89,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-visibility-limitation"
-status = "ready"
+status = "active"
 branch = "analysis-cross-language-oracle-visibility-limitation"
 stackable = false
 acceptance = "TS-tested Rust and binding/FFI seam fixtures fail closed as named cross-language limitations with source samples and no public repair packet, wrong Rust target, or verify command against unrelated Rust tests."

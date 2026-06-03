@@ -4425,8 +4425,8 @@ Work items:
 | --- | --- | --- |
 | `release/real-repo-trust-issue-triage` | done | Classify #913, #912/#909, and #908/#910/#911; link duplicate/overlap clusters; label release-line blockers or post-0.8 follow-ups honestly; update release/freeze non-claims. |
 | `report/review-comments-source-locations` | done | Review-comments Markdown rows now carry file:line/span or an explicit unknown-location limitation route. |
-| `cache/large-seam-cache-skip-limitation` | active | Make large seam-cache skips named, counted, configured, and preserved as limited state. |
-| `analysis/cross-language-oracle-visibility-limitation` | ready | Route TS-tested Rust and binding/FFI seams to named limitations when external oracle visibility is unresolved. |
+| `cache/large-seam-cache-skip-limitation` | done | Large seam-cache skips are named, counted, configured, and preserved as limited state. |
+| `analysis/cross-language-oracle-visibility-limitation` | active | Route TS-tested Rust and binding/FFI seams to named limitations when external oracle visibility is unresolved. |
 | `report/binding-ffi-target-placement-fail-closed` | ready | Suppress unrelated Rust suggested-test placement for binding/FFI or externally tested seams. |
 
 Commands:
