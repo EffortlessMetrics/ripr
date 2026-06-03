@@ -4185,7 +4185,22 @@ fn bun_cross_language_finding_for_changed_rust_line(
     line_text: &str,
     all_tests: &[TypeScriptTest],
 ) -> Option<Finding> {
-    let profile = BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE;
+    bun_cross_language_finding_for_changed_rust_line_with_profile(
+        file,
+        line,
+        line_text,
+        all_tests,
+        BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE,
+    )
+}
+
+fn bun_cross_language_finding_for_changed_rust_line_with_profile(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    all_tests: &[TypeScriptTest],
+    profile: TypeScriptBunBridgeProfile,
+) -> Option<Finding> {
     if normalized_path(file) != profile.rust_file || !line_text_matches_bun_blob_boundary(line_text)
     {
         return None;
@@ -4552,10 +4567,10 @@ fn typescript_bun_cross_language_raw_evidence_refs(
 
     if hint.confidence == TypeScriptBunBridgeConfidence::ConfiguredHint {
         refs.push(typescript_bun_cross_language_raw_evidence_ref(
-            "binding_or_ffi_edge",
+            "binding_edge",
             hint.rust_file,
             line,
-            "configured_bun_blob_bridge",
+            "configured_bridge",
             source_id,
             Some(hint.rust_owner),
             &format!(
@@ -5265,12 +5280,27 @@ mod tests {
     }
 
     fn bun_cross_language_finding_for_source(source: &str) -> Result<Finding, String> {
+        bun_cross_language_finding_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::ConfiguredHint,
+        )
+    }
+
+    fn bun_cross_language_finding_for_source_with_confidence(
+        source: &str,
+        confidence: TypeScriptBunBridgeConfidence,
+    ) -> Result<Finding, String> {
         let tests = extract_tests(Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE), source);
-        bun_cross_language_finding_for_changed_rust_line(
+        let profile = TypeScriptBunBridgeProfile {
+            confidence,
+            ..BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE
+        };
+        bun_cross_language_finding_for_changed_rust_line_with_profile(
             Path::new(BUN_BLOB_ARRAY_BUFFER_RUST_FILE),
             3420,
             "    if (array_buffer.shared || array_buffer.resizable) {",
             &tests,
+            profile,
         )
         .ok_or_else(|| "expected Bun cross-language finding".to_string())
     }
@@ -5282,6 +5312,17 @@ mod tests {
                 .iter()
                 .any(|line| line.contains(expected_text)),
             "expected evidence containing {expected_text:?}, got {:?}",
+            finding.evidence
+        );
+    }
+
+    fn assert_evidence_lacks(finding: &Finding, unexpected_text: &str) {
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|line| !line.contains(unexpected_text)),
+            "unexpected evidence containing {unexpected_text:?}, got {:?}",
             finding.evidence
         );
     }
@@ -5692,7 +5733,7 @@ test("blob copies shared and resizable buffers", async () => {
             "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
         );
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
-        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_or_ffi_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
@@ -5750,7 +5791,7 @@ test("blob copies shared buffers", async () => {
             "unlock_condition: identify the missing external TypeScript discriminator(s)",
         );
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
-        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_or_ffi_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
@@ -5770,6 +5811,61 @@ test("blob copies shared buffers", async () => {
             "unresolved cross-language oracle visibility must not emit placement: {:?}",
             finding.evidence
         );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("analysis/cross-language-oracle-visibility"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_with_unknown_bridge_stays_limitation() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::Unknown,
+        )?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "actionability_category: cross_language_oracle_visibility_unresolved",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_hint: confidence=unknown",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=bridge_unknown",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: bridge_unknown missing_discriminators=none action=report_bridge_unknown_not_no_static_path suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert_evidence_contains(&finding, "missing_graph_legs: binding_or_ffi_edge");
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: name the binding or FFI edge from the Rust seam to the external test",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert_evidence_lacks(&finding, "raw_evidence_ref: leg=binding_edge;");
         assert!(
             finding
                 .recommended_next_step

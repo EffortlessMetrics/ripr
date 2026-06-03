@@ -115,7 +115,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-binding-route-witness"
-status = "ready"
+status = "done"
 branch = "analysis-cross-language-binding-route-witness"
 stackable = false
 acceptance = "Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than no_static_path or actionable repair work."
@@ -128,10 +128,9 @@ commands = [
 
 [[work_item]]
 id = "report/cross-language-oracle-route-quality"
-status = "blocked"
+status = "ready"
 branch = "report-cross-language-oracle-route-quality"
 stackable = false
-blocked_by = ["analysis/cross-language-ts-discriminator-witness", "analysis/cross-language-binding-route-witness"]
 acceptance = "Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready."
 commands = [
   "cargo xtask ripr-swarm readiness",

@@ -488,7 +488,10 @@ The evidence-first fields are additive in schema `0.1`:
   configured Bun Blob route keeps unresolved cross-language cases at
   `suggested_test_file=not_applicable`, emits no `placement`, no verify or
   receipt command, no allowed edit surface, and no public repair packet until
-  the full public packet fields exist. A future route may populate
+  the full public packet fields exist. Configured bridge evidence is a
+  credited `raw_evidence_refs[].leg = "binding_edge"`; a `bridge_unknown`
+  limitation must omit that credited binding raw ref and instead name
+  `binding_or_ffi_edge` in `missing_graph_legs[]`. A future route may populate
   `placement` only after the binding or FFI edge, external callsite, external
   oracle, verify route, receipt route, and edit surface are named. It is not a
   generated test, source edit, runtime command, Rust-test placement, gate,

@@ -245,15 +245,15 @@ Current supporting proof:
 - `xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_actionability_and_location_holes`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip`
+- `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_with_unknown_bridge_stays_limitation`
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip`
+- `crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bridge_unknown_without_binding_ref`
 - `xtask/src/main.rs::tests::typescript_bun_ub_calibration_cases_are_checked`
 - `crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved`
 - `crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_cross_language_target_unresolved_packet`
 
 Planned follow-up proof:
 
-- `analysis/cross-language-binding-route-witness` distinguishes configured
-  bridge evidence from `bridge_unknown`.
 - `report/cross-language-oracle-route-quality` keeps readiness and scorecard
   summaries aligned with limitation routes.
 
@@ -263,7 +263,9 @@ Current implementation surfaces:
 
 - `crates/ripr/src/analysis/language/typescript.rs` emits configured Bun Blob
   cross-language preview evidence lines with graph-leg raw refs, missing graph
-  legs, and unlock conditions for limitation states.
+  legs, and unlock conditions for limitation states. Credited configured
+  bridge evidence uses the `binding_edge` raw-ref leg; `bridge_unknown` omits
+  that raw ref and names missing `binding_or_ffi_edge` instead.
 - `crates/ripr/src/output/typescript_preview_card.rs` projects the advisory
   TypeScript preview card, including Bun cross-language limitation category,
   route, graph legs, unlock condition, and raw refs while keeping

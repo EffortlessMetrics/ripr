@@ -47720,10 +47720,10 @@ fn cross_language_oracle_graph_case_errors(case: &CrossLanguageOracleGraphCase) 
             }
             if !cross_language_oracle_graph_has_missing_leg(
                 case,
-                "external_discriminator:resizable_array_buffer",
+                "boundary_discriminator:resizable_array_buffer",
             ) {
                 errors.push(
-                    "rust_ungripped_ts_missing_discriminator must name the missing external discriminator leg"
+                    "rust_ungripped_ts_missing_discriminator must name the missing boundary discriminator leg"
                         .to_string(),
                 );
             }
@@ -47747,9 +47747,12 @@ fn cross_language_oracle_graph_case_errors(case: &CrossLanguageOracleGraphCase) 
                         .to_string(),
                 );
             }
-            if !cross_language_oracle_graph_has_missing_leg(case, "stable_blob_observer") {
+            if !cross_language_oracle_graph_has_missing_leg(
+                case,
+                "external_callsite:view_backed_blob_input",
+            ) {
                 errors.push(
-                    "ts_mention_not_observer must name stable_blob_observer as a missing graph leg"
+                    "ts_mention_not_observer must name the missing external Blob callsite graph leg"
                         .to_string(),
                 );
             }
@@ -77664,7 +77667,7 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_contains_error(
             &errors,
-            "rust_ungripped_ts_missing_discriminator must name the missing external discriminator leg",
+            "rust_ungripped_ts_missing_discriminator must name the missing boundary discriminator leg",
         );
 
         let mut mention = valid_cross_language_oracle_graph_case();
@@ -77688,7 +77691,7 @@ fn exact_owner_call_has_external_expected_value() {
         );
         assert_contains_error(
             &errors,
-            "ts_mention_not_observer must name stable_blob_observer as a missing graph leg",
+            "ts_mention_not_observer must name the missing external Blob callsite graph leg",
         );
 
         let mut bridge = valid_cross_language_oracle_graph_case();

@@ -167,7 +167,7 @@
           "resizable_array_buffer"
         ],
         "missing_graph_legs": [
-          "external_discriminator:resizable_array_buffer"
+          "boundary_discriminator:resizable_array_buffer"
         ],
         "unlock_condition": "Prove a TypeScript Blob observer for a resizable ArrayBuffer on the configured bridge before placement or actionability is suggested."
       },
@@ -280,7 +280,7 @@
         "allowed_edit_surface": [],
         "missing_discriminators": [],
         "missing_graph_legs": [
-          "stable_blob_observer",
+          "external_callsite:view_backed_blob_input",
           "external_oracle:stable_byte_copy"
         ],
         "unlock_condition": "Connect the token mention to a Blob input and stable byte observer before it can affect oracle visibility."
