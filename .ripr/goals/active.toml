@@ -1,45 +1,41 @@
-id = "lane1-cross-language-oracle-graph-readiness"
-title = "Lane 1 Cross-Language Oracle Graph Readiness"
+id = "lane1-post-08-operating-loop"
+title = "Lane 1 Post-0.8 Evidence-To-Repair Operating Loop"
 status = "active"
 lane = "lane1"
-issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/910"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
 no_current_goal = false
 
-# Selected after Lane 1 Language-Aware Placement Navigation closed with
-# `no_current_goal = true`. Live repo state on 2026-06-03 shows #910 remains
-# open as the concrete TS discriminator plus binding/FFI reachability
-# requirement, while #908 remains the broader cross-language oracle visibility
-# and wrong-language remediation issue. This campaign may make configured
-# external oracle routes more precise, but it must not promote preview evidence
-# into public repair packets until the full Rust seam -> binding/FFI edge ->
-# external callsite -> external oracle chain and repair-packet fields are
-# present.
+# Selected after the 0.8.0 evidence-to-repair foundation shipped and the
+# language-aware placement, large-repo runtime, and real-repo trust campaigns
+# closed. Live repo state on 2026-06-03 shows #913, #912, and #909 are closed,
+# while #908 and #910 remain open as mixed-language real-repo trust follow-ups.
+# Normal development remains in ripr-swarm; source ripr remains release,
+# signing, publishing, and distribution authority.
 
 objective = """
-Make cross-language oracle visibility explicit for Rust seams exercised by
-TypeScript, binding, or FFI surfaces: distinguish missing external
-discriminators, unknown bridge routes, and complete advisory witnesses, then
-only move toward actionability when the Rust seam, binding edge, external
-callsite, external assertion/oracle, verify command, receipt command, raw
-evidence refs, and edit constraints are all named.
+Make RIPR's post-0.8 Lane 1 operating loop useful on real large and
+mixed-language repositories: produce actionable repair packets only when they
+are safe to delegate, verify, receipt, and measure, and otherwise produce
+named limitation backlog items with samples, unlock conditions, analyzer
+routes, and non-claims.
 """
 
 end_state = [
-  "TS-tested Rust seam samples carry a bounded oracle graph shape: Rust seam, boundary, binding or FFI edge, external callsite, external assertion or oracle, and raw evidence refs",
-  "complete configured external witnesses can be reported as advisory external observation without creating public repair packets, generated tests, gates, badges, baselines, or support-tier promotion",
-  "missing discriminator, mention-only, unknown bridge, and unresolved target cases stay static limitations with named repair routes and samples",
-  "readiness, scorecard, review, LSP, and PR surfaces preserve cross-language oracle routes as limitations until public repair-packet fields exist",
-  "full actionability remains blocked unless verify_command, receipt_command, allowed_edit_surface, must_not_change, confidence, and raw_evidence_refs are present",
+  "review, CLI, LSP, PR, badge, and CI surfaces project canonical repair or limitation state instead of raw finding counts",
+  "large-repo runs preserve full, diff-complete, sampled, stale, timeout, incomplete, runner-failure, and cache-limited status without silent degradation",
+  "cross-language, binding, FFI, and external-oracle cases fail closed until explicit graph and target evidence exists",
+  "repair packets name canonical_gap_id, repair_kind, target shape, verify command, receipt command, allowed edit surface, must-not-change boundaries, confidence, and raw evidence refs",
+  "attempt receipts and route-quality reports show improved, unchanged, regressed, resolved, missing-receipt, and limitation-route movement without curating only wins",
 ]
 
 hard_rules = [
-  "do not classify TS-tested Rust seams as actionable from preview evidence alone",
-  "do not suggest Rust or external-language test targets without explicit bridge and observer evidence",
-  "do not invent binding edges, external callsites, external oracles, verify commands, receipt commands, candidate values, or allowed edit surfaces",
-  "do not create public repair packets from advisory cross-language witnesses",
-  "do not claim full cross-language oracle graph proof or runtime coverage proof until the graph is explicitly named and verified",
+  "do not force actionability",
+  "do not suggest wrong-language or unrelated test files",
+  "do not silently skip cache or full-repo limitations",
+  "do not treat raw findings as product truth",
+  "do not create public repair packets from preview or limitation evidence",
+  "do not add provider integration, autonomous edits, mutation execution, or a default blocking CI or badge semantic switch",
   "do not claim 0.8.0 on crates.io includes post-release swarm fixes",
-  "source ripr remains release, signing, publishing, and distribution authority",
 ]
 
 non_goals = [
@@ -47,91 +43,155 @@ non_goals = [
   "no autonomous edits",
   "no mutation execution",
   "no default blocking CI or badge semantic switch",
-  "no generated tests",
-  "no support-tier promotion for TypeScript or JavaScript preview evidence",
   "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
 ]
 
 [[work_item]]
-id = "goals/cross-language-oracle-graph-activation"
+id = "repo/post-08-queue-hygiene"
 status = "done"
-branch = "campaign-cross-language-oracle-graph"
+branch = "goals-lane1-post-08-operating-loop"
 stackable = false
-acceptance = "Select #910/#908 as the next Lane 1 successor after lane1-language-aware-placement-navigation closed with no_current_goal=true, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority."
+acceptance = "Start from live repo and PR state, confirm the named dangling examples are already merged or closed, remove stale local branches from merged PRs, delete confirmed stale remote heads, and make the active manifest point at the current post-0.8 operating loop instead of a superseded route-quality-only slice."
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
-  "cargo xtask check-doc-roles",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "spec/cross-language-oracle-graph-v1"
+id = "review/review-comments-file-line"
 status = "done"
-branch = "spec-cross-language-oracle-graph-v1"
+branch = "report-review-comments-source-locations"
 stackable = false
-acceptance = "Define the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior."
+acceptance = "Review-comments Markdown includes file:line next to seam IDs, unknown source locations remain explicit, and #913 is closed by merged PR #926."
 commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-spec-format",
-  "cargo xtask check-spec-numbering",
-  "cargo xtask check-traceability",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "fixtures/cross-language-oracle-graph-corpus"
-status = "done"
-branch = "fixtures-cross-language-oracle-graph-corpus"
-stackable = false
-acceptance = "Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability."
-commands = [
-  "cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1",
-  "cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1",
-  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "analysis/cross-language-ts-discriminator-witness"
+id = "cache/large-seam-cache-explicit"
 status = "done"
-branch = "analysis-cross-language-ts-discriminator-witness"
+branch = "cache-large-seam-cache-skip-limitation"
 stackable = false
-acceptance = "For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets."
+acceptance = "Large seam-cache skips are explicit and configurable, sharded cache follow-ups are landed, and #912/#909 are closed by the post-0.8 large-repo PR chain through #936."
 commands = [
-  "cargo test -p ripr cross_language -- --test-threads=1",
-  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
+  "cargo xtask cache report",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "analysis/cross-language-binding-route-witness"
-status = "done"
-branch = "analysis-cross-language-binding-route-witness"
-stackable = false
-acceptance = "Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than no_static_path or actionable repair work."
-commands = [
-  "cargo test -p ripr cross_language -- --test-threads=1",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "report/cross-language-oracle-route-quality"
+id = "ripr/diff-first-changed-surface-mode"
 status = "ready"
-branch = "report-cross-language-oracle-route-quality"
+branch = "ripr-diff-first-changed-surface-mode"
 stackable = false
-acceptance = "Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready."
+acceptance = "Add a user-facing changed-surface mode such as `ripr diff --base <ref> --head <ref>` that analyzes changed files/seams before full-repo context, preserves runtime status for both diff and full-repo phases, emits partial useful output before large-repo timeout, and records receipts as diff_complete/full_repo_limited when appropriate."
+commands = [
+  "cargo test --workspace",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/cross-language-oracle-fail-closed"
+status = "blocked"
+branch = "analysis-cross-language-oracle-fail-closed"
+stackable = false
+blocked_by = ["ripr/diff-first-changed-surface-mode"]
+acceptance = "Rust seams that appear covered by TS, JS, Python, binding, or FFI tests but lack an explicit oracle path become `static_limitation` items with category `cross_language_oracle_visibility_unresolved`, route `analysis/cross-language-oracle-visibility`, source samples, and public_projection_eligible=false."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/language-aware-target-placement-v1"
+status = "blocked"
+branch = "report-language-aware-target-placement-v1"
+stackable = false
+blocked_by = ["analysis/cross-language-oracle-fail-closed"]
+acceptance = "Ordinary Rust seams keep Rust-side test targets, externally tested binding or FFI seams only name an external target when oracle evidence proves it, and unresolved binding or FFI targets remain limitations with no LSP repair action."
+commands = [
+  "cargo test -p ripr review_comments -- --test-threads=1",
+  "cargo test -p ripr lsp -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/cross-language-oracle-graph-v1"
+status = "blocked"
+branch = "analysis-cross-language-oracle-graph-v1"
+stackable = false
+blocked_by = ["report/language-aware-target-placement-v1"]
+acceptance = "Trace a bounded Rust seam through export, binding, or FFI surface to an external callsite and assertion or oracle; missing graph edges remain named limitations with language and source locations."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/repair-packet-guidance-quality"
+status = "blocked"
+branch = "analysis-repair-packet-guidance-quality"
+stackable = false
+blocked_by = ["analysis/cross-language-oracle-graph-v1"]
+acceptance = "Repair packets provide precise discriminator, assertion shape, verify command, receipt command, allowed edit surface, and must-not-change guidance when known, while unknown values use clean fail-closed wording without nested placeholders."
+commands = [
+  "cargo xtask ripr-swarm plan --top 10",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/attempt-ledger-outcome-hardening"
+status = "blocked"
+branch = "report-attempt-ledger-outcome-hardening"
+stackable = false
+blocked_by = ["analysis/repair-packet-guidance-quality"]
+acceptance = "Attempt ledger and readiness surfaces preserve not_attempted, attempted_no_receipt, receipt_present, improved, unchanged, regressed, resolved, unknown, stale receipt, gap mismatch, latest-attempt, and orphan receipt states."
+commands = [
+  "cargo xtask ripr-swarm attempt-ledger",
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "dogfood/real-repair-analyzer-attempts"
+status = "blocked"
+branch = "dogfood-real-repair-analyzer-attempts"
+stackable = false
+blocked_by = ["report/attempt-ledger-outcome-hardening"]
+acceptance = "Record real repair or analyzer-backlog attempts with before packet or limitation route, attempted patch or analyzer change, verify result, receipt when applicable, after evidence, outcome, and operator note, including unchanged or missing-receipt cases when they happen."
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask receipts check",
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/route-quality-metrics"
+status = "blocked"
+branch = "report-route-quality-metrics"
+stackable = false
+blocked_by = ["dogfood/real-repair-analyzer-attempts"]
+acceptance = "Readiness and scorecard reports derive repair-kind and limitation-route quality metrics from receipts and outcomes, including attempted, improved, unchanged, regressed, success-rate, sharpened, promoted, top failing routes, top missing fields, and top limitation routes."
 commands = [
   "cargo xtask ripr-swarm readiness",
   "cargo xtask evidence-quality-scorecard",
@@ -141,12 +201,36 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/cross-language-oracle-graph-closeout"
+id = "surface/canonical-state-alignment"
 status = "blocked"
-branch = "campaign-cross-language-oracle-graph-closeout"
+branch = "surface-canonical-state-alignment"
 stackable = false
-blocked_by = ["spec/cross-language-oracle-graph-v1", "fixtures/cross-language-oracle-graph-corpus", "analysis/cross-language-ts-discriminator-witness", "analysis/cross-language-binding-route-witness", "report/cross-language-oracle-route-quality"]
-acceptance = "Close the #910/#908 campaign with issue state, claim boundaries, validation evidence, remaining non-claims, and no successor unless current repo-owned state selects one."
+blocked_by = ["report/route-quality-metrics"]
+acceptance = "CLI, review comments, LSP, PR comments, badge, and CI surfaces preserve the same canonical_gap_id, runtime status, repair or limitation state, receipt status, and non-claims without counting raw findings as product truth."
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/lane1-post-08-closeout"
+status = "blocked"
+branch = "campaign-lane1-post-08-closeout"
+stackable = false
+blocked_by = [
+  "ripr/diff-first-changed-surface-mode",
+  "analysis/cross-language-oracle-fail-closed",
+  "report/language-aware-target-placement-v1",
+  "analysis/cross-language-oracle-graph-v1",
+  "analysis/repair-packet-guidance-quality",
+  "report/attempt-ledger-outcome-hardening",
+  "dogfood/real-repair-analyzer-attempts",
+  "report/route-quality-metrics",
+  "surface/canonical-state-alignment",
+]
+acceptance = "Close the post-0.8 Lane 1 operating loop with what users can trust, what remains advisory, what remains non-actionable, validation commands, open issues, and explicit non-claims."
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",

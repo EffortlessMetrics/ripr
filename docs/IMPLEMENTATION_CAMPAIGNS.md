@@ -4640,9 +4640,11 @@ Closeout:
 
 Campaign ID: `lane1-cross-language-oracle-graph-readiness`
 
-Status: active. `.ripr/goals/active.toml` selects this campaign after
-`lane1-language-aware-placement-navigation` closed with
-`no_current_goal = true`.
+Status: folded into the active post-0.8 operating loop after the bounded
+SPEC-0062, corpus, TS discriminator, and binding-route witness slices landed.
+`.ripr/goals/active.toml` now selects
+`lane1-post-08-operating-loop` so diff-first real-repo operation can happen
+before broader route-quality and cross-language graph promotion work.
 
 This campaign is scoped to live #910 and related #908: Rust seams exercised by
 TypeScript, binding, or FFI surfaces need an explicit oracle graph before RIPR
@@ -4690,8 +4692,8 @@ Work items:
 | `fixtures/cross-language-oracle-graph-corpus` | done | `fixtures/cross-language-oracle-graph-corpus` pins the #910/#908 Bun Blob graph corpus with Rust seam samples, boundary text, binding/FFI hints, external TypeScript callsites, external oracle/assertion samples, advisory or limitation states, structured raw evidence refs, and fail-closed non-claims before analyzer behavior changes. |
 | `analysis/cross-language-ts-discriminator-witness` | done | For the bounded configured Bun Blob route, complete TS discriminator witnesses stay preview-advisory with graph-leg raw refs, while missing-discriminator and mention-only evidence remain cross-language oracle visibility limitations with named missing graph legs and no public repair packets. |
 | `analysis/cross-language-binding-route-witness` | done | Configured Bun Blob routes now credit a structured `binding_edge` raw ref, while complete TypeScript discriminators with unknown bridge confidence stay `bridge_unknown` static limitations with missing `binding_or_ffi_edge`, no binding raw ref, no placement, and no public repair packet. |
-| `report/cross-language-oracle-route-quality` | ready | Readiness and evidence-quality scorecard outputs should now summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
-| `campaign/cross-language-oracle-graph-closeout` | blocked | Close the #910/#908 campaign with issue state, claim boundaries, validation evidence, remaining non-claims, and no successor unless current repo-owned state selects one. |
+| `report/cross-language-oracle-route-quality` | deferred | Deferred into the post-0.8 operating loop's route-quality metrics slice so SPEC-0062 route summaries stay downstream of diff-first real-repo operation, cross-language fail-closed routing, target placement, and dogfood attempts. |
+| `campaign/cross-language-oracle-graph-closeout` | deferred | Closeout is deferred until the broader post-0.8 loop reaches the cross-language graph and surface-alignment slices, or a narrower issue-backed closeout is selected. |
 
 Commands:
 
@@ -4728,3 +4730,47 @@ Blocking conditions:
 - changing provider, autonomous edit, mutation-execution, badge, default CI
   blocking, support tier, source release, publishing, signing, marketplace, or
   install-doc behavior without explicit authorization.
+
+## Lane 1 Campaign: Post-0.8 Evidence-To-Repair Operating Loop
+
+Campaign ID: `lane1-post-08-operating-loop`
+
+Status: active. `.ripr/goals/active.toml` records that live queue hygiene is
+complete, #913 and #909/#912 are closed in the current repo state, and the next
+ready work item is `ripr/diff-first-changed-surface-mode`.
+
+Objective:
+
+```text
+Make RIPR's post-0.8 Lane 1 operating loop useful on real large and
+mixed-language repositories: route safe repair packets, fail closed into named
+limitation backlog items, record receipts and outcomes, and use route quality
+to choose the next analyzer work.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `repo/post-08-queue-hygiene` | done | Live state confirms #680, #582, and the same-file method-chain route split chain are merged or closed; stale local branches from merged PRs and two stale remote heads were pruned. |
+| `review/review-comments-file-line` | done | #913 is closed by #926; review-comments source locations are no longer the next active slice. |
+| `cache/large-seam-cache-explicit` | done | #912 and #909 are closed by the large-cache post-0.8 chain through #936, including explicit skip state and sharded cache follow-ups. |
+| `ripr/diff-first-changed-surface-mode` | ready | Add a user-facing changed-surface mode that emits diff-complete evidence before full-repo analysis and preserves full-repo limited state. |
+| `analysis/cross-language-oracle-fail-closed` | blocked | Follows diff-first mode; unresolved external oracle paths remain limitations, not wrong-language repair packets. |
+| `report/language-aware-target-placement-v1` | blocked | Follows cross-language fail-closed routing; external targets require explicit oracle and observer evidence. |
+| `analysis/cross-language-oracle-graph-v1` | blocked | Follows target placement; broader graph proof remains non-claimed until implemented. |
+| `analysis/repair-packet-guidance-quality` | blocked | Follows graph proof; packets should sharpen exact guidance without placeholders. |
+| `report/attempt-ledger-outcome-hardening` | blocked | Follows packet guidance; attempts, receipts, stale or mismatched receipts, and latest attempts remain durable. |
+| `dogfood/real-repair-analyzer-attempts` | blocked | Follows ledger hardening; dogfood should include improved and unchanged attempts. |
+| `report/route-quality-metrics` | blocked | Follows dogfood attempts; route-quality metrics derive from receipts and outcomes. |
+| `surface/canonical-state-alignment` | blocked | Follows route quality; CLI, review, LSP, PR, badge, and CI surfaces project canonical state. |
+| `campaign/lane1-post-08-closeout` | blocked | Close only after the loop can prove what users can trust and what remains advisory or non-actionable. |
+
+Non-claims:
+
+- no provider integration;
+- no autonomous edits;
+- no mutation execution;
+- no default blocking CI or badge semantic switch;
+- no source release, publish, tag, signing, marketplace, or install-doc work
+  without explicit release authorization.

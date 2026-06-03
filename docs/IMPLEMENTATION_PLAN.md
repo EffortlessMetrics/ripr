@@ -72,20 +72,25 @@ than one behavior contract or touches repo shape.
 | Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 | Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
-| Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Active: `.ripr/goals/active.toml` selects #910/#908 after the language-aware placement closeout. `spec/cross-language-oracle-graph-v1` has defined [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md), and `fixtures/cross-language-oracle-graph-corpus` pins source samples, expected states, raw refs, and non-claims. The TS discriminator and binding-route analysis slices now preserve graph-leg raw refs, credited `binding_edge` evidence, and `bridge_unknown` limitations without public repair packets; the next ready slice is `report/cross-language-oracle-route-quality`. |
+| Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Folded into the active post-0.8 operating loop after #943 through #948 landed SPEC-0062, the graph corpus, TS discriminator witnesses, and binding-route witness behavior. #908/#910 remain open as broader cross-language follow-ups rather than completed generic oracle support. |
+| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Active: `.ripr/goals/active.toml` records live queue hygiene, treats #913 and #909/#912 as closed, keeps source ripr as release authority, and selects `ripr/diff-first-changed-surface-mode` as the next ready work item before broader cross-language fail-closed and route-quality slices. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
 it records `status = "active"` for
-  `lane1-cross-language-oracle-graph-readiness`. That #910/#908 successor campaign is
-  scoped to cross-language oracle visibility after the #911 placement campaign
-  closed:
-  [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
-  defines the bounded Bun Blob graph contract where complete configured external
-  witnesses may become advisory external observation, but missing
-  discriminators, mention-only samples, unknown bridges, and unresolved targets
-  remain named limitations until the Rust seam, binding or FFI edge, external
-  callsite, external assertion or oracle, raw evidence refs, verify command,
-  receipt command, and edit constraints are all explicit. The
+`lane1-post-08-operating-loop`. That post-release successor keeps normal
+development in ripr-swarm, preserves source ripr as release/distribution
+authority, and orders the next Lane 1 work around the evidence-to-repair
+operating loop: queue hygiene, navigable review comments, explicit large-repo
+limits, user-facing diff-first changed-surface mode, cross-language fail-closed
+routing, target placement, oracle graph proof, packet guidance, receipt/outcome
+hardening, dogfood attempts, route-quality metrics, and user-surface alignment.
+[RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
+continues to define the bounded Bun Blob graph contract where complete
+configured external witnesses may become advisory external observation, but
+missing discriminators, mention-only samples, unknown bridges, and unresolved
+targets remain named limitations until the Rust seam, binding or FFI edge,
+external callsite, external assertion or oracle, raw evidence refs, verify
+command, receipt command, and edit constraints are all explicit. The
 closed
 `lane1-language-aware-placement-navigation` campaign records that #938 made
 explicit external observer target evidence navigation-only across
