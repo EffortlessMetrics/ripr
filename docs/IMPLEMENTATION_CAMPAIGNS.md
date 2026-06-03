@@ -4370,3 +4370,84 @@ Blocking conditions:
 - mutation execution
 - runtime adequacy, coverage adequacy, proof-of-correctness, policy
   eligibility, gate pass/fail, or merge-readiness claims
+
+## Lane 1 Campaign: Real-Repo Trust Readiness
+
+Campaign ID: `lane1-real-repo-trust-readiness`
+
+Status: active.
+
+The self-hosted routed runner proof campaign is closed and archived. Live
+release handoff state says source `ripr` 0.8.0 has already been tagged and
+published, so this campaign treats the new real-repo issue batch as
+post-release trust debt and possible hotfix work. It must not imply that the
+published 0.8.0 tag already fixed behavior that lands afterward.
+
+The issue batch:
+
+- [#913](https://github.com/EffortlessMetrics/ripr-swarm/issues/913):
+  review-comments Markdown omits file:line next to seam IDs.
+- [#912](https://github.com/EffortlessMetrics/ripr-swarm/issues/912) and
+  [#909](https://github.com/EffortlessMetrics/ripr-swarm/issues/909): large
+  monorepos exceed the seam-cache entry limit and cache skips are too easy to
+  miss.
+- [#908](https://github.com/EffortlessMetrics/ripr-swarm/issues/908),
+  [#910](https://github.com/EffortlessMetrics/ripr-swarm/issues/910), and
+  [#911](https://github.com/EffortlessMetrics/ripr-swarm/issues/911):
+  cross-language, TypeScript-tested, binding, and FFI seams can be reported or
+  routed as misleading Rust repair work.
+
+Objective:
+
+```text
+Make RIPR's evidence-to-repair foundation honest on large and mixed-language
+repositories: review surfaces must be navigable, large seam-cache limits must
+be explicit named limitations, and cross-language or binding/FFI seams must
+fail closed instead of emitting wrong Rust repair work.
+```
+
+End state:
+
+- Review-facing seam rows include source file and line/span, or an explicit
+  `source_location_unresolved` limitation route.
+- Large seam-cache skips report observed seam count, configured limit,
+  downstream consumability, and a repair/configuration route.
+- Rust seams reached through TypeScript, binding, or FFI surfaces fail closed
+  as named limitations until RIPR can prove external oracle visibility or a
+  language-aware target.
+- Public repair-packet queues exclude unresolved cross-language packets.
+- Release-line notes and issue labels stay honest about what shipped in the
+  already-published 0.8.0 tag.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `release/real-repo-trust-issue-triage` | active | Classify #913, #912/#909, and #908/#910/#911; link duplicate/overlap clusters; label release-line blockers or post-0.8 follow-ups honestly; update release/freeze non-claims. |
+| `report/review-comments-source-locations` | ready | Add file:line/span or an explicit unknown-location limitation to review-comments Markdown and fixtures. |
+| `cache/large-seam-cache-skip-limitation` | ready | Make large seam-cache skips named, counted, configured, and preserved as limited state. |
+| `analysis/cross-language-oracle-visibility-limitation` | ready | Route TS-tested Rust and binding/FFI seams to named limitations when external oracle visibility is unresolved. |
+| `report/binding-ffi-target-placement-fail-closed` | ready | Suppress unrelated Rust suggested-test placement for binding/FFI or externally tested seams. |
+
+Commands:
+
+```bash
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- forcing actionability without the public repair-packet fields;
+- suggesting unrelated Rust tests for binding/FFI seams;
+- hiding cache skips or representing limited input as full;
+- claiming full cross-language oracle proof before the analyzer route exists;
+- changing provider, autonomous edit, mutation-execution, badge, default CI
+  blocking, source release, publishing, signing, marketplace, or install-doc
+  behavior without explicit authorization.

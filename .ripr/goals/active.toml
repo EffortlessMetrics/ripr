@@ -1,63 +1,55 @@
-id = "self-hosted-routed-runner-proof"
-title = "Self-Hosted Routed Runner Proof"
-status = "closed"
-lane = "repo-ops"
-issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/34"
-no_current_goal = true
+id = "lane1-real-repo-trust-readiness"
+title = "Lane 1 Real-Repo Trust Readiness"
+status = "active"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/913"
+no_current_goal = false
 
-# This repo-ops goal is selected after First Useful PR Loop Continuation closed
-# with `no_current_goal = true`. It does not reopen product or analyzer work.
-# It recorded the only live repo-owned successor surfaced by the issue board:
-# prove the CX53/CX43 self-hosted routed Rust path, or keep the runner
-# image-readiness blocker explicit while the protected hosted fallback remains
-# healthy. The proof is now restored; select any successor from current
-# repo-owned state instead of continuing this closed campaign.
+# Selected after the self-hosted routed runner proof campaign closed with
+# `no_current_goal = true`. Live repo state on 2026-06-03 shows 0.8.0 already
+# published, so this campaign treats the new large-repo and cross-language
+# issue batch as post-release trust debt / hotfix candidates, not as claims
+# already satisfied by the published 0.8.0 tag.
 
 objective = """
-Restore and prove the self-hosted routed Rust path for ripr-swarm while keeping
-the normalized Ripr Rust Small Result gate and GitHub-hosted fallback as the
-branch-protection-facing proof.
+Make RIPR's evidence-to-repair foundation honest on large and mixed-language
+repositories: review surfaces must be navigable, large seam-cache limits must
+be explicit named limitations, and cross-language or binding/FFI seams must
+fail closed instead of emitting wrong Rust repair work.
 """
 
 end_state = [
-  "issue #34 records CX53 primary proof with target=cx53, reason=cx53_idle, and Ripr Rust Small Result success, or a current bounded image-readiness/runner-visibility blocker",
-  "issue #34 records CX43 fallback proof with target=cx43, reason=cx43_idle, and Ripr Rust Small Result success, or a current bounded image-readiness/runner-visibility blocker",
-  "issue #24 records the same cutover disposition and does not claim machine cutover completion before self-hosted proof or accepted blocker",
-  "branch protection remains strict and requires only Ripr Rust Small Result",
-  "conditional CX53/CX43/GitHub-hosted implementation jobs remain unrequired",
-  "normal feature, docs, spec, analyzer, editor, badge, and repo-ops work stays routed to ripr-swarm while source ripr remains release/distribution authority",
+  "review-comments Markdown includes source file and line/span next to each seam row, or an explicit source_location_unresolved limitation route",
+  "large repo seam-cache skips report observed seam count, configured limit, downstream consumability, and a repair/configuration route instead of silently disappearing",
+  "Rust seams reached through TypeScript, binding, or FFI surfaces fail closed as cross_language_oracle_visibility_unresolved or cross_language_target_unresolved until RIPR can prove the external oracle path",
+  "public repair-packet queues exclude incomplete or cross-language-unresolved packets and preserve blocked-state / limitation routes",
+  "0.8.x release-line notes and issue labels do not claim the published 0.8.0 tag fixed behavior that landed only afterward",
 ]
 
 hard_rules = [
-  "start from open PRs and required checks before touching docs or goals",
-  "the normalized Ripr Rust Small Result is the only branch-protection-facing check",
-  "self-hosted implementation jobs are conditional proof jobs, not required status checks",
-  "GitHub-hosted fallback is a valid protected-path success while CX53/CX43 proof is unavailable",
-  "runner-image or runner-visibility blockers must be recorded explicitly instead of treated as successful self-hosted proof",
-  "source ripr remains release, security, promotion, and publish/distribution authority",
+  "do not force actionability",
+  "do not suggest unrelated Rust test files for binding or FFI seams",
+  "do not silently skip cache on large repositories",
+  "do not represent sampled, stale, or limited runs as full",
+  "source ripr remains release, signing, publishing, and distribution authority",
 ]
 
 non_goals = [
-  "no analyzer truth changes",
-  "no output schema or product surface changes",
-  "no source repo promotion",
-  "no release, publish, signing, marketplace, or badge endpoint refresh work",
-  "no release/publish/signing secrets in ripr-swarm",
-  "no fork PRs on self-hosted runners",
-  "no branch-protection expansion beyond Ripr Rust Small Result",
-  "no default CI blocking changes beyond the normalized routed result",
-  "no provider/model calls",
-  "no source edits or generated tests",
+  "no provider integration",
+  "no autonomous edits",
   "no mutation execution",
-  "no runtime adequacy, coverage adequacy, proof-of-correctness, policy eligibility, gate pass/fail, or merge-readiness claim",
+  "no default blocking CI or badge semantic switch",
+  "no claim that full cross-language oracle proof exists",
+  "no claim that every large-repo run is full",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
 ]
 
 [[work_item]]
-id = "goals/self-hosted-routed-runner-proof-activation"
-status = "done"
-branch = "goals-self-hosted-runner-proof"
+id = "release/real-repo-trust-issue-triage"
+status = "active"
+branch = "release-real-repo-trust-triage"
 stackable = false
-acceptance = "Select the self-hosted routed runner proof issue as the active repo-owned successor after no-current-goal, without changing analyzer, product, release, badge, or branch-protection behavior."
+acceptance = "Classify #913, #912/#909, and #908/#910/#911 as the current real-repo trust issue batch; link the duplicate/overlap cluster; label release-line blockers or post-0.8 follow-ups honestly; update 0.8.0 release/freeze non-claims so the published tag is not represented as fixing these new issues."
 commands = [
   "cargo xtask check-goals",
   "cargo xtask goals next",
@@ -69,70 +61,56 @@ commands = [
 ]
 
 [[work_item]]
-id = "ops/current-routed-proof-refresh"
-status = "done"
-branch = "ops-current-routed-proof-refresh"
+id = "report/review-comments-source-locations"
+status = "ready"
+branch = "report-review-comments-source-locations"
 stackable = false
-acceptance = "Refresh current-main routed proof on #34 and #24, recording whether CX53/CX43 self-hosted execution is validated or whether the bounded blocker remains runner image readiness or runner visibility."
-# Refreshed with issue-ledger routed proof comments. Treat #34 and #24 as the
-# current proof ledger instead of requiring this manifest to change after every
-# hosted-fallback merge.
-# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526148362
-# - #34: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526189830
-# - #34 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526512428
-# - #34 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526754297
-# - #34 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526808720
-# - #34 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526860777
-# - #34 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4526898495
-# - #34 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527749965
-# - #34 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4527818659
-# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526148678
-# - #24: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526190172
-# - #24 after #360: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526512895
-# - #24 after #367: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526754568
-# - #24 after #369: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526808969
-# - #24 after #372: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526861154
-# - #24 after #374: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4526898494
-# - #24 after #397: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527750005
-# - #24 after #398: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4527819086
-# Later proof replaced the hosted-fallback-only blocker:
-# - #24 proof refresh: https://github.com/EffortlessMetrics/ripr-swarm/issues/24#issuecomment-4608634496
-# - #34 closeout: https://github.com/EffortlessMetrics/ripr-swarm/issues/34#issuecomment-4608635545
-# - CX53 PR proof: https://github.com/EffortlessMetrics/ripr-swarm/actions/runs/26859058862
-# - CX43 main proof: https://github.com/EffortlessMetrics/ripr-swarm/actions/runs/26860129004
+acceptance = "review-comments Markdown rows show file:line or explicit unknown source-location limitation next to seam IDs, and JSON/Markdown fixture coverage proves no seam row is location-free."
 commands = [
-  "cargo xtask check-goals",
-  "cargo xtask goals next",
-  "cargo xtask check-workflows",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ops/cx53-cx43-proof-closeout"
-status = "done"
-branch = "ops-cx53-cx43-proof-closeout"
-stackable = false
-acceptance = "Close the routed-runner proof only after #34 records CX53 primary and CX43 fallback proof, or after an org-visible operator records the accepted runner image-readiness or visibility blocker. Satisfied by #920 CX53 proof and #921 current-main CX43 proof, recorded on #24 and #34."
-commands = [
-  "cargo xtask check-goals",
-  "cargo xtask goals next",
-  "cargo xtask check-workflows",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "campaign/self-hosted-routed-runner-proof-closeout"
-status = "done"
-branch = "campaign-self-hosted-routed-runner-proof-closeout"
-stackable = false
-acceptance = "Close this repo-ops goal with issue-linked proof, branch-protection status, source/swarm authority boundary, and remaining operational follow-ups."
-commands = [
-  "cargo xtask check-goals",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
+  "cargo test -p ripr review_comments -- --test-threads=1",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
-  "cargo xtask check-doc-roles",
-  "cargo xtask check-workflows",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "cache/large-seam-cache-skip-limitation"
+status = "ready"
+branch = "cache-large-seam-cache-skip-limitation"
+stackable = false
+acceptance = "Repos exceeding the seam-cache entry limit emit a named large-cache limitation with observed seam count, cache limit, downstream consumability, repair route, configurable limit, and scorecard/readiness preservation of limited state."
+commands = [
+  "cargo test -p ripr repo_seam_cache -- --test-threads=1",
+  "cargo xtask cache report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/cross-language-oracle-visibility-limitation"
+status = "ready"
+branch = "analysis-cross-language-oracle-visibility-limitation"
+stackable = false
+acceptance = "TS-tested Rust and binding/FFI seam fixtures fail closed as named cross-language limitations with source samples and no public repair packet, wrong Rust target, or verify command against unrelated Rust tests."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/binding-ffi-target-placement-fail-closed"
+status = "ready"
+branch = "report-binding-ffi-target-placement-fail-closed"
+stackable = false
+acceptance = "Suggested-test placement distinguishes ordinary Rust seams from binding/FFI or externally tested seams, suppresses unrelated Rust test targets, exposes cross_language_target_unresolved, and keeps LSP repair actions unavailable for blocked packets."
+commands = [
+  "cargo test -p ripr suggested_test -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
