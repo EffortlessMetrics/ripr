@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "report/language-aware-placement-navigation"
-status = "ready"
+status = "done"
 branch = "report-language-aware-placement-navigation"
 stackable = false
 acceptance = "Review-comments, LSP, and packet-adjacent output can surface explicit external observer target evidence as navigation-only limitation context for configured binding/FFI routes, while unknown external targets keep a named blocked route and no repair action, no verify command, no receipt command, and no allowed edit surface."
@@ -80,10 +80,9 @@ commands = [
 
 [[work_item]]
 id = "report/language-aware-placement-route-quality"
-status = "blocked"
+status = "ready"
 branch = "report-language-aware-placement-route-quality"
 stackable = false
-blocked_by = ["report/language-aware-placement-navigation"]
 acceptance = "Readiness, route-quality, and calibration outputs summarize language-aware placement limits and navigation-only external target evidence without promoting unresolved or preview external targets into public repair packets."
 commands = [
   "cargo xtask ripr-swarm readiness",

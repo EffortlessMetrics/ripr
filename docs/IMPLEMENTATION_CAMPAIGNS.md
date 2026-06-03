@@ -4588,8 +4588,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `goals/language-aware-placement-navigation-activation` | done | Select #911 as the first Lane 1 successor after `lane1-large-repo-runtime-completeness` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, or source distribution authority. |
-| `report/language-aware-placement-navigation` | ready | Surface explicit external observer target evidence as navigation-only limitation context for configured binding/FFI routes, while unknown external targets keep a named blocked route and no repair action, verify command, receipt command, or allowed edit surface. |
-| `report/language-aware-placement-route-quality` | blocked | Summarize language-aware placement limits and navigation-only external target evidence in readiness, route-quality, and calibration outputs without promoting unresolved or preview external targets into public repair packets. Blocked by `report/language-aware-placement-navigation`. |
+| `report/language-aware-placement-navigation` | done | #938 surfaces explicit configured external observer target evidence as navigation-only limitation context in review-comments, LSP static-limit notes, and packet-adjacent targeted-test briefs, while unknown targets keep a named blocked route and no repair action, verify command, receipt command, or allowed edit surface. |
+| `report/language-aware-placement-route-quality` | ready | Summarize language-aware placement limits and navigation-only external target evidence in readiness, route-quality, and calibration outputs without promoting unresolved or preview external targets into public repair packets. |
 | `campaign/language-aware-placement-closeout` | blocked | Close #911 with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one. Blocked by the two report slices above. |
 
 Commands:
