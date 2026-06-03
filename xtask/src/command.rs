@@ -885,7 +885,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "stdout and target/ripr/reports/cache-report.{md,json}",
             false,
-            "Reports target/ripr/cache families and largest files without reading or deleting source, build, report, receipt, PR, review, workflow, or agent artifacts.",
+            "Reports target/ripr/cache families, largest files, and sharded cache sets without reading or deleting source, build, report, receipt, PR, review, workflow, or agent artifacts.",
         ),
         command_entry(
             "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",

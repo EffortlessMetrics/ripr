@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "report/large-repo-cache-shard-summary"
-status = "ready"
+status = "done"
 branch = "report-large-repo-cache-shard-summary"
 stackable = false
 blocked_by = ["cache/large-repo-sharded-seam-cache"]
@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/diff-scoped-large-repo-review-fast-path"
-status = "blocked"
+status = "ready"
 branch = "analysis-diff-scoped-large-repo-review-fast-path"
 stackable = false
 blocked_by = ["report/large-repo-cache-shard-summary"]

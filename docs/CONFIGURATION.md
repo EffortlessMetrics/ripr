@@ -150,9 +150,10 @@ plus shard files, with cache-store trace status such as
 `sharded_ok_seams_135812_shards_7_limit_20000`. Warm loads stitch the shards
 only when the manifest and every shard match the current cache key; missing or
 corrupt shards are ignored as cache corruption and the run recomputes instead
-of using partial evidence. `cargo xtask cache report` and
-`cargo xtask cache gc --dry-run` still see sharded entries because every shard
-lives under `target/ripr/cache`.
+of using partial evidence. `cargo xtask cache report` summarizes sharded
+families, largest shard sets, and orphan or incomplete shard sets. The
+`cargo xtask cache gc --dry-run` command still sees sharded entries because
+every shard lives under `target/ripr/cache`.
 
 To reduce full-cache shard counts for a repo on a machine with enough headroom:
 

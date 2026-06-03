@@ -4504,8 +4504,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `cache/large-repo-sharded-seam-cache` | done | Full repo seam cache entries above `RIPR_REPO_SEAM_CACHE_LIMIT` now write and reload bounded shard files; corrupt/incomplete shard sets fail closed; docs describe shard-size semantics. |
-| `report/large-repo-cache-shard-summary` | ready | Summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and orphan/incomplete shard sets. |
-| `analysis/diff-scoped-large-repo-review-fast-path` | blocked | Review a tiny diff in a large repo through changed seams and bounded immediate callers while reporting the narrowed input as scoped rather than full-repo truth; blocked by the shard-summary report. |
+| `report/large-repo-cache-shard-summary` | done | Cache reports now summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and orphan/incomplete shard sets. |
+| `analysis/diff-scoped-large-repo-review-fast-path` | ready | Review a tiny diff in a large repo through changed seams and bounded immediate callers while reporting the narrowed input as scoped rather than full-repo truth. |
 
 Commands:
 
