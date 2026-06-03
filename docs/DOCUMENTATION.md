@@ -97,6 +97,7 @@ Current how-to docs:
 - [TypeScript enablement lane](lanes/TYPESCRIPT_ENABLEMENT.md)
 - [TypeScript preview completion closeout](handoffs/2026-05-30-typescript-preview-completion-closeout.md)
 - [Bun UB TypeScript preview closeout](handoffs/2026-06-03-bun-ub-typescript-preview-closeout.md)
+- [Lane 1 large-repo runtime completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md)
 - [Python repair routing usable-alpha closeout](handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 2 policy operations tracker](policy/POLICY_OPERATIONS.md)

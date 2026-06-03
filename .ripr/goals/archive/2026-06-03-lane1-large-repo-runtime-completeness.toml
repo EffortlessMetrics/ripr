@@ -1,3 +1,4 @@
+# Archived by `cargo xtask closeout --goal lane1-large-repo-runtime-completeness` on 2026-06-03.
 id = "lane1-large-repo-runtime-completeness"
 title = "Lane 1 Large-Repo Runtime Completeness"
 status = "closed"

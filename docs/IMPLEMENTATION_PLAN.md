@@ -70,22 +70,21 @@ than one behavior contract or touches repo shape.
 | First Useful PR Loop Continuation | Make one changed Rust behavior become one clear repairable gap, one focused proof intent, one verification command, and one reviewer- and agent-readable receipt. | Complete: the goal-freshness guardrail, first-pr front door, one-screen recommendation contract, reviewer-native outcome, first-pr demo story, generated CI/VS Code/agent packet convergence, and [closeout handoff](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md) are in place. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
 | Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Complete: [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md) records CX53/CX43 routed proof, #24/#34 issue-ledger updates, unchanged branch-protection boundary, and remaining non-goal follow-ups. |
 | Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
-| Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Active: `.ripr/goals/active.toml` selects #909; sharded cache storage and cache report shard summaries are done, with the diff-scoped large-repo review fast path now ready. |
+| Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it currently records `status = "active"` for
-`lane1-large-repo-runtime-completeness`. That successor campaign is scoped to
-[#909](https://github.com/EffortlessMetrics/ripr-swarm/issues/909): make the
-full classified seam cache usable for large repo-exposure warm paths by writing
-bounded shard files, keeping corrupt or incomplete shard sets fail-closed, and
-surfacing cache-report shard summaries. Diff-scoped large-repo review runtime
-remains the next ready follow-up. The preceding
-`lane1-real-repo-trust-readiness` closeout records that #913, #912, and the
-post-0.8 issue-batch slices landed through #931 while #909, #908, #910, and
-#911 remain broader follow-up routes rather than completed scalability or full
-cross-language oracle support. Live repo handoff state says 0.8.0 has already
-been published, so this successor lane remains post-release trust debt and must
-not be represented as behavior included in the published tag. The goal-freshness guardrail is pinned,
+it records `status = "closed"` and `no_current_goal = true` for
+`lane1-large-repo-runtime-completeness`. That #909 successor campaign closed
+after writing bounded classified seam-cache shards, keeping corrupt or
+incomplete shard sets fail-closed, surfacing cache-report shard summaries, and
+adding diff-scoped review-comments runtime over changed production files plus
+bounded immediate callers. The preceding `lane1-real-repo-trust-readiness`
+closeout records that #913, #912, and the post-0.8 issue-batch slices landed
+through #931 while #908, #910, and #911 remain broader follow-up routes rather
+than completed cross-language oracle support or language-aware placement. Live
+repo handoff state says 0.8.0 has already been published, so these post-release
+trust-debt campaigns must not be represented as behavior included in the
+published tag. The goal-freshness guardrail is pinned,
 the first-pr front-door stdout behavior landed in #332, the one-screen
 recommendation contract landed in #335, reviewer-native outcome claim
 boundaries landed in #338, the fixture-backed first successful PR demo story

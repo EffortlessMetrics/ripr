@@ -4467,8 +4467,9 @@ Closeout:
 
 Campaign ID: `lane1-large-repo-runtime-completeness`
 
-Status: active. `.ripr/goals/active.toml` selects this campaign after
-`lane1-real-repo-trust-readiness` closed with `no_current_goal = true`.
+Status: closed. `.ripr/goals/active.toml` records `status = "closed"` and
+`no_current_goal = true`; the closeout audit is
+[Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md).
 
 This campaign is scoped to the live #909 follow-up: make large-repo
 repo-exposure warm paths useful without turning sampled, timeout, incomplete,
@@ -4534,3 +4535,12 @@ Blocking conditions:
   is validated;
 - changing source release, publish, signing, marketplace, or install-doc
   behavior without explicit release authorization.
+
+Closeout:
+
+- [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md)
+- The closed manifest archive is
+  `.ripr/goals/archive/2026-06-03-lane1-large-repo-runtime-completeness.toml`.
+- Future cross-language oracle graph or language-aware placement work should
+  open a successor issue-backed manifest rather than extending this closed
+  #909 campaign.
