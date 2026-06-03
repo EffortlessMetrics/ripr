@@ -81,6 +81,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 message.push_str("`; suggested test file `");
                 message.push_str(&grip.suggested_test_file);
                 message.push_str("` (preview advisory).");
+                if let Some(placement) = &grip.placement {
+                    message.push_str(" TypeScript placement: rank ");
+                    message.push_str(&placement.rank.to_string());
+                    message.push_str(" `");
+                    message.push_str(&placement.suggested_test_file);
+                    message.push_str("`; reason `");
+                    message.push_str(&placement.reason);
+                    message.push_str("` (preview advisory).");
+                }
             }
         }
         out.push_str(&format!(
@@ -404,6 +413,7 @@ mod tests {
             "typescript_bun_ub_bridge_hint: id=bun-blob-array-buffer rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts confidence=configured".to_string(),
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=add_resizable_array_buffer_blob_case authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
         ];
 
         let rendered = render(&output);
@@ -413,6 +423,10 @@ mod tests {
         );
         assert!(rendered.contains("action `add_resizable_array_buffer_blob_case`"));
         assert!(rendered.contains("suggested test file `test/js/web/fetch/blob.test.ts`"));
+        assert!(rendered.contains("TypeScript placement%3A rank 1"));
+        assert!(rendered.contains(
+            "reason `existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer`"
+        ));
         assert!(rendered.contains("(preview advisory)."));
     }
 

@@ -274,7 +274,7 @@ impl TypeScriptBunBridgeHint {
         } else {
             missing.join(",")
         };
-        vec![
+        let mut lines = vec![
             format!(
                 "typescript_bun_ub_bridge_hint: confidence={} rust_file={} rust_owner={} rust_boundary=\"{}\" ts_test_file={}",
                 self.confidence.as_str(),
@@ -298,7 +298,15 @@ impl TypeScriptBunBridgeHint {
                 self.verdict.suggested_test_file()
             ),
             "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
-        ]
+        ];
+        if let Some(reason) = self.verdict.placement_reason() {
+            lines.push(format!(
+                "typescript_bun_ub_test_placement: rank=1 suggested_test_file={} reason=\"{}\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false",
+                self.verdict.suggested_test_file(),
+                reason
+            ));
+        }
+        lines
     }
 }
 
@@ -388,6 +396,21 @@ impl TypeScriptBunBridgeVerdict {
             | Self::TsMissingShared
             | Self::TsMissingSharedAndResizable => ExposureClass::WeaklyExposed,
             Self::TsMentionNotObserver | Self::BridgeUnknown => ExposureClass::StaticUnknown,
+        }
+    }
+
+    fn placement_reason(self) -> Option<&'static str> {
+        match self {
+            Self::TsMissingResizable => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer",
+            ),
+            Self::TsMissingShared => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is shared_array_buffer",
+            ),
+            Self::TsMissingSharedAndResizable => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminators are shared_array_buffer and resizable_array_buffer",
+            ),
+            Self::TsDiscriminated | Self::TsMentionNotObserver | Self::BridgeUnknown => None,
         }
     }
 }
@@ -5493,6 +5516,10 @@ test("blob copies shared buffers", async () => {
         assert_evidence_contains(
             &finding,
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer\"",
         );
         assert!(
             finding

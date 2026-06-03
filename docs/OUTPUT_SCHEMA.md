@@ -480,7 +480,13 @@ The evidence-first fields are additive in schema `0.1`:
   `rust_seam.boundary`, `typescript_evidence.test_file`,
   `typescript_evidence.verdict`, `typescript_evidence.bridge_confidence`,
   `typescript_evidence.missing_discriminators[]`, `action`,
-  `suggested_test_file`, `authority_boundary`, and `repair_packet_ready`.
+  `suggested_test_file`, optional `placement`, `authority_boundary`, and
+  `repair_packet_ready`. When present, `placement` is an advisory TypeScript
+  observer-location ranking for missing-discriminator Bun Blob cases and
+  carries `rank`, `suggested_test_file`, `reason`, `basis[]`,
+  `authority_boundary`, and `repair_packet_ready`. It is not a generated test,
+  source edit, runtime command, Rust-test placement, gate, badge, baseline, or
+  repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local

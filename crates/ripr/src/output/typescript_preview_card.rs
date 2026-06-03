@@ -48,6 +48,17 @@ pub(crate) struct TypeScriptBunCrossLanguageGrip {
     pub(crate) missing_discriminators: Vec<String>,
     pub(crate) action: String,
     pub(crate) suggested_test_file: String,
+    pub(crate) placement: Option<TypeScriptBunTestPlacement>,
+    pub(crate) authority_boundary: String,
+    pub(crate) repair_packet_ready: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptBunTestPlacement {
+    pub(crate) rank: usize,
+    pub(crate) suggested_test_file: String,
+    pub(crate) reason: String,
+    pub(crate) basis: Vec<String>,
     pub(crate) authority_boundary: String,
     pub(crate) repair_packet_ready: bool,
 }
@@ -158,6 +169,14 @@ pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -
             },
             "action": grip.action.as_str(),
             "suggested_test_file": grip.suggested_test_file.as_str(),
+            "placement": grip.placement.as_ref().map(|placement| json!({
+                "rank": placement.rank,
+                "suggested_test_file": placement.suggested_test_file.as_str(),
+                "reason": placement.reason.as_str(),
+                "basis": &placement.basis,
+                "authority_boundary": placement.authority_boundary.as_str(),
+                "repair_packet_ready": placement.repair_packet_ready,
+            })),
             "authority_boundary": grip.authority_boundary.as_str(),
             "repair_packet_ready": grip.repair_packet_ready,
         })),
@@ -284,6 +303,7 @@ fn bun_cross_language_grip(finding: &Finding) -> Option<TypeScriptBunCrossLangua
     let hint = evidence_value(finding, "typescript_bun_ub_bridge_hint: ")?;
     let verdict = evidence_value(finding, "typescript_bun_ub_bridge_verdict: ")?;
     let grip = evidence_value(finding, "typescript_bun_ub_cross_language_grip: ");
+    let placement = evidence_value(finding, "typescript_bun_ub_test_placement: ");
     let ts_verdict = verdict.split_whitespace().next()?.to_string();
     let missing = keyed_value(verdict, "missing_discriminators")
         .map(|value| {
@@ -314,11 +334,34 @@ fn bun_cross_language_grip(finding: &Finding) -> Option<TypeScriptBunCrossLangua
         missing_discriminators: missing,
         action: keyed_value(verdict, "action")?,
         suggested_test_file: keyed_value(verdict, "suggested_test_file")?,
+        placement: placement.and_then(bun_test_placement),
         authority_boundary: grip
             .and_then(|line| keyed_value(line, "authority"))
             .unwrap_or_else(|| "preview_advisory_only".to_string()),
         repair_packet_ready: grip
             .and_then(|line| keyed_value(line, "repair_packet_ready"))
+            .is_some_and(|value| value == "true"),
+    })
+}
+
+fn bun_test_placement(input: &str) -> Option<TypeScriptBunTestPlacement> {
+    Some(TypeScriptBunTestPlacement {
+        rank: keyed_value(input, "rank")?.parse().ok()?,
+        suggested_test_file: keyed_value(input, "suggested_test_file")?,
+        reason: keyed_value(input, "reason")?,
+        basis: keyed_value(input, "basis")
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        authority_boundary: keyed_value(input, "authority")
+            .unwrap_or_else(|| "preview_advisory_only".to_string()),
+        repair_packet_ready: keyed_value(input, "repair_packet_ready")
             .is_some_and(|value| value == "true"),
     })
 }
@@ -402,6 +445,7 @@ mod tests {
             "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=add_resizable_array_buffer_blob_case authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
             "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
         ]);
 
@@ -419,6 +463,28 @@ mod tests {
             "array_buffer.shared || array_buffer.resizable"
         );
         assert_eq!(grip.missing_discriminators, vec!["resizable_array_buffer"]);
+        let placement = grip
+            .placement
+            .as_ref()
+            .ok_or_else(|| "expected Bun TypeScript placement".to_string())?;
+        assert_eq!(placement.rank, 1);
+        assert_eq!(
+            placement.suggested_test_file,
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(
+            placement.reason,
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer"
+        );
+        assert_eq!(
+            placement.basis,
+            vec![
+                "configured_bridge_suggested_test_file",
+                "same_js_surface",
+                "same_boundary_vocabulary"
+            ]
+        );
+        assert!(!placement.repair_packet_ready);
         assert!(!grip.repair_packet_ready);
 
         let json = typescript_preview_card_json_value(&card);
@@ -435,6 +501,15 @@ mod tests {
         assert_eq!(
             projected["suggested_test_file"],
             "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(projected["placement"]["rank"], 1);
+        assert_eq!(
+            projected["placement"]["reason"],
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable_array_buffer"
+        );
+        assert_eq!(
+            projected["placement"]["basis"][0],
+            "configured_bridge_suggested_test_file"
         );
         assert_eq!(projected["authority_boundary"], "preview_advisory_only");
         assert_eq!(projected["repair_packet_ready"], false);

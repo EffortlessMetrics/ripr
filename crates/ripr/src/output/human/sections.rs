@@ -262,6 +262,13 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
             "    suggested test file: {}\n",
             grip.suggested_test_file
         ));
+        if let Some(placement) = &grip.placement {
+            out.push_str(&format!(
+                "    placement: rank {} {}\n",
+                placement.rank, placement.suggested_test_file
+            ));
+            out.push_str(&format!("    placement reason: {}\n", placement.reason));
+        }
         out.push_str(&format!("    authority: {}\n", grip.authority_boundary));
         out.push_str(&format!(
             "    repair packet ready: {}\n",
