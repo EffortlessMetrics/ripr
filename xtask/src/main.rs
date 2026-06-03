@@ -7608,6 +7608,7 @@ fn routed_rust_workflow_contract_violations(
             "runner read token fallback",
             "secrets.EM_RUNNER_READ_TOKEN || github.token",
         ),
+        ("slurped idle runner query", "jq -s -e --arg model"),
         ("trusted fork fallback reason", "fork_or_untrusted_pr"),
         ("runner API fallback reason", "runner_api_failed"),
         ("no-idle fallback reason", "no_idle_runner"),
@@ -7646,6 +7647,26 @@ fn routed_rust_workflow_contract_violations(
                 ".github/workflows/routed-rust.yml is missing {label}: `{snippet}`"
             ));
         }
+    }
+
+    let toolchain_temp_steps = workflow.matches("name: Prepare toolchain temp").count();
+    let toolchain_temp_mkdirs = workflow.matches("run: mkdir -p \"$TMPDIR\"").count();
+    if toolchain_temp_steps < 3 || toolchain_temp_mkdirs < 3 {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml must include `Prepare toolchain temp` before setup for all three self-hosted implementation jobs; found {toolchain_temp_steps} step(s) and {toolchain_temp_mkdirs} mkdir command(s)"
+        ));
+    }
+
+    let scratch_cargo_home =
+        "CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}";
+    let scratch_cargo_homes = workflow.matches(scratch_cargo_home).count();
+    let scratch_cargo_home_cleanups = workflow
+        .matches("rm -rf \"$CARGO_HOME\" \"$CARGO_TARGET_DIR\" \"$TMPDIR\"")
+        .count();
+    if scratch_cargo_homes < 3 || scratch_cargo_home_cleanups < 3 {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml must use scratch CARGO_HOME and clean it for all three self-hosted implementation jobs; found {scratch_cargo_homes} scratch home(s) and {scratch_cargo_home_cleanups} cleanup command(s)"
+        ));
     }
 
     if workflow.contains("repos/${REPOSITORY}/actions/runners")
@@ -71504,6 +71525,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
             reason=fork_or_untrusted_pr
           fi
+          idle() { printf '%s' "$runners" | jq -s -e --arg model "$1" --arg cap "$2" '[.[].runners[]?] | length > 0'; }
           gh api --paginate orgs/EffortlessMetrics/actions/runners
           reason=runner_api_failed
           reason=no_idle_runner
@@ -71514,10 +71536,31 @@ jobs:
           echo rust-medium rust-16gb rust-large
   rust-cx43:
     if: needs.route.outputs.router_target == 'cx43'
+    env:
+      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Prepare toolchain temp
+        run: mkdir -p "$TMPDIR"
+      - name: Clean scratch
+        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cpx42:
     if: needs.route.outputs.router_target == 'cpx42'
+    env:
+      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Prepare toolchain temp
+        run: mkdir -p "$TMPDIR"
+      - name: Clean scratch
+        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cx53:
     if: needs.route.outputs.router_target == 'cx53'
+    env:
+      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Prepare toolchain temp
+        run: mkdir -p "$TMPDIR"
+      - name: Clean scratch
+        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-github:
     if: needs.route.outputs.router_target == 'github'
   result:
@@ -71585,6 +71628,21 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
             violation.contains("organization runner discovery")
                 || violation.contains("repo-local runner discovery")
         }));
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("slurped idle runner query") })
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("Prepare toolchain temp") })
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("scratch CARGO_HOME") })
+        );
         assert!(
             violations
                 .iter()
