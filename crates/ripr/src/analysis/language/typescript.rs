@@ -232,6 +232,9 @@ enum TypeScriptBunArrayBufferFactKind {
     ViewBackedBlobInput,
     BlobArrayBufferObserver,
     StableByteCopyOracle,
+    WeakByteSmokeOracle,
+    WeakByteSnapshotOracle,
+    ByteOracleMentionOnly,
     MaxByteLengthMentionOnly,
 }
 
@@ -245,6 +248,9 @@ impl TypeScriptBunArrayBufferFactKind {
             Self::ViewBackedBlobInput => "view_backed_blob_input",
             Self::BlobArrayBufferObserver => "blob_array_buffer_observer",
             Self::StableByteCopyOracle => "stable_byte_copy_oracle",
+            Self::WeakByteSmokeOracle => "weak_byte_smoke_oracle",
+            Self::WeakByteSnapshotOracle => "weak_byte_snapshot_oracle",
+            Self::ByteOracleMentionOnly => "byte_oracle_mention_only",
             Self::MaxByteLengthMentionOnly => "max_byte_length_mention_only",
         }
     }
@@ -2112,13 +2118,19 @@ fn collect_related_bun_array_buffer_facts(
 }
 
 fn bun_array_buffer_facts_for_test(test: &TypeScriptTest) -> Vec<TypeScriptBunArrayBufferFact> {
-    extract_bun_array_buffer_facts_from_body(&test.file, &test.body_text, test.line)
+    extract_bun_array_buffer_facts_from_body(
+        &test.file,
+        &test.body_text,
+        test.line,
+        &test.assertions,
+    )
 }
 
 fn extract_bun_array_buffer_facts_from_body(
     file: &Path,
     body_text: &str,
     start_line: usize,
+    assertions: &[TypeScriptAssertion],
 ) -> Vec<TypeScriptBunArrayBufferFact> {
     let mut facts = Vec::new();
 
@@ -2178,18 +2190,7 @@ fn extract_bun_array_buffer_facts_from_body(
         push_view_backed_blob_input_facts(&mut facts, file, body_text, start_line);
     }
 
-    if let Some(idx) = stable_byte_copy_oracle_index(body_text) {
-        push_unique_bun_array_buffer_fact(
-            &mut facts,
-            bun_array_buffer_fact(
-                file,
-                body_text,
-                start_line,
-                idx,
-                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
-            ),
-        );
-    }
+    push_byte_oracle_facts(&mut facts, file, body_text, start_line, assertions);
 
     let has_view_backed_blob = facts
         .iter()
@@ -2282,14 +2283,81 @@ fn push_view_backed_blob_input_facts(
     }
 }
 
-fn stable_byte_copy_oracle_index(body_text: &str) -> Option<usize> {
-    let blob_read_idx = first_unquoted_shape_index(body_text, ".arrayBuffer(")
-        .or_else(|| first_unquoted_shape_index(body_text, ".text("))?;
-    let exact_matcher_idx = [".toEqual(", ".toStrictEqual(", ".toBe("]
-        .into_iter()
-        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
-        .min()?;
-    let byte_or_text_observer = [
+fn push_byte_oracle_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    assertions: &[TypeScriptAssertion],
+) {
+    let Some(blob_read_idx) = first_blob_byte_read_index(body_text) else {
+        return;
+    };
+    if assertions.iter().any(assertion_is_exact_value)
+        && body_has_byte_or_text_observer(body_text)
+        && let Some(idx) = first_exact_value_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+            ),
+        );
+        return;
+    }
+    if assertions.iter().any(assertion_is_snapshot)
+        && let Some(idx) = first_snapshot_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::WeakByteSnapshotOracle,
+            ),
+        );
+        return;
+    }
+    if assertions.iter().any(assertion_is_smoke)
+        && let Some(idx) = first_smoke_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::WeakByteSmokeOracle,
+            ),
+        );
+        return;
+    }
+    push_unique_bun_array_buffer_fact(
+        facts,
+        bun_array_buffer_fact(
+            file,
+            body_text,
+            start_line,
+            blob_read_idx,
+            TypeScriptBunArrayBufferFactKind::ByteOracleMentionOnly,
+        ),
+    );
+}
+
+fn first_blob_byte_read_index(body_text: &str) -> Option<usize> {
+    first_unquoted_shape_index(body_text, ".arrayBuffer(")
+        .or_else(|| first_unquoted_shape_index(body_text, ".text("))
+}
+
+fn body_has_byte_or_text_observer(body_text: &str) -> bool {
+    [
         "new Uint8Array(",
         "new Uint8ClampedArray(",
         "new DataView(",
@@ -2298,8 +2366,48 @@ fn stable_byte_copy_oracle_index(body_text: &str) -> Option<usize> {
         ".text(",
     ]
     .into_iter()
-    .any(|shape| contains_unquoted_shape(body_text, shape));
-    byte_or_text_observer.then_some(blob_read_idx.min(exact_matcher_idx))
+    .any(|shape| contains_unquoted_shape(body_text, shape))
+}
+
+fn assertion_is_exact_value(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::ExactValue
+        && assertion.oracle_strength.rank() >= OracleStrength::Strong.rank()
+}
+
+fn assertion_is_snapshot(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::Snapshot
+}
+
+fn assertion_is_smoke(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::SmokeOnly
+}
+
+fn first_exact_value_matcher_index(body_text: &str) -> Option<usize> {
+    [".toEqual(", ".toStrictEqual(", ".toBe("]
+        .into_iter()
+        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+        .min()
+}
+
+fn first_snapshot_matcher_index(body_text: &str) -> Option<usize> {
+    [".toMatchSnapshot(", ".toMatchInlineSnapshot("]
+        .into_iter()
+        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+        .min()
+}
+
+fn first_smoke_matcher_index(body_text: &str) -> Option<usize> {
+    [
+        ".toBeTruthy(",
+        ".toBeFalsy(",
+        ".toBeDefined(",
+        ".toBeUndefined(",
+        ".toBeNull(",
+        ".toBeNaN(",
+    ]
+    .into_iter()
+    .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+    .min()
 }
 
 fn bun_array_buffer_fact(
@@ -4308,6 +4416,53 @@ test("blob text is stable", async () => {
             TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
         );
         assert!(!bun_fact_kinds_for_source(source).contains(&"max_byte_length_mention_only"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_smoke_assertion_as_weak_oracle() {
+        let source = r#"
+test("blob byte smoke is not stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect(copied).toBeDefined();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"weak_byte_smoke_oracle"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_snapshot_assertion_as_weak_oracle() {
+        let source = r#"
+test("blob byte snapshot is not stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toMatchSnapshot();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"weak_byte_snapshot_oracle"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_read_without_assertion_as_mention_only() {
+        let source = r#"
+test("blob byte read alone is not an oracle", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  await blob.arrayBuffer();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"byte_oracle_mention_only"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
     }
 
     #[test]

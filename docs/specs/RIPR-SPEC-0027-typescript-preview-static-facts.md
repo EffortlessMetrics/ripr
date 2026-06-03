@@ -132,10 +132,11 @@ TypeScript facts for the Blob / ArrayBuffer calibration route: syntactic
 `SharedArrayBuffer` construction, resizable `ArrayBuffer` construction through
 `maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views,
 view-backed `Blob(...)` input, `blob.arrayBuffer()` observers, stable byte/text
-assertions, and `maxByteLength` mention-only controls. These facts are not a
-public output-schema extension and do not promote TypeScript preview evidence
-into repair packets, gates, badges, baselines, RIPR Zero, or support-tier
-claims.
+assertions, weak byte/text smoke or snapshot oracles, byte/text read-only
+mentions without assertions, and `maxByteLength` mention-only controls. These
+facts are not a public output-schema extension and do not promote TypeScript
+preview evidence into repair packets, gates, badges, baselines, RIPR Zero, or
+support-tier claims.
 
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
