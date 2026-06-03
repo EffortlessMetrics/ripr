@@ -127,6 +127,16 @@ Assertions / oracles the adapter must recognise:
 - bare `expect(actual).toBeTruthy()` / `toBeFalsy()` /
   `toBeDefined()` → smoke oracle
 
+The 0.8.1 Bun UB advisory lane also permits internal, evidence-only
+TypeScript facts for the Blob / ArrayBuffer calibration route: syntactic
+`SharedArrayBuffer` construction, resizable `ArrayBuffer` construction through
+`maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views,
+view-backed `Blob(...)` input, `blob.arrayBuffer()` observers, stable byte/text
+assertions, and `maxByteLength` mention-only controls. These facts are not a
+public output-schema extension and do not promote TypeScript preview evidence
+into repair packets, gates, badges, baselines, RIPR Zero, or support-tier
+claims.
+
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
 the syntax level. Direct owner-call matches must be token-aware: a top-level

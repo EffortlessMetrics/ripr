@@ -204,6 +204,53 @@ struct TypeScriptAssertion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptBunArrayBufferFact {
+    kind: TypeScriptBunArrayBufferFactKind,
+    file: PathBuf,
+    line: usize,
+    text: String,
+}
+
+impl TypeScriptBunArrayBufferFact {
+    fn evidence_line(&self) -> String {
+        format!(
+            "typescript_bun_ub_advisory_fact: {} at {}:{} ({})",
+            self.kind.as_str(),
+            normalized_path(&self.file),
+            self.line,
+            self.text
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TypeScriptBunArrayBufferFactKind {
+    SharedArrayBuffer,
+    ResizableArrayBuffer,
+    ArrayBufferResize,
+    ArrayBufferView,
+    ViewBackedBlobInput,
+    BlobArrayBufferObserver,
+    StableByteCopyOracle,
+    MaxByteLengthMentionOnly,
+}
+
+impl TypeScriptBunArrayBufferFactKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SharedArrayBuffer => "shared_array_buffer",
+            Self::ResizableArrayBuffer => "resizable_array_buffer",
+            Self::ArrayBufferResize => "array_buffer_resize",
+            Self::ArrayBufferView => "array_buffer_view",
+            Self::ViewBackedBlobInput => "view_backed_blob_input",
+            Self::BlobArrayBufferObserver => "blob_array_buffer_observer",
+            Self::StableByteCopyOracle => "stable_byte_copy_oracle",
+            Self::MaxByteLengthMentionOnly => "max_byte_length_mention_only",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptMockPayload {
     target: String,
     expected: String,
@@ -2048,6 +2095,356 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
         .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
+fn collect_related_bun_array_buffer_facts(
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+) -> Vec<TypeScriptBunArrayBufferFact> {
+    let mut facts = Vec::new();
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.relation.uses_oracle())
+    {
+        for fact in bun_array_buffer_facts_for_test(candidate.test) {
+            push_unique_bun_array_buffer_fact(&mut facts, fact);
+        }
+    }
+    sort_bun_array_buffer_facts(&mut facts);
+    facts
+}
+
+fn bun_array_buffer_facts_for_test(test: &TypeScriptTest) -> Vec<TypeScriptBunArrayBufferFact> {
+    extract_bun_array_buffer_facts_from_body(&test.file, &test.body_text, test.line)
+}
+
+fn extract_bun_array_buffer_facts_from_body(
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+) -> Vec<TypeScriptBunArrayBufferFact> {
+    let mut facts = Vec::new();
+
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        "new SharedArrayBuffer(",
+        TypeScriptBunArrayBufferFactKind::SharedArrayBuffer,
+    );
+    push_resizable_array_buffer_facts(&mut facts, file, body_text, start_line);
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        ".resize(",
+        TypeScriptBunArrayBufferFactKind::ArrayBufferResize,
+    );
+    for view_shape in [
+        "new Uint8Array(",
+        "new Uint8ClampedArray(",
+        "new Uint16Array(",
+        "new Uint32Array(",
+        "new BigUint64Array(",
+        "new Int8Array(",
+        "new Int16Array(",
+        "new Int32Array(",
+        "new BigInt64Array(",
+        "new Float32Array(",
+        "new Float64Array(",
+        "new DataView(",
+    ] {
+        push_bun_facts_for_shape(
+            &mut facts,
+            file,
+            body_text,
+            start_line,
+            view_shape,
+            TypeScriptBunArrayBufferFactKind::ArrayBufferView,
+        );
+    }
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        ".arrayBuffer(",
+        TypeScriptBunArrayBufferFactKind::BlobArrayBufferObserver,
+    );
+
+    let has_view = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::ArrayBufferView);
+    if has_view {
+        push_view_backed_blob_input_facts(&mut facts, file, body_text, start_line);
+    }
+
+    if let Some(idx) = stable_byte_copy_oracle_index(body_text) {
+        push_unique_bun_array_buffer_fact(
+            &mut facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+            ),
+        );
+    }
+
+    let has_view_backed_blob = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput);
+    let has_stable_byte_oracle = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::StableByteCopyOracle);
+    if (!has_view_backed_blob || !has_stable_byte_oracle)
+        && let Some(idx) = first_unquoted_token_index(body_text, "maxByteLength")
+    {
+        push_unique_bun_array_buffer_fact(
+            &mut facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::MaxByteLengthMentionOnly,
+            ),
+        );
+    }
+
+    sort_bun_array_buffer_facts(&mut facts);
+    facts
+}
+
+fn push_resizable_array_buffer_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+) {
+    for idx in unquoted_shape_indices(body_text, "new ArrayBuffer(") {
+        let Some(call_text) = delimited_call_text_at(body_text, idx, "new ArrayBuffer(") else {
+            continue;
+        };
+        if contains_unquoted_token(call_text, "maxByteLength") {
+            push_unique_bun_array_buffer_fact(
+                facts,
+                bun_array_buffer_fact(
+                    file,
+                    body_text,
+                    start_line,
+                    idx,
+                    TypeScriptBunArrayBufferFactKind::ResizableArrayBuffer,
+                ),
+            );
+        }
+    }
+}
+
+fn push_bun_facts_for_shape(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    shape: &str,
+    kind: TypeScriptBunArrayBufferFactKind,
+) {
+    for idx in unquoted_shape_indices(body_text, shape) {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(file, body_text, start_line, idx, kind),
+        );
+    }
+}
+
+fn push_view_backed_blob_input_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+) {
+    for idx in unquoted_shape_indices(body_text, "new Blob(") {
+        let Some(call_text) = delimited_call_text_at(body_text, idx, "new Blob(") else {
+            continue;
+        };
+        if contains_unquoted_shape(call_text, "[") {
+            push_unique_bun_array_buffer_fact(
+                facts,
+                bun_array_buffer_fact(
+                    file,
+                    body_text,
+                    start_line,
+                    idx,
+                    TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+                ),
+            );
+        }
+    }
+}
+
+fn stable_byte_copy_oracle_index(body_text: &str) -> Option<usize> {
+    let blob_read_idx = first_unquoted_shape_index(body_text, ".arrayBuffer(")
+        .or_else(|| first_unquoted_shape_index(body_text, ".text("))?;
+    let exact_matcher_idx = [".toEqual(", ".toStrictEqual(", ".toBe("]
+        .into_iter()
+        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+        .min()?;
+    let byte_or_text_observer = [
+        "new Uint8Array(",
+        "new Uint8ClampedArray(",
+        "new DataView(",
+        "Array.from(",
+        "[...",
+        ".text(",
+    ]
+    .into_iter()
+    .any(|shape| contains_unquoted_shape(body_text, shape));
+    byte_or_text_observer.then_some(blob_read_idx.min(exact_matcher_idx))
+}
+
+fn bun_array_buffer_fact(
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    idx: usize,
+    kind: TypeScriptBunArrayBufferFactKind,
+) -> TypeScriptBunArrayBufferFact {
+    TypeScriptBunArrayBufferFact {
+        kind,
+        file: file.to_path_buf(),
+        line: line_for_body_offset(body_text, start_line, idx),
+        text: source_line_at_offset(body_text, idx),
+    }
+}
+
+fn line_for_body_offset(body_text: &str, start_line: usize, idx: usize) -> usize {
+    start_line
+        + body_text[..idx]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+}
+
+fn source_line_at_offset(body_text: &str, idx: usize) -> String {
+    let line_start = body_text[..idx].rfind('\n').map_or(0, |offset| offset + 1);
+    let line_end = body_text[idx..]
+        .find('\n')
+        .map_or(body_text.len(), |offset| idx + offset);
+    let mut line = body_text[line_start..line_end].trim().to_string();
+    const MAX_FACT_TEXT: usize = 160;
+    if line.len() > MAX_FACT_TEXT {
+        line.truncate(MAX_FACT_TEXT);
+        line.push_str("...");
+    }
+    line
+}
+
+fn delimited_call_text_at<'a>(body_text: &'a str, idx: usize, shape: &str) -> Option<&'a str> {
+    let open_idx = idx + shape.len() - 1;
+    if body_text.as_bytes().get(open_idx).copied()? != b'(' {
+        return None;
+    }
+    let close_idx = matching_close_paren(body_text, open_idx)?;
+    body_text.get(idx..=close_idx)
+}
+
+fn matching_close_paren(body_text: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut escaped = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_template = false;
+    for (idx, ch) in body_text[open_idx..].char_indices() {
+        let absolute = open_idx + idx;
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '\'' && !in_double && !in_template {
+            in_single = !in_single;
+            continue;
+        }
+        if ch == '"' && !in_single && !in_template {
+            in_double = !in_double;
+            continue;
+        }
+        if ch == '`' && !in_single && !in_double {
+            in_template = !in_template;
+            continue;
+        }
+        if in_single || in_double || in_template || inside_block_comment(body_text, absolute) {
+            continue;
+        }
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return Some(absolute);
+            }
+        }
+    }
+    None
+}
+
+fn contains_unquoted_token(text: &str, token: &str) -> bool {
+    first_unquoted_token_index(text, token).is_some()
+}
+
+fn first_unquoted_token_index(text: &str, token: &str) -> Option<usize> {
+    unquoted_shape_indices(text, token)
+        .into_iter()
+        .find(|idx| has_token_boundary(text, *idx, token.len()))
+}
+
+fn first_unquoted_shape_index(text: &str, shape: &str) -> Option<usize> {
+    unquoted_shape_indices(text, shape).into_iter().next()
+}
+
+fn unquoted_shape_indices(text: &str, shape: &str) -> Vec<usize> {
+    text.match_indices(shape)
+        .filter_map(|(idx, _)| {
+            (!line_prefix_looks_like_comment_or_string(text, idx)
+                && !inside_block_comment(text, idx))
+            .then_some(idx)
+        })
+        .collect()
+}
+
+fn has_token_boundary(text: &str, idx: usize, len: usize) -> bool {
+    text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_javascript_identifier_char(ch))
+        && text
+            .get(idx + len..)
+            .and_then(|tail| tail.chars().next())
+            .is_none_or(|ch| !is_javascript_identifier_char(ch))
+}
+
+fn push_unique_bun_array_buffer_fact(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    fact: TypeScriptBunArrayBufferFact,
+) {
+    if !facts.iter().any(|existing| existing == &fact) {
+        facts.push(fact);
+    }
+}
+
+fn sort_bun_array_buffer_facts(facts: &mut [TypeScriptBunArrayBufferFact]) {
+    facts.sort_by(|left, right| {
+        normalized_path(&left.file)
+            .cmp(&normalized_path(&right.file))
+            .then(left.line.cmp(&right.line))
+            .then(left.kind.cmp(&right.kind))
+            .then(left.text.cmp(&right.text))
+    });
+}
+
 fn related_mock_payload_oracle(related: &[RelatedTest]) -> Option<String> {
     related.iter().find_map(|test| {
         (test.oracle_kind == OracleKind::MockExpectation)
@@ -3035,6 +3432,7 @@ fn classify_change(
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
+    let bun_array_buffer_facts = collect_related_bun_array_buffer_facts(&related_candidates);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &mock_paths);
     let has_oracle_eligible_relation = related_candidates
@@ -3240,6 +3638,9 @@ fn classify_change(
     }
     if let Some(oracle) = &mock_payload_oracle {
         evidence.push(format!("mock_payload_evidence: {oracle}"));
+    }
+    for fact in &bun_array_buffer_facts {
+        evidence.push(fact.evidence_line());
     }
     if let Some(limit) = &static_limit {
         evidence.extend(limit.evidence.iter().cloned());
@@ -3749,6 +4150,18 @@ mod tests {
             .collect()
     }
 
+    fn bun_fact_kinds_for_source(source: &str) -> Vec<&'static str> {
+        let tests = extract_tests(Path::new("test/js/web/fetch/blob.test.ts"), source);
+        let mut kinds = tests
+            .iter()
+            .flat_map(bun_array_buffer_facts_for_test)
+            .map(|fact| fact.kind.as_str())
+            .collect::<Vec<_>>();
+        kinds.sort();
+        kinds.dedup();
+        kinds
+    }
+
     fn assert_static_limit(finding: &Finding, kind: StaticLimitKind, expected_text: &str) {
         assert_eq!(finding.static_limit_kind, Some(kind));
         assert!(
@@ -3781,6 +4194,16 @@ mod tests {
         assert_evidence_contains(finding, "why_not_actionable: static limit");
     }
 
+    fn assert_bun_fact(source: &str, expected: TypeScriptBunArrayBufferFactKind) {
+        let kinds = bun_fact_kinds_for_source(source);
+        assert!(
+            kinds.contains(&expected.as_str()),
+            "expected Bun ArrayBuffer fact {:?}, got {:?}",
+            expected,
+            kinds
+        );
+    }
+
     fn assert_evidence_contains(finding: &Finding, expected_text: &str) {
         assert!(
             finding
@@ -3790,6 +4213,157 @@ mod tests {
             "expected evidence containing {expected_text:?}, got {:?}",
             finding.evidence
         );
+    }
+
+    #[test]
+    fn extract_tests_classifies_bun_blob_shared_and_resizable_discriminators() {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  growable.resize(6);
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0, 0, 0]);
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert_eq!(
+            kinds,
+            vec![
+                "array_buffer_resize",
+                "array_buffer_view",
+                "blob_array_buffer_observer",
+                "resizable_array_buffer",
+                "shared_array_buffer",
+                "stable_byte_copy_oracle",
+                "view_backed_blob_input",
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_tests_marks_max_byte_length_without_blob_observer_as_mention_only() {
+        let source = r#"
+test("records growable allocation shape", () => {
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  expect(growable.byteLength).toBe(4);
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"resizable_array_buffer"));
+        assert!(kinds.contains(&"max_byte_length_mention_only"));
+        assert!(!kinds.contains(&"view_backed_blob_input"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_does_not_credit_blob_without_parts_array_as_view_backed() {
+        let source = r#"
+test("unrelated view and scalar blob", () => {
+  const view = new Uint8Array(4);
+  const blob = new Blob("not a parts array");
+  expect(view.byteLength).toBe(4);
+  expect(blob).toBeDefined();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"array_buffer_view"));
+        assert!(!kinds.contains(&"view_backed_blob_input"));
+    }
+
+    #[test]
+    fn extract_tests_ignores_bun_array_buffer_comment_and_string_mentions() {
+        let source = r#"
+test("mentions new SharedArrayBuffer( in the title", () => {
+  // new ArrayBuffer(4, { maxByteLength: 8 })
+  const note = "new Blob([new Uint8Array(await blob.arrayBuffer())])";
+  expect(note).toBe("new Blob([new Uint8Array(await blob.arrayBuffer())])");
+});
+"#;
+
+        assert!(bun_fact_kinds_for_source(source).is_empty());
+    }
+
+    #[test]
+    fn extract_tests_recognizes_text_blob_stable_oracle() {
+        let source = r#"
+test("blob text is stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  expect(await blob.text()).toBe("\0\0\0\0");
+});
+"#;
+
+        assert_bun_fact(
+            source,
+            TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+        );
+        assert_bun_fact(
+            source,
+            TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+        );
+        assert!(!bun_fact_kinds_for_source(source).contains(&"max_byte_length_mention_only"));
+    }
+
+    #[test]
+    fn classify_change_projects_trusted_related_bun_array_buffer_facts_as_advisory_evidence()
+    -> Result<(), String> {
+        let owner = test_owner("hydrateBlob", "src/blob.ts");
+        let tests = extract_tests(
+            Path::new("test/js/web/fetch/blob.test.ts"),
+            r#"
+test("Blob copies ArrayBuffer-backed bytes", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  hydrateBlob(blob);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        let finding = classify_change(
+            Path::new("src/blob.ts"),
+            2,
+            "  return blob;",
+            &[owner],
+            &tests,
+        )
+        .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: shared_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: resizable_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: view_backed_blob_input",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: stable_byte_copy_oracle",
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.contains("max_byte_length_mention_only")),
+            "maxByteLength mention-only must not be emitted for a Blob stable-byte observer: {:?}",
+            finding.evidence
+        );
+        Ok(())
     }
 
     #[test]
