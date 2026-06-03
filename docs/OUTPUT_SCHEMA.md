@@ -471,9 +471,16 @@ The evidence-first fields are additive in schema `0.1`:
   card carries `card_version`, `source`, `language`, `language_status`,
   `authority_boundary`, `owner`, optional `owner_kind`, `probe_family`,
   `changed_behavior`, optional `related_test`, `oracle_kind`,
-  `oracle_strength`, optional `missing_discriminator`,
-  `suggested_assertion_shape`, `static_limits`, nullable `verify.command`,
-  `why_not_actionable`, `repair_route`, `repair_packet_ready`, and `limits`.
+  `oracle_strength`, optional `bun_cross_language_grip`, optional
+  `missing_discriminator`, `suggested_assertion_shape`, `static_limits`,
+  nullable `verify.command`, `why_not_actionable`, `repair_route`,
+  `repair_packet_ready`, and `limits`. The optional
+  `bun_cross_language_grip` object is limited to configured Bun Blob preview
+  evidence and carries `state`, `rust_seam.file`, `rust_seam.owner`,
+  `rust_seam.boundary`, `typescript_evidence.test_file`,
+  `typescript_evidence.verdict`, `typescript_evidence.bridge_confidence`,
+  `typescript_evidence.missing_discriminators[]`, `action`,
+  `suggested_test_file`, `authority_boundary`, and `repair_packet_ready`.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local

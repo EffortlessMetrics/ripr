@@ -240,6 +240,34 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
         "  oracle: {} ({})\n",
         card.oracle_kind, card.oracle_strength
     ));
+    if let Some(grip) = &card.bun_cross_language_grip {
+        out.push_str("  Bun cross-language grip:\n");
+        out.push_str(&format!("    state: {}\n", grip.state));
+        out.push_str(&format!(
+            "    Rust seam: {} owner={} boundary={}\n",
+            grip.rust_file, grip.rust_owner, grip.rust_boundary
+        ));
+        out.push_str(&format!(
+            "    TypeScript evidence: {} verdict={} confidence={}\n",
+            grip.ts_test_file, grip.ts_verdict, grip.bridge_confidence
+        ));
+        if !grip.missing_discriminators.is_empty() {
+            out.push_str(&format!(
+                "    missing discriminators: {}\n",
+                grip.missing_discriminators.join(", ")
+            ));
+        }
+        out.push_str(&format!("    action: {}\n", grip.action));
+        out.push_str(&format!(
+            "    suggested test file: {}\n",
+            grip.suggested_test_file
+        ));
+        out.push_str(&format!("    authority: {}\n", grip.authority_boundary));
+        out.push_str(&format!(
+            "    repair packet ready: {}\n",
+            grip.repair_packet_ready
+        ));
+    }
     if let Some(discriminator) = &card.missing_discriminator {
         out.push_str(&format!("  missing discriminator: {discriminator}\n"));
     }

@@ -211,6 +211,41 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_includes_bun_cross_language_grip() {
+        let mut finding = unknown_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.evidence = vec![
+            "owner: Blob::from_js_without_defer_gc".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: incomplete_repair_packet".to_string(),
+            "why_not_actionable: TypeScript cross-language preview is advisory only".to_string(),
+            "repair_route: inspect or add the suggested TypeScript witness".to_string(),
+            "evidence_needed_to_promote: bridge calibration and non-preview repair packet contract"
+                .to_string(),
+            "typescript_bun_ub_bridge_hint: id=bun-blob-array-buffer rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts confidence=configured".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=add_resizable_array_buffer_blob_case authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+        ];
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("  Bun cross-language grip:\n"));
+        assert!(rendered.contains("    state: rust_ungripped_ts_missing_discriminator\n"));
+        assert!(rendered.contains(
+            "    Rust seam: src/jsc/Blob.rs owner=Blob::from_js_without_defer_gc boundary=array_buffer.shared || array_buffer.resizable\n"
+        ));
+        assert!(rendered.contains(
+            "    TypeScript evidence: test/js/web/fetch/blob.test.ts verdict=ts_missing_resizable confidence=configured\n"
+        ));
+        assert!(rendered.contains("    missing discriminators: resizable_array_buffer\n"));
+        assert!(rendered.contains("    action: add_resizable_array_buffer_blob_case\n"));
+        assert!(rendered.contains("    authority: preview_advisory_only\n"));
+        assert!(rendered.contains("    repair packet ready: false\n"));
+    }
+
+    #[test]
     fn render_finding_omits_language_metadata_when_absent() {
         let rendered = render_finding(&sample_finding());
 

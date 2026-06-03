@@ -137,10 +137,13 @@ mentions without assertions, and `maxByteLength` mention-only controls. A
 bounded internal Bun Blob bridge profile may combine those facts into
 evidence-only `configured_hint` / `bridge_unknown` advisory lines for
 `Blob::from_js_without_defer_gc` and the
-`array_buffer.shared || array_buffer.resizable` Rust boundary. These facts and
-bridge hints are not a public output-schema extension and do not promote
-TypeScript preview evidence into repair packets, gates, badges, baselines, RIPR
-Zero, or support-tier claims.
+`array_buffer.shared || array_buffer.resizable` Rust boundary. A bounded
+cross-language preview projection may surface those lines in the advisory
+TypeScript preview card as `rust_ungripped_ts_discriminated`,
+`rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, or
+`bridge_unknown` state for the configured Bun Blob route. These facts, bridge
+hints, and card fields do not promote TypeScript preview evidence into repair
+packets, gates, badges, baselines, RIPR Zero, or support-tier claims.
 
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
@@ -327,3 +330,4 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_bun_ub_array_buffer_facts`
 - `language_adapter_typescript_bun_ub_stable_byte_oracle_facts`
 - `language_adapter_typescript_bun_ub_bridge_hints`
+- `language_adapter_typescript_bun_ub_cross_language_grip_states`

@@ -18,6 +18,7 @@ pub(crate) struct TypeScriptPreviewCard {
     pub(crate) related_test: Option<TypeScriptPreviewCardRelatedTest>,
     pub(crate) oracle_kind: String,
     pub(crate) oracle_strength: String,
+    pub(crate) bun_cross_language_grip: Option<TypeScriptBunCrossLanguageGrip>,
     pub(crate) missing_discriminator: Option<String>,
     pub(crate) suggested_assertion_shape: String,
     pub(crate) static_limits: Vec<String>,
@@ -33,6 +34,22 @@ pub(crate) struct TypeScriptPreviewCardRelatedTest {
     pub(crate) name: String,
     pub(crate) file: String,
     pub(crate) line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptBunCrossLanguageGrip {
+    pub(crate) state: String,
+    pub(crate) rust_file: String,
+    pub(crate) rust_owner: String,
+    pub(crate) rust_boundary: String,
+    pub(crate) ts_test_file: String,
+    pub(crate) ts_verdict: String,
+    pub(crate) bridge_confidence: String,
+    pub(crate) missing_discriminators: Vec<String>,
+    pub(crate) action: String,
+    pub(crate) suggested_test_file: String,
+    pub(crate) authority_boundary: String,
+    pub(crate) repair_packet_ready: bool,
 }
 
 pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPreviewCard> {
@@ -75,6 +92,7 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
         .map(static_limit_label)
         .into_iter()
         .collect::<Vec<_>>();
+    let bun_cross_language_grip = bun_cross_language_grip(finding);
 
     Some(TypeScriptPreviewCard {
         card_version: "typescript_preview_card.v1".to_string(),
@@ -89,6 +107,7 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
         related_test: strongest.map(related_test_card),
         oracle_kind,
         oracle_strength,
+        bun_cross_language_grip,
         missing_discriminator: missing_discriminator.clone(),
         suggested_assertion_shape: suggested_assertion_shape(
             finding,
@@ -124,6 +143,24 @@ pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -
         })),
         "oracle_kind": card.oracle_kind.as_str(),
         "oracle_strength": card.oracle_strength.as_str(),
+        "bun_cross_language_grip": card.bun_cross_language_grip.as_ref().map(|grip| json!({
+            "state": grip.state.as_str(),
+            "rust_seam": {
+                "file": grip.rust_file.as_str(),
+                "owner": grip.rust_owner.as_str(),
+                "boundary": grip.rust_boundary.as_str(),
+            },
+            "typescript_evidence": {
+                "test_file": grip.ts_test_file.as_str(),
+                "verdict": grip.ts_verdict.as_str(),
+                "bridge_confidence": grip.bridge_confidence.as_str(),
+                "missing_discriminators": &grip.missing_discriminators,
+            },
+            "action": grip.action.as_str(),
+            "suggested_test_file": grip.suggested_test_file.as_str(),
+            "authority_boundary": grip.authority_boundary.as_str(),
+            "repair_packet_ready": grip.repair_packet_ready,
+        })),
         "missing_discriminator": card.missing_discriminator.as_deref(),
         "suggested_assertion_shape": card.suggested_assertion_shape.as_str(),
         "static_limits": &card.static_limits,
@@ -243,6 +280,71 @@ fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+fn bun_cross_language_grip(finding: &Finding) -> Option<TypeScriptBunCrossLanguageGrip> {
+    let hint = evidence_value(finding, "typescript_bun_ub_bridge_hint: ")?;
+    let verdict = evidence_value(finding, "typescript_bun_ub_bridge_verdict: ")?;
+    let grip = evidence_value(finding, "typescript_bun_ub_cross_language_grip: ");
+    let ts_verdict = verdict.split_whitespace().next()?.to_string();
+    let missing = keyed_value(verdict, "missing_discriminators")
+        .map(|value| {
+            if value == "none" {
+                Vec::new()
+            } else {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            }
+        })
+        .unwrap_or_default();
+    let state = grip
+        .and_then(|line| keyed_value(line, "state"))
+        .unwrap_or_else(|| cross_language_state_for_verdict(&ts_verdict).to_string());
+
+    Some(TypeScriptBunCrossLanguageGrip {
+        state,
+        rust_file: keyed_value(hint, "rust_file")?,
+        rust_owner: keyed_value(hint, "rust_owner")?,
+        rust_boundary: keyed_value(hint, "rust_boundary")?,
+        ts_test_file: keyed_value(hint, "ts_test_file")?,
+        ts_verdict,
+        bridge_confidence: keyed_value(hint, "confidence")?,
+        missing_discriminators: missing,
+        action: keyed_value(verdict, "action")?,
+        suggested_test_file: keyed_value(verdict, "suggested_test_file")?,
+        authority_boundary: grip
+            .and_then(|line| keyed_value(line, "authority"))
+            .unwrap_or_else(|| "preview_advisory_only".to_string()),
+        repair_packet_ready: grip
+            .and_then(|line| keyed_value(line, "repair_packet_ready"))
+            .is_some_and(|value| value == "true"),
+    })
+}
+
+fn keyed_value(input: &str, key: &str) -> Option<String> {
+    let needle = format!("{key}=");
+    let start = input.find(&needle)? + needle.len();
+    let rest = &input[start..];
+    if let Some(quoted) = rest.strip_prefix('"') {
+        return quoted.split_once('"').map(|(value, _)| value.to_string());
+    }
+    rest.split_whitespace().next().map(ToString::to_string)
+}
+
+fn cross_language_state_for_verdict(verdict: &str) -> &'static str {
+    match verdict {
+        "ts_discriminated" => "rust_ungripped_ts_discriminated",
+        "ts_missing_resizable" | "ts_missing_shared" | "ts_missing_shared_and_resizable" => {
+            "rust_ungripped_ts_missing_discriminator"
+        }
+        "ts_mention_not_observer" => "ts_mention_not_observer",
+        "bridge_unknown" => "bridge_unknown",
+        _ => "bridge_unknown",
+    }
+}
+
 fn static_limit_label(kind: StaticLimitKind) -> String {
     kind.as_str().to_string()
 }
@@ -290,6 +392,52 @@ mod tests {
         assert_eq!(json["repair_packet_ready"], false);
         assert_eq!(json["related_test"]["name"], "discount smoke");
         assert_eq!(json["missing_discriminator"], "amount == threshold");
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_projects_bun_cross_language_grip() -> Result<(), String> {
+        let mut finding = sample_finding(OracleKind::ExactValue, OracleStrength::Strong);
+        finding.evidence.extend([
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=add_resizable_array_buffer_blob_case authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
+        ]);
+
+        let card = typescript_preview_card(&finding)
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        let grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+        assert_eq!(grip.state, "rust_ungripped_ts_missing_discriminator");
+        assert_eq!(grip.rust_file, "src/jsc/Blob.rs");
+        assert_eq!(grip.rust_owner, "Blob::from_js_without_defer_gc");
+        assert_eq!(
+            grip.rust_boundary,
+            "array_buffer.shared || array_buffer.resizable"
+        );
+        assert_eq!(grip.missing_discriminators, vec!["resizable_array_buffer"]);
+        assert!(!grip.repair_packet_ready);
+
+        let json = typescript_preview_card_json_value(&card);
+        let projected = &json["bun_cross_language_grip"];
+        assert_eq!(
+            projected["state"],
+            "rust_ungripped_ts_missing_discriminator"
+        );
+        assert_eq!(projected["rust_seam"]["file"], "src/jsc/Blob.rs");
+        assert_eq!(
+            projected["typescript_evidence"]["missing_discriminators"][0],
+            "resizable_array_buffer"
+        );
+        assert_eq!(
+            projected["suggested_test_file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(projected["authority_boundary"], "preview_advisory_only");
+        assert_eq!(projected["repair_packet_ready"], false);
         Ok(())
     }
 

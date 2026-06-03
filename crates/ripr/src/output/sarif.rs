@@ -1087,6 +1087,47 @@ mod tests {
     }
 
     #[test]
+    fn sarif_preserves_bun_cross_language_grip_card_properties() -> Result<(), String> {
+        let mut output = sample_output();
+        let finding = &mut output.findings[0];
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(OwnerKind::Function);
+        finding.evidence = vec![
+            "owner: Blob::from_js_without_defer_gc".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: bun_ub_missing_ts_discriminator".to_string(),
+            "why_not_actionable: configured Bun Blob TypeScript preview evidence is missing discriminator(s): resizable_array_buffer".to_string(),
+            "repair_route: add_resizable_array_buffer_blob_case in test/js/web/fetch/blob.test.ts and keep the result preview/advisory".to_string(),
+            "missing_actionability_fields: target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs".to_string(),
+            "evidence_needed_to_promote: missing TypeScript discriminator, target shape, verify command, receipt command, raw evidence refs, and edit constraints".to_string(),
+            "raw_evidence_ref: file=src/jsc/Blob.rs;line=42;kind=typescript_bun_ub_cross_language_preview;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=add_resizable_array_buffer_blob_case suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=add_resizable_array_buffer_blob_case authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+        ];
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "resizable_array_buffer".to_string(),
+            reason: "missing resizable ArrayBuffer discriminator".to_string(),
+            flow_sink: None,
+        }];
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+        let grip = &result["properties"]["typescript_preview_card"]["bun_cross_language_grip"];
+
+        assert_eq!(grip["state"], "rust_ungripped_ts_missing_discriminator");
+        assert_eq!(grip["rust_seam"]["file"], "src/jsc/Blob.rs");
+        assert_eq!(
+            grip["typescript_evidence"]["missing_discriminators"][0],
+            "resizable_array_buffer"
+        );
+        assert_eq!(grip["repair_packet_ready"], false);
+        Ok(())
+    }
+
+    #[test]
     fn sarif_uses_configured_finding_severity() -> Result<(), String> {
         let config = parse_config(
             r#"
