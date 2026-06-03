@@ -4287,15 +4287,15 @@ Closeout:
 
 Campaign ID: `self-hosted-routed-runner-proof`
 
-Status: active.
+Status: closed.
 
-First Useful PR Loop Continuation is closed and archived. The current issue
-board has no product or analyzer PR queue, but it does have one live
-repo-owned cutover gap: [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34)
-tracks CX53/CX43 self-hosted routed Rust proof, and
-[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24) tracks the
-larger source-to-swarm cutover boundary. This repo-ops campaign selects that
-work without reopening product behavior, release, badge, source promotion, or
+First Useful PR Loop Continuation is closed and archived. This repo-ops
+campaign selected the live cutover gap where
+[#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34) tracked
+CX53/CX43 self-hosted routed Rust proof and
+[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24) tracked the
+larger source-to-swarm cutover boundary. It closed that proof gap without
+reopening product behavior, release, badge, source promotion, or
 branch-protection scope.
 
 Objective:
@@ -4326,9 +4326,9 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `goals/self-hosted-routed-runner-proof-activation` | done | Select #34/#24 as the active repo-owned successor after no-current-goal without changing analyzer, product, release, badge, source-promotion, or branch-protection behavior. |
-| `ops/current-routed-proof-refresh` | done | Current routed proof is recorded on #34 and #24 as the issue ledger. Hosted-fallback evidence remains current when that ledger records `target=github` and CX53/CX43 skipped. Recent receipts record both runner visibility/API failure and no idle image-ready CX53/CX43 runner availability; neither is CX53/CX43 execution proof. |
-| `ops/cx53-cx43-proof-closeout` | blocked | Requires CX53/CX43 self-hosted proof or an org-visible accepted runner-readiness/visibility blocker before proof can close. |
-| `campaign/self-hosted-routed-runner-proof-closeout` | blocked | Close only after #34/#24 carry proof or an accepted bounded blocker, plus branch-protection and source/swarm authority status. |
+| `ops/current-routed-proof-refresh` | done | Current routed proof was recorded on #34 and #24 as the issue ledger while the lane was still hosted-fallback-only. Later proof replaced that blocker. |
+| `ops/cx53-cx43-proof-closeout` | done | #920 run `26859058862` proved CX53 with `target=cx53`, `reason=cx53_idle`, and `Ripr Rust Small Result` success; #921 post-merge run `26860129004` proved CX43 with `target=cx43`, `reason=cx43_idle`, and `Ripr Rust Small Result` success. |
+| `campaign/self-hosted-routed-runner-proof-closeout` | done | [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md) records the issue-linked proof, branch-protection status, source/swarm authority boundary, and remaining #24 operational follow-up. |
 
 Commands:
 
@@ -4348,6 +4348,12 @@ rtk cargo xtask check-workflows
 rtk cargo xtask check-pr
 rtk git diff --check
 ```
+
+Closeout:
+
+- [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md)
+  records the CX53/CX43 proof runs, #24/#34 issue ledger updates, unchanged
+  branch-protection boundary, and remaining non-goal follow-ups.
 
 Blocking conditions:
 

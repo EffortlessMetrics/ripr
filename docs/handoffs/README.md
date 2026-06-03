@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Self-Hosted Routed Runner Proof closeout](2026-06-03-self-hosted-routed-runner-proof-closeout.md)
 - [0.8.0 source release](2026-06-02-0.8.0-source-release.md)
 - [0.8.0 release freeze](2026-06-02-0.8.0-release-freeze.md)
 - [0.8.0 swarm freeze](0.8.0-swarm-freeze.md)
