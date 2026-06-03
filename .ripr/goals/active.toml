@@ -101,7 +101,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-ts-discriminator-witness"
-status = "ready"
+status = "done"
 branch = "analysis-cross-language-ts-discriminator-witness"
 stackable = false
 acceptance = "For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets."

@@ -462,9 +462,11 @@ The evidence-first fields are additive in schema `0.1`:
   Current fields are `authority_boundary` (`"preview_advisory_only"`),
   `repair_packet_ready` (`false` for this preview slice), `gap_state`,
   `actionability_category`, `why_not_actionable`, `repair_route`,
-  `missing_actionability_fields[]`, `evidence_needed_to_promote`, and
-  `raw_evidence_refs[]`. Raw evidence refs carry the original raw string plus
-  parsed `file`, `line`, `kind`, `source_id`, and optional `owner` when present.
+  `missing_actionability_fields[]`, `missing_graph_legs[]`, nullable
+  `unlock_condition`, `evidence_needed_to_promote`, and `raw_evidence_refs[]`.
+  Raw evidence refs carry the original raw string plus parsed `file`, `line`,
+  `kind`, `source_id`, optional `owner`, optional graph `leg`, and optional
+  source `sample` when present.
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1
@@ -479,14 +481,18 @@ The evidence-first fields are additive in schema `0.1`:
   evidence and carries `state`, `rust_seam.file`, `rust_seam.owner`,
   `rust_seam.boundary`, `typescript_evidence.test_file`,
   `typescript_evidence.verdict`, `typescript_evidence.bridge_confidence`,
-  `typescript_evidence.missing_discriminators[]`, `action`,
-  `suggested_test_file`, optional `placement`, `authority_boundary`, and
-  `repair_packet_ready`. When present, `placement` is an advisory TypeScript
-  observer-location ranking for missing-discriminator Bun Blob cases and
-  carries `rank`, `suggested_test_file`, `reason`, `basis[]`,
-  `authority_boundary`, and `repair_packet_ready`. It is not a generated test,
-  source edit, runtime command, Rust-test placement, gate, badge, baseline, or
-  repair packet.
+  `typescript_evidence.missing_discriminators[]`, `limitation_category`,
+  `repair_route`, `missing_graph_legs[]`, nullable `unlock_condition`,
+  `raw_evidence_refs[]`, `action`, `suggested_test_file`, optional
+  `placement`, `authority_boundary`, and `repair_packet_ready`. The current
+  configured Bun Blob route keeps unresolved cross-language cases at
+  `suggested_test_file=not_applicable`, emits no `placement`, no verify or
+  receipt command, no allowed edit surface, and no public repair packet until
+  the full public packet fields exist. A future route may populate
+  `placement` only after the binding or FFI edge, external callsite, external
+  oracle, verify route, receipt route, and edit surface are named. It is not a
+  generated test, source edit, runtime command, Rust-test placement, gate,
+  badge, baseline, or repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local

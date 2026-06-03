@@ -252,8 +252,6 @@ Current supporting proof:
 
 Planned follow-up proof:
 
-- `analysis/cross-language-ts-discriminator-witness` distinguishes complete
-  external discriminators from missing-discriminator and mention-only evidence.
 - `analysis/cross-language-binding-route-witness` distinguishes configured
   bridge evidence from `bridge_unknown`.
 - `report/cross-language-oracle-route-quality` keeps readiness and scorecard
@@ -264,9 +262,12 @@ Planned follow-up proof:
 Current implementation surfaces:
 
 - `crates/ripr/src/analysis/language/typescript.rs` emits configured Bun Blob
-  cross-language preview evidence lines.
+  cross-language preview evidence lines with graph-leg raw refs, missing graph
+  legs, and unlock conditions for limitation states.
 - `crates/ripr/src/output/typescript_preview_card.rs` projects the advisory
-  TypeScript preview card.
+  TypeScript preview card, including Bun cross-language limitation category,
+  route, graph legs, unlock condition, and raw refs while keeping
+  `repair_packet_ready=false`.
 - `crates/ripr/src/output/review_comments.rs`, LSP gap artifacts, readiness,
   and scorecard code already suppress repair actions when target placement or
   public packet fields are unresolved.
