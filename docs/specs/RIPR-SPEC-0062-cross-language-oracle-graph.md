@@ -240,6 +240,9 @@ case to `no_static_path` or inventing remediation.
 
 Current supporting proof:
 
+- `fixtures/cross-language-oracle-graph-corpus/corpus.json`
+- `xtask/src/main.rs::tests::cross_language_oracle_graph_corpus_cases_are_checked`
+- `xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_actionability_and_location_holes`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip`
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip`
@@ -249,8 +252,6 @@ Current supporting proof:
 
 Planned follow-up proof:
 
-- `fixtures/cross-language-oracle-graph-corpus` pins all allowed states, raw
-  refs, source locations, and non-claims before analyzer behavior changes.
 - `analysis/cross-language-ts-discriminator-witness` distinguishes complete
   external discriminators from missing-discriminator and mention-only evidence.
 - `analysis/cross-language-binding-route-witness` distinguishes configured
@@ -271,6 +272,9 @@ Current implementation surfaces:
   public packet fields are unresolved.
 - `fixtures/typescript-bun-ub-calibration/corpus.json` records the existing
   Bun Blob calibration cases.
+- `fixtures/cross-language-oracle-graph-corpus/corpus.json` records the
+  SPEC-0062 graph states, source locations, raw refs, limitation routes, target
+  exclusions, and non-claims before analyzer behavior changes.
 - `docs/CONFIGURATION.md` documents `[profiles.bun_ub]` as advisory operator
   configuration for the existing Bun Blob profile.
 - `docs/OUTPUT_SCHEMA.md` documents `preview_actionability` and

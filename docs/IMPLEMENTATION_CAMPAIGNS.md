@@ -4687,9 +4687,9 @@ Work items:
 | --- | --- | --- |
 | `goals/cross-language-oracle-graph-activation` | done | Select #910/#908 as the next Lane 1 successor after `lane1-language-aware-placement-navigation` closed with `no_current_goal = true`, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority. |
 | `spec/cross-language-oracle-graph-v1` | done | [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md) defines the bounded #910/#908 graph contract for the configured Bun Blob route: required Rust seam, boundary, binding or FFI edge, external TypeScript callsite, external assertion/oracle, raw evidence refs, allowed states, and fail-closed non-claims before changing analyzer behavior. |
-| `fixtures/cross-language-oracle-graph-corpus` | ready | Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability. |
-| `analysis/cross-language-ts-discriminator-witness` | blocked | For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets. |
-| `analysis/cross-language-binding-route-witness` | blocked | Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than `no_static_path` or actionable repair work. |
+| `fixtures/cross-language-oracle-graph-corpus` | done | `fixtures/cross-language-oracle-graph-corpus` pins the #910/#908 Bun Blob graph corpus with Rust seam samples, boundary text, binding/FFI hints, external TypeScript callsites, external oracle/assertion samples, advisory or limitation states, structured raw evidence refs, and fail-closed non-claims before analyzer behavior changes. |
+| `analysis/cross-language-ts-discriminator-witness` | ready | For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets. |
+| `analysis/cross-language-binding-route-witness` | ready | Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than `no_static_path` or actionable repair work. |
 | `report/cross-language-oracle-route-quality` | blocked | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
 | `campaign/cross-language-oracle-graph-closeout` | blocked | Close the #910/#908 campaign with issue state, claim boundaries, validation evidence, remaining non-claims, and no successor unless current repo-owned state selects one. |
 
@@ -4699,6 +4699,7 @@ Commands:
 rtk cargo xtask check-spec-format
 rtk cargo xtask check-spec-numbering
 rtk cargo xtask check-traceability
+rtk cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
 rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
 rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
 rtk cargo xtask ripr-swarm readiness

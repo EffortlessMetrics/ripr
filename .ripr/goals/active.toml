@@ -86,11 +86,12 @@ commands = [
 
 [[work_item]]
 id = "fixtures/cross-language-oracle-graph-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-cross-language-oracle-graph-corpus"
 stackable = false
 acceptance = "Pin a #910/#908 corpus that names Rust seam samples, boundary text, binding or FFI hints, external TypeScript callsites, external oracle/assertion samples, expected limitation or advisory witness states, required raw evidence refs, and non-claims before changing actionability."
 commands = [
+  "cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1",
   "cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1",
   "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
   "cargo xtask check-output-contracts",
@@ -100,10 +101,9 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-ts-discriminator-witness"
-status = "blocked"
+status = "ready"
 branch = "analysis-cross-language-ts-discriminator-witness"
 stackable = false
-blocked_by = ["fixtures/cross-language-oracle-graph-corpus"]
 acceptance = "For the bounded configured Bun Blob route, distinguish complete TS discriminator witnesses from missing-discriminator and mention-only evidence while preserving preview-advisory authority and excluding public repair packets."
 commands = [
   "cargo test -p ripr cross_language -- --test-threads=1",
@@ -115,10 +115,9 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-binding-route-witness"
-status = "blocked"
+status = "ready"
 branch = "analysis-cross-language-binding-route-witness"
 stackable = false
-blocked_by = ["fixtures/cross-language-oracle-graph-corpus"]
 acceptance = "Represent configured binding or FFI route evidence separately from unknown bridge evidence so complete TS discriminators without a named bridge remain limitations rather than no_static_path or actionable repair work."
 commands = [
   "cargo test -p ripr cross_language -- --test-threads=1",

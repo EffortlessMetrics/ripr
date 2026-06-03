@@ -1289,6 +1289,59 @@ struct TypeScriptBunUbCalibrationCase {
     reason: String,
 }
 
+#[derive(Clone, Debug)]
+struct CrossLanguageOracleGraphCase {
+    name: String,
+    source: String,
+    language: String,
+    language_status: String,
+    rust_file: String,
+    rust_line: Option<usize>,
+    rust_owner: String,
+    rust_boundary: String,
+    binding_edge_kind: String,
+    binding_edge_confidence: String,
+    external_callsite_file: String,
+    external_callsite_line: Option<usize>,
+    external_entrypoints: Vec<String>,
+    shared_array_buffer: bool,
+    resizable_array_buffer: bool,
+    view_backed_blob_input: bool,
+    stable_byte_copy_oracle: bool,
+    max_byte_length_mention_only: bool,
+    external_oracle_file: String,
+    external_oracle_line: Option<usize>,
+    external_oracle_kind: String,
+    oracle_strength: String,
+    expected_state: String,
+    gap_state: String,
+    limitation_category: String,
+    repair_route: String,
+    authority_boundary: String,
+    public_projection_eligible: bool,
+    repair_packet_ready: bool,
+    suggested_test_file: String,
+    allowed_edit_surface: Vec<String>,
+    verify_command: Option<String>,
+    receipt_command: Option<String>,
+    missing_discriminators: Vec<String>,
+    missing_graph_legs: Vec<String>,
+    unlock_condition: String,
+    raw_evidence_refs: Vec<CrossLanguageOracleGraphRawRef>,
+    non_claims: Vec<String>,
+    reason: String,
+}
+
+#[derive(Clone, Debug)]
+struct CrossLanguageOracleGraphRawRef {
+    leg: String,
+    file: String,
+    line: Option<usize>,
+    kind: String,
+    source_id: String,
+    sample: String,
+}
+
 #[derive(Debug)]
 struct DogfoodUserSurfaceProjectionScenario {
     name: String,
@@ -5722,6 +5775,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
             matches!(
                 name,
                 "actionable-gap-outcomes-corpus"
+                    | "cross-language-oracle-graph-corpus"
                     | "editor_gap_cockpit"
                     | "editor_first_run_usability"
                     | "editor_first_pr_bridge"
@@ -8153,6 +8207,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_python_real_repo_eval_fixture_corpus(&mut violations)?;
     validate_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_typescript_bun_ub_calibration_fixture_corpus(&mut violations)?;
+    validate_cross_language_oracle_graph_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_typescript_preview_false_actionable_audit_fixture_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
@@ -8341,6 +8396,8 @@ const SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/surface-projection-alignment/corpus.json";
 const TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS: &str =
     "fixtures/typescript-bun-ub-calibration/corpus.json";
+const CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS: &str =
+    "fixtures/cross-language-oracle-graph-corpus/corpus.json";
 const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
     "fixtures/typescript-preview-repair-loop/corpus.json";
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS: &str =
@@ -8570,6 +8627,26 @@ const TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES: &[(&str, &str)] = &[
         "ts_mention_not_observer",
     ),
     ("bun_blob_bridge_unknown_without_hint", "bridge_unknown"),
+];
+
+const CROSS_LANGUAGE_ORACLE_GRAPH_REQUIRED_CASES: &[(&str, &str)] = &[
+    (
+        "bun_blob_complete_ts_discriminated_advisory",
+        "rust_ungripped_ts_discriminated",
+    ),
+    (
+        "bun_blob_missing_resizable_oracle_limitation",
+        "rust_ungripped_ts_missing_discriminator",
+    ),
+    (
+        "bun_blob_mention_not_observer_limitation",
+        "ts_mention_not_observer",
+    ),
+    ("bun_blob_bridge_unknown_limitation", "bridge_unknown"),
+    (
+        "bun_blob_target_unresolved_limitation",
+        "cross_language_target_unresolved",
+    ),
 ];
 
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES: &[(&str, &str)] = &[
@@ -9857,6 +9934,87 @@ fn validate_typescript_bun_ub_calibration_fixture_corpus_at(
         if !verdicts.contains(required) {
             violations.push(format!(
                 "TypeScript Bun UB calibration corpus must include verdict {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_cross_language_oracle_graph_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/cross-language-oracle-graph-corpus");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "Cross-language oracle graph fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    validate_cross_language_oracle_graph_fixture_corpus_at(
+        Path::new(CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS),
+        violations,
+    )
+}
+
+fn validate_cross_language_oracle_graph_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "Cross-language oracle graph corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let cases = cross_language_oracle_graph_cases_at(path);
+    let mut seen = BTreeMap::new();
+    let mut states = BTreeSet::<String>::new();
+    for case in &cases {
+        if seen
+            .insert(case.name.clone(), case.expected_state.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "Cross-language oracle graph case {} is duplicated",
+                case.name
+            ));
+        }
+        states.insert(case.expected_state.clone());
+        for error in cross_language_oracle_graph_case_errors(case) {
+            violations.push(format!(
+                "Cross-language oracle graph case {}: {error}",
+                case.name
+            ));
+        }
+    }
+
+    for (case_id, expected_state) in CROSS_LANGUAGE_ORACLE_GRAPH_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == expected_state => {}
+            Some(actual) => violations.push(format!(
+                "Cross-language oracle graph case {case_id} must have expected_state {expected_state}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "Cross-language oracle graph corpus is missing case {case_id}"
+            )),
+        }
+    }
+    for required in [
+        "rust_ungripped_ts_discriminated",
+        "rust_ungripped_ts_missing_discriminator",
+        "ts_mention_not_observer",
+        "bridge_unknown",
+        "cross_language_target_unresolved",
+    ] {
+        if !states.contains(required) {
+            violations.push(format!(
+                "Cross-language oracle graph corpus must include state {required}"
             ));
         }
     }
@@ -47158,6 +47316,603 @@ fn typescript_bun_ub_calibration_required_non_claims() -> &'static [&'static str
     ]
 }
 
+#[cfg(test)]
+fn cross_language_oracle_graph_cases() -> Vec<CrossLanguageOracleGraphCase> {
+    cross_language_oracle_graph_cases_at(Path::new(CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS))
+}
+
+fn cross_language_oracle_graph_cases_at(corpus_path: &Path) -> Vec<CrossLanguageOracleGraphCase> {
+    let fallback = |reason: String| {
+        vec![CrossLanguageOracleGraphCase {
+            name: "corpus".to_string(),
+            source: "unknown".to_string(),
+            language: "unknown".to_string(),
+            language_status: "unknown".to_string(),
+            rust_file: "unknown".to_string(),
+            rust_line: None,
+            rust_owner: "unknown".to_string(),
+            rust_boundary: "unknown".to_string(),
+            binding_edge_kind: "unknown".to_string(),
+            binding_edge_confidence: "unknown".to_string(),
+            external_callsite_file: "unknown".to_string(),
+            external_callsite_line: None,
+            external_entrypoints: Vec::new(),
+            shared_array_buffer: false,
+            resizable_array_buffer: false,
+            view_backed_blob_input: false,
+            stable_byte_copy_oracle: false,
+            max_byte_length_mention_only: false,
+            external_oracle_file: "unknown".to_string(),
+            external_oracle_line: None,
+            external_oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            expected_state: "unknown".to_string(),
+            gap_state: "unknown".to_string(),
+            limitation_category: "unknown".to_string(),
+            repair_route: "unknown".to_string(),
+            authority_boundary: "unknown".to_string(),
+            public_projection_eligible: true,
+            repair_packet_ready: true,
+            suggested_test_file: "unknown".to_string(),
+            allowed_edit_surface: Vec::new(),
+            verify_command: None,
+            receipt_command: None,
+            missing_discriminators: Vec::new(),
+            missing_graph_legs: Vec::new(),
+            unlock_condition: "unknown".to_string(),
+            raw_evidence_refs: Vec::new(),
+            non_claims: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback(
+            "Cross-language oracle graph corpus schema_version must be 0.1".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "kind").as_deref() != Some("cross_language_oracle_graph_corpus") {
+        return fallback(
+            "Cross-language oracle graph corpus kind must be cross_language_oracle_graph_corpus"
+                .to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0062") {
+        return fallback(
+            "Cross-language oracle graph corpus spec must be RIPR-SPEC-0062".to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("Cross-language oracle graph corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let rust_seam = case.get("rust_seam").unwrap_or(&Value::Null);
+            let binding_edge = case.get("binding_edge").unwrap_or(&Value::Null);
+            let external_callsite = case.get("external_callsite").unwrap_or(&Value::Null);
+            let observed = case.get("observed_ts_facts").unwrap_or(&Value::Null);
+            let external_oracle = case.get("external_oracle").unwrap_or(&Value::Null);
+            let expected = case.get("expected").unwrap_or(&Value::Null);
+            CrossLanguageOracleGraphCase {
+                name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                source: json_string_field(case, "source").unwrap_or_else(|| "unknown".to_string()),
+                language: json_string_field(case, "language")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                language_status: json_string_field(case, "language_status")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_file: json_string_field(rust_seam, "file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_line: json_usize_field(rust_seam, "line"),
+                rust_owner: json_string_field(rust_seam, "owner")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                rust_boundary: json_string_field(rust_seam, "boundary")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                binding_edge_kind: json_string_field(binding_edge, "kind")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                binding_edge_confidence: json_string_field(binding_edge, "confidence")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                external_callsite_file: json_string_field(external_callsite, "file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                external_callsite_line: json_usize_field(external_callsite, "line"),
+                external_entrypoints: json_string_array_field(external_callsite, "entrypoints"),
+                shared_array_buffer: json_bool_field(observed, "shared_array_buffer")
+                    .unwrap_or(false),
+                resizable_array_buffer: json_bool_field(observed, "resizable_array_buffer")
+                    .unwrap_or(false),
+                view_backed_blob_input: json_bool_field(observed, "view_backed_blob_input")
+                    .unwrap_or(false),
+                stable_byte_copy_oracle: json_bool_field(observed, "stable_byte_copy_oracle")
+                    .unwrap_or(false),
+                max_byte_length_mention_only: json_bool_field(
+                    observed,
+                    "max_byte_length_mention_only",
+                )
+                .unwrap_or(false),
+                external_oracle_file: json_string_field(external_oracle, "file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                external_oracle_line: json_usize_field(external_oracle, "line"),
+                external_oracle_kind: json_string_field(external_oracle, "kind")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                oracle_strength: json_string_field(external_oracle, "strength")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                expected_state: json_string_field(expected, "state")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                gap_state: json_string_field(expected, "gap_state")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                limitation_category: json_string_field(expected, "limitation_category")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                repair_route: json_string_field(expected, "repair_route")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                authority_boundary: json_string_field(expected, "authority_boundary")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                public_projection_eligible: json_bool_field(expected, "public_projection_eligible")
+                    .unwrap_or(true),
+                repair_packet_ready: json_bool_field(expected, "repair_packet_ready")
+                    .unwrap_or(true),
+                suggested_test_file: json_string_field(expected, "suggested_test_file")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                allowed_edit_surface: json_string_array_field(expected, "allowed_edit_surface"),
+                verify_command: json_string_field(expected, "verify_command"),
+                receipt_command: json_string_field(expected, "receipt_command"),
+                missing_discriminators: json_string_array_field(expected, "missing_discriminators"),
+                missing_graph_legs: json_string_array_field(expected, "missing_graph_legs"),
+                unlock_condition: json_string_field(expected, "unlock_condition")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                raw_evidence_refs: cross_language_oracle_graph_raw_refs(case),
+                non_claims: json_string_array_field(case, "non_claims"),
+                reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                    "Cross-language oracle graph case did not document a reason".to_string()
+                }),
+            }
+        })
+        .collect()
+}
+
+fn cross_language_oracle_graph_raw_refs(case: &Value) -> Vec<CrossLanguageOracleGraphRawRef> {
+    case.get("raw_evidence_refs")
+        .and_then(Value::as_array)
+        .map(|raw_refs| {
+            raw_refs
+                .iter()
+                .map(|raw_ref| CrossLanguageOracleGraphRawRef {
+                    leg: json_string_field(raw_ref, "leg").unwrap_or_else(|| "unknown".to_string()),
+                    file: json_string_field(raw_ref, "file")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    line: json_usize_field(raw_ref, "line"),
+                    kind: json_string_field(raw_ref, "kind")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    source_id: json_string_field(raw_ref, "source_id")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    sample: json_string_field(raw_ref, "sample")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn cross_language_oracle_graph_case_errors(case: &CrossLanguageOracleGraphCase) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (label, value) in [
+        ("case id", &case.name),
+        ("source", &case.source),
+        ("language", &case.language),
+        ("language_status", &case.language_status),
+        ("rust_file", &case.rust_file),
+        ("rust_owner", &case.rust_owner),
+        ("rust_boundary", &case.rust_boundary),
+        ("binding_edge_kind", &case.binding_edge_kind),
+        ("binding_edge_confidence", &case.binding_edge_confidence),
+        ("external_callsite_file", &case.external_callsite_file),
+        ("external_oracle_file", &case.external_oracle_file),
+        ("external_oracle_kind", &case.external_oracle_kind),
+        ("oracle_strength", &case.oracle_strength),
+        ("expected_state", &case.expected_state),
+        ("gap_state", &case.gap_state),
+        ("limitation_category", &case.limitation_category),
+        ("repair_route", &case.repair_route),
+        ("authority_boundary", &case.authority_boundary),
+        ("suggested_test_file", &case.suggested_test_file),
+        ("unlock_condition", &case.unlock_condition),
+        ("reason", &case.reason),
+    ] {
+        let unknown_is_valid_bridge_confidence =
+            label == "binding_edge_confidence" && case.expected_state == "bridge_unknown";
+        if value.trim().is_empty() || (value == "unknown" && !unknown_is_valid_bridge_confidence) {
+            errors.push(format!("{label} must be present"));
+        }
+    }
+
+    if case.rust_line.is_none() {
+        errors.push("rust line must be present".to_string());
+    }
+    if case.external_callsite_line.is_none() {
+        errors.push("external_callsite line must be present".to_string());
+    }
+    if case.external_oracle_line.is_none() {
+        errors.push("external_oracle line must be present".to_string());
+    }
+    if case.language != "typescript" {
+        errors.push(format!(
+            "language must be typescript for the cross-language oracle graph, got {}",
+            case.language
+        ));
+    }
+    if case.language_status != "preview" {
+        errors.push("language_status must be preview".to_string());
+    }
+    if case.authority_boundary != "preview_advisory_only" {
+        errors.push("authority_boundary must be preview_advisory_only".to_string());
+    }
+    if case.repair_packet_ready {
+        errors.push("repair_packet_ready must remain false for graph cases".to_string());
+    }
+    if case.public_projection_eligible {
+        errors.push("public_projection_eligible must remain false for graph cases".to_string());
+    }
+    if case.suggested_test_file != "not_applicable" {
+        errors.push("suggested_test_file must be not_applicable".to_string());
+    }
+    if !case.allowed_edit_surface.is_empty() {
+        errors.push("allowed_edit_surface must remain empty".to_string());
+    }
+    if case.verify_command.is_some() {
+        errors.push("verify_command must be omitted for graph cases".to_string());
+    }
+    if case.receipt_command.is_some() {
+        errors.push("receipt_command must be omitted for graph cases".to_string());
+    }
+    if !cross_language_oracle_graph_allowed_states().contains(&case.expected_state.as_str()) {
+        errors.push(format!(
+            "expected_state must be a cross-language oracle graph state, got {}",
+            case.expected_state
+        ));
+    }
+    if !matches!(
+        case.binding_edge_confidence.as_str(),
+        "configured_hint" | "heuristic" | "unknown"
+    ) {
+        errors.push(format!(
+            "binding_edge_confidence must be configured_hint, heuristic, or unknown, got {}",
+            case.binding_edge_confidence
+        ));
+    }
+    if !matches!(
+        case.binding_edge_kind.as_str(),
+        "configured_bridge" | "ffi_binding" | "unresolved"
+    ) {
+        errors.push(format!(
+            "binding_edge_kind must be configured_bridge, ffi_binding, or unresolved, got {}",
+            case.binding_edge_kind
+        ));
+    }
+    if !case.rust_file.ends_with("Blob.rs") {
+        errors.push("rust_file must identify the Bun Blob Rust seam".to_string());
+    }
+    if case.rust_owner != "Blob::from_js_without_defer_gc" {
+        errors.push(
+            "rust_owner must pin Blob::from_js_without_defer_gc for the configured Bun Blob route"
+                .to_string(),
+        );
+    }
+    if !case.rust_boundary.contains("array_buffer.shared")
+        || !case.rust_boundary.contains("array_buffer.resizable")
+    {
+        errors.push(
+            "rust_boundary must include array_buffer.shared and array_buffer.resizable".to_string(),
+        );
+    }
+    if !case.external_callsite_file.starts_with("test/js/")
+        || !case.external_callsite_file.ends_with(".test.ts")
+    {
+        errors
+            .push("external_callsite_file must be a Bun test/js TypeScript test path".to_string());
+    }
+    if !case.external_oracle_file.starts_with("test/js/")
+        || !case.external_oracle_file.ends_with(".test.ts")
+    {
+        errors.push("external_oracle_file must be a Bun test/js TypeScript test path".to_string());
+    }
+    if case.external_entrypoints.is_empty() {
+        errors.push("external_entrypoints must name at least one external callsite".to_string());
+    }
+    if case.non_claims.is_empty() {
+        errors.push("non_claims must keep cross-language preview denials visible".to_string());
+    }
+    for required in cross_language_oracle_graph_required_non_claims() {
+        if !case
+            .non_claims
+            .iter()
+            .any(|non_claim| non_claim.contains(required))
+        {
+            errors.push(format!("non_claims must deny {required}"));
+        }
+    }
+    cross_language_oracle_graph_raw_ref_errors(case, &mut errors);
+
+    match case.expected_state.as_str() {
+        "rust_ungripped_ts_discriminated" => {
+            if case.gap_state != "already_observed" {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must map to gap_state already_observed"
+                        .to_string(),
+                );
+            }
+            if case.limitation_category != "not_applicable" {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must use limitation_category not_applicable"
+                        .to_string(),
+                );
+            }
+            if case.repair_route != "manual-review/cross-language-advisory-witness" {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must use manual advisory witness route"
+                        .to_string(),
+                );
+            }
+            if !case.shared_array_buffer
+                || !case.resizable_array_buffer
+                || !case.view_backed_blob_input
+                || !case.stable_byte_copy_oracle
+            {
+                errors.push(
+                    "rust_ungripped_ts_discriminated requires shared, resizable, Blob input, and stable-byte oracle facts"
+                        .to_string(),
+                );
+            }
+            if case.max_byte_length_mention_only {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must not be mention-only evidence".to_string(),
+                );
+            }
+            if case.binding_edge_confidence != "configured_hint" {
+                errors.push(
+                    "rust_ungripped_ts_discriminated requires configured bridge confidence"
+                        .to_string(),
+                );
+            }
+            if !case.missing_discriminators.is_empty() {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must not name missing discriminators"
+                        .to_string(),
+                );
+            }
+            if !case.missing_graph_legs.is_empty() {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must not name missing graph legs".to_string(),
+                );
+            }
+            if case.unlock_condition != "not_applicable" {
+                errors.push(
+                    "rust_ungripped_ts_discriminated must use unlock_condition not_applicable"
+                        .to_string(),
+                );
+            }
+        }
+        "rust_ungripped_ts_missing_discriminator" => {
+            require_cross_language_oracle_graph_limitation(
+                case,
+                "cross_language_oracle_visibility_unresolved",
+                "analysis/cross-language-oracle-visibility",
+                &mut errors,
+            );
+            if case.missing_discriminators.is_empty() {
+                errors.push(
+                    "rust_ungripped_ts_missing_discriminator must name missing discriminators"
+                        .to_string(),
+                );
+            }
+            if case.name.contains("missing_resizable")
+                && !case
+                    .missing_discriminators
+                    .iter()
+                    .any(|missing| missing == "resizable_array_buffer")
+            {
+                errors.push(
+                    "bun_blob_missing_resizable case must name resizable_array_buffer".to_string(),
+                );
+            }
+            if !cross_language_oracle_graph_has_missing_leg(
+                case,
+                "external_discriminator:resizable_array_buffer",
+            ) {
+                errors.push(
+                    "rust_ungripped_ts_missing_discriminator must name the missing external discriminator leg"
+                        .to_string(),
+                );
+            }
+        }
+        "ts_mention_not_observer" => {
+            require_cross_language_oracle_graph_limitation(
+                case,
+                "cross_language_oracle_visibility_unresolved",
+                "analysis/cross-language-oracle-visibility",
+                &mut errors,
+            );
+            if !case.max_byte_length_mention_only {
+                errors.push(
+                    "ts_mention_not_observer must record max_byte_length_mention_only=true"
+                        .to_string(),
+                );
+            }
+            if case.view_backed_blob_input || case.stable_byte_copy_oracle {
+                errors.push(
+                    "ts_mention_not_observer must not count Blob input or stable-byte oracle facts"
+                        .to_string(),
+                );
+            }
+            if !cross_language_oracle_graph_has_missing_leg(case, "stable_blob_observer") {
+                errors.push(
+                    "ts_mention_not_observer must name stable_blob_observer as a missing graph leg"
+                        .to_string(),
+                );
+            }
+        }
+        "bridge_unknown" => {
+            require_cross_language_oracle_graph_limitation(
+                case,
+                "cross_language_oracle_visibility_unresolved",
+                "analysis/cross-language-oracle-visibility",
+                &mut errors,
+            );
+            if case.binding_edge_kind != "unresolved" || case.binding_edge_confidence != "unknown" {
+                errors.push(
+                    "bridge_unknown requires unresolved binding edge and unknown confidence"
+                        .to_string(),
+                );
+            }
+            if !cross_language_oracle_graph_has_missing_leg(case, "binding_or_ffi_edge") {
+                errors.push("bridge_unknown must name binding_or_ffi_edge as missing".to_string());
+            }
+        }
+        "cross_language_target_unresolved" => {
+            require_cross_language_oracle_graph_limitation(
+                case,
+                "cross_language_target_unresolved",
+                "analysis/cross-language-test-target-inference",
+                &mut errors,
+            );
+            if !cross_language_oracle_graph_has_missing_leg(case, "safe_external_observer_target") {
+                errors.push(
+                    "cross_language_target_unresolved must name safe_external_observer_target as missing"
+                        .to_string(),
+                );
+            }
+        }
+        _ => {}
+    }
+
+    errors
+}
+
+fn cross_language_oracle_graph_raw_ref_errors(
+    case: &CrossLanguageOracleGraphCase,
+    errors: &mut Vec<String>,
+) {
+    if case.raw_evidence_refs.is_empty() {
+        errors.push("raw_evidence_refs must include structured graph refs".to_string());
+        return;
+    }
+    let raw_legs = case
+        .raw_evidence_refs
+        .iter()
+        .map(|raw_ref| raw_ref.leg.as_str())
+        .collect::<BTreeSet<_>>();
+    for required in [
+        "rust_seam",
+        "boundary_discriminator",
+        "external_callsite",
+        "external_oracle",
+    ] {
+        if !raw_legs.contains(required) {
+            errors.push(format!("raw_evidence_refs must include {required}"));
+        }
+    }
+    if case.expected_state != "bridge_unknown" && !raw_legs.contains("binding_edge") {
+        errors.push("raw_evidence_refs must include binding_edge".to_string());
+    }
+    if case.expected_state == "bridge_unknown" && raw_legs.contains("binding_edge") {
+        errors.push("bridge_unknown must not claim a binding_edge raw ref".to_string());
+    }
+    for raw_ref in &case.raw_evidence_refs {
+        for (label, value) in [
+            ("raw_evidence_ref leg", &raw_ref.leg),
+            ("raw_evidence_ref file", &raw_ref.file),
+            ("raw_evidence_ref kind", &raw_ref.kind),
+            ("raw_evidence_ref source_id", &raw_ref.source_id),
+            ("raw_evidence_ref sample", &raw_ref.sample),
+        ] {
+            if value.trim().is_empty() || value == "unknown" {
+                errors.push(format!("{label} must be present"));
+            }
+        }
+        if raw_ref.line.is_none() {
+            errors.push(format!(
+                "raw_evidence_ref {} must include line",
+                raw_ref.leg
+            ));
+        }
+    }
+}
+
+fn require_cross_language_oracle_graph_limitation(
+    case: &CrossLanguageOracleGraphCase,
+    category: &str,
+    route: &str,
+    errors: &mut Vec<String>,
+) {
+    if case.gap_state != "static_limitation" {
+        errors.push(format!(
+            "{} must map to gap_state static_limitation",
+            case.expected_state
+        ));
+    }
+    if case.limitation_category != category {
+        errors.push(format!(
+            "{} must use limitation_category {category}",
+            case.expected_state
+        ));
+    }
+    if case.repair_route != route {
+        errors.push(format!(
+            "{} must use repair_route {route}",
+            case.expected_state
+        ));
+    }
+    if case.unlock_condition.trim().is_empty() || case.unlock_condition == "unknown" {
+        errors.push(format!(
+            "{} must document an unlock_condition",
+            case.expected_state
+        ));
+    }
+}
+
+fn cross_language_oracle_graph_has_missing_leg(
+    case: &CrossLanguageOracleGraphCase,
+    leg: &str,
+) -> bool {
+    case.missing_graph_legs
+        .iter()
+        .any(|missing| missing == leg || missing.contains(leg))
+}
+
+fn cross_language_oracle_graph_allowed_states() -> &'static [&'static str] {
+    &[
+        "rust_ungripped_ts_discriminated",
+        "rust_ungripped_ts_missing_discriminator",
+        "ts_mention_not_observer",
+        "bridge_unknown",
+        "cross_language_target_unresolved",
+    ]
+}
+
+fn cross_language_oracle_graph_required_non_claims() -> &'static [&'static str] {
+    &[
+        "provider",
+        "source edits",
+        "generated tests",
+        "runtime Bun execution",
+        "mutation execution",
+        "default gates",
+        "public badge",
+        "baseline",
+        "RIPR Zero",
+        "support-tier promotion",
+        "public repair packet",
+        "TypeScript Rust parity",
+        "full cross-language proof",
+        "verify command",
+        "receipt command",
+        "allowed edit surface",
+    ]
+}
+
 fn dogfood_typescript_preview_repair_loop_scenarios()
 -> Vec<DogfoodTypescriptPreviewRepairLoopScenario> {
     dogfood_typescript_preview_repair_loop_scenarios_at(Path::new(
@@ -76634,6 +77389,346 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn cross_language_oracle_graph_corpus_cases_are_checked() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let cases = super::cross_language_oracle_graph_cases();
+            for required in super::CROSS_LANGUAGE_ORACLE_GRAPH_REQUIRED_CASES {
+                assert!(
+                    cases.iter().any(|case| {
+                        case.name == required.0 && case.expected_state == required.1
+                    }),
+                    "{} cross-language oracle graph case should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            let states = cases
+                .iter()
+                .map(|case| case.expected_state.as_str())
+                .collect::<BTreeSet<_>>();
+            for required in [
+                "rust_ungripped_ts_discriminated",
+                "rust_ungripped_ts_missing_discriminator",
+                "ts_mention_not_observer",
+                "bridge_unknown",
+                "cross_language_target_unresolved",
+            ] {
+                assert!(
+                    states.contains(required),
+                    "cross-language oracle graph should include {required}"
+                );
+            }
+
+            for case in cases {
+                let errors = super::cross_language_oracle_graph_case_errors(&case);
+                assert!(
+                    errors.is_empty(),
+                    "{} cross-language oracle graph case should validate: {:?}",
+                    case.name,
+                    errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn cross_language_oracle_graph_rejects_malformed_corpus_files() -> Result<(), String> {
+        let root = temp_dir("cross-language-oracle-graph-malformed");
+        let missing_path = root.join("missing.json");
+        let mut violations = Vec::new();
+        super::validate_cross_language_oracle_graph_fixture_corpus_at(
+            &missing_path,
+            &mut violations,
+        )?;
+        assert_contains_error(&violations, "Cross-language oracle graph corpus is missing");
+
+        for (name, body, reason) in [
+            (
+                "bad-schema",
+                r#"{"schema_version":"0.2","kind":"cross_language_oracle_graph_corpus","spec":"RIPR-SPEC-0062","cases":[]}"#,
+                "schema_version must be 0.1",
+            ),
+            (
+                "bad-kind",
+                r#"{"schema_version":"0.1","kind":"other","spec":"RIPR-SPEC-0062","cases":[]}"#,
+                "kind must be cross_language_oracle_graph_corpus",
+            ),
+            (
+                "bad-spec",
+                r#"{"schema_version":"0.1","kind":"cross_language_oracle_graph_corpus","spec":"RIPR-SPEC-9999","cases":[]}"#,
+                "spec must be RIPR-SPEC-0062",
+            ),
+            (
+                "missing-cases",
+                r#"{"schema_version":"0.1","kind":"cross_language_oracle_graph_corpus","spec":"RIPR-SPEC-0062"}"#,
+                "missing cases array",
+            ),
+        ] {
+            let path = root.join(format!("{name}.json"));
+            write(&path, body);
+            let cases = super::cross_language_oracle_graph_cases_at(&path);
+            assert_contains_error(std::slice::from_ref(&cases[0].reason), reason);
+
+            let mut violations = Vec::new();
+            super::validate_cross_language_oracle_graph_fixture_corpus_at(&path, &mut violations)?;
+            assert_contains_error(
+                &violations,
+                "Cross-language oracle graph case corpus: source must be present",
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn cross_language_oracle_graph_rejects_duplicate_and_required_state_drift() -> Result<(), String>
+    {
+        let root = temp_dir("cross-language-oracle-graph-required-cases");
+        let mut duplicate = valid_cross_language_oracle_graph_case();
+        duplicate.name = "duplicated".to_string();
+        let duplicate_case = cross_language_oracle_graph_case_json(&duplicate);
+        let duplicate_path = root.join("duplicate.json");
+        write(
+            &duplicate_path,
+            &cross_language_oracle_graph_corpus_json(&[duplicate_case.clone(), duplicate_case]),
+        );
+
+        let mut violations = Vec::new();
+        super::validate_cross_language_oracle_graph_fixture_corpus_at(
+            &duplicate_path,
+            &mut violations,
+        )?;
+        assert_contains_error(&violations, "case duplicated is duplicated");
+        assert_contains_error(
+            &violations,
+            "Cross-language oracle graph corpus is missing case bun_blob_complete_ts_discriminated_advisory",
+        );
+        assert_contains_error(
+            &violations,
+            "Cross-language oracle graph corpus must include state bridge_unknown",
+        );
+
+        let wrong_required_path = root.join("wrong-required.json");
+        let mut wrong_required = valid_cross_language_oracle_graph_case();
+        wrong_required.name = "bun_blob_complete_ts_discriminated_advisory".to_string();
+        wrong_required.expected_state = "bridge_unknown".to_string();
+        wrong_required.gap_state = "static_limitation".to_string();
+        wrong_required.limitation_category =
+            "cross_language_oracle_visibility_unresolved".to_string();
+        wrong_required.repair_route = "analysis/cross-language-oracle-visibility".to_string();
+        wrong_required.binding_edge_kind = "unresolved".to_string();
+        wrong_required.binding_edge_confidence = "unknown".to_string();
+        wrong_required
+            .missing_graph_legs
+            .push("binding_or_ffi_edge".to_string());
+        wrong_required
+            .raw_evidence_refs
+            .retain(|raw_ref| raw_ref.leg != "binding_edge");
+        write(
+            &wrong_required_path,
+            &cross_language_oracle_graph_corpus_json(&[cross_language_oracle_graph_case_json(
+                &wrong_required,
+            )]),
+        );
+
+        let mut violations = Vec::new();
+        super::validate_cross_language_oracle_graph_fixture_corpus_at(
+            &wrong_required_path,
+            &mut violations,
+        )?;
+        assert_contains_error(
+            &violations,
+            "case bun_blob_complete_ts_discriminated_advisory must have expected_state rust_ungripped_ts_discriminated, got bridge_unknown",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn cross_language_oracle_graph_rejects_actionability_and_location_holes() {
+        let mut case = valid_cross_language_oracle_graph_case();
+        case.name = " ".to_string();
+        case.source.clear();
+        case.language = "javascript".to_string();
+        case.language_status = "stable".to_string();
+        case.authority_boundary = "gate_ready".to_string();
+        case.repair_packet_ready = true;
+        case.public_projection_eligible = true;
+        case.suggested_test_file = "src/jsc/Blob.rs".to_string();
+        case.allowed_edit_surface
+            .push("test/js/web/fetch/blob.test.ts".to_string());
+        case.verify_command = Some("bun test test/js/web/fetch/blob.test.ts".to_string());
+        case.receipt_command = Some("cargo xtask receipts check".to_string());
+        case.rust_file = "src/lib.rs".to_string();
+        case.rust_line = None;
+        case.rust_owner = "Blob::from_js".to_string();
+        case.rust_boundary = "array_buffer.shared".to_string();
+        case.external_callsite_file = "test/js/web/fetch/blob.test.js".to_string();
+        case.external_callsite_line = None;
+        case.external_oracle_file = "test/js/web/fetch/blob.test.js".to_string();
+        case.external_oracle_line = None;
+        case.external_entrypoints.clear();
+        case.raw_evidence_refs.clear();
+        case.non_claims.clear();
+        case.reason.clear();
+
+        let errors = super::cross_language_oracle_graph_case_errors(&case);
+        for expected in [
+            "case id must be present",
+            "source must be present",
+            "reason must be present",
+            "rust line must be present",
+            "external_callsite line must be present",
+            "external_oracle line must be present",
+            "language must be typescript",
+            "language_status must be preview",
+            "authority_boundary must be preview_advisory_only",
+            "repair_packet_ready must remain false",
+            "public_projection_eligible must remain false",
+            "suggested_test_file must be not_applicable",
+            "allowed_edit_surface must remain empty",
+            "verify_command must be omitted",
+            "receipt_command must be omitted",
+            "rust_file must identify the Bun Blob Rust seam",
+            "rust_owner must pin Blob::from_js_without_defer_gc",
+            "rust_boundary must include array_buffer.shared and array_buffer.resizable",
+            "external_callsite_file must be a Bun test/js TypeScript test path",
+            "external_oracle_file must be a Bun test/js TypeScript test path",
+            "external_entrypoints must name at least one external callsite",
+            "non_claims must keep cross-language preview denials visible",
+            "raw_evidence_refs must include structured graph refs",
+        ] {
+            assert_contains_error(&errors, expected);
+        }
+    }
+
+    #[test]
+    fn cross_language_oracle_graph_rejects_invalid_state_shapes() {
+        let mut advisory = valid_cross_language_oracle_graph_case();
+        advisory.shared_array_buffer = false;
+        advisory.max_byte_length_mention_only = true;
+        advisory.binding_edge_confidence = "unknown".to_string();
+        advisory
+            .missing_discriminators
+            .push("shared_array_buffer".to_string());
+        advisory
+            .missing_graph_legs
+            .push("external_discriminator:shared_array_buffer".to_string());
+        advisory.unlock_condition = "needs more evidence".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&advisory);
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated requires shared, resizable, Blob input, and stable-byte oracle facts",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated must not be mention-only evidence",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated requires configured bridge confidence",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated must not name missing discriminators",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated must not name missing graph legs",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_discriminated must use unlock_condition not_applicable",
+        );
+
+        let mut missing = valid_cross_language_oracle_graph_case();
+        missing.name = "bun_blob_missing_resizable_oracle_limitation".to_string();
+        missing.expected_state = "rust_ungripped_ts_missing_discriminator".to_string();
+        missing.gap_state = "static_limitation".to_string();
+        missing.limitation_category = "cross_language_oracle_visibility_unresolved".to_string();
+        missing.repair_route = "analysis/cross-language-oracle-visibility".to_string();
+        missing.missing_discriminators.clear();
+        missing.missing_graph_legs.clear();
+        missing.unlock_condition = "Name missing discriminator".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&missing);
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_missing_discriminator must name missing discriminators",
+        );
+        assert_contains_error(
+            &errors,
+            "bun_blob_missing_resizable case must name resizable_array_buffer",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_missing_discriminator must name the missing external discriminator leg",
+        );
+
+        let mut mention = valid_cross_language_oracle_graph_case();
+        mention.expected_state = "ts_mention_not_observer".to_string();
+        mention.gap_state = "static_limitation".to_string();
+        mention.limitation_category = "cross_language_oracle_visibility_unresolved".to_string();
+        mention.repair_route = "analysis/cross-language-oracle-visibility".to_string();
+        mention.max_byte_length_mention_only = false;
+        mention.view_backed_blob_input = true;
+        mention.stable_byte_copy_oracle = true;
+        mention.missing_graph_legs.clear();
+        mention.unlock_condition = "Name stable observer".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&mention);
+        assert_contains_error(
+            &errors,
+            "ts_mention_not_observer must record max_byte_length_mention_only=true",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_mention_not_observer must not count Blob input or stable-byte oracle facts",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_mention_not_observer must name stable_blob_observer as a missing graph leg",
+        );
+
+        let mut bridge = valid_cross_language_oracle_graph_case();
+        bridge.expected_state = "bridge_unknown".to_string();
+        bridge.gap_state = "static_limitation".to_string();
+        bridge.limitation_category = "cross_language_oracle_visibility_unresolved".to_string();
+        bridge.repair_route = "analysis/cross-language-oracle-visibility".to_string();
+        bridge.binding_edge_kind = "configured_bridge".to_string();
+        bridge.binding_edge_confidence = "configured_hint".to_string();
+        bridge.missing_graph_legs.clear();
+        bridge.unlock_condition = "Name bridge".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&bridge);
+        assert_contains_error(
+            &errors,
+            "bridge_unknown must not claim a binding_edge raw ref",
+        );
+        assert_contains_error(
+            &errors,
+            "bridge_unknown requires unresolved binding edge and unknown confidence",
+        );
+        assert_contains_error(
+            &errors,
+            "bridge_unknown must name binding_or_ffi_edge as missing",
+        );
+
+        let mut target = valid_cross_language_oracle_graph_case();
+        target.expected_state = "cross_language_target_unresolved".to_string();
+        target.gap_state = "static_limitation".to_string();
+        target.limitation_category = "cross_language_target_unresolved".to_string();
+        target.repair_route = "analysis/cross-language-test-target-inference".to_string();
+        target.missing_graph_legs.clear();
+        target.unlock_condition = "Name target".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&target);
+        assert_contains_error(
+            &errors,
+            "cross_language_target_unresolved must name safe_external_observer_target as missing",
+        );
+    }
+
+    #[test]
     fn typescript_bun_ub_calibration_rejects_malformed_corpus_files() -> Result<(), String> {
         let root = temp_dir("typescript-bun-ub-calibration-malformed");
         let missing_path = root.join("missing.json");
@@ -76919,6 +78014,119 @@ fn exact_owner_call_has_external_expected_value() {
         }
     }
 
+    fn valid_cross_language_oracle_graph_case() -> super::CrossLanguageOracleGraphCase {
+        super::CrossLanguageOracleGraphCase {
+            name: "valid".to_string(),
+            source: "#910-valid".to_string(),
+            language: "typescript".to_string(),
+            language_status: "preview".to_string(),
+            rust_file: "src/jsc/Blob.rs".to_string(),
+            rust_line: Some(3420),
+            rust_owner: "Blob::from_js_without_defer_gc".to_string(),
+            rust_boundary: "array_buffer.shared || array_buffer.resizable".to_string(),
+            binding_edge_kind: "configured_bridge".to_string(),
+            binding_edge_confidence: "configured_hint".to_string(),
+            external_callsite_file: "test/js/web/fetch/blob.test.ts".to_string(),
+            external_callsite_line: Some(1280),
+            external_entrypoints: vec!["new Blob".to_string(), "blob.arrayBuffer".to_string()],
+            shared_array_buffer: true,
+            resizable_array_buffer: true,
+            view_backed_blob_input: true,
+            stable_byte_copy_oracle: true,
+            max_byte_length_mention_only: false,
+            external_oracle_file: "test/js/web/fetch/blob.test.ts".to_string(),
+            external_oracle_line: Some(1286),
+            external_oracle_kind: "stable_byte_copy".to_string(),
+            oracle_strength: "strong".to_string(),
+            expected_state: "rust_ungripped_ts_discriminated".to_string(),
+            gap_state: "already_observed".to_string(),
+            limitation_category: "not_applicable".to_string(),
+            repair_route: "manual-review/cross-language-advisory-witness".to_string(),
+            authority_boundary: "preview_advisory_only".to_string(),
+            public_projection_eligible: false,
+            repair_packet_ready: false,
+            suggested_test_file: "not_applicable".to_string(),
+            allowed_edit_surface: Vec::new(),
+            verify_command: None,
+            receipt_command: None,
+            missing_discriminators: Vec::new(),
+            missing_graph_legs: Vec::new(),
+            unlock_condition: "not_applicable".to_string(),
+            raw_evidence_refs: valid_cross_language_oracle_graph_raw_refs(true),
+            non_claims: vec![
+                "no provider calls".to_string(),
+                "no source edits".to_string(),
+                "no generated tests".to_string(),
+                "no runtime Bun execution".to_string(),
+                "no mutation execution".to_string(),
+                "no default gates".to_string(),
+                "no public badge contribution".to_string(),
+                "no baseline authority".to_string(),
+                "no RIPR Zero authority".to_string(),
+                "no support-tier promotion".to_string(),
+                "no public repair packet".to_string(),
+                "no TypeScript Rust parity claim".to_string(),
+                "no full cross-language proof".to_string(),
+                "no verify command".to_string(),
+                "no receipt command".to_string(),
+                "no allowed edit surface".to_string(),
+            ],
+            reason: "valid cross-language oracle graph case".to_string(),
+        }
+    }
+
+    fn valid_cross_language_oracle_graph_raw_refs(
+        include_binding: bool,
+    ) -> Vec<super::CrossLanguageOracleGraphRawRef> {
+        let mut raw_refs = vec![
+            super::CrossLanguageOracleGraphRawRef {
+                leg: "rust_seam".to_string(),
+                file: "src/jsc/Blob.rs".to_string(),
+                line: Some(3420),
+                kind: "rust_owner".to_string(),
+                source_id: "#910".to_string(),
+                sample: "Blob::from_js_without_defer_gc checks the ArrayBuffer boundary"
+                    .to_string(),
+            },
+            super::CrossLanguageOracleGraphRawRef {
+                leg: "boundary_discriminator".to_string(),
+                file: "test/js/web/fetch/blob.test.ts".to_string(),
+                line: Some(1282),
+                kind: "typescript_discriminator".to_string(),
+                source_id: "#910".to_string(),
+                sample: "SharedArrayBuffer and resizable ArrayBuffer samples are visible"
+                    .to_string(),
+            },
+            super::CrossLanguageOracleGraphRawRef {
+                leg: "external_callsite".to_string(),
+                file: "test/js/web/fetch/blob.test.ts".to_string(),
+                line: Some(1280),
+                kind: "typescript_callsite".to_string(),
+                source_id: "#910".to_string(),
+                sample: "new Blob and blob.arrayBuffer are visible".to_string(),
+            },
+            super::CrossLanguageOracleGraphRawRef {
+                leg: "external_oracle".to_string(),
+                file: "test/js/web/fetch/blob.test.ts".to_string(),
+                line: Some(1286),
+                kind: "typescript_assertion".to_string(),
+                source_id: "#910".to_string(),
+                sample: "stable copied bytes are asserted".to_string(),
+            },
+        ];
+        if include_binding {
+            raw_refs.push(super::CrossLanguageOracleGraphRawRef {
+                leg: "binding_edge".to_string(),
+                file: "src/jsc/Blob.rs".to_string(),
+                line: Some(3420),
+                kind: "configured_bridge".to_string(),
+                source_id: "profiles.bun_ub".to_string(),
+                sample: "configured bridge maps Blob tests to the Rust owner".to_string(),
+            });
+        }
+        raw_refs
+    }
+
     fn assert_contains_error(errors: &[String], expected: &str) {
         assert!(
             errors.iter().any(|error| error.contains(expected)),
@@ -77001,6 +78209,167 @@ fn exact_owner_call_has_external_expected_value() {
             authority_boundary = case.authority_boundary,
             reason = case.reason
         )
+    }
+
+    fn cross_language_oracle_graph_corpus_json(cases: &[String]) -> String {
+        format!(
+            r#"{{
+  "schema_version": "0.1",
+  "kind": "cross_language_oracle_graph_corpus",
+  "spec": "RIPR-SPEC-0062",
+  "authority_boundary": "preview_advisory_only",
+  "cases": [{}]
+}}"#,
+            cases.join(",")
+        )
+    }
+
+    fn cross_language_oracle_graph_case_json(case: &super::CrossLanguageOracleGraphCase) -> String {
+        let entrypoints_json = test_json_string_array(&case.external_entrypoints);
+        let allowed_edit_surface_json = test_json_string_array(&case.allowed_edit_surface);
+        let missing_discriminators_json = test_json_string_array(&case.missing_discriminators);
+        let missing_graph_legs_json = test_json_string_array(&case.missing_graph_legs);
+        let raw_refs_json = cross_language_oracle_graph_raw_refs_json(&case.raw_evidence_refs);
+        let non_claims_json = test_json_string_array(&case.non_claims);
+        let verify_command_json = case
+            .verify_command
+            .as_ref()
+            .map(|command| {
+                format!(
+                    r#",
+        "verify_command": "{command}""#
+                )
+            })
+            .unwrap_or_default();
+        let receipt_command_json = case
+            .receipt_command
+            .as_ref()
+            .map(|command| {
+                format!(
+                    r#",
+        "receipt_command": "{command}""#
+                )
+            })
+            .unwrap_or_default();
+        format!(
+            r#"{{
+  "id": "{id}",
+  "source": "{source}",
+  "language": "{language}",
+  "language_status": "{language_status}",
+  "rust_seam": {{
+    "file": "{rust_file}",
+    "line": {rust_line},
+    "owner": "{rust_owner}",
+    "boundary": "{rust_boundary}"
+  }},
+  "binding_edge": {{
+    "kind": "{binding_edge_kind}",
+    "confidence": "{binding_edge_confidence}"
+  }},
+  "external_callsite": {{
+    "file": "{external_callsite_file}",
+    "line": {external_callsite_line},
+    "entrypoints": [{entrypoints_json}]
+  }},
+  "observed_ts_facts": {{
+    "shared_array_buffer": {shared_array_buffer},
+    "resizable_array_buffer": {resizable_array_buffer},
+    "view_backed_blob_input": {view_backed_blob_input},
+    "stable_byte_copy_oracle": {stable_byte_copy_oracle},
+    "max_byte_length_mention_only": {max_byte_length_mention_only}
+  }},
+  "external_oracle": {{
+    "file": "{external_oracle_file}",
+    "line": {external_oracle_line},
+    "kind": "{external_oracle_kind}",
+    "strength": "{oracle_strength}"
+  }},
+  "expected": {{
+    "state": "{expected_state}",
+    "gap_state": "{gap_state}",
+    "limitation_category": "{limitation_category}",
+    "repair_route": "{repair_route}",
+    "authority_boundary": "{authority_boundary}",
+    "public_projection_eligible": {public_projection_eligible},
+    "repair_packet_ready": {repair_packet_ready},
+    "suggested_test_file": "{suggested_test_file}",
+    "allowed_edit_surface": [{allowed_edit_surface_json}]{verify_command_json}{receipt_command_json},
+    "missing_discriminators": [{missing_discriminators_json}],
+    "missing_graph_legs": [{missing_graph_legs_json}],
+    "unlock_condition": "{unlock_condition}"
+  }},
+  "raw_evidence_refs": [{raw_refs_json}],
+  "non_claims": [{non_claims_json}],
+  "reason": "{reason}"
+}}"#,
+            id = case.name,
+            source = case.source,
+            language = case.language,
+            language_status = case.language_status,
+            rust_file = case.rust_file,
+            rust_line = case.rust_line.unwrap_or(0),
+            rust_owner = case.rust_owner,
+            rust_boundary = case.rust_boundary,
+            binding_edge_kind = case.binding_edge_kind,
+            binding_edge_confidence = case.binding_edge_confidence,
+            external_callsite_file = case.external_callsite_file,
+            external_callsite_line = case.external_callsite_line.unwrap_or(0),
+            shared_array_buffer = case.shared_array_buffer,
+            resizable_array_buffer = case.resizable_array_buffer,
+            view_backed_blob_input = case.view_backed_blob_input,
+            stable_byte_copy_oracle = case.stable_byte_copy_oracle,
+            max_byte_length_mention_only = case.max_byte_length_mention_only,
+            external_oracle_file = case.external_oracle_file,
+            external_oracle_line = case.external_oracle_line.unwrap_or(0),
+            external_oracle_kind = case.external_oracle_kind,
+            oracle_strength = case.oracle_strength,
+            expected_state = case.expected_state,
+            gap_state = case.gap_state,
+            limitation_category = case.limitation_category,
+            repair_route = case.repair_route,
+            authority_boundary = case.authority_boundary,
+            public_projection_eligible = case.public_projection_eligible,
+            repair_packet_ready = case.repair_packet_ready,
+            suggested_test_file = case.suggested_test_file,
+            unlock_condition = case.unlock_condition,
+            reason = case.reason
+        )
+    }
+
+    fn cross_language_oracle_graph_raw_refs_json(
+        raw_refs: &[super::CrossLanguageOracleGraphRawRef],
+    ) -> String {
+        raw_refs
+            .iter()
+            .map(|raw_ref| {
+                format!(
+                    r#"{{
+      "leg": "{leg}",
+      "file": "{file}",
+      "line": {line},
+      "kind": "{kind}",
+      "source_id": "{source_id}",
+      "sample": "{sample}"
+    }}"#,
+                    leg = raw_ref.leg,
+                    file = raw_ref.file,
+                    line = raw_ref.line.unwrap_or(0),
+                    kind = raw_ref.kind,
+                    source_id = raw_ref.source_id,
+                    sample = raw_ref.sample
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn test_json_string_array(values: &[String]) -> String {
+        values
+            .iter()
+            .map(|value| format!(r#""{value}""#))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     #[test]

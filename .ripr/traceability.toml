@@ -4557,11 +4557,17 @@ tests = [
   "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip",
   "xtask/src/main.rs::tests::typescript_bun_ub_calibration_cases_are_checked",
+  "xtask/src/main.rs::tests::cross_language_oracle_graph_corpus_cases_are_checked",
+  "xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_malformed_corpus_files",
+  "xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_duplicate_and_required_state_drift",
+  "xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_actionability_and_location_holes",
+  "xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_invalid_state_shapes",
   "crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_cross_language_target_unresolved_packet",
 ]
 fixtures = [
   "fixtures/typescript-bun-ub-calibration",
+  "fixtures/cross-language-oracle-graph-corpus",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
