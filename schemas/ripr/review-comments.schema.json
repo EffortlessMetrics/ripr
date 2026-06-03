@@ -190,6 +190,7 @@
         "severity",
         "owner",
         "seam",
+        "source_location",
         "reason",
         "suggested_test",
         "llm_guidance"
@@ -235,6 +236,9 @@
             "string",
             "null"
           ]
+        },
+        "source_location": {
+          "$ref": "#/$defs/source_location"
         },
         "suggested_test": {
           "$ref": "#/$defs/suggested_test"
@@ -295,6 +299,55 @@
             "exact_seam_line",
             "owner_function_changed_line",
             "same_file_changed_line"
+          ]
+        }
+      }
+    },
+    "source_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "file",
+        "line",
+        "span",
+        "limitation",
+        "repair_route"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "resolved",
+            "source_location_unresolved"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "span": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repair_route": {
+          "type": [
+            "string",
+            "null"
           ]
         }
       }

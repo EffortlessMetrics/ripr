@@ -39,6 +39,14 @@
       },
       "seam_id": "8f7fa8644fd12280",
       "severity": "warning",
+      "source_location": {
+        "file": "src/pricing.rs",
+        "limitation": null,
+        "line": 88,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
+      },
       "suggested_test": {
         "assertion_kind": "exact_return_value",
         "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",

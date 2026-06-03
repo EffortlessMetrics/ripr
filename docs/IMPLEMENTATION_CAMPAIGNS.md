@@ -4423,8 +4423,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `release/real-repo-trust-issue-triage` | active | Classify #913, #912/#909, and #908/#910/#911; link duplicate/overlap clusters; label release-line blockers or post-0.8 follow-ups honestly; update release/freeze non-claims. |
-| `report/review-comments-source-locations` | ready | Add file:line/span or an explicit unknown-location limitation to review-comments Markdown and fixtures. |
+| `release/real-repo-trust-issue-triage` | done | Classify #913, #912/#909, and #908/#910/#911; link duplicate/overlap clusters; label release-line blockers or post-0.8 follow-ups honestly; update release/freeze non-claims. |
+| `report/review-comments-source-locations` | active | Add file:line/span or an explicit unknown-location limitation to review-comments Markdown and fixtures. |
 | `cache/large-seam-cache-skip-limitation` | ready | Make large seam-cache skips named, counted, configured, and preserved as limited state. |
 | `analysis/cross-language-oracle-visibility-limitation` | ready | Route TS-tested Rust and binding/FFI seams to named limitations when external oracle visibility is unresolved. |
 | `report/binding-ffi-target-placement-fail-closed` | ready | Suppress unrelated Rust suggested-test placement for binding/FFI or externally tested seams. |

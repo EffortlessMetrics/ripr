@@ -184,6 +184,14 @@ The JSON report uses schema version `0.1`:
       "kind": "predicate_boundary",
       "grip_class": "weakly_gripped",
       "severity": "warning",
+      "source_location": {
+        "file": "src/pricing.rs",
+        "limitation": null,
+        "line": 88,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
+      },
       "reason": "Related tests reach and observe the owner but miss the equality boundary.",
       "missing_discriminator": "amount == discount_threshold",
       "suggested_test": {
@@ -230,6 +238,10 @@ The JSON report uses schema version `0.1`:
 - `comments[].placement` - GitHub-compatible changed-line placement.
 - `comments[].placement.mode` - `"exact_seam_line"`,
   `"owner_function_changed_line"`, or `"same_file_changed_line"`.
+- `comments[].source_location` - canonical source coordinate rendered next to
+  the seam ID in Markdown. If source resolution is unavailable, the row must
+  render `unknown:unknown` with `source_location_unresolved` and
+  `analysis/source-location-resolution` rather than omitting the coordinate.
 - `comments[].reason` - short static-evidence explanation for why the focused
   test would be useful.
 - `comments[].missing_discriminator` - missing value, branch, or observation
@@ -239,7 +251,8 @@ The JSON report uses schema version `0.1`:
 - `comments[].llm_guidance` - bounded handoff prompt and command. It is not a
   request for free-form diff review.
 - `summary_only[]` - same item shape without a `placement` object when the seam
-  cannot be safely attached to a changed line.
+  cannot be safely attached to a changed line. Summary-only rows still carry
+  `source_location` for navigable Markdown and JSON parity.
 - `suppressed[]` - bounded records for recommendations hidden by caps or nearby
   test changes.
 - `warnings[]` - selection warnings from the agent brief selection path.

@@ -46,7 +46,7 @@ non_goals = [
 
 [[work_item]]
 id = "release/real-repo-trust-issue-triage"
-status = "active"
+status = "done"
 branch = "release-real-repo-trust-triage"
 stackable = false
 acceptance = "Classify #913, #912/#909, and #908/#910/#911 as the current real-repo trust issue batch; link the duplicate/overlap cluster; label release-line blockers or post-0.8 follow-ups honestly; update 0.8.0 release/freeze non-claims so the published tag is not represented as fixing these new issues."
@@ -62,7 +62,7 @@ commands = [
 
 [[work_item]]
 id = "report/review-comments-source-locations"
-status = "ready"
+status = "active"
 branch = "report-review-comments-source-locations"
 stackable = false
 acceptance = "review-comments Markdown rows show file:line or explicit unknown source-location limitation next to seam IDs, and JSON/Markdown fixture coverage proves no seam row is location-free."

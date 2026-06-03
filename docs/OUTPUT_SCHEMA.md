@@ -5374,6 +5374,14 @@ JSON shape:
       "kind": "predicate_boundary",
       "grip_class": "weakly_gripped",
       "severity": "warning",
+      "source_location": {
+        "file": "src/pricing.rs",
+        "limitation": null,
+        "line": 88,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
+      },
       "reason": "Related tests reach and observe the owner but miss the equality boundary.",
       "missing_discriminator": "amount == discount_threshold",
       "suggested_test": {
@@ -5444,6 +5452,11 @@ Field contract:
 - `comments[].kind` - seam kind from the existing static evidence.
 - `comments[].grip_class` - seam grip class from the existing static evidence.
 - `comments[].severity` - configured report severity for the recommendation.
+- `comments[].source_location` - canonical source coordinate for the seam or
+  gap record rendered next to the seam ID in Markdown. When resolution is not
+  available, `status` is `"source_location_unresolved"`, `file` and `line`
+  render as unknown, `limitation` is `"source_location_unresolved"`, and
+  `repair_route` is `"analysis/source-location-resolution"`.
 - `comments[].reason` - short static-evidence explanation for why a focused
   test would be useful.
 - `comments[].missing_discriminator` - missing value, branch, variant, or
@@ -5458,9 +5471,10 @@ Field contract:
   comment body instead of raw static classes. It carries gap kind, changed
   behavior when available, why the gap matters, the bounded repair route,
   evidence IDs, verification commands, source artifact, and authority boundary.
-- `summary_only[]` - same recommendation shape without `placement`. CI should
-  show these in the Markdown/job summary but must not invent a changed-line
-  annotation for them.
+- `summary_only[]` - same recommendation shape without `placement`. These rows
+  still carry `source_location` for navigable Markdown and JSON parity. CI
+  should show these in the Markdown/job summary but must not invent a
+  changed-line annotation for them.
 - `suppressed[]` - bounded records for recommendations hidden by caps or
   nearby test changes.
 - `warnings[]` - selection warnings from the agent brief selection path.

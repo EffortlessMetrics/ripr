@@ -399,6 +399,7 @@ fn gap_record_comment_json(
     let repair_text = repair_text(repair_route);
     let why = repair_why(record, repair_route);
     let verify_command = record.verification_commands[0].clone();
+    let source_location = source_location_json(file, Some(line as usize));
 
     Ok(json!({
         "id": format!("ripr-review-{gap_id}"),
@@ -408,8 +409,12 @@ fn gap_record_comment_json(
         "gap_kind": record.kind.as_str(),
         "language": record.language.as_str(),
         "language_status": record.language_status.as_str(),
+        "gap_state": record.gap_state.as_str(),
+        "policy_state": record.policy_state.as_str(),
+        "repairability": record.repairability.as_str(),
         "seam_id": gap_id.as_str(),
         "dedupe_key": dedupe,
+        "source_location": source_location,
         "placement": {
             "path": file,
             "line": line,
@@ -542,20 +547,23 @@ fn review_recommendation_json(
     let seam_id = seam.id().as_str();
     let root_display = display_path(root);
     let missing_value = missing.first().map(|record| record.value.clone());
+    let seam_file = display_path(seam.file());
+    let seam_line = seam.display_line();
 
     json!({
         "id": format!("ripr-review-{seam_id}"),
         "seam_id": seam_id,
-        "dedupe_key": format!("ripr:{seam_id}:{}:{}", display_path(seam.file()), seam.display_line()),
+        "dedupe_key": format!("ripr:{seam_id}:{seam_file}:{seam_line}"),
         "kind": seam.kind().as_str(),
         "grip_class": entry.class.as_str(),
         "severity": config.severity().for_seam(entry.class).as_str(),
         "owner": seam.owner(),
         "seam": {
-            "file": display_path(seam.file()),
-            "line": seam.display_line(),
+            "file": seam_file,
+            "line": seam_line,
             "expression": seam.expression(),
         },
+        "source_location": source_location_json(&seam_file, Some(seam_line)),
         "reason": reason_for(selected, missing_value.as_deref()),
         "missing_discriminator": missing_value,
         "suggested_test": {
@@ -634,6 +642,31 @@ fn placement_json(placement: &ReviewPlacement) -> Value {
         "line": placement.line,
         "side": "RIGHT",
         "mode": placement.mode,
+    })
+}
+
+fn source_location_json(file: &str, line: Option<usize>) -> Value {
+    match line {
+        Some(line) => json!({
+            "status": "resolved",
+            "file": file,
+            "line": line,
+            "span": null,
+            "limitation": null,
+            "repair_route": null,
+        }),
+        None => unresolved_source_location_json(),
+    }
+}
+
+fn unresolved_source_location_json() -> Value {
+    json!({
+        "status": "source_location_unresolved",
+        "file": "unknown",
+        "line": null,
+        "span": null,
+        "limitation": "source_location_unresolved",
+        "repair_route": "analysis/source-location-resolution",
     })
 }
 
@@ -724,14 +757,72 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
     for item in items {
         let seam_id = string_field(item, "seam_id").unwrap_or("unknown");
         let reason = string_field(item, "reason").unwrap_or("No reason available.");
+        let source_location = markdown_source_location(item);
+        let state = string_field(item, "gap_state")
+            .or_else(|| string_field(item, "grip_class"))
+            .unwrap_or("unknown");
         let command = item
             .get("llm_guidance")
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
-        lines.push(format!("- `{seam_id}`: {reason}"));
+        lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
+        if let Some(canonical_gap_id) =
+            string_field(item, "canonical_gap_id").filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        }
+        lines.push(format!("  - state: `{state}`"));
+        if let Some(route) = repair_route_kind(item) {
+            lines.push(format!("  - repair_route: `{route}`"));
+        }
+        if source_location == "unknown:unknown" {
+            lines.push(
+                "  - limitation: `source_location_unresolved`; repair_route: `analysis/source-location-resolution`"
+                    .to_string(),
+            );
+        }
         lines.push(format!("  - command: `{command}`"));
     }
     lines.push(String::new());
+}
+
+fn markdown_source_location(item: &Value) -> String {
+    if let Some(source) = item.get("source_location").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            source.get("file").and_then(Value::as_str),
+            source.get("line").and_then(Value::as_u64),
+        );
+    }
+    if let Some(seam) = item.get("seam").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            seam.get("file").and_then(Value::as_str),
+            seam.get("line").and_then(Value::as_u64),
+        );
+    }
+    if let Some(placement) = item.get("placement").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            placement.get("path").and_then(Value::as_str),
+            placement.get("line").and_then(Value::as_u64),
+        );
+    }
+    "unknown:unknown".to_string()
+}
+
+fn markdown_location_from_fields(file: Option<&str>, line: Option<u64>) -> String {
+    let file = file
+        .map(str::trim)
+        .filter(|file| !file.is_empty())
+        .unwrap_or("unknown");
+    let line = line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    format!("{file}:{line}")
+}
+
+fn repair_route_kind(item: &Value) -> Option<&str> {
+    item.get("repair_card")
+        .and_then(|card| card.get("repair_route"))
+        .and_then(|route| string_field(route, "route_kind"))
 }
 
 fn push_suppressed_items(lines: &mut Vec<String>, value: Option<&Value>) {
@@ -1078,6 +1169,17 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["comments"][0]["placement"]["mode"], "exact_seam_line");
         assert_eq!(
+            value["comments"][0]["source_location"],
+            serde_json::json!({
+                "status": "resolved",
+                "file": "src/pricing.rs",
+                "line": 88,
+                "span": null,
+                "limitation": null,
+                "repair_route": null,
+            })
+        );
+        assert_eq!(
             value["comments"][0]["llm_guidance"]["verify_command"],
             "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
         );
@@ -1160,6 +1262,11 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 0);
         assert_eq!(value["summary"]["summary_only"], 1);
         assert!(value["summary_only"][0]["placement"].is_null());
+        assert_eq!(
+            value["summary_only"][0]["source_location"]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["summary_only"][0]["source_location"]["line"], 88);
         Ok(())
     }
 
@@ -1252,7 +1359,39 @@ mod tests {
 
         assert!(rendered.contains("# RIPR PR Guidance"));
         assert!(rendered.contains("Advisory static evidence only"));
+        assert!(rendered.contains("`8f7fa8644fd12280` @ `src/pricing.rs:88`"));
+        assert!(rendered.contains("state: `weakly_gripped`"));
         assert!(rendered.contains("ripr agent brief"));
+    }
+
+    #[test]
+    fn review_comments_markdown_fails_closed_when_source_location_is_missing() {
+        let value = serde_json::json!({
+            "comments": [
+                {
+                    "seam_id": "seam:unknown",
+                    "reason": "No source location was available.",
+                    "llm_guidance": {
+                        "command": "ripr agent brief --root . --seam-id seam:unknown --json"
+                    }
+                }
+            ],
+            "summary_only": [],
+            "suppressed": []
+        });
+
+        let rendered = render_review_comments_markdown_value(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &value,
+        );
+
+        assert!(rendered.contains("`seam:unknown` @ `unknown:unknown`"));
+        assert!(rendered.contains("state: `unknown`"));
+        assert!(rendered.contains("source_location_unresolved"));
+        assert!(rendered.contains("analysis/source-location-resolution"));
     }
 
     #[test]
@@ -1275,6 +1414,12 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["summary"]["suppressed"], 2);
         assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
+        assert_eq!(
+            value["comments"][0]["source_location"]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["comments"][0]["source_location"]["line"], 42);
+        assert_eq!(value["comments"][0]["gap_state"], "actionable");
         assert_eq!(
             value["comments"][0]["placement"]["mode"],
             "gap_record_anchor"
@@ -1306,6 +1451,11 @@ mod tests {
             &records,
         );
         assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("`gap:pr:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
+        assert!(
+            markdown.contains("canonical_gap_id: `gap:rust:pricing:discount:threshold-boundary`")
+        );
+        assert!(markdown.contains("repair_route: `AddBoundaryAssertion`"));
         assert!(markdown.contains("command: `ripr first-action"));
         Ok(())
     }

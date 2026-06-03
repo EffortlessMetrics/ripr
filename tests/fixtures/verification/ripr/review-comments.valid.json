@@ -31,6 +31,14 @@
         "line": 42,
         "expression": "limit + 1"
       },
+      "source_location": {
+        "file": "src/lib.rs",
+        "limitation": null,
+        "line": 42,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
+      },
       "reason": "Changed boundary logic has only broad static evidence.",
       "missing_discriminator": "No assertion covers the inclusive edge.",
       "suggested_test": {
@@ -72,6 +80,14 @@
         "file": "src/config.rs",
         "line": 9,
         "expression": "Default::default()"
+      },
+      "source_location": {
+        "file": "src/config.rs",
+        "limitation": null,
+        "line": 9,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
       },
       "reason": "No safe changed line is available for annotation.",
       "missing_discriminator": null,
