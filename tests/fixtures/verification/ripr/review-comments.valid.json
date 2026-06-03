@@ -7,6 +7,33 @@
   "head": "HEAD",
   "generated_at": "2026-05-14T00:00:00Z",
   "mode": "fast",
+  "analysis_scope": {
+    "scope": "diff_scoped_changed_files",
+    "run_status": "limited_diff_scope",
+    "basis": "changed_production_files_plus_immediate_callers",
+    "changed_files": [
+      "src/lib.rs"
+    ],
+    "changed_lines": 1,
+    "changed_owner_functions": 1,
+    "changed_production_files": [
+      "src/lib.rs"
+    ],
+    "immediate_caller_files": [
+      "src/caller.rs"
+    ],
+    "scoped_production_files": [
+      "src/lib.rs",
+      "src/caller.rs"
+    ],
+    "total_rust_files": 42,
+    "total_production_files": 40,
+    "production_files_considered": 2,
+    "classified_seams_considered": 3,
+    "downstream_consumable": true,
+    "limitation": "review_comments_diff_scope_only",
+    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
+  },
   "rendering_limits": {
     "max_inline_comments": 10,
     "max_summary_items": 25

@@ -7,6 +7,11 @@
 - line annotations: 3
 - summary-only recommendations: 7
 - suppressed recommendations: 2
+- analysis scope: `working_set`
+- run status: `scoped`
+- scoped production files: 1/unknown
+- classified seams considered: 12
+- limitation: `review_comments_working_set_scope_only`; repair_route: `analysis/review-comments-working-set`
 
 Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.
 

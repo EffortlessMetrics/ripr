@@ -4479,30 +4479,45 @@ fn review_comments_with_diff_loader(
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
     let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
         .with_changed_owners(changed_owners);
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let changed_owner_names = working_set
+        .changed_owners
+        .iter()
+        .map(|owner| owner.owner.clone())
+        .collect::<Vec<_>>();
+    let scoped_inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
+        &input.root,
+        &config,
+        &working_set.files,
+        &changed_owner_names,
+    )?;
     let selection = select_agent_brief_seams(
-        &classified,
+        &scoped_inventory.classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
-    let rendered_json = output::review_comments::render_review_comments_json(
-        &input.root,
-        &options.base,
-        &options.head,
-        &input.mode,
-        &config,
+    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
+        &working_set,
+        &scoped_inventory,
+    );
+    let render_context = output::review_comments::ReviewCommentsRenderContext {
+        root: &input.root,
+        base: &options.base,
+        head: &options.head,
+        mode: &input.mode,
+        config: &config,
+    };
+    let rendered_json = output::review_comments::render_review_comments_json_with_scope(
+        &render_context,
         &working_set,
         &selection,
+        &analysis_scope,
     )?;
-    let rendered_md = output::review_comments::render_review_comments_markdown(
-        &input.root,
-        &options.base,
-        &options.head,
-        &input.mode,
-        &config,
+    let rendered_md = output::review_comments::render_review_comments_markdown_with_scope(
+        &render_context,
         &working_set,
         &selection,
+        &analysis_scope,
     );
     let markdown_path = review_comments_markdown_path(&options.out);
     write_text_file(&options.out, &rendered_json)?;
@@ -10195,8 +10210,99 @@ language = "rust"
         assert!(rendered_json.contains("\"status\": \"advisory\""));
         assert!(rendered_json.contains("\"base\": \"HEAD~1\""));
         assert!(rendered_json.contains("\"head\": \"HEAD\""));
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse review comments JSON: {err}"))?;
+        assert_eq!(value["analysis_scope"]["run_status"], "limited_diff_scope");
+        assert_eq!(
+            value["analysis_scope"]["limitation"],
+            "review_comments_diff_scope_only"
+        );
         assert!(rendered_md.contains("# RIPR PR Guidance"));
+        assert!(rendered_md.contains("run status: `limited_diff_scope`"));
         assert!(rendered_md.contains("Advisory static evidence only"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_scopes_diff_fast_path_to_changed_files_and_immediate_callers()
+    -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-diff-scope");
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_comments_scope_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn discounted_total(amount: i32) -> i32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+        )
+        .map_err(|err| format!("write src/lib.rs: {err}"))?;
+        std::fs::write(
+            root.join("src/wrapper.rs"),
+            "pub fn quote(amount: i32) -> i32 {\n    if discounted_total(amount) > 0 { discounted_total(amount) } else { 0 }\n}\n",
+        )
+        .map_err(|err| format!("write src/wrapper.rs: {err}"))?;
+        std::fs::write(
+            root.join("src/unrelated.rs"),
+            "pub fn unrelated(value: i32) -> i32 {\n    if value > 0 { value } else { 0 }\n}\n",
+        )
+        .map_err(|err| format!("write src/unrelated.rs: {err}"))?;
+
+        let out = root.join("target/ripr/review/comments.json");
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "HEAD~1",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_diff_root, _base, _head| {
+                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2 +2 @@\n-    if amount >= 10 { amount - 1 } else { amount }\n+    if amount > 10 { amount - 1 } else { amount }\n".to_string())
+            },
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read review comments JSON: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse review comments JSON: {err}"))?;
+        let scope = &value["analysis_scope"];
+        assert_eq!(scope["scope"], "diff_scoped_changed_files");
+        assert_eq!(scope["run_status"], "limited_diff_scope");
+        assert_eq!(
+            scope["basis"],
+            "changed_production_files_plus_immediate_callers"
+        );
+        assert_eq!(scope["total_production_files"], 3);
+        assert_eq!(scope["production_files_considered"], 2);
+        assert_eq!(
+            scope["changed_production_files"],
+            serde_json::json!(["src/lib.rs"])
+        );
+        assert_eq!(
+            scope["immediate_caller_files"],
+            serde_json::json!(["src/wrapper.rs"])
+        );
+        assert_eq!(
+            scope["scoped_production_files"],
+            serde_json::json!(["src/lib.rs", "src/wrapper.rs"])
+        );
+        assert!(
+            !rendered_json.contains("src/unrelated.rs"),
+            "unrelated production files must stay out of the scoped review report"
+        );
+
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read review comments Markdown: {err}"))?;
+        assert!(rendered_md.contains("analysis scope: `diff_scoped_changed_files`"));
+        assert!(rendered_md.contains("scoped production files: 2/3"));
+        assert!(rendered_md.contains("review_comments_diff_scope_only"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())

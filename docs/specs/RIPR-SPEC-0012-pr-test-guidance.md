@@ -48,7 +48,10 @@ comments only by explicit opt-in, and no CI failure policy by default.
 `ripr review-comments` is a read-only report command. It joins the pull-request
 diff, repo exposure, agent brief fields, related-test evidence, changed
 production files, changed test files, configured severity, and suppression
-policy. It writes review-ready JSON and Markdown without posting to GitHub.
+policy. The default diff path reviews changed production files plus bounded
+immediate caller files and reports that narrowed basis as
+`analysis_scope.run_status = "limited_diff_scope"` rather than full-repo truth.
+It writes review-ready JSON and Markdown without posting to GitHub.
 
 Generated CI should publish that report through the least intrusive useful
 surfaces first: job summary and check annotations by default, optional inline PR
@@ -160,6 +163,24 @@ The JSON report uses schema version `0.1`:
   "base": "origin/main",
   "head": "HEAD",
   "mode": "draft",
+  "analysis_scope": {
+    "scope": "diff_scoped_changed_files",
+    "run_status": "limited_diff_scope",
+    "basis": "changed_production_files_plus_immediate_callers",
+    "changed_files": ["src/pricing.rs"],
+    "changed_lines": 1,
+    "changed_owner_functions": 1,
+    "changed_production_files": ["src/pricing.rs"],
+    "immediate_caller_files": ["src/checkout.rs"],
+    "scoped_production_files": ["src/pricing.rs", "src/checkout.rs"],
+    "total_rust_files": 412000,
+    "total_production_files": 411000,
+    "production_files_considered": 2,
+    "classified_seams_considered": 7,
+    "downstream_consumable": true,
+    "limitation": "review_comments_diff_scope_only",
+    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
+  },
   "limits": {
     "max_inline_comments": 3,
     "max_summary_items": 10
@@ -224,6 +245,13 @@ The JSON report uses schema version `0.1`:
   policy.
 - `root`, `base`, `head`, and `mode` - the workspace root, compared revisions,
   and RIPR analysis mode used to render the report.
+- `analysis_scope` - optional scoped-input metadata for renderer paths that
+  run analysis. The default diff renderer emits changed files, changed
+  production files, bounded immediate caller files, total production-file
+  counts when known, and the `review_comments_diff_scope_only` limitation
+  route so reviewers do not mistake a large-repo fast path for full-repo
+  evidence. Gap-ledger rendering may omit this field because the supplied
+  ledger artifact is the authority.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of line-placeable comments.
@@ -323,6 +351,8 @@ not create another command-template source of truth.
 The first implementation slice requires:
 
 - a `review-comments` JSON report with schema version `0.1`;
+- scoped analysis metadata for default diff rendering, including the explicit
+  limited diff-scope run status and limitation route;
 - Markdown summary output for GitHub job summaries;
 - changed-line placement rules with summary-only fallback;
 - selection tests for production changes, nearby test changes, configured-off
@@ -357,6 +387,9 @@ PR test guidance must not:
   guidance, not a misplaced line annotation.
 - A pull request that changes a nearby focused test does not receive a duplicate
   "write a test" recommendation for that seam.
+- A large-repo pull request can render default review guidance from changed
+  production files plus bounded immediate callers while reporting the scoped
+  basis as limited diff-scope evidence.
 - Inline review comments are absent unless the workflow explicitly opts in.
 - The generated JSON contains enough bounded guidance for a human or LLM agent
   to draft one focused test and then run `ripr agent verify`.
@@ -373,6 +406,7 @@ Initial implementation should add tests for:
 - ranking and cap behavior;
 - dedupe key stability;
 - Markdown and annotation-safe escaping;
+- default diff-scope metadata and immediate-caller inclusion;
 - generated workflow annotation emission;
 - optional review-comment upsert behavior if a future publisher is implemented.
 

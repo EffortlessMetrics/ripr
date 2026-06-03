@@ -24,7 +24,7 @@ end_state = [
   "cache report and GC continue to scan every shard under target/ripr/cache without touching reports, receipts, build output, workflow artifacts, or source files",
   "RIPR_REPO_SEAM_CACHE_LIMIT remains a positive integer tuning knob with documented default behavior and clear invalid-value diagnostics",
   "large-repo runtime reports keep full, sampled, stale, timeout, incomplete, runner-failure, and large-cache states explicit",
-  "diff-scoped large-repo review fast paths remain a named follow-up until separately implemented and validated",
+  "diff-scoped large-repo review fast paths report changed production files plus bounded immediate callers as scoped review evidence instead of full-repo truth",
 ]
 
 hard_rules = [
@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/diff-scoped-large-repo-review-fast-path"
-status = "ready"
+status = "done"
 branch = "analysis-diff-scoped-large-repo-review-fast-path"
 stackable = false
 blocked_by = ["report/large-repo-cache-shard-summary"]

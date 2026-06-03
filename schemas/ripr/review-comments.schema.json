@@ -61,6 +61,9 @@
         "ready"
       ]
     },
+    "analysis_scope": {
+      "$ref": "#/$defs/analysis_scope"
+    },
     "rendering_limits": {
       "type": "object",
       "additionalProperties": false,
@@ -178,6 +181,111 @@
     }
   },
   "$defs": {
+    "analysis_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "run_status",
+        "basis",
+        "changed_files",
+        "changed_lines",
+        "changed_owner_functions",
+        "changed_production_files",
+        "immediate_caller_files",
+        "scoped_production_files",
+        "total_rust_files",
+        "total_production_files",
+        "production_files_considered",
+        "classified_seams_considered",
+        "downstream_consumable",
+        "limitation",
+        "repair_route"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "diff_scoped_changed_files",
+            "working_set"
+          ]
+        },
+        "run_status": {
+          "enum": [
+            "limited_diff_scope",
+            "scoped"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changed_lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed_owner_functions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed_production_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "immediate_caller_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scoped_production_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total_rust_files": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_production_files": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "production_files_considered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "classified_seams_considered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "downstream_consumable": {
+          "type": "boolean"
+        },
+        "limitation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repair_route": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "recommendation": {
       "type": "object",
       "additionalProperties": true,

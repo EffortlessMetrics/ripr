@@ -19,6 +19,14 @@ pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
 
+pub(crate) struct ReviewCommentsRenderContext<'a> {
+    pub(crate) root: &'a Path,
+    pub(crate) base: &'a str,
+    pub(crate) head: &'a str,
+    pub(crate) mode: &'a Mode,
+    pub(crate) config: &'a RiprConfig,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ReviewPlacement {
     path: String,
@@ -26,6 +34,78 @@ struct ReviewPlacement {
     mode: &'static str,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ReviewCommentsAnalysisScope {
+    pub(crate) scope: &'static str,
+    pub(crate) run_status: &'static str,
+    pub(crate) basis: &'static str,
+    pub(crate) changed_files: Vec<String>,
+    pub(crate) changed_lines: usize,
+    pub(crate) changed_owner_functions: usize,
+    pub(crate) changed_production_files: Vec<String>,
+    pub(crate) immediate_caller_files: Vec<String>,
+    pub(crate) scoped_production_files: Vec<String>,
+    pub(crate) total_rust_files: Option<usize>,
+    pub(crate) total_production_files: Option<usize>,
+    pub(crate) production_files_considered: usize,
+    pub(crate) classified_seams_considered: usize,
+    pub(crate) downstream_consumable: bool,
+    pub(crate) limitation: &'static str,
+    pub(crate) repair_route: &'static str,
+}
+
+impl ReviewCommentsAnalysisScope {
+    pub(crate) fn limited_diff_scope(
+        working_set: &AgentBriefResolvedWorkingSet,
+        inventory: &crate::analysis::ScopedClassifiedSeamInventory,
+    ) -> Self {
+        Self {
+            scope: "diff_scoped_changed_files",
+            run_status: "limited_diff_scope",
+            basis: "changed_production_files_plus_immediate_callers",
+            changed_files: display_paths(&working_set.files),
+            changed_lines: working_set.changed_lines.len(),
+            changed_owner_functions: working_set.changed_owners.len(),
+            changed_production_files: display_paths(&inventory.changed_production_files),
+            immediate_caller_files: display_paths(&inventory.immediate_caller_files),
+            scoped_production_files: display_paths(&inventory.scoped_production_files),
+            total_rust_files: Some(inventory.total_rust_files),
+            total_production_files: Some(inventory.total_production_files),
+            production_files_considered: inventory.scoped_production_files.len(),
+            classified_seams_considered: inventory.classified.len(),
+            downstream_consumable: true,
+            limitation: "review_comments_diff_scope_only",
+            repair_route: "analysis/diff-scoped-large-repo-review-fast-path",
+        }
+    }
+
+    #[cfg(test)]
+    fn from_working_set(
+        working_set: &AgentBriefResolvedWorkingSet,
+        classified_seams_considered: usize,
+    ) -> Self {
+        Self {
+            scope: "working_set",
+            run_status: "scoped",
+            basis: working_set.source.as_str(),
+            changed_files: display_paths(&working_set.files),
+            changed_lines: working_set.changed_lines.len(),
+            changed_owner_functions: working_set.changed_owners.len(),
+            changed_production_files: Vec::new(),
+            immediate_caller_files: Vec::new(),
+            scoped_production_files: display_paths(&working_set.files),
+            total_rust_files: None,
+            total_production_files: None,
+            production_files_considered: working_set.files.len(),
+            classified_seams_considered,
+            downstream_consumable: true,
+            limitation: "review_comments_working_set_scope_only",
+            repair_route: "analysis/review-comments-working-set",
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn render_review_comments_json(
     root: &Path,
     base: &str,
@@ -34,6 +114,24 @@ pub(crate) fn render_review_comments_json(
     config: &RiprConfig,
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
+) -> Result<String, String> {
+    let analysis_scope =
+        ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+    let context = ReviewCommentsRenderContext {
+        root,
+        base,
+        head,
+        mode,
+        config,
+    };
+    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope)
+}
+
+pub(crate) fn render_review_comments_json_with_scope(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    selection: &AgentBriefSelection<'_>,
+    analysis_scope: &ReviewCommentsAnalysisScope,
 ) -> Result<String, String> {
     let mut comments = Vec::new();
     let mut summary_only = Vec::new();
@@ -65,7 +163,8 @@ pub(crate) fn render_review_comments_json(
     }
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
-        let recommendation = review_recommendation_json(root, mode, config, selected);
+        let recommendation =
+            review_recommendation_json(context.root, context.mode, context.config, selected);
         let recommended_test = agent_seam_packets::recommended_test_for(selected.seam);
         if changed_test_paths
             .iter()
@@ -115,10 +214,11 @@ pub(crate) fn render_review_comments_json(
         "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
         "tool": "ripr",
         "status": "advisory",
-        "root": display_path(root),
-        "base": base,
-        "head": head,
-        "mode": mode.as_str(),
+        "root": display_path(context.root),
+        "base": context.base,
+        "head": context.head,
+        "mode": context.mode.as_str(),
+        "analysis_scope": analysis_scope_json(analysis_scope),
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -203,6 +303,7 @@ pub(crate) fn render_gap_record_review_comments_json(
     super::json::render_pretty(&value, "gap-ledger review comments")
 }
 
+#[cfg(test)]
 pub(crate) fn render_review_comments_markdown(
     root: &Path,
     base: &str,
@@ -212,8 +313,26 @@ pub(crate) fn render_review_comments_markdown(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
 ) -> String {
+    let analysis_scope =
+        ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+    let context = ReviewCommentsRenderContext {
+        root,
+        base,
+        head,
+        mode,
+        config,
+    };
+    render_review_comments_markdown_with_scope(&context, working_set, selection, &analysis_scope)
+}
+
+pub(crate) fn render_review_comments_markdown_with_scope(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    selection: &AgentBriefSelection<'_>,
+    analysis_scope: &ReviewCommentsAnalysisScope,
+) -> String {
     let Ok(rendered) =
-        render_review_comments_json(root, base, head, mode, config, working_set, selection)
+        render_review_comments_json_with_scope(context, working_set, selection, analysis_scope)
     else {
         return "# RIPR PR Guidance\n\nUnable to render PR guidance.\n".to_string();
     };
@@ -221,7 +340,13 @@ pub(crate) fn render_review_comments_markdown(
         return "# RIPR PR Guidance\n\nUnable to parse rendered PR guidance.\n".to_string();
     };
 
-    render_review_comments_markdown_value(root, base, head, mode, &value)
+    render_review_comments_markdown_value(
+        context.root,
+        context.base,
+        context.head,
+        context.mode,
+        &value,
+    )
 }
 
 pub(crate) fn render_gap_record_review_comments_markdown(
@@ -275,10 +400,11 @@ fn render_review_comments_markdown_value(
         format!("- line annotations: {comments}"),
         format!("- summary-only recommendations: {summary_only}"),
         format!("- suppressed recommendations: {suppressed}"),
-        String::new(),
-        "Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string(),
-        String::new(),
     ];
+    push_analysis_scope_summary(&mut lines, value.get("analysis_scope"));
+    lines.push(String::new());
+    lines.push("Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string());
+    lines.push(String::new());
 
     push_markdown_items(&mut lines, "Line Annotations", value.get("comments"));
     push_markdown_items(
@@ -670,6 +796,31 @@ fn unresolved_source_location_json() -> Value {
     })
 }
 
+fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
+    json!({
+        "scope": scope.scope,
+        "run_status": scope.run_status,
+        "basis": scope.basis,
+        "changed_files": scope.changed_files,
+        "changed_lines": scope.changed_lines,
+        "changed_owner_functions": scope.changed_owner_functions,
+        "changed_production_files": scope.changed_production_files,
+        "immediate_caller_files": scope.immediate_caller_files,
+        "scoped_production_files": scope.scoped_production_files,
+        "total_rust_files": scope.total_rust_files,
+        "total_production_files": scope.total_production_files,
+        "production_files_considered": scope.production_files_considered,
+        "classified_seams_considered": scope.classified_seams_considered,
+        "downstream_consumable": scope.downstream_consumable,
+        "limitation": scope.limitation,
+        "repair_route": scope.repair_route,
+    })
+}
+
+fn display_paths(paths: &[std::path::PathBuf]) -> Vec<String> {
+    paths.iter().map(|path| display_path(path)).collect()
+}
+
 fn suppressed_json(selected: &AgentBriefSelectedSeam<'_>, reason: &str, message: &str) -> Value {
     let seam = &selected.seam.seam;
     json!({
@@ -784,6 +935,47 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
         lines.push(format!("  - command: `{command}`"));
     }
     lines.push(String::new());
+}
+
+fn push_analysis_scope_summary(lines: &mut Vec<String>, value: Option<&Value>) {
+    let Some(scope) = value.and_then(Value::as_object) else {
+        return;
+    };
+    let scope_name = scope
+        .get("scope")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let run_status = scope
+        .get("run_status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let considered = scope
+        .get("production_files_considered")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let classified = scope
+        .get("classified_seams_considered")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let total_production = scope
+        .get("total_production_files")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    lines.push(format!("- analysis scope: `{scope_name}`"));
+    lines.push(format!("- run status: `{run_status}`"));
+    lines.push(format!(
+        "- scoped production files: {considered}/{total_production}"
+    ));
+    lines.push(format!("- classified seams considered: {classified}"));
+    if let (Some(limitation), Some(route)) = (
+        scope.get("limitation").and_then(Value::as_str),
+        scope.get("repair_route").and_then(Value::as_str),
+    ) {
+        lines.push(format!(
+            "- limitation: `{limitation}`; repair_route: `{route}`"
+        ));
+    }
 }
 
 fn markdown_source_location(item: &Value) -> String {

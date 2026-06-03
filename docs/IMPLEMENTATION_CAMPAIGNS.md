@@ -4497,7 +4497,8 @@ End state:
 - `RIPR_REPO_SEAM_CACHE_LIMIT` remains a positive integer tuning knob, now
   bounding shard size rather than silently disabling large cache entries.
 - Cache report shard summaries and diff-scoped large-repo review fast paths
-  remain explicit follow-ups until validated.
+  are implemented as explicit large-repo surfaces without turning scoped
+  review input into full-repo truth.
 
 Work items:
 
@@ -4505,7 +4506,7 @@ Work items:
 | --- | --- | --- |
 | `cache/large-repo-sharded-seam-cache` | done | Full repo seam cache entries above `RIPR_REPO_SEAM_CACHE_LIMIT` now write and reload bounded shard files; corrupt/incomplete shard sets fail closed; docs describe shard-size semantics. |
 | `report/large-repo-cache-shard-summary` | done | Cache reports now summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and orphan/incomplete shard sets. |
-| `analysis/diff-scoped-large-repo-review-fast-path` | ready | Review a tiny diff in a large repo through changed seams and bounded immediate callers while reporting the narrowed input as scoped rather than full-repo truth. |
+| `analysis/diff-scoped-large-repo-review-fast-path` | done | Review-comments default diff rendering now classifies changed production files plus bounded immediate callers, emits `analysis_scope.run_status = "limited_diff_scope"`, and reports `review_comments_diff_scope_only` rather than full-repo truth. |
 
 Commands:
 

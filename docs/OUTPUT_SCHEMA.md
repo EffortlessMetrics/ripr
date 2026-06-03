@@ -5333,14 +5333,19 @@ ripr review-comments \
 ```
 
 The command is a pure renderer. The default path joins existing static seam
-evidence with the changed-line diff. When `--gap-ledger` is supplied, the
-command does not rerun analysis; it renders changed-line repair cards only from
-explicit `GapRecord` entries with `projection_eligibility.pr_comment.eligible =
-true`, PR-local scope, a stable anchor, a dedupe fingerprint, a repair route,
-and verification commands. It does not post to GitHub, run mutation testing,
-refresh LSP state, edit source files, or generate tests. CI can use the JSON to
-write a job summary and emit check annotations by default. Inline PR review
-comments require a custom explicit opt-in publisher.
+evidence with the changed-line diff, but it reports a scoped review input
+instead of full-repo truth: changed production files plus bounded immediate
+caller files. The JSON and Markdown carry `analysis_scope.run_status =
+"limited_diff_scope"` and the `review_comments_diff_scope_only` limitation
+route so large-repo users can see the narrowed basis. When `--gap-ledger` is
+supplied, the command does not rerun analysis; it renders changed-line repair
+cards only from explicit `GapRecord` entries with
+`projection_eligibility.pr_comment.eligible = true`, PR-local scope, a stable
+anchor, a dedupe fingerprint, a repair route, and verification commands. It
+does not post to GitHub, run mutation testing, refresh LSP state, edit source
+files, or generate tests. CI can use the JSON to write a job summary and emit
+check annotations by default. Inline PR review comments require a custom
+explicit opt-in publisher.
 
 JSON shape:
 
@@ -5355,6 +5360,24 @@ JSON shape:
   "mode": "draft",
   "inputs": {
     "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
+  },
+  "analysis_scope": {
+    "scope": "diff_scoped_changed_files",
+    "run_status": "limited_diff_scope",
+    "basis": "changed_production_files_plus_immediate_callers",
+    "changed_files": ["src/pricing.rs"],
+    "changed_lines": 1,
+    "changed_owner_functions": 1,
+    "changed_production_files": ["src/pricing.rs"],
+    "immediate_caller_files": ["src/checkout.rs"],
+    "scoped_production_files": ["src/pricing.rs", "src/checkout.rs"],
+    "total_rust_files": 412000,
+    "total_production_files": 411000,
+    "production_files_considered": 2,
+    "classified_seams_considered": 7,
+    "downstream_consumable": true,
+    "limitation": "review_comments_diff_scope_only",
+    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
   },
   "limits": {
     "max_inline_comments": 3,
@@ -5434,6 +5457,15 @@ Field contract:
   and RIPR analysis mode used to render the report.
 - `inputs.gap_ledger` - optional explicit gap decision ledger used for
   repair-card projection. It is present only when `--gap-ledger` is supplied.
+- `analysis_scope` - optional scoped-input metadata for renderer paths that
+  run analysis. The default diff renderer emits `scope =
+  "diff_scoped_changed_files"`, `run_status = "limited_diff_scope"`, changed
+  files, changed owner count, changed production files, immediate caller files,
+  total production-file counts, the classified seam count considered, and the
+  `review_comments_diff_scope_only` limitation route. This makes the report
+  useful on large repos without representing the scoped review as full-repo
+  evidence. Gap-ledger rendering may omit this field because its authority is
+  the supplied ledger artifact.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line
