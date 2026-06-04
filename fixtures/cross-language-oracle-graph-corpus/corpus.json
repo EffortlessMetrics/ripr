@@ -234,6 +234,111 @@
       "reason": "The graph is visible enough to name the missing resizable discriminator but not enough to create a repair packet."
     },
     {
+      "id": "bun_blob_missing_external_oracle_limitation",
+      "source": "#910-partial-blob-observer-without-stable-oracle",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1320,
+        "entrypoints": [
+          "new Blob"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1324,
+        "kind": "stable_byte_copy_missing",
+        "strength": "static_unknown"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_missing_external_oracle",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "external_oracle:stable_byte_copy"
+        ],
+        "unlock_condition": "Connect the partial Blob observer evidence to a stable byte oracle before crediting the Rust seam or suggesting placement."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Blob::from_js_without_defer_gc checks both SharedArrayBuffer and resizable ArrayBuffer branches"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1322,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer Blob inputs are visible"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured Bun Blob bridge is present"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1320,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction callsite exists but no stable byte read is asserted"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The graph has a configured bridge and Blob callsite sample, but the stable-byte oracle edge is absent, so it remains a named limitation."
+    },
+    {
       "id": "bun_blob_mention_not_observer_limitation",
       "source": "#910-max-byte-length-token-only",
       "language": "typescript",

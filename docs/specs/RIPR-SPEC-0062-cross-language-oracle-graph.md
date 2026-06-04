@@ -85,6 +85,7 @@ The configured Bun Blob route may produce these states:
 | --- | --- | --- | --- |
 | `rust_ungripped_ts_discriminated` | `already_observed` or advisory external observation | The configured bridge and TypeScript evidence include both `SharedArrayBuffer` and resizable `ArrayBuffer` discriminators plus a stable Blob byte observer. | No repair packet; keep the witness advisory and manually review the Bun change. |
 | `rust_ungripped_ts_missing_discriminator` | `static_limitation` | A configured bridge and observer exist, but at least one required discriminator is absent. | `analysis/cross-language-oracle-visibility` |
+| `rust_ungripped_ts_missing_external_oracle` | `static_limitation` | A configured bridge and partial TypeScript Blob observer path exist, but the external callsite or stable-byte oracle edge is incomplete. | `analysis/cross-language-oracle-visibility` |
 | `ts_mention_not_observer` | `static_limitation` | TypeScript tokens such as `maxByteLength` appear without a Blob input and stable-byte observer. | `analysis/cross-language-oracle-visibility` |
 | `bridge_unknown` | `static_limitation` | External TypeScript discriminators may exist, but no configured or generated bridge ties them to the Rust owner. | `analysis/cross-language-oracle-visibility` |
 | `cross_language_target_unresolved` | `static_limitation` | The oracle graph does not identify a safe test placement or observer target. | `analysis/cross-language-test-target-inference` |
@@ -100,7 +101,8 @@ repair-packet fields.
 RIPR must fail closed when any graph leg is missing:
 
 - missing binding or FFI edge -> `bridge_unknown`;
-- missing external callsite -> `cross_language_oracle_visibility_unresolved`;
+- missing external callsite or stable-byte oracle on a partial observer path ->
+  `rust_ungripped_ts_missing_external_oracle`;
 - mention-only external evidence -> `ts_mention_not_observer`;
 - missing `shared_array_buffer` or `resizable_array_buffer` discriminator ->
   `rust_ungripped_ts_missing_discriminator`;
@@ -139,7 +141,8 @@ Implementations of this spec must provide:
 
 - a fixture or corpus row for each configured Bun Blob state:
   `rust_ungripped_ts_discriminated`,
-  `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and
+  `rust_ungripped_ts_missing_discriminator`,
+  `rust_ungripped_ts_missing_external_oracle`, `ts_mention_not_observer`, and
   `bridge_unknown`;
 - source samples naming the Rust seam, boundary, external TypeScript callsite,
   external assertion or observer, and configured bridge evidence where present;
@@ -210,6 +213,23 @@ suggested_test_file = not_applicable
 ```
 
 Expected result: the item becomes analyzer backlog, not a Rust test suggestion.
+
+Configured bridge with partial external observer and missing stable oracle:
+
+```text
+observed_ts_facts = shared_array_buffer, resizable_array_buffer,
+  view_backed_blob_input
+missing_graph_legs = external_oracle:stable_byte_copy
+state = rust_ungripped_ts_missing_external_oracle
+gap_state = static_limitation
+category = cross_language_oracle_visibility_unresolved
+repair_route = analysis/cross-language-oracle-visibility
+repair_packet_ready = false
+suggested_test_file = not_applicable
+```
+
+Expected result: the item names the missing external oracle leg and remains
+an analyzer limitation, not a Rust or TypeScript repair packet.
 
 Mention-only TypeScript evidence:
 
@@ -327,6 +347,7 @@ Current related metrics:
 - `cross_language_projection_exclusions`
 - `cross_language_oracle_graph_complete_advisory_witnesses`
 - `cross_language_oracle_graph_missing_discriminator_limitations`
+- `cross_language_oracle_graph_missing_external_oracle_limitations`
 - `cross_language_oracle_graph_bridge_unknown_limitations`
 - `cross_language_oracle_graph_mention_only_limitations`
 - `cross_language_oracle_graph_public_packet_exclusions`

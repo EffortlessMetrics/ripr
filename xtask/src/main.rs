@@ -8634,6 +8634,10 @@ const TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES: &[(&str, &str)] = &[
         "ts_missing_shared_and_resizable",
     ),
     (
+        "bun_blob_partial_observer_missing_external_oracle",
+        "ts_missing_external_oracle",
+    ),
+    (
         "bun_blob_max_byte_length_mention_not_observer",
         "ts_mention_not_observer",
     ),
@@ -8648,6 +8652,10 @@ const CROSS_LANGUAGE_ORACLE_GRAPH_REQUIRED_CASES: &[(&str, &str)] = &[
     (
         "bun_blob_missing_resizable_oracle_limitation",
         "rust_ungripped_ts_missing_discriminator",
+    ),
+    (
+        "bun_blob_missing_external_oracle_limitation",
+        "rust_ungripped_ts_missing_external_oracle",
     ),
     (
         "bun_blob_mention_not_observer_limitation",
@@ -9939,6 +9947,7 @@ fn validate_typescript_bun_ub_calibration_fixture_corpus_at(
         "ts_discriminated",
         "ts_missing_shared",
         "ts_missing_resizable",
+        "ts_missing_external_oracle",
         "ts_mention_not_observer",
         "bridge_unknown",
     ] {
@@ -10019,6 +10028,7 @@ fn validate_cross_language_oracle_graph_fixture_corpus_at(
     for required in [
         "rust_ungripped_ts_discriminated",
         "rust_ungripped_ts_missing_discriminator",
+        "rust_ungripped_ts_missing_external_oracle",
         "ts_mention_not_observer",
         "bridge_unknown",
         "cross_language_target_unresolved",
@@ -47279,6 +47289,31 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
                 require_typescript_bun_ub_missing(case, missing, "not_applicable", &mut errors);
             }
         }
+        "ts_missing_external_oracle" => {
+            if case.view_backed_blob_input && case.stable_byte_copy_oracle {
+                errors.push(
+                    "ts_missing_external_oracle requires a missing Blob input or stable-byte oracle"
+                        .to_string(),
+                );
+            }
+            if !case.view_backed_blob_input && !case.stable_byte_copy_oracle {
+                errors.push(
+                    "ts_missing_external_oracle requires at least one partial Blob observer fact"
+                        .to_string(),
+                );
+            }
+            if !case.expected_missing_discriminators.is_empty() {
+                errors.push(
+                    "ts_missing_external_oracle must not name boundary discriminators".to_string(),
+                );
+            }
+            if case.suggested_test_file != "not_applicable" {
+                errors.push(
+                    "ts_missing_external_oracle must keep suggested_test_file=not_applicable"
+                        .to_string(),
+                );
+            }
+        }
         "ts_mention_not_observer" => {
             if !case.max_byte_length_mention_only {
                 errors.push(
@@ -47332,6 +47367,7 @@ fn typescript_bun_ub_calibration_allowed_verdicts() -> &'static [&'static str] {
         "ts_missing_shared",
         "ts_missing_resizable",
         "ts_missing_shared_and_resizable",
+        "ts_missing_external_oracle",
         "ts_mention_not_observer",
         "bridge_unknown",
     ]
@@ -47443,7 +47479,7 @@ fn bun_ub_calibration_report_value(corpus_path: &Path) -> Value {
         let missing_discriminators =
             bun_ub_calibration_observed_missing_discriminators(&observed_state);
         let missing_graph_legs =
-            bun_ub_calibration_missing_graph_legs(&observed_state, &missing_discriminators);
+            bun_ub_calibration_missing_graph_legs(case, &observed_state, &missing_discriminators);
         let mut errors = typescript_bun_ub_calibration_case_errors(case);
         if observed_state != case.expected_verdict {
             errors.push(format!(
@@ -47534,6 +47570,7 @@ fn bun_ub_calibration_report_value(corpus_path: &Path) -> Value {
             "ts_missing_resizable_cases": verdict_counts.get("ts_missing_resizable").copied().unwrap_or_default(),
             "ts_missing_shared_cases": verdict_counts.get("ts_missing_shared").copied().unwrap_or_default(),
             "ts_missing_shared_and_resizable_cases": verdict_counts.get("ts_missing_shared_and_resizable").copied().unwrap_or_default(),
+            "ts_missing_external_oracle_cases": verdict_counts.get("ts_missing_external_oracle").copied().unwrap_or_default(),
             "ts_mention_not_observer_cases": mention_only_cases,
             "bridge_unknown_cases": bridge_unknown_cases,
             "missing_discriminator_cases": missing_discriminator_cases,
@@ -47565,9 +47602,15 @@ fn bun_ub_calibration_observed_state(case: &TypeScriptBunUbCalibrationCase) -> S
         return "bridge_unknown".to_string();
     }
     if case.max_byte_length_mention_only
-        || !case.view_backed_blob_input
-        || !case.stable_byte_copy_oracle
+        && !case.view_backed_blob_input
+        && !case.stable_byte_copy_oracle
     {
+        return "ts_mention_not_observer".to_string();
+    }
+    if !case.view_backed_blob_input || !case.stable_byte_copy_oracle {
+        if case.view_backed_blob_input || case.stable_byte_copy_oracle {
+            return "ts_missing_external_oracle".to_string();
+        }
         return "ts_mention_not_observer".to_string();
     }
     match (case.shared_array_buffer, case.resizable_array_buffer) {
@@ -47591,12 +47634,26 @@ fn bun_ub_calibration_observed_missing_discriminators(state: &str) -> Vec<&'stat
 }
 
 fn bun_ub_calibration_missing_graph_legs(
+    case: &TypeScriptBunUbCalibrationCase,
     state: &str,
     missing_discriminators: &[&str],
 ) -> Vec<String> {
     match state {
         "bridge_unknown" => vec!["binding_or_ffi_edge".to_string()],
         "ts_mention_not_observer" => vec!["external_blob_or_stable_byte_observer".to_string()],
+        "ts_missing_external_oracle" => {
+            let mut missing = Vec::new();
+            if !case.view_backed_blob_input {
+                missing.push("external_callsite:view_backed_blob_input".to_string());
+            }
+            if !case.stable_byte_copy_oracle {
+                missing.push("external_oracle:stable_byte_copy".to_string());
+            }
+            if missing.is_empty() {
+                missing.push("external_oracle_path".to_string());
+            }
+            missing
+        }
         _ => missing_discriminators
             .iter()
             .map(|missing| format!("boundary_discriminator:{missing}"))
@@ -47667,6 +47724,10 @@ fn bun_ub_calibration_report_markdown(value: &Value) -> String {
         (
             "Missing shared and resizable cases",
             "ts_missing_shared_and_resizable_cases",
+        ),
+        (
+            "Missing external oracle cases",
+            "ts_missing_external_oracle_cases",
         ),
         (
             "Mention-not-observer cases",
@@ -48171,6 +48232,44 @@ fn cross_language_oracle_graph_case_errors(case: &CrossLanguageOracleGraphCase) 
             ) {
                 errors.push(
                     "rust_ungripped_ts_missing_discriminator must name the missing boundary discriminator leg"
+                    .to_string(),
+                );
+            }
+        }
+        "rust_ungripped_ts_missing_external_oracle" => {
+            require_cross_language_oracle_graph_limitation(
+                case,
+                "cross_language_oracle_visibility_unresolved",
+                "analysis/cross-language-oracle-visibility",
+                &mut errors,
+            );
+            if case.view_backed_blob_input && case.stable_byte_copy_oracle {
+                errors.push(
+                    "rust_ungripped_ts_missing_external_oracle requires a missing Blob input or stable-byte oracle"
+                        .to_string(),
+                );
+            }
+            if !case.view_backed_blob_input && !case.stable_byte_copy_oracle {
+                errors.push(
+                    "rust_ungripped_ts_missing_external_oracle requires at least one partial Blob observer fact"
+                        .to_string(),
+                );
+            }
+            if !case.missing_discriminators.is_empty() {
+                errors.push(
+                    "rust_ungripped_ts_missing_external_oracle must not name missing boundary discriminators"
+                        .to_string(),
+                );
+            }
+            if !cross_language_oracle_graph_has_missing_leg(
+                case,
+                "external_callsite:view_backed_blob_input",
+            ) && !cross_language_oracle_graph_has_missing_leg(
+                case,
+                "external_oracle:stable_byte_copy",
+            ) {
+                errors.push(
+                    "rust_ungripped_ts_missing_external_oracle must name the missing external observer graph leg"
                         .to_string(),
                 );
             }
@@ -48254,12 +48353,17 @@ fn cross_language_oracle_graph_raw_ref_errors(
         .iter()
         .map(|raw_ref| raw_ref.leg.as_str())
         .collect::<BTreeSet<_>>();
-    for required in [
-        "rust_seam",
-        "boundary_discriminator",
-        "external_callsite",
-        "external_oracle",
-    ] {
+    let mut required_legs = vec!["rust_seam", "boundary_discriminator"];
+    if !cross_language_oracle_graph_has_missing_leg(
+        case,
+        "external_callsite:view_backed_blob_input",
+    ) {
+        required_legs.push("external_callsite");
+    }
+    if !cross_language_oracle_graph_has_missing_leg(case, "external_oracle:stable_byte_copy") {
+        required_legs.push("external_oracle");
+    }
+    for required in required_legs {
         if !raw_legs.contains(required) {
             errors.push(format!("raw_evidence_refs must include {required}"));
         }
@@ -48336,6 +48440,7 @@ fn cross_language_oracle_graph_allowed_states() -> &'static [&'static str] {
     &[
         "rust_ungripped_ts_discriminated",
         "rust_ungripped_ts_missing_discriminator",
+        "rust_ungripped_ts_missing_external_oracle",
         "ts_mention_not_observer",
         "bridge_unknown",
         "cross_language_target_unresolved",
@@ -48384,6 +48489,7 @@ fn cross_language_oracle_route_quality_from_cases(
 ) -> Value {
     let mut complete_advisory_witnesses = 0usize;
     let mut missing_discriminator_limitations = 0usize;
+    let mut missing_external_oracle_limitations = 0usize;
     let mut bridge_unknown_limitations = 0usize;
     let mut mention_only_limitations = 0usize;
     let mut target_unresolved_limitations = 0usize;
@@ -48398,6 +48504,9 @@ fn cross_language_oracle_route_quality_from_cases(
             match case.expected_state.as_str() {
                 "rust_ungripped_ts_discriminated" => complete_advisory_witnesses += 1,
                 "rust_ungripped_ts_missing_discriminator" => missing_discriminator_limitations += 1,
+                "rust_ungripped_ts_missing_external_oracle" => {
+                    missing_external_oracle_limitations += 1;
+                }
                 "bridge_unknown" => bridge_unknown_limitations += 1,
                 "ts_mention_not_observer" => mention_only_limitations += 1,
                 "cross_language_target_unresolved" => target_unresolved_limitations += 1,
@@ -48459,6 +48568,8 @@ fn cross_language_oracle_route_quality_from_cases(
             complete_advisory_witnesses,
         "cross_language_oracle_graph_missing_discriminator_limitations":
             missing_discriminator_limitations,
+        "cross_language_oracle_graph_missing_external_oracle_limitations":
+            missing_external_oracle_limitations,
         "cross_language_oracle_graph_bridge_unknown_limitations": bridge_unknown_limitations,
         "cross_language_oracle_graph_mention_only_limitations": mention_only_limitations,
         "cross_language_oracle_graph_target_unresolved_limitations":
@@ -48511,6 +48622,15 @@ fn cross_language_oracle_route_quality_push_markdown(out: &mut String, value: &V
         audit_usize(
             value,
             &["cross_language_oracle_graph_missing_discriminator_limitations"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Missing external oracle limitations",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_missing_external_oracle_limitations"],
         )
         .unwrap_or_default(),
     );
@@ -78118,6 +78238,7 @@ fn exact_owner_call_has_external_expected_value() {
                 "ts_discriminated",
                 "ts_missing_shared",
                 "ts_missing_resizable",
+                "ts_missing_external_oracle",
                 "ts_mention_not_observer",
                 "bridge_unknown",
             ] {
@@ -78150,7 +78271,7 @@ fn exact_owner_call_has_external_expected_value() {
             assert_eq!(report["schema_version"], "0.1");
             assert_eq!(report["report"], "bun-ub-calibration");
             assert_eq!(report["status"], "pass");
-            assert_eq!(report["summary"]["cases_total"], serde_json::Value::from(6));
+            assert_eq!(report["summary"]["cases_total"], serde_json::Value::from(7));
             assert_eq!(
                 report["summary"]["ts_discriminated_cases"],
                 serde_json::Value::from(1)
@@ -78165,6 +78286,10 @@ fn exact_owner_call_has_external_expected_value() {
             );
             assert_eq!(
                 report["summary"]["ts_missing_shared_and_resizable_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["ts_missing_external_oracle_cases"],
                 serde_json::Value::from(1)
             );
             assert_eq!(
@@ -78227,6 +78352,26 @@ fn exact_owner_call_has_external_expected_value() {
                     })
             );
 
+            let missing_external_oracle = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_partial_observer_missing_external_oracle")
+                .ok_or_else(|| "missing partial-observer row".to_string())?;
+            assert_eq!(
+                missing_external_oracle["observed_state"],
+                "ts_missing_external_oracle"
+            );
+            assert_eq!(
+                missing_external_oracle["suggested_test_file"],
+                "not_applicable"
+            );
+            assert!(
+                missing_external_oracle["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| legs
+                        .iter()
+                        .any(|item| item == "external_oracle:stable_byte_copy"))
+            );
+
             let bridge_unknown = rows
                 .iter()
                 .find(|row| row["case_id"] == "bun_blob_bridge_unknown_without_hint")
@@ -78242,6 +78387,7 @@ fn exact_owner_call_has_external_expected_value() {
             assert!(markdown.contains("# Bun UB TypeScript Calibration"));
             assert!(markdown.contains("Bun UB TypeScript calibration is preview/advisory only"));
             assert!(markdown.contains("bun_blob_resizable_missing"));
+            assert!(markdown.contains("Missing external oracle cases"));
             assert!(markdown.contains("binding_or_ffi_edge"));
             assert!(markdown.contains("Repair-packet-ready cases"));
             Ok(())
@@ -78268,7 +78414,7 @@ fn exact_owner_call_has_external_expected_value() {
             let value: Value =
                 serde_json::from_str(&json).map_err(|err| format!("invalid JSON: {err}"))?;
             assert_eq!(value["report"], "bun-ub-calibration");
-            assert_eq!(value["summary"]["cases_total"], serde_json::Value::from(6));
+            assert_eq!(value["summary"]["cases_total"], serde_json::Value::from(7));
             assert_eq!(
                 value["summary"]["repair_packet_ready_cases"],
                 serde_json::Value::from(0)
@@ -78304,6 +78450,7 @@ fn exact_owner_call_has_external_expected_value() {
             for required in [
                 "rust_ungripped_ts_discriminated",
                 "rust_ungripped_ts_missing_discriminator",
+                "rust_ungripped_ts_missing_external_oracle",
                 "ts_mention_not_observer",
                 "bridge_unknown",
                 "cross_language_target_unresolved",
@@ -78355,13 +78502,17 @@ fn exact_owner_call_has_external_expected_value() {
         with_repo_cwd(|| {
             let value = super::cross_language_oracle_route_quality_report_value();
             assert_eq!(value["status"], "pass");
-            assert_eq!(value["cases_total"], serde_json::Value::from(5));
+            assert_eq!(value["cases_total"], serde_json::Value::from(6));
             assert_eq!(
                 value["cross_language_oracle_graph_complete_advisory_witnesses"],
                 serde_json::Value::from(1)
             );
             assert_eq!(
                 value["cross_language_oracle_graph_missing_discriminator_limitations"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["cross_language_oracle_graph_missing_external_oracle_limitations"],
                 serde_json::Value::from(1)
             );
             assert_eq!(
@@ -78374,7 +78525,7 @@ fn exact_owner_call_has_external_expected_value() {
             );
             assert_eq!(
                 value["cross_language_oracle_graph_public_packet_exclusions"],
-                serde_json::Value::from(5)
+                serde_json::Value::from(6)
             );
             assert_eq!(
                 value["repair_packet_ready_cases"],
@@ -78399,6 +78550,21 @@ fn exact_owner_call_has_external_expected_value() {
                         missing.iter().any(|item| item == "resizable_array_buffer")
                     })
             );
+            let missing_external_oracle = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_missing_external_oracle_limitation")
+                .ok_or_else(|| "missing external oracle route-quality row".to_string())?;
+            assert_eq!(
+                missing_external_oracle["observed_state"],
+                "rust_ungripped_ts_missing_external_oracle"
+            );
+            assert!(
+                missing_external_oracle["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| legs
+                        .iter()
+                        .any(|item| item == "external_oracle:stable_byte_copy"))
+            );
             let bridge_unknown = rows
                 .iter()
                 .find(|row| row["case_id"] == "bun_blob_bridge_unknown_limitation")
@@ -78414,6 +78580,7 @@ fn exact_owner_call_has_external_expected_value() {
             assert!(markdown.contains("## Cross-Language Oracle Route Quality"));
             assert!(markdown.contains("Complete advisory witnesses"));
             assert!(markdown.contains("bun_blob_missing_resizable_oracle_limitation"));
+            assert!(markdown.contains("Missing external oracle limitations"));
             assert!(markdown.contains("binding_or_ffi_edge"));
             assert!(markdown.contains("preview/advisory route-quality evidence only"));
             Ok(())
@@ -78651,6 +78818,33 @@ fn exact_owner_call_has_external_expected_value() {
         assert_contains_error(
             &errors,
             "rust_ungripped_ts_missing_discriminator must name the missing boundary discriminator leg",
+        );
+
+        let mut missing_external_oracle = valid_cross_language_oracle_graph_case();
+        missing_external_oracle.expected_state =
+            "rust_ungripped_ts_missing_external_oracle".to_string();
+        missing_external_oracle.gap_state = "static_limitation".to_string();
+        missing_external_oracle.limitation_category =
+            "cross_language_oracle_visibility_unresolved".to_string();
+        missing_external_oracle.repair_route =
+            "analysis/cross-language-oracle-visibility".to_string();
+        missing_external_oracle.missing_discriminators = vec!["resizable_array_buffer".to_string()];
+        missing_external_oracle.missing_graph_legs.clear();
+        missing_external_oracle.view_backed_blob_input = true;
+        missing_external_oracle.stable_byte_copy_oracle = true;
+        missing_external_oracle.unlock_condition = "Name external oracle".to_string();
+        let errors = super::cross_language_oracle_graph_case_errors(&missing_external_oracle);
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_missing_external_oracle requires a missing Blob input or stable-byte oracle",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_missing_external_oracle must not name missing boundary discriminators",
+        );
+        assert_contains_error(
+            &errors,
+            "rust_ungripped_ts_missing_external_oracle must name the missing external observer graph leg",
         );
 
         let mut mention = valid_cross_language_oracle_graph_case();
@@ -78940,6 +79134,27 @@ fn exact_owner_call_has_external_expected_value() {
         assert_contains_error(
             &errors,
             "ts_missing_shared_and_resizable must include missing discriminator resizable_array_buffer",
+        );
+
+        let mut missing_external_oracle = valid_typescript_bun_ub_calibration_case();
+        missing_external_oracle.expected_verdict = "ts_missing_external_oracle".to_string();
+        missing_external_oracle.expected_missing_discriminators =
+            vec!["resizable_array_buffer".to_string()];
+        missing_external_oracle.view_backed_blob_input = true;
+        missing_external_oracle.stable_byte_copy_oracle = true;
+        missing_external_oracle.suggested_test_file = "test/js/web/fetch/blob.test.ts".to_string();
+        let errors = super::typescript_bun_ub_calibration_case_errors(&missing_external_oracle);
+        assert_contains_error(
+            &errors,
+            "ts_missing_external_oracle requires a missing Blob input or stable-byte oracle",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_external_oracle must not name boundary discriminators",
+        );
+        assert_contains_error(
+            &errors,
+            "ts_missing_external_oracle must keep suggested_test_file=not_applicable",
         );
 
         let mut mention_only = valid_typescript_bun_ub_calibration_case();
@@ -95764,12 +95979,16 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(1)
         );
         assert_eq!(
+            value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_missing_external_oracle_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
             value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_bridge_unknown_limitations"],
             serde_json::Value::from(1)
         );
         assert_eq!(
             value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_public_packet_exclusions"],
-            serde_json::Value::from(5)
+            serde_json::Value::from(6)
         );
         assert_eq!(
             value["cross_language_oracle_route_quality"]["repair_packet_ready_cases"],
@@ -106093,6 +106312,10 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(1)
         );
         assert_eq!(
+            route_quality["cross_language_oracle_graph_missing_external_oracle_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
             route_quality["cross_language_oracle_graph_bridge_unknown_limitations"],
             serde_json::Value::from(1)
         );
@@ -106102,7 +106325,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             route_quality["cross_language_oracle_graph_public_packet_exclusions"],
-            serde_json::Value::from(5)
+            serde_json::Value::from(6)
         );
         assert_eq!(
             route_quality["repair_packet_ready_cases"],

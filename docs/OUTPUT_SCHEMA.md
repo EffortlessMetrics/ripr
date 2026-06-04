@@ -4040,14 +4040,15 @@ support-tier claims.
   "cross_language_oracle_route_quality": {
     "status": "pass",
     "source_path": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
-    "cases_total": 5,
-    "passing_cases": 5,
+    "cases_total": 6,
+    "passing_cases": 6,
     "failing_cases": 0,
     "cross_language_oracle_graph_complete_advisory_witnesses": 1,
     "cross_language_oracle_graph_missing_discriminator_limitations": 1,
+    "cross_language_oracle_graph_missing_external_oracle_limitations": 1,
     "cross_language_oracle_graph_bridge_unknown_limitations": 1,
     "cross_language_oracle_graph_mention_only_limitations": 1,
-    "cross_language_oracle_graph_public_packet_exclusions": 5,
+    "cross_language_oracle_graph_public_packet_exclusions": 6,
     "repair_packet_ready_cases": 0,
     "authority_boundary": "preview_advisory_only",
     "non_claims": [
@@ -4070,6 +4071,17 @@ support-tier claims.
         "authority_boundary": "preview_advisory_only",
         "repair_packet_ready": false,
         "unlock_condition": "Name a configured or generated binding edge from the TypeScript Blob surface to Blob::from_js_without_defer_gc."
+      },
+      {
+        "case_id": "bun_blob_missing_external_oracle_limitation",
+        "expected_state": "rust_ungripped_ts_missing_external_oracle",
+        "observed_state": "rust_ungripped_ts_missing_external_oracle",
+        "status": "pass",
+        "missing_discriminators": [],
+        "missing_graph_legs": ["external_oracle:stable_byte_copy"],
+        "authority_boundary": "preview_advisory_only",
+        "repair_packet_ready": false,
+        "unlock_condition": "Connect the partial Blob observer evidence to a stable byte oracle before crediting the Rust seam or suggesting placement."
       }
     ]
   },
@@ -4471,14 +4483,15 @@ authority.
   "cross_language_oracle_route_quality": {
     "status": "pass",
     "source_path": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
-    "cases_total": 5,
-    "passing_cases": 5,
+    "cases_total": 6,
+    "passing_cases": 6,
     "failing_cases": 0,
     "cross_language_oracle_graph_complete_advisory_witnesses": 1,
     "cross_language_oracle_graph_missing_discriminator_limitations": 1,
+    "cross_language_oracle_graph_missing_external_oracle_limitations": 1,
     "cross_language_oracle_graph_bridge_unknown_limitations": 1,
     "cross_language_oracle_graph_mention_only_limitations": 1,
-    "cross_language_oracle_graph_public_packet_exclusions": 5,
+    "cross_language_oracle_graph_public_packet_exclusions": 6,
     "repair_packet_ready_cases": 0,
     "authority_boundary": "preview_advisory_only",
     "rows": [
@@ -4493,6 +4506,18 @@ authority.
         ],
         "repair_packet_ready": false,
         "unlock_condition": "Prove a TypeScript Blob observer for a resizable ArrayBuffer on the configured bridge before placement or actionability is suggested."
+      },
+      {
+        "case_id": "bun_blob_missing_external_oracle_limitation",
+        "expected_state": "rust_ungripped_ts_missing_external_oracle",
+        "observed_state": "rust_ungripped_ts_missing_external_oracle",
+        "status": "pass",
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "external_oracle:stable_byte_copy"
+        ],
+        "repair_packet_ready": false,
+        "unlock_condition": "Connect the partial Blob observer evidence to a stable byte oracle before crediting the Rust seam or suggesting placement."
       }
     ]
   },
@@ -5829,17 +5854,18 @@ JSON shape:
   "source_path": "fixtures/typescript-bun-ub-calibration/corpus.json",
   "authority_boundary": "preview_advisory_only",
   "summary": {
-    "cases_total": 6,
-    "passing_cases": 6,
+    "cases_total": 7,
+    "passing_cases": 7,
     "failing_cases": 0,
     "ts_discriminated_cases": 1,
     "ts_missing_resizable_cases": 1,
     "ts_missing_shared_cases": 1,
     "ts_missing_shared_and_resizable_cases": 1,
+    "ts_missing_external_oracle_cases": 1,
     "ts_mention_not_observer_cases": 1,
     "bridge_unknown_cases": 1,
     "missing_discriminator_cases": 3,
-    "public_packet_exclusions": 6,
+    "public_packet_exclusions": 7,
     "repair_packet_ready_cases": 0
   },
   "operator_question": "This Rust/FFI seam changed. Do Bun's TypeScript integration tests discriminate the boundary that would catch the stable-byte bug?",

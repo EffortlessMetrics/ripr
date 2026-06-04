@@ -205,6 +205,50 @@
       "reason": "The calibration must distinguish missing proof for both sides of the OR boundary instead of collapsing to a generic weak TypeScript observer."
     },
     {
+      "id": "bun_blob_partial_observer_missing_external_oracle",
+      "source": "#31648-partial-blob-observer-without-byte-oracle",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "expected_verdict": "ts_missing_external_oracle",
+      "expected_missing_discriminators": [],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": "analysis/cross-language-oracle-visibility must connect the Blob callsite to a stable byte oracle before placement is suggested",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A Blob input with both boundary discriminators is still not external oracle evidence until a stable byte observer is visible."
+    },
+    {
       "id": "bun_blob_max_byte_length_mention_not_observer",
       "source": "#31648-false-positive-token-mention",
       "language": "typescript",

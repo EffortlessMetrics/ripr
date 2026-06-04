@@ -415,6 +415,7 @@ fn cross_language_state_for_verdict(verdict: &str) -> &'static str {
         "ts_missing_resizable" | "ts_missing_shared" | "ts_missing_shared_and_resizable" => {
             "rust_ungripped_ts_missing_discriminator"
         }
+        "ts_missing_external_oracle" => "rust_ungripped_ts_missing_external_oracle",
         "ts_mention_not_observer" => "ts_mention_not_observer",
         "bridge_unknown" => "bridge_unknown",
         _ => "bridge_unknown",
@@ -567,6 +568,65 @@ mod tests {
                 .any(|raw_ref| raw_ref["leg"] == "binding_edge")
         );
         assert_eq!(projected["authority_boundary"], "preview_advisory_only");
+        assert_eq!(projected["repair_packet_ready"], false);
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_projects_missing_external_oracle_grip() -> Result<(), String> {
+        let mut finding = sample_finding(OracleKind::Unknown, OracleStrength::Unknown);
+        finding.evidence = vec![
+            "owner: Blob::from_js_without_defer_gc".to_string(),
+            "gap_state: static_limitation".to_string(),
+            "actionability_category: cross_language_oracle_visibility_unresolved".to_string(),
+            "why_not_actionable: configured Bun Blob TypeScript preview facts include a partial external observer path, but the Blob callsite or stable-byte oracle edge is incomplete".to_string(),
+            "repair_route: analysis/cross-language-oracle-visibility".to_string(),
+            "missing_actionability_fields: external_oracle_path, verify_command, receipt_command, allowed_edit_surface, raw_evidence_refs".to_string(),
+            "missing_graph_legs: external_oracle:stable_byte_copy".to_string(),
+            "unlock_condition: Connect the partial Blob observer evidence to a stable byte oracle before crediting the Rust seam or suggesting placement.".to_string(),
+            "evidence_needed_to_promote: Blob input, stable-byte observer, binding or FFI route, verify command, receipt command, raw evidence refs, and edit constraints".to_string(),
+            "raw_evidence_ref: leg=rust_seam;file=src/jsc/Blob.rs;line=42;kind=rust_boundary;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=array_buffer.shared || array_buffer.resizable".to_string(),
+            "raw_evidence_ref: leg=binding_edge;file=src/jsc/Blob.rs;line=42;kind=configured_bridge;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=configured Bun Blob bridge to test/js/web/fetch/blob.test.ts".to_string(),
+            "raw_evidence_ref: leg=boundary_discriminator;file=test/js/web/fetch/blob.test.ts;line=12;kind=shared_array_buffer;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=const shared = new SharedArrayBuffer(4)".to_string(),
+            "raw_evidence_ref: leg=external_callsite;file=test/js/web/fetch/blob.test.ts;line=14;kind=view_backed_blob_input;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=const blob = new Blob([new Uint8Array(shared)])".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_external_oracle missing_discriminators=none action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_external_oracle rust_grip=ungripped ts_verdict=ts_missing_external_oracle action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+        ];
+
+        let card = typescript_preview_card(&finding)
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        let grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+
+        assert_eq!(grip.state, "rust_ungripped_ts_missing_external_oracle");
+        assert_eq!(grip.ts_verdict, "ts_missing_external_oracle");
+        assert_eq!(
+            grip.missing_graph_legs,
+            vec!["external_oracle:stable_byte_copy"]
+        );
+        assert_eq!(grip.suggested_test_file, "not_applicable");
+        assert!(grip.placement.is_none());
+        assert!(!grip.repair_packet_ready);
+        assert!(
+            !grip
+                .raw_evidence_refs
+                .iter()
+                .any(|raw_ref| raw_ref.leg.as_deref() == Some("external_oracle"))
+        );
+
+        let json = typescript_preview_card_json_value(&card);
+        let projected = &json["bun_cross_language_grip"];
+        assert_eq!(
+            projected["state"],
+            "rust_ungripped_ts_missing_external_oracle"
+        );
+        assert_eq!(
+            projected["missing_graph_legs"][0],
+            "external_oracle:stable_byte_copy"
+        );
         assert_eq!(projected["repair_packet_ready"], false);
         Ok(())
     }
