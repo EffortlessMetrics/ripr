@@ -4739,9 +4739,10 @@ Blocking conditions:
 Campaign ID: `lane1-post-08-operating-loop`
 
 Status: active. `.ripr/goals/active.toml` records that live queue hygiene,
-#913, #909/#912, and diff-first changed-surface mode are complete in the
-current repo state, and the next ready work item is
-`analysis/cross-language-oracle-fail-closed`.
+#913, #909/#912, Bun UB calibration reporting, diff-first changed-surface mode,
+cross-language oracle fail-closed routing, and language-aware target placement
+navigation are complete in the current repo state. The next ready work item is
+`analysis/cross-language-oracle-graph-v1`.
 
 Objective:
 
@@ -4762,8 +4763,8 @@ Work items:
 | `report/bun-ub-calibration` | done | Inserted before diff-first for the 0.8.1 TypeScript/Bun patch line: the xtask report turns the Bun Blob calibration corpus into advisory JSON/Markdown operator receipts without public repair-packet, gate, badge, runtime, or support-tier authority. |
 | `ripr/diff-first-changed-surface-mode` | done | `ripr diff --base <ref> --head <ref>` emits diff-complete changed-file and changed-seam evidence before full-repo analysis and preserves full-repo limited state. |
 | `analysis/cross-language-oracle-fail-closed` | done | Existing evidence-record, packet-queue, readiness, and scorecard coverage routes unresolved external oracle paths to named limitations rather than wrong-language repair packets. |
-| `report/language-aware-target-placement-v1` | ready | External targets require explicit oracle and observer evidence; unresolved binding/FFI targets remain limitations with no repair action. |
-| `analysis/cross-language-oracle-graph-v1` | blocked | Follows target placement; broader graph proof remains non-claimed until implemented. |
+| `report/language-aware-target-placement-v1` | done | #938 through #941 already closed language-aware placement navigation: explicit external observer targets are navigation-only and unresolved binding/FFI targets stay limitations with no LSP repair action. |
+| `analysis/cross-language-oracle-graph-v1` | ready | Follows target placement; broader graph proof remains non-claimed until implemented. |
 | `analysis/repair-packet-guidance-quality` | blocked | Follows graph proof; packets should sharpen exact guidance without placeholders. |
 | `report/attempt-ledger-outcome-hardening` | blocked | Follows packet guidance; attempts, receipts, stale or mismatched receipts, and latest attempts remain durable. |
 | `dogfood/real-repair-analyzer-attempts` | blocked | Follows ledger hardening; dogfood should include improved and unchanged attempts. |

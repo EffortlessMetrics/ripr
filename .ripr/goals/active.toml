@@ -142,7 +142,7 @@ commands = [
 
 [[work_item]]
 id = "report/language-aware-target-placement-v1"
-status = "ready"
+status = "done"
 branch = "report-language-aware-target-placement-v1"
 stackable = false
 acceptance = "Ordinary Rust seams keep Rust-side test targets, externally tested binding or FFI seams only name an external target when oracle evidence proves it, and unresolved binding or FFI targets remain limitations with no LSP repair action."
@@ -156,7 +156,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-graph-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis-cross-language-oracle-graph-v1"
 stackable = false
 blocked_by = ["report/language-aware-target-placement-v1"]
