@@ -19,7 +19,7 @@ use crate::config::{
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
@@ -7000,6 +7000,203 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         app::render_check_with_config(&output, &format, &config)?
     );
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DiffReportFormat {
+    Human,
+    Json,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DiffOptions {
+    root: PathBuf,
+    base: String,
+    head: String,
+    mode: Mode,
+    format: DiffReportFormat,
+    include_unchanged_tests: bool,
+    explicit: CheckInputExplicit,
+}
+
+pub(super) fn diff(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_diff_help();
+        return Ok(());
+    }
+    let options = parse_diff_options(args)?;
+    let config = load_for_root(&options.root)?;
+    let diff_text = analysis::load_diff_range(&options.root, &options.base, &options.head)?;
+    let changed_files = diff_changed_files_from_text(&diff_text);
+    let diff_file = write_temporary_diff_file(&diff_text)?;
+
+    let check_result = run_diff_check_from_file(&options, &config, &diff_file);
+    let _ = std::fs::remove_file(&diff_file);
+    let output = check_result?;
+
+    let report = output::diff_report::build_diff_report(
+        &output,
+        &options.base,
+        &options.head,
+        changed_files,
+        diff_receipt_path(&options.base, &options.head),
+    );
+    match options.format {
+        DiffReportFormat::Human => {
+            print!("{}", output::diff_report::render_diff_report_human(&report))
+        }
+        DiffReportFormat::Json => {
+            print!("{}", output::diff_report::render_diff_report_json(&report)?)
+        }
+    }
+    Ok(())
+}
+
+fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
+    let mut options = DiffOptions {
+        root: PathBuf::from("."),
+        base: "origin/main".to_string(),
+        head: "HEAD".to_string(),
+        mode: Mode::Draft,
+        format: DiffReportFormat::Human,
+        include_unchanged_tests: true,
+        explicit: CheckInputExplicit::default(),
+    };
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                options.root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--base" => {
+                i += 1;
+                options.base = expect_value(args, i, "--base")?.to_string();
+            }
+            "--head" => {
+                i += 1;
+                options.head = expect_value(args, i, "--head")?.to_string();
+            }
+            "--mode" => {
+                i += 1;
+                options.mode = parse_mode(expect_value(args, i, "--mode")?)?;
+                options.explicit.mode = true;
+            }
+            "--format" => {
+                i += 1;
+                options.format = parse_diff_format(expect_value(args, i, "--format")?)?;
+            }
+            "--json" => options.format = DiffReportFormat::Json,
+            "--no-unchanged-tests" => {
+                options.include_unchanged_tests = false;
+                options.explicit.include_unchanged_tests = true;
+            }
+            other => return Err(format!("unknown diff argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if options.base.trim().is_empty() {
+        return Err("diff --base requires a non-empty revision".to_string());
+    }
+    if options.head.trim().is_empty() {
+        return Err("diff --head requires a non-empty revision".to_string());
+    }
+
+    Ok(options)
+}
+
+fn parse_diff_format(value: &str) -> Result<DiffReportFormat, String> {
+    match value {
+        "human" | "text" | "md" | "markdown" => Ok(DiffReportFormat::Human),
+        "json" => Ok(DiffReportFormat::Json),
+        _ => Err(format!("unknown diff format {value:?}")),
+    }
+}
+
+fn run_diff_check_from_file(
+    options: &DiffOptions,
+    config: &RiprConfig,
+    diff_file: &Path,
+) -> Result<app::CheckOutput, String> {
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        base: Some(options.base.clone()),
+        diff_file: Some(diff_file.to_path_buf()),
+        mode: options.mode.clone(),
+        format: OutputFormat::Json,
+        include_unchanged_tests: options.include_unchanged_tests,
+    };
+    apply_to_check_input(&mut input, config, options.explicit);
+    app::check_workspace_with_config(input, config)
+}
+
+fn diff_changed_files_from_text(diff_text: &str) -> Vec<output::diff_report::DiffChangedFile> {
+    analysis::parse_unified_diff(diff_text)
+        .into_iter()
+        .map(|file| {
+            let added_lines = file
+                .added_lines
+                .iter()
+                .map(|line| line.line)
+                .collect::<Vec<_>>();
+            let removed_lines = file
+                .removed_lines
+                .iter()
+                .map(|line| line.line)
+                .collect::<Vec<_>>();
+            output::diff_report::DiffChangedFile {
+                path: file.path.display().to_string(),
+                added_count: added_lines.len(),
+                removed_count: removed_lines.len(),
+                added_lines,
+                removed_lines,
+            }
+        })
+        .collect()
+}
+
+fn write_temporary_diff_file(diff_text: &str) -> Result<PathBuf, String> {
+    let dir = std::env::temp_dir().join("ripr-diff");
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("create temporary diff dir {} failed: {err}", dir.display()))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let path = dir.join(format!("diff-{}-{stamp}.patch", std::process::id()));
+    std::fs::write(&path, diff_text)
+        .map_err(|err| format!("write temporary diff file {} failed: {err}", path.display()))?;
+    Ok(path)
+}
+
+fn diff_receipt_path(base: &str, head: &str) -> String {
+    format!(
+        "target/ripr/receipts/diff-first-{}-{}.json",
+        sanitize_ref_for_path(base),
+        sanitize_ref_for_path(head)
+    )
+}
+
+fn sanitize_ref_for_path(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if sanitized.is_empty() {
+        "ref".to_string()
+    } else {
+        sanitized
+    }
 }
 
 fn render_check_gap_ledger_badge(

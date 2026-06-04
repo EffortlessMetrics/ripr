@@ -67,6 +67,10 @@ mod tests {
             Err("missing --at or --finding selector".to_string())
         );
         assert_eq!(
+            run(args(&["ripr", "diff", "--format", "xml"])),
+            Err("unknown diff format \"xml\"".to_string())
+        );
+        assert_eq!(
             run(args(&["ripr", "lsp", "--bad"])),
             Err("unknown lsp argument \"--bad\"".to_string())
         );

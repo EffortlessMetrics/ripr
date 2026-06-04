@@ -19,7 +19,7 @@ pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;
 
-pub(crate) use diff::{load_diff, parse_unified_diff};
+pub(crate) use diff::{load_diff, load_diff_range, parse_unified_diff};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;

@@ -4735,9 +4735,10 @@ Blocking conditions:
 
 Campaign ID: `lane1-post-08-operating-loop`
 
-Status: active. `.ripr/goals/active.toml` records that live queue hygiene is
-complete, #913 and #909/#912 are closed in the current repo state, and the next
-ready work item is `ripr/diff-first-changed-surface-mode`.
+Status: active. `.ripr/goals/active.toml` records that live queue hygiene,
+#913, #909/#912, and diff-first changed-surface mode are complete in the
+current repo state, and the next ready work item is
+`analysis/cross-language-oracle-fail-closed`.
 
 Objective:
 
@@ -4755,8 +4756,8 @@ Work items:
 | `repo/post-08-queue-hygiene` | done | Live state confirms #680, #582, and the same-file method-chain route split chain are merged or closed; stale local branches from merged PRs and two stale remote heads were pruned. |
 | `review/review-comments-file-line` | done | #913 is closed by #926; review-comments source locations are no longer the next active slice. |
 | `cache/large-seam-cache-explicit` | done | #912 and #909 are closed by the large-cache post-0.8 chain through #936, including explicit skip state and sharded cache follow-ups. |
-| `ripr/diff-first-changed-surface-mode` | ready | Add a user-facing changed-surface mode that emits diff-complete evidence before full-repo analysis and preserves full-repo limited state. |
-| `analysis/cross-language-oracle-fail-closed` | blocked | Follows diff-first mode; unresolved external oracle paths remain limitations, not wrong-language repair packets. |
+| `ripr/diff-first-changed-surface-mode` | done | `ripr diff --base <ref> --head <ref>` emits diff-complete changed-file and changed-seam evidence before full-repo analysis and preserves full-repo limited state. |
+| `analysis/cross-language-oracle-fail-closed` | ready | Unresolved external oracle paths remain limitations, not wrong-language repair packets. |
 | `report/language-aware-target-placement-v1` | blocked | Follows cross-language fail-closed routing; external targets require explicit oracle and observer evidence. |
 | `analysis/cross-language-oracle-graph-v1` | blocked | Follows target placement; broader graph proof remains non-claimed until implemented. |
 | `analysis/repair-packet-guidance-quality` | blocked | Follows graph proof; packets should sharpen exact guidance without placeholders. |

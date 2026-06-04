@@ -100,7 +100,7 @@ commands = [
 
 [[work_item]]
 id = "ripr/diff-first-changed-surface-mode"
-status = "ready"
+status = "done"
 branch = "ripr-diff-first-changed-surface-mode"
 stackable = false
 acceptance = "Add a user-facing changed-surface mode such as `ripr diff --base <ref> --head <ref>` that analyzes changed files/seams before full-repo context, preserves runtime status for both diff and full-repo phases, emits partial useful output before large-repo timeout, and records receipts as diff_complete/full_repo_limited when appropriate."
@@ -113,10 +113,9 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-fail-closed"
-status = "blocked"
+status = "ready"
 branch = "analysis-cross-language-oracle-fail-closed"
 stackable = false
-blocked_by = ["ripr/diff-first-changed-surface-mode"]
 acceptance = "Rust seams that appear covered by TS, JS, Python, binding, or FFI tests but lack an explicit oracle path become `static_limitation` items with category `cross_language_oracle_visibility_unresolved`, route `analysis/cross-language-oracle-visibility`, source samples, and public_projection_eligible=false."
 commands = [
   "cargo test -p ripr cross_language -- --test-threads=1",
