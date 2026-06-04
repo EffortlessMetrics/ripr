@@ -791,6 +791,119 @@
         "no allowed edit surface"
       ],
       "reason": "The #910 copy_to_unshared sample now names a configured bridge plus external TypeScript discriminator and oracle samples; it is an advisory witness only because public repair-packet fields remain absent."
+    },
+    {
+      "id": "bun_markdown_resizable_array_buffer_configured_bridge_advisory",
+      "source": "#951-markdownobject-ts-covered-configured-bridge",
+      "profile": "bun_markdown_resizable_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/runtime/api/MarkdownObject.rs",
+        "line": 60,
+        "owner": "MarkdownObject::to_string",
+        "boundary": "self.0.resizable && !self.0.shared"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/bun/md/md-edge-cases.test.ts",
+        "line": 44,
+        "entrypoints": [
+          "Bun.markdown",
+          "resizable ArrayBuffer MarkdownObject path"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/bun/md/md-edge-cases.test.ts",
+        "line": 47,
+        "kind": "markdown_strong_oracle",
+        "strength": "strong"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_discriminated",
+        "gap_state": "already_observed",
+        "limitation_category": "not_applicable",
+        "repair_route": "manual-review/cross-language-advisory-witness",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [],
+        "unlock_condition": "not_applicable"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/runtime/api/MarkdownObject.rs",
+          "line": 60,
+          "kind": "rust_owner",
+          "source_id": "#951",
+          "sample": "MarkdownObject.rs checks self.0.resizable && !self.0.shared before materializing markdown input"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 44,
+          "kind": "resizable_array_buffer",
+          "source_id": "#951",
+          "sample": "the TypeScript integration test constructs a resizable ArrayBuffer for the markdown path"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/runtime/api/MarkdownObject.rs",
+          "line": 60,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_markdown_resizable_array_buffer",
+          "sample": "configured Bun MarkdownObject bridge maps md-edge-cases TypeScript tests to MarkdownObject::to_string"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 45,
+          "kind": "bun_markdown_callsite",
+          "source_id": "#951",
+          "sample": "Bun.markdown reaches the configured MarkdownObject external surface"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 47,
+          "kind": "markdown_strong_oracle",
+          "source_id": "#951",
+          "sample": "the TypeScript test asserts the markdown output instead of only checking Rust test presence"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #951 MarkdownObject sample has a configured bridge plus external TypeScript discriminator and oracle samples; it suppresses wrong Rust-test remediation but remains an advisory witness because public repair-packet fields are absent."
     }
   ]
 }

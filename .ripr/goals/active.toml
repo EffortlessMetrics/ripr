@@ -74,3 +74,21 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "analysis/bun-markdown-resizable-cross-language-profile"
+status = "done"
+branch = "analysis-bun-markdown-cross-language-profile"
+stackable = false
+acceptance = "For #951 `MarkdownObject::to_string`, add a configured TypeScript Markdown profile that credits `test/js/bun/md/md-edge-cases.test.ts` only as an advisory cross-language witness when the resizable ArrayBuffer discriminator, `Bun.markdown` callsite, configured bridge, and strong markdown oracle are present; weak markdown oracle evidence stays a named limitation with no Rust test suggestion, verify command, receipt command, allowed edit surface, public projection eligibility, or generic TypeScript proof claim."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask ripr_swarm_readiness_rolls_up_plan_and_outcomes -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-fixture-contracts",
+]

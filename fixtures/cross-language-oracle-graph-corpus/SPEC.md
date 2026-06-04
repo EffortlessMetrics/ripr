@@ -34,6 +34,22 @@ slice names a configured binding edge from the external observer path to
 It still does not become a public repair packet, suggested test target, verify
 route, receipt route, or allowed edit surface.
 
+The #951 follow-up profile records the `MarkdownObject::to_string` seam:
+
+```text
+src/runtime/api/MarkdownObject.rs:60
+MarkdownObject::to_string
+self.0.resizable && !self.0.shared
+```
+
+That row has a configured bridge from `Bun.markdown` in
+`test/js/bun/md/md-edge-cases.test.ts` to the Rust MarkdownObject path. It is
+credited only as a complete advisory witness when the TypeScript sample carries
+a resizable ArrayBuffer discriminator, a `Bun.markdown` callsite, and a strong
+markdown output oracle. It still does not become a public repair packet,
+suggested Rust or TypeScript test target, verify route, receipt route, or
+allowed edit surface.
+
 ## When
 
 RIPR evaluates the fixture corpus, it should distinguish:
@@ -44,7 +60,7 @@ RIPR evaluates the fixture corpus, it should distinguish:
 - unknown binding or FFI routes;
 - unresolved cross-language test target placement.
 Each row names its graph `profile` so later non-Blob profiles can be added
-without weakening the Bun Blob contract.
+without weakening the Bun Blob or MarkdownObject contracts.
 
 ## Then
 

@@ -73,6 +73,23 @@ repair-packet fields and must not become a suggested test target, verify route,
 receipt route, allowed edit surface, badge, gate, or generic cross-language
 reachability claim.
 
+The #951 follow-up profile is the `MarkdownObject::to_string` resizable
+ArrayBuffer route:
+
+- Rust seam file: `src/runtime/api/MarkdownObject.rs`
+- Rust owner: `MarkdownObject::to_string`
+- Rust boundary: `self.0.resizable && !self.0.shared`
+- External test file: `test/js/bun/md/md-edge-cases.test.ts`
+- External entrypoints: `Bun.markdown` and the MarkdownObject ArrayBuffer path
+
+This profile names a configured bridge from the Bun markdown API to
+`MarkdownObject::to_string`. The row can be credited only as a complete
+advisory witness when the TypeScript sample includes a resizable ArrayBuffer,
+the `Bun.markdown` callsite, and a strong markdown output oracle. It remains
+excluded from public repair packets and must not produce a Rust test target,
+external-language test target, verify route, receipt route, or allowed edit
+surface.
+
 ### Required Graph Legs
 
 A cross-language oracle graph is complete only when every leg below has typed
@@ -81,7 +98,7 @@ evidence and at least one structured raw evidence reference:
 | Leg | Required fields |
 | --- | --- |
 | Rust seam | `source_file`, `line` or span, `owner`, `boundary`, `seam_id` or `canonical_gap_id` when available |
-| Boundary discriminator | each branch or boundary value required by the Rust predicate, including `shared_array_buffer` and `resizable_array_buffer` for the Bun Blob route |
+| Boundary discriminator | each branch or boundary value required by the Rust predicate, including `shared_array_buffer` and `resizable_array_buffer` for the Bun Blob route and `resizable_array_buffer` for the MarkdownObject route |
 | Binding or FFI edge | configured bridge hint or later generated bridge fact naming how the external surface reaches the Rust owner |
 | External callsite | `language`, `language_status`, `source_file`, `line` or span, test name or callsite, and the external entrypoint that reaches the bridge |
 | External assertion or oracle | observer kind, oracle strength, asserted value or stable observer shape, and discriminator coverage |
@@ -93,11 +110,11 @@ placeholder reference does not satisfy this spec.
 
 ### Allowed States
 
-The configured Bun Blob route may produce these states:
+Configured Bun TypeScript profiles may produce these states:
 
 | Cross-language state | Canonical state | Meaning | Required route |
 | --- | --- | --- | --- |
-| `rust_ungripped_ts_discriminated` | `already_observed` or advisory external observation | The configured bridge and TypeScript evidence include both `SharedArrayBuffer` and resizable `ArrayBuffer` discriminators plus a stable Blob byte observer. | No repair packet; keep the witness advisory and manually review the Bun change. |
+| `rust_ungripped_ts_discriminated` | `already_observed` or advisory external observation | The configured bridge and TypeScript evidence include the profile-required discriminators, external callsite, and external oracle. | No repair packet; keep the witness advisory and manually review the Bun change. |
 | `rust_ungripped_ts_missing_discriminator` | `static_limitation` | A configured bridge and observer exist, but at least one required discriminator is absent. | `analysis/cross-language-oracle-visibility` |
 | `rust_ungripped_ts_missing_external_oracle` | `static_limitation` | A configured bridge and partial TypeScript Blob observer path exist, but the external callsite or stable-byte oracle edge is incomplete. | `analysis/cross-language-oracle-visibility` |
 | `ts_mention_not_observer` | `static_limitation` | TypeScript tokens such as `maxByteLength` appear without a Blob input and stable-byte observer. | `analysis/cross-language-oracle-visibility` |
@@ -115,7 +132,8 @@ repair-packet fields.
 RIPR must fail closed when any graph leg is missing:
 
 - missing binding or FFI edge -> `bridge_unknown`;
-- missing external callsite or stable-byte oracle on a partial observer path ->
+- missing external callsite, stable-byte oracle, or strong markdown oracle on a
+  partial observer path ->
   `rust_ungripped_ts_missing_external_oracle`;
 - mention-only external evidence -> `ts_mention_not_observer`;
 - missing `shared_array_buffer` or `resizable_array_buffer` discriminator ->
@@ -134,6 +152,12 @@ evidence when the bridge edge, external callsite, and stable-byte oracle are
 present. Those rows may name `test/js/web/fetch/blob.test.ts` as advisory
 placement while keeping `repair_packet_ready = false`, no verify command, no
 receipt command, no allowed edit surface, and no public repair packet.
+
+For the configured MarkdownObject route, a missing strong markdown output oracle
+must remain `rust_ungripped_ts_missing_external_oracle` with
+`suggested_test_file = not_applicable`. The configured profile currently
+suppresses wrong Rust-test remediation; it does not infer a safe TypeScript edit
+target.
 
 ### Public Projection
 
@@ -168,6 +192,10 @@ Implementations of this spec must provide:
 - a profile-backed #910 `copy_to_unshared` row that first fails closed as
   `bridge_unknown`, then credits a configured bridge only as an advisory witness
   with no public repair-packet fields;
+- a profile-backed #951 `MarkdownObject::to_string` row that credits a
+  configured markdown bridge only as an advisory witness when the resizable
+  ArrayBuffer discriminator, `Bun.markdown` callsite, and strong markdown oracle
+  are all present;
 - source samples naming the Rust seam, boundary, external TypeScript callsite,
   external assertion or observer, and configured bridge evidence where present;
 - raw evidence references for each credited graph leg;
@@ -222,6 +250,27 @@ suggested_test_file = not_applicable
 Expected result: RIPR may display an advisory external observation and must not
 suggest a Rust test, create a public packet, or count the item as repair-ready.
 
+Configured Bun MarkdownObject witness:
+
+```text
+rust_file = src/runtime/api/MarkdownObject.rs
+rust_owner = MarkdownObject::to_string
+rust_boundary = self.0.resizable && !self.0.shared
+ts_test_file = test/js/bun/md/md-edge-cases.test.ts
+observed_ts_facts = resizable_array_buffer, bun_markdown_callsite,
+  markdown_strong_oracle
+bridge_confidence = configured_hint
+state = rust_ungripped_ts_discriminated
+gap_state = already_observed
+repair_packet_ready = false
+suggested_test_file = not_applicable
+```
+
+Expected result: RIPR may display an advisory external observation for the
+configured MarkdownObject route and must not suggest a Rust test, create a
+public packet, infer a TypeScript edit target, or count the item as
+repair-ready.
+
 Configured bridge with missing resizable discriminator:
 
 ```text
@@ -256,6 +305,22 @@ suggested_test_file = not_applicable
 
 Expected result: the item names the missing external oracle leg and remains
 an analyzer limitation, not a Rust or TypeScript repair packet.
+
+Configured MarkdownObject bridge with weak external oracle:
+
+```text
+observed_ts_facts = resizable_array_buffer, bun_markdown_callsite
+missing_graph_legs = external_oracle:markdown_strong_oracle
+state = rust_ungripped_ts_missing_external_oracle
+gap_state = static_limitation
+category = cross_language_oracle_visibility_unresolved
+repair_route = analysis/cross-language-oracle-visibility
+repair_packet_ready = false
+suggested_test_file = not_applicable
+```
+
+Expected result: the item names the missing markdown oracle leg and remains an
+analyzer limitation, not a Rust or TypeScript repair packet.
 
 Mention-only TypeScript evidence:
 
@@ -297,6 +362,9 @@ Current supporting proof:
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_with_unknown_bridge_stays_limitation`
+- `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_markdown_boundary_projects_ts_discriminated_cross_language_grip`
+- `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_markdown_cross_language_without_strong_oracle_stays_limitation`
+- `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_markdown_cross_language_without_resizable_stays_targetless`
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip`
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bridge_unknown_without_binding_ref`
 - `xtask/src/main.rs::tests::typescript_bun_ub_calibration_cases_are_checked`
@@ -315,10 +383,11 @@ Route-quality proof:
 Current implementation surfaces:
 
 - `crates/ripr/src/analysis/language/typescript.rs` emits configured Bun Blob
-  cross-language preview evidence lines with graph-leg raw refs, missing graph
-  legs, and unlock conditions for limitation states. Credited configured
-  bridge evidence uses the `binding_edge` raw-ref leg; `bridge_unknown` omits
-  that raw ref and names missing `binding_or_ffi_edge` instead.
+  and MarkdownObject cross-language preview evidence lines with graph-leg raw
+  refs, missing graph legs, and unlock conditions for limitation states.
+  Credited configured bridge evidence uses the `binding_edge` raw-ref leg;
+  `bridge_unknown` omits that raw ref and names missing `binding_or_ffi_edge`
+  instead.
 - `crates/ripr/src/output/typescript_preview_card.rs` projects the advisory
   TypeScript preview card, including Bun cross-language limitation category,
   route, graph legs, unlock condition, configured missing-discriminator
