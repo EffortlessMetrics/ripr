@@ -92,3 +92,20 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-fixture-contracts",
 ]
+
+[[work_item]]
+id = "fixtures/bun-ffi-negative-offset-panic-boundary-profile"
+status = "done"
+branch = "fixtures-bun-ffi-panic-boundary-profile"
+stackable = false
+acceptance = "For #950, pin the Bun FFI `FFIObject::read` negative-offset panic boundary as a profile-backed static limitation with source locations, FFI binding sample, missing negative-offset panic oracle, missing safe external observer target, unlock condition, raw evidence refs, no suggested Rust or TypeScript test file, no verify command, no receipt command, no allowed edit surface, and no public projection eligibility."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask ripr_swarm_readiness_rolls_up_plan_and_outcomes -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-fixture-contracts",
+]

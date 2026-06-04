@@ -17,6 +17,7 @@ Linked issues:
 
 - [#908: Cross-language repos report externally covered Rust seams as weakly gripped](https://github.com/EffortlessMetrics/ripr-swarm/issues/908)
 - [#910: TS-tested Rust seams reported as ungripped](https://github.com/EffortlessMetrics/ripr-swarm/issues/910)
+- [#950: Flag a public-reachable .expect/.unwrap panic that no test reveals](https://github.com/EffortlessMetrics/ripr-swarm/issues/950)
 
 ## Problem
 
@@ -90,6 +91,20 @@ excluded from public repair packets and must not produce a Rust test target,
 external-language test target, verify route, receipt route, or allowed edit
 surface.
 
+The #950 follow-up profile is the Bun FFI negative-offset panic boundary:
+
+- Rust seam file: `src/bun.js/bindings/FFIObject.rs`
+- Rust owner: `FFIObject::read`
+- Rust boundary: `usize::try_from(to_int32()).expect("int cast")`
+- External test surface: unresolved TypeScript test location from #950
+- External entrypoint sample: `read.u8(ptr, -1)`
+
+This profile records that the Rust panic boundary is public-reachable through a
+TypeScript-facing FFI read path, while the concrete TypeScript test location,
+negative-offset panic oracle, and safe external observer target are unresolved.
+The row is a named static limitation, not a Rust repair packet, not an
+external-language test placement, and not a public projection candidate.
+
 ### Required Graph Legs
 
 A cross-language oracle graph is complete only when every leg below has typed
@@ -120,6 +135,7 @@ Configured Bun TypeScript profiles may produce these states:
 | `ts_mention_not_observer` | `static_limitation` | TypeScript tokens such as `maxByteLength` appear without a Blob input and stable-byte observer. | `analysis/cross-language-oracle-visibility` |
 | `bridge_unknown` | `static_limitation` | External TypeScript discriminators may exist, but no configured or generated bridge ties them to the Rust owner. | `analysis/cross-language-oracle-visibility` |
 | `cross_language_target_unresolved` | `static_limitation` | The oracle graph does not identify a safe test placement or observer target. | `analysis/cross-language-test-target-inference` |
+| `public_reachable_panic_boundary_unrevealed` | `static_limitation` | A public external-language entrypoint appears to reach a Rust panic boundary, but the negative-offset oracle and safe observer target are unresolved. | `analysis/cross-language-panic-boundary-visibility` |
 
 `rust_ungripped_ts_discriminated` is not an actionable repair. It can suppress a
 wrong "add a Rust test" suggestion for the configured route, but it must not
@@ -141,6 +157,8 @@ RIPR must fail closed when any graph leg is missing:
 - missing source location or raw evidence refs -> static limitation with the
   missing field named;
 - missing target placement -> `cross_language_target_unresolved`.
+- unresolved external panic-boundary oracle or observer target ->
+  `public_reachable_panic_boundary_unrevealed`.
 
 The report must not fall back to `no_static_path`, generic `weakly_gripped`
 remediation, a guessed Rust test file, or a TypeScript test target unless the
@@ -196,6 +214,9 @@ Implementations of this spec must provide:
   configured markdown bridge only as an advisory witness when the resizable
   ArrayBuffer discriminator, `Bun.markdown` callsite, and strong markdown oracle
   are all present;
+- a profile-backed #950 `FFIObject::read` row that records the public
+  `read.u8(ptr, -1)` FFI entrypoint as a static limitation until the
+  negative-offset panic oracle and safe external observer target are resolved;
 - source samples naming the Rust seam, boundary, external TypeScript callsite,
   external assertion or observer, and configured bridge evidence where present;
 - raw evidence references for each credited graph leg;
@@ -322,6 +343,28 @@ suggested_test_file = not_applicable
 Expected result: the item names the missing markdown oracle leg and remains an
 analyzer limitation, not a Rust or TypeScript repair packet.
 
+Public-reachable Bun FFI panic boundary with unresolved external oracle:
+
+```text
+rust_file = src/bun.js/bindings/FFIObject.rs
+rust_owner = FFIObject::read
+rust_boundary = usize::try_from(to_int32()).expect("int cast")
+external_entrypoint = read.u8(ptr, -1)
+missing_discriminators = negative_offset
+missing_graph_legs = external_oracle:negative_offset_panic_boundary,
+  safe_external_observer_target
+state = public_reachable_panic_boundary_unrevealed
+gap_state = static_limitation
+category = cross_language_panic_boundary_visibility_unresolved
+repair_route = analysis/cross-language-panic-boundary-visibility
+repair_packet_ready = false
+suggested_test_file = not_applicable
+```
+
+Expected result: RIPR reports a named analyzer limitation with source samples
+and must not suggest an unrelated Rust test file, infer a TypeScript placement,
+emit verify or receipt commands, or project the item as public repair work.
+
 Mention-only TypeScript evidence:
 
 ```text
@@ -446,4 +489,5 @@ Current related metrics:
 - `cross_language_oracle_graph_missing_external_oracle_limitations`
 - `cross_language_oracle_graph_bridge_unknown_limitations`
 - `cross_language_oracle_graph_mention_only_limitations`
+- `cross_language_oracle_graph_panic_boundary_limitations`
 - `cross_language_oracle_graph_public_packet_exclusions`

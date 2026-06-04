@@ -50,6 +50,21 @@ markdown output oracle. It still does not become a public repair packet,
 suggested Rust or TypeScript test target, verify route, receipt route, or
 allowed edit surface.
 
+The #950 follow-up profile records a Bun FFI panic boundary:
+
+```text
+src/bun.js/bindings/FFIObject.rs:277
+FFIObject::read
+usize::try_from(to_int32()).expect("int cast")
+```
+
+That row has a TypeScript-facing `read.u8(ptr, -1)` public entrypoint sample
+and an FFI binding edge sample, but the concrete TypeScript test location,
+negative-offset panic oracle, and safe external observer target remain
+unresolved. It is therefore a named static limitation with no Rust test
+suggestion, no external-language test placement, no verify route, no receipt
+route, and no allowed edit surface.
+
 ## When
 
 RIPR evaluates the fixture corpus, it should distinguish:
@@ -59,6 +74,7 @@ RIPR evaluates the fixture corpus, it should distinguish:
 - TypeScript token mentions that are not Blob observers;
 - unknown binding or FFI routes;
 - unresolved cross-language test target placement.
+- public-reachable panic boundaries whose external oracle path is unresolved.
 Each row names its graph `profile` so later non-Blob profiles can be added
 without weakening the Bun Blob or MarkdownObject contracts.
 
@@ -69,7 +85,8 @@ rows become `static_limitation` records with a named limitation category,
 repair route, missing graph legs, unlock condition, and structured raw refs.
 Configured missing-discriminator rows may name
 `test/js/web/fetch/blob.test.ts` as advisory placement; bridge-unknown,
-mention-only, missing-oracle, and target-unresolved rows must not.
+mention-only, missing-oracle, target-unresolved, and panic-boundary limitation
+rows must not.
 
 ## Must Not
 
