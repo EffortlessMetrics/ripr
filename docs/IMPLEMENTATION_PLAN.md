@@ -104,13 +104,13 @@ state, non-success route-quality cases, missing receipts, and raw-finding
 non-claims across badge, LSP/editor, PR comment, and CI examples. The
 [closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md)
 records the trust boundary, advisory limits, validation evidence, remaining
-open work themes, and archived manifest. The current successor is the
-#908/#910 cross-language oracle follow-up, beginning with a profile-backed
-`copy_to_unshared` corpus row and then adding configured bridge evidence before
-crediting that external oracle as an advisory witness. The follow-up now also
-includes the #951 MarkdownObject resizable ArrayBuffer profile as a configured
-`Bun.markdown` advisory witness while preserving fail-closed behavior when the
-strong markdown oracle is missing.
+open work themes, and archived manifest. The later #908/#910
+cross-language oracle follow-up is also closed for the current repo state:
+it added profile-backed `copy_to_unshared`, #951 MarkdownObject, and #950
+FFI panic-boundary evidence while preserving advisory-only and fail-closed
+behavior. No successor campaign is selected; future #908/#910 work must start
+from live issue and artifact state with a fresh measured profile or narrow
+analyzer route instead of extending the closed manifest.
 [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
 continues to define bounded named Bun TypeScript graph profiles where complete
 configured external witnesses may become advisory external observation, but
