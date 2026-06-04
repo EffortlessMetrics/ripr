@@ -170,7 +170,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/repair-packet-guidance-quality"
-status = "ready"
+status = "done"
 branch = "analysis-repair-packet-guidance-quality"
 stackable = false
 acceptance = "Repair packets provide precise discriminator, assertion shape, verify command, receipt command, allowed edit surface, and must-not-change guidance when known, while unknown values use clean fail-closed wording without nested placeholders."
@@ -183,10 +183,9 @@ commands = [
 
 [[work_item]]
 id = "report/attempt-ledger-outcome-hardening"
-status = "blocked"
+status = "ready"
 branch = "report-attempt-ledger-outcome-hardening"
 stackable = false
-blocked_by = ["analysis/repair-packet-guidance-quality"]
 acceptance = "Attempt ledger and readiness surfaces preserve not_attempted, attempted_no_receipt, receipt_present, improved, unchanged, regressed, resolved, unknown, stale receipt, gap mismatch, latest-attempt, and orphan receipt states."
 commands = [
   "cargo xtask ripr-swarm attempt-ledger",
