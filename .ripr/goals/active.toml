@@ -197,7 +197,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/real-repair-analyzer-attempts"
-status = "ready"
+status = "done"
 branch = "dogfood-real-repair-analyzer-attempts"
 stackable = false
 acceptance = "Record real repair or analyzer-backlog attempts with before packet or limitation route, attempted patch or analyzer change, verify result, receipt when applicable, after evidence, outcome, and operator note, including unchanged or missing-receipt cases when they happen."
@@ -211,10 +211,9 @@ commands = [
 
 [[work_item]]
 id = "report/route-quality-metrics"
-status = "blocked"
+status = "ready"
 branch = "report-route-quality-metrics"
 stackable = false
-blocked_by = ["dogfood/real-repair-analyzer-attempts"]
 acceptance = "Readiness and scorecard reports derive repair-kind and limitation-route quality metrics from receipts and outcomes, including attempted, improved, unchanged, regressed, success-rate, sharpened, promoted, top failing routes, top missing fields, and top limitation routes."
 commands = [
   "cargo xtask ripr-swarm readiness",
