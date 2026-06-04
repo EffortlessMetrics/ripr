@@ -708,7 +708,10 @@ is configured and repeats that authority boundary.
 
 See [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for how to
 read preview labels, static limits, generated-CI grouping, editor projection,
-and rollback.
+and rollback. See the
+[Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md) for
+the calibrated stable-byte review loop and the exact advisory actions for
+missing discriminators, token-only evidence, and unknown bridges.
 
 ### Worked example
 

@@ -4603,6 +4603,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md",
   "fixtures/README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",

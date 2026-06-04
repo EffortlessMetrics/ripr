@@ -97,6 +97,11 @@ reports it when present. It does not run `tsc`, start `tsserver`, execute
 Bun/Jest/Vitest, generate tests, edit source, affect gates, badges, baselines,
 or RIPR Zero, or promote TypeScript/JavaScript beyond preview.
 
+Use the [Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md)
+for the operator loop that reads `rust_ungripped_ts_discriminated`,
+`rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and
+`bridge_unknown` results.
+
 ## Run The Local Preview Loop
 
 Start with the normal first-run loop:
