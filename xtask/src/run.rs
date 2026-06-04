@@ -815,8 +815,8 @@ mod tests {
             return Ok(());
         }
 
-        let mut child = Command::new("cmd")
-            .args(["/C", "ping -n 120 127.0.0.1"])
+        let mut child = Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 120"])
             .spawn()
             .map_err(|err| format!("spawn pipe-inheriting descendant: {err}"))?;
         thread::sleep(Duration::from_mins(2));

@@ -4761,8 +4761,8 @@ Work items:
 | `cache/large-seam-cache-explicit` | done | #912 and #909 are closed by the large-cache post-0.8 chain through #936, including explicit skip state and sharded cache follow-ups. |
 | `report/bun-ub-calibration` | done | Inserted before diff-first for the 0.8.1 TypeScript/Bun patch line: the xtask report turns the Bun Blob calibration corpus into advisory JSON/Markdown operator receipts without public repair-packet, gate, badge, runtime, or support-tier authority. |
 | `ripr/diff-first-changed-surface-mode` | done | `ripr diff --base <ref> --head <ref>` emits diff-complete changed-file and changed-seam evidence before full-repo analysis and preserves full-repo limited state. |
-| `analysis/cross-language-oracle-fail-closed` | ready | Unresolved external oracle paths remain limitations, not wrong-language repair packets. |
-| `report/language-aware-target-placement-v1` | blocked | Follows cross-language fail-closed routing; external targets require explicit oracle and observer evidence. |
+| `analysis/cross-language-oracle-fail-closed` | done | Existing evidence-record, packet-queue, readiness, and scorecard coverage routes unresolved external oracle paths to named limitations rather than wrong-language repair packets. |
+| `report/language-aware-target-placement-v1` | ready | External targets require explicit oracle and observer evidence; unresolved binding/FFI targets remain limitations with no repair action. |
 | `analysis/cross-language-oracle-graph-v1` | blocked | Follows target placement; broader graph proof remains non-claimed until implemented. |
 | `analysis/repair-packet-guidance-quality` | blocked | Follows graph proof; packets should sharpen exact guidance without placeholders. |
 | `report/attempt-ledger-outcome-hardening` | blocked | Follows packet guidance; attempts, receipts, stale or mismatched receipts, and latest attempts remain durable. |

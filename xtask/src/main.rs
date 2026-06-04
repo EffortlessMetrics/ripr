@@ -48365,9 +48365,6 @@ fn cross_language_oracle_graph_required_non_claims() -> &'static [&'static str] 
 
 fn cross_language_oracle_graph_corpus_path() -> PathBuf {
     let relative = Path::new(CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS);
-    if relative.exists() {
-        return relative.to_path_buf();
-    }
     repo_root()
         .map(|root| root.join(relative))
         .unwrap_or_else(|_| relative.to_path_buf())
@@ -48376,7 +48373,7 @@ fn cross_language_oracle_graph_corpus_path() -> PathBuf {
 fn cross_language_oracle_route_quality_report_value() -> Value {
     let path = cross_language_oracle_graph_corpus_path();
     cross_language_oracle_route_quality_from_cases(
-        normalize_path(&path),
+        normalize_path(Path::new(CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS)),
         &cross_language_oracle_graph_cases_at(&path),
     )
 }
@@ -78329,6 +78326,28 @@ fn exact_owner_call_has_external_expected_value() {
 
             Ok(())
         })
+    }
+
+    #[test]
+    fn cross_language_oracle_graph_corpus_path_is_repo_rooted_for_parallel_cwd_safety()
+    -> Result<(), String> {
+        let path = super::cross_language_oracle_graph_corpus_path();
+        assert!(
+            path.is_absolute(),
+            "corpus read path should not depend on process cwd: {}",
+            path.display()
+        );
+        assert!(
+            path.ends_with(super::CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS),
+            "corpus read path should keep the canonical fixture suffix: {}",
+            path.display()
+        );
+        assert!(
+            path.exists(),
+            "corpus read path should exist: {}",
+            path.display()
+        );
+        Ok(())
     }
 
     #[test]

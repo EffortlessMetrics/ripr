@@ -129,7 +129,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-fail-closed"
-status = "ready"
+status = "done"
 branch = "analysis-cross-language-oracle-fail-closed"
 stackable = false
 acceptance = "Rust seams that appear covered by TS, JS, Python, binding, or FFI tests but lack an explicit oracle path become `static_limitation` items with category `cross_language_oracle_visibility_unresolved`, route `analysis/cross-language-oracle-visibility`, source samples, and public_projection_eligible=false."
@@ -142,10 +142,9 @@ commands = [
 
 [[work_item]]
 id = "report/language-aware-target-placement-v1"
-status = "blocked"
+status = "ready"
 branch = "report-language-aware-target-placement-v1"
 stackable = false
-blocked_by = ["analysis/cross-language-oracle-fail-closed"]
 acceptance = "Ordinary Rust seams keep Rust-side test targets, externally tested binding or FFI seams only name an external target when oracle evidence proves it, and unresolved binding or FFI targets remain limitations with no LSP repair action."
 commands = [
   "cargo test -p ripr review_comments -- --test-threads=1",

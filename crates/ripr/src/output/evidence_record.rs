@@ -1681,15 +1681,31 @@ mod tests {
         class: SeamGripClass,
         related_tests: Vec<RelatedTestGrip>,
     ) -> ClassifiedSeam {
-        let seam = RepoSeam::new(
+        sample_cross_language_surface_classified(
             "src/jsc/Blob.rs",
             "Blob::from_js_without_defer_gc",
+            "array_buffer.shared || array_buffer.resizable",
+            class,
+            related_tests,
+        )
+    }
+
+    fn sample_cross_language_surface_classified(
+        file: &str,
+        owner: &str,
+        expression: &str,
+        class: SeamGripClass,
+        related_tests: Vec<RelatedTestGrip>,
+    ) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            file,
+            owner,
             SeamKind::PredicateBoundary,
             42,
             88,
-            "array_buffer.shared || array_buffer.resizable",
+            expression,
             RequiredDiscriminator::BoundaryValue {
-                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+                description: expression.to_string(),
             },
             ExpectedSink::ReturnValue,
         );
@@ -1724,13 +1740,20 @@ mod tests {
     }
 
     fn external_typescript_related_test() -> RelatedTestGrip {
+        external_language_related_test(
+            "test/js/web/fetch/blob.test.ts",
+            "TypeScript exact value oracle",
+        )
+    }
+
+    fn external_language_related_test(file: &str, evidence_summary: &str) -> RelatedTestGrip {
         RelatedTestGrip {
             test_name: "blob copies shared buffers".to_string(),
-            file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
+            file: PathBuf::from(file),
             line: 41,
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
-            evidence_summary: "TypeScript exact value oracle".to_string(),
+            evidence_summary: evidence_summary.to_string(),
             relation_reason: RelationReason::DirectOwnerCall,
             relation_confidence: RelationConfidence::High,
         }
@@ -1994,6 +2017,47 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_routes_external_language_related_tests_to_oracle_visibility_limitation() {
+        for (file, summary) in [
+            (
+                "test/js/web/fetch/blob.test.ts",
+                "TypeScript exact value oracle",
+            ),
+            (
+                "test/js/web/fetch/blob.test.js",
+                "JavaScript exact value oracle",
+            ),
+            (
+                "tests/integration/test_blob.py",
+                "Python exact value oracle",
+            ),
+        ] {
+            let entry = sample_cross_language_classified(
+                SeamGripClass::WeaklyGripped,
+                vec![external_language_related_test(file, summary)],
+            );
+            let record = evidence_record_for(&entry, None);
+            let json = evidence_record_json_value(&record);
+
+            assert_eq!(json["actionability"]["class"], "static_limitation");
+            assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+            assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+            assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+            assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+            assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+            assert_eq!(
+                json["static_limitations"][0]["category"],
+                CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+            );
+            assert_eq!(
+                json["static_limitations"][0]["repair_route"],
+                CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+            );
+            assert_eq!(json["related_tests"][0]["file"], file);
+        }
+    }
+
+    #[test]
     fn evidence_record_routes_binding_seam_without_rust_test_context_to_target_limitation() {
         let entry = sample_cross_language_classified(SeamGripClass::Ungripped, Vec::new());
         let record = evidence_record_for(&entry, None);
@@ -2002,6 +2066,14 @@ mod tests {
         assert_eq!(json["actionability"]["class"], "static_limitation");
         assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
         assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+        );
         assert_eq!(
             json["static_limitations"][1]["category"],
             CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
@@ -2014,6 +2086,44 @@ mod tests {
             json["canonical_item"]["static_limitations"][1]["category"],
             CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY
         );
+    }
+
+    #[test]
+    fn evidence_record_routes_binding_and_ffi_surface_hints_to_oracle_visibility_limitation() {
+        for (file, owner, expression) in [
+            (
+                "src/ffi/blob.rs",
+                "Blob::from_native",
+                "extern \"C\" blob_shared_or_resizable",
+            ),
+            (
+                "src/bindings/blob.rs",
+                "Blob::from_js_without_defer_gc",
+                "array_buffer.shared || array_buffer.resizable",
+            ),
+        ] {
+            let entry = sample_cross_language_surface_classified(
+                file,
+                owner,
+                expression,
+                SeamGripClass::WeaklyGripped,
+                Vec::new(),
+            );
+            let record = evidence_record_for(&entry, None);
+            let json = evidence_record_json_value(&record);
+
+            assert_eq!(json["actionability"]["class"], "static_limitation");
+            assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+            assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+            assert_eq!(
+                json["static_limitations"][0]["category"],
+                CROSS_LANGUAGE_ORACLE_VISIBILITY_CATEGORY
+            );
+            assert_eq!(
+                json["static_limitations"][0]["repair_route"],
+                CROSS_LANGUAGE_ORACLE_VISIBILITY_REPAIR_ROUTE
+            );
+        }
     }
 
     #[test]
