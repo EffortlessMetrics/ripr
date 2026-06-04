@@ -225,7 +225,7 @@ commands = [
 
 [[work_item]]
 id = "surface/canonical-state-alignment"
-status = "ready"
+status = "done"
 branch = "surface-canonical-state-alignment"
 stackable = false
 acceptance = "CLI, review comments, LSP, PR comments, badge, and CI surfaces preserve the same canonical_gap_id, runtime status, repair or limitation state, receipt status, and non-claims without counting raw findings as product truth."
@@ -238,20 +238,9 @@ commands = [
 
 [[work_item]]
 id = "campaign/lane1-post-08-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-lane1-post-08-closeout"
 stackable = false
-blocked_by = [
-  "ripr/diff-first-changed-surface-mode",
-  "analysis/cross-language-oracle-fail-closed",
-  "report/language-aware-target-placement-v1",
-  "analysis/cross-language-oracle-graph-v1",
-  "analysis/repair-packet-guidance-quality",
-  "report/attempt-ledger-outcome-hardening",
-  "dogfood/real-repair-analyzer-attempts",
-  "report/route-quality-metrics",
-  "surface/canonical-state-alignment",
-]
 acceptance = "Close the post-0.8 Lane 1 operating loop with what users can trust, what remains advisory, what remains non-actionable, validation commands, open issues, and explicit non-claims."
 commands = [
   "cargo xtask check-goals",
