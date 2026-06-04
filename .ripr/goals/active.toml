@@ -63,7 +63,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-copy-to-unshared-bridge-route"
-status = "ready"
+status = "done"
 branch = "analysis-cross-language-copy-to-unshared-bridge-route"
 stackable = false
 acceptance = "For the profile-backed `copy_to_unshared` case, add explicit configured or generated bridge evidence before crediting the external TypeScript oracle; until that bridge exists, keep the seam as `bridge_unknown` with no verify command, receipt command, allowed edit surface, suggested test file, or public projection eligibility."

@@ -4824,7 +4824,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `fixtures/cross-language-copy-to-unshared-profile` | done | Selects the #908/#910 follow-up and pins the `copy_to_unshared` TypeScript-exercised Rust seam as a profile-backed `bridge_unknown` limitation with source locations, missing binding edge, repair route, unlock condition, raw evidence refs, and no public repair-packet fields. |
-| `analysis/cross-language-copy-to-unshared-bridge-route` | ready | Add explicit configured or generated bridge evidence for the `copy_to_unshared` profile before crediting the external TypeScript oracle; until then it stays `bridge_unknown` with no verify command, receipt command, allowed edit surface, suggested test file, or public projection eligibility. |
+| `analysis/cross-language-copy-to-unshared-bridge-route` | done | Adds configured bridge evidence for the `copy_to_unshared` profile and credits the external TypeScript oracle only as a preview/advisory witness; the row still has no verify command, receipt command, allowed edit surface, suggested test file, public projection eligibility, or repair packet. |
 
 Non-claims:
 

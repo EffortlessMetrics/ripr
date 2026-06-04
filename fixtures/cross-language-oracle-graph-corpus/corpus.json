@@ -679,8 +679,8 @@
       "reason": "The fixture forces target inference to fail closed rather than point at an unrelated Rust file."
     },
     {
-      "id": "bun_array_buffer_copy_to_unshared_bridge_unknown_limitation",
-      "source": "#910-copy-to-unshared-ts-covered-bridge-unresolved",
+      "id": "bun_array_buffer_copy_to_unshared_configured_bridge_advisory",
+      "source": "#910-copy-to-unshared-ts-covered-configured-bridge",
       "profile": "bun_array_buffer_copy_to_unshared",
       "language": "typescript",
       "language_status": "preview",
@@ -691,8 +691,8 @@
         "boundary": "SharedArrayBuffer and resizable ArrayBuffer copy semantics"
       },
       "binding_edge": {
-        "kind": "unresolved",
-        "confidence": "unknown"
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
       },
       "external_callsite": {
         "file": "test/js/web/fetch/blob.test.ts",
@@ -714,23 +714,21 @@
         "file": "test/js/web/fetch/blob.test.ts",
         "line": 1286,
         "kind": "stable_byte_copy",
-        "strength": "bridge_unknown"
+        "strength": "strong"
       },
       "expected": {
-        "state": "bridge_unknown",
-        "gap_state": "static_limitation",
-        "limitation_category": "cross_language_oracle_visibility_unresolved",
-        "repair_route": "analysis/cross-language-oracle-visibility",
+        "state": "rust_ungripped_ts_discriminated",
+        "gap_state": "already_observed",
+        "limitation_category": "not_applicable",
+        "repair_route": "manual-review/cross-language-advisory-witness",
         "authority_boundary": "preview_advisory_only",
         "public_projection_eligible": false,
         "repair_packet_ready": false,
         "suggested_test_file": "not_applicable",
         "allowed_edit_surface": [],
         "missing_discriminators": [],
-        "missing_graph_legs": [
-          "binding_or_ffi_edge:copy_to_unshared"
-        ],
-        "unlock_condition": "Name a configured or generated binding edge from the TypeScript Blob ArrayBuffer observer path to copy_to_unshared before crediting the external oracle."
+        "missing_graph_legs": [],
+        "unlock_condition": "not_applicable"
       },
       "raw_evidence_refs": [
         {
@@ -750,12 +748,20 @@
           "sample": "SharedArrayBuffer and resizable ArrayBuffer inputs are visible in the external Blob tests"
         },
         {
+          "leg": "binding_edge",
+          "file": "src/jsc/array_buffer.rs",
+          "line": 341,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_array_buffer_copy_to_unshared",
+          "sample": "configured Bun ArrayBuffer bridge maps Blob ArrayBuffer copy tests to copy_to_unshared"
+        },
+        {
           "leg": "external_callsite",
           "file": "test/js/web/fetch/blob.test.ts",
           "line": 1280,
           "kind": "typescript_callsite",
           "source_id": "#910",
-          "sample": "Blob construction and blob.arrayBuffer are visible externally, but no bridge to copy_to_unshared is available"
+          "sample": "Blob construction and blob.arrayBuffer are visible externally through the configured copy_to_unshared bridge"
         },
         {
           "leg": "external_oracle",
@@ -784,7 +790,7 @@
         "no receipt command",
         "no allowed edit surface"
       ],
-      "reason": "The #910 copy_to_unshared sample has external TypeScript discriminator and oracle samples, but without a binding edge to that Rust owner it must remain a bridge_unknown limitation."
+      "reason": "The #910 copy_to_unshared sample now names a configured bridge plus external TypeScript discriminator and oracle samples; it is an advisory witness only because public repair-packet fields remain absent."
     }
   ]
 }

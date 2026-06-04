@@ -28,9 +28,11 @@ copy_to_unshared
 SharedArrayBuffer and resizable ArrayBuffer copy semantics
 ```
 
-That row has TypeScript Blob callsite and oracle samples, but it remains
-`bridge_unknown` until a configured or generated binding edge connects the
-external observer path to `copy_to_unshared`.
+That row has TypeScript Blob callsite and oracle samples. The bridge-route
+slice names a configured binding edge from the external observer path to
+`copy_to_unshared`, so the row is credited only as a complete advisory witness.
+It still does not become a public repair packet, suggested test target, verify
+route, receipt route, or allowed edit surface.
 
 ## When
 

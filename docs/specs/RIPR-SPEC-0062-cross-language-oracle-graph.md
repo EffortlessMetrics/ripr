@@ -65,11 +65,12 @@ The #910 follow-up profile is the `copy_to_unshared` ArrayBuffer copy route:
 - External entrypoints: `new Blob`, `blob.arrayBuffer`, and the Blob
   ArrayBuffer copy path
 
-This follow-up profile is initially `bridge_unknown`: TypeScript discriminator
-and oracle samples are visible, but no configured or generated binding edge yet
-connects the external Blob observer path to `copy_to_unshared`. The same
-vocabulary may be reused by later graph profiles, but this spec does not claim
-generic cross-language reachability.
+This follow-up profile first landed as `bridge_unknown`. The bridge-route slice
+now names a configured binding edge from the external Blob observer path to
+`copy_to_unshared`, so the row can be credited only as a complete advisory
+witness. It still lacks public repair-packet fields and must not become a
+suggested test target, verify route, receipt route, allowed edit surface, badge,
+gate, or generic cross-language reachability claim.
 
 ### Required Graph Legs
 
@@ -163,8 +164,9 @@ Implementations of this spec must provide:
   `rust_ungripped_ts_missing_discriminator`,
   `rust_ungripped_ts_missing_external_oracle`, `ts_mention_not_observer`, and
   `bridge_unknown`;
-- a profile-backed #910 `copy_to_unshared` bridge-unknown row before any
-  analyzer behavior credits that external oracle;
+- a profile-backed #910 `copy_to_unshared` row that first fails closed as
+  `bridge_unknown`, then credits a configured bridge only as an advisory witness
+  with no public repair-packet fields;
 - source samples naming the Rust seam, boundary, external TypeScript callsite,
   external assertion or observer, and configured bridge evidence where present;
 - raw evidence references for each credited graph leg;
