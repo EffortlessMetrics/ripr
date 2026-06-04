@@ -62,6 +62,19 @@ commands = [
 ]
 
 [[work_item]]
+id = "report/configured-cross-language-ts-placement"
+status = "done"
+branch = "output-bun-ub-missing-discriminator-placement"
+stackable = false
+acceptance = "For configured missing-discriminator Bun Blob rows, surface `test/js/web/fetch/blob.test.ts` only as advisory TypeScript placement while keeping repair_packet_ready=false, no public projection, no verify command, no receipt command, no allowed edit surface, and no wrong Rust test target."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "analysis/cross-language-copy-to-unshared-bridge-route"
 status = "done"
 branch = "analysis-cross-language-copy-to-unshared-bridge-route"
@@ -94,6 +107,20 @@ commands = [
 ]
 
 [[work_item]]
+id = "dogfood/bun-blob-witness-receipts"
+status = "done"
+branch = "dogfood-bun-blob-witness-receipts"
+stackable = false
+acceptance = "Record checked Bun Blob cross-language witness dogfood receipts for complete advisory, missing discriminator, bridge-unknown, and partial-oracle cases while preserving advisory-only authority, route-quality counters, non-claims, and no public repair packets."
+commands = [
+  "cargo test -p xtask bun_ub_cross_language_dogfood -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "fixtures/bun-ffi-negative-offset-panic-boundary-profile"
 status = "done"
 branch = "fixtures-bun-ffi-panic-boundary-profile"
@@ -108,4 +135,22 @@ commands = [
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-fixture-contracts",
+]
+
+[[work_item]]
+id = "dogfood/bun-ffi-panic-boundary-receipt"
+status = "done"
+branch = "dogfood-bun-ffi-panic-boundary-receipt"
+stackable = false
+acceptance = "Record a checked Bun FFI negative-offset panic-boundary dogfood receipt for #950/#974 that proves the new route stays a named limitation with unresolved negative-offset oracle and safe observer target evidence, no suggested test file, no verify command, no receipt command, no allowed edit surface, and no public repair packet."
+commands = [
+  "cargo test -p xtask dogfood_bun_ub_cross_language_receipts_are_checked -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
 ]

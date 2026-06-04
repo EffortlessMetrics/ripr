@@ -13,11 +13,23 @@ Blob::from_js_without_defer_gc
 array_buffer.shared || array_buffer.resizable
 ```
 
+The Bun FFI TypeScript preview stack also has a calibrated #950-shaped public
+entrypoint sample:
+
+```text
+src/bun.js/bindings/FFIObject.rs
+FFIObject::read
+usize::try_from(to_int32()).expect("int cast")
+read.u8(ptr, -1)
+```
+
 ## When
 
 An operator asks whether the TypeScript integration tests discriminate that
 stable-byte seam, the dogfood corpus records the known-good witness, a stripped
-resizable branch, and a maxByteLength token-only false positive.
+resizable branch, and a maxByteLength token-only false positive. When the
+operator asks about the FFI negative-offset panic boundary, the corpus records
+the unresolved oracle as a closed limitation receipt.
 
 ## Then
 
@@ -28,6 +40,9 @@ The receipts must show:
   `resizable_array_buffer` and `test/js/web/fetch/blob.test.ts` placement for
   the stripped-resizable case.
 - `ts_mention_not_observer` for the token-only case.
+- `public_reachable_panic_boundary_unrevealed` for the FFI negative-offset
+  case, with `negative_offset`, `external_oracle:negative_offset_panic_boundary`,
+  and `safe_external_observer_target` unresolved and no suggested test file.
 
 ## Must Not
 

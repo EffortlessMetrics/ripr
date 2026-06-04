@@ -137,6 +137,56 @@
         "no full cross-language proof"
       ],
       "reason": "The dogfood receipt pins the false-positive control: maxByteLength text is not an observer without Blob input and stable-byte assertion evidence."
+    },
+    {
+      "id": "bun_ffi_negative_offset_panic_boundary",
+      "source_case": "bun_ffi_negative_offset_panic_boundary_limitation",
+      "route_quality_case": "bun_ffi_negative_offset_panic_boundary_limitation",
+      "rust_file": "src/bun.js/bindings/FFIObject.rs",
+      "rust_owner": "FFIObject::read",
+      "rust_boundary": "usize::try_from(to_int32()).expect(\"int cast\")",
+      "ts_test_file": "unresolved:typescript-test-surface",
+      "expected_state": "public_reachable_panic_boundary_unrevealed",
+      "observed_state": "public_reachable_panic_boundary_unrevealed",
+      "missing_discriminators": [
+        "negative_offset"
+      ],
+      "missing_graph_legs": [
+        "external_oracle:negative_offset_panic_boundary",
+        "safe_external_observer_target"
+      ],
+      "suggested_test_file": "not_applicable",
+      "manual_verdict": "agrees",
+      "operator_action": "keep_panic_boundary_limitation",
+      "review_before": "Rust-only review could identify the public FFI read entrypoint but still had to reverse-map whether TypeScript observed the negative-offset panic boundary.",
+      "review_after": "The dogfood receipt records the #950 route as a named static limitation with unresolved oracle and safe observer target evidence.",
+      "bridge_verdict": "ffi_binding_edge_heuristic",
+      "placement_verdict": "not_applicable",
+      "proof_mode": "panic_boundary_limitation_advisory",
+      "receipt_state": "closed",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "raw_evidence_refs": [
+        "fixtures/cross-language-oracle-graph-corpus/corpus.json#bun_ffi_negative_offset_panic_boundary_limitation",
+        "fixtures/cross-language-oracle-graph-corpus/corpus.json#bun_ffi_negative_offset_panic_boundary_limitation/raw_evidence_refs"
+      ],
+      "non_claims": [
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #950 Bun FFI receipt proves the useful no-action outcome: public reachability plus a Rust panic boundary is still a limitation until a safe external negative-offset panic oracle and observer target are resolved."
     }
   ]
 }
