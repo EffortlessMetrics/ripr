@@ -4568,6 +4568,8 @@ tests = [
   "xtask/src/main.rs::tests::typescript_bun_ub_calibration_cases_are_checked",
   "xtask/src/main.rs::tests::cross_language_oracle_graph_corpus_cases_are_checked",
   "xtask/src/main.rs::tests::cross_language_oracle_route_quality_summarizes_corpus_cases",
+  "xtask/src/main.rs::tests::dogfood_bun_ub_cross_language_receipts_are_checked",
+  "xtask/src/main.rs::tests::dogfood_bun_ub_cross_language_rejects_overclaiming",
   "xtask/src/main.rs::tests::bun_ub_calibration_report_summarizes_calibrated_states",
   "xtask/src/main.rs::tests::bun_ub_calibration_command_writes_markdown_and_json",
   "xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_malformed_corpus_files",
@@ -4582,6 +4584,7 @@ tests = [
 fixtures = [
   "fixtures/typescript-bun-ub-calibration",
   "fixtures/cross-language-oracle-graph-corpus",
+  "fixtures/bun-ub-cross-language-dogfood",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
@@ -4600,6 +4603,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "fixtures/README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   ".ripr/goals/active.toml",

@@ -1,0 +1,142 @@
+{
+  "schema_version": "0.1",
+  "kind": "bun_ub_cross_language_dogfood_corpus",
+  "spec": "RIPR-SPEC-0062",
+  "description": "Dogfood receipts for the calibrated Bun Blob TypeScript witness loop.",
+  "authority_boundary": "preview_advisory_only",
+  "cases": [
+    {
+      "id": "bun_blob_31648_known_good",
+      "source_case": "bun_blob_shared_and_resizable_present",
+      "route_quality_case": "bun_blob_complete_ts_discriminated_advisory",
+      "rust_file": "src/jsc/Blob.rs",
+      "rust_owner": "Blob::from_js_without_defer_gc",
+      "rust_boundary": "array_buffer.shared || array_buffer.resizable",
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "expected_state": "rust_ungripped_ts_discriminated",
+      "observed_state": "rust_ungripped_ts_discriminated",
+      "missing_discriminators": [],
+      "missing_graph_legs": [],
+      "suggested_test_file": "not_applicable",
+      "manual_verdict": "agrees",
+      "operator_action": "no_missing_bridge_discriminator",
+      "review_before": "Rust-only review would manually grep test/js for SharedArrayBuffer, maxByteLength, Blob inputs, and stable-byte assertions.",
+      "review_after": "TypeScript/Bun preview credits the configured Blob route as discriminated and keeps the result advisory.",
+      "bridge_verdict": "configured_binding_edge_credited",
+      "placement_verdict": "not_needed",
+      "proof_mode": "advisory_cross_language_preview",
+      "receipt_state": "closed",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "raw_evidence_refs": [
+        "fixtures/typescript-bun-ub-calibration/corpus.json#bun_blob_shared_and_resizable_present",
+        "fixtures/cross-language-oracle-graph-corpus/corpus.json#bun_blob_complete_ts_discriminated_advisory"
+      ],
+      "non_claims": [
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no full cross-language proof"
+      ],
+      "reason": "The dogfood receipt records that the old manual grep step is replaced by a credited, configured TypeScript witness while keeping the authority boundary narrow."
+    },
+    {
+      "id": "bun_blob_stripped_resizable",
+      "source_case": "bun_blob_resizable_missing",
+      "route_quality_case": "bun_blob_missing_resizable_oracle_limitation",
+      "rust_file": "src/jsc/Blob.rs",
+      "rust_owner": "Blob::from_js_without_defer_gc",
+      "rust_boundary": "array_buffer.shared || array_buffer.resizable",
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "expected_state": "rust_ungripped_ts_missing_discriminator",
+      "observed_state": "rust_ungripped_ts_missing_discriminator",
+      "missing_discriminators": [
+        "resizable_array_buffer"
+      ],
+      "missing_graph_legs": [
+        "boundary_discriminator:resizable_array_buffer"
+      ],
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "manual_verdict": "agrees",
+      "operator_action": "suggest_resizable_array_buffer_blob_case",
+      "review_before": "Rust-only review would report the seam ungripped without showing that the missing branch belongs in the TypeScript Blob observer route.",
+      "review_after": "TypeScript/Bun preview names the missing resizable ArrayBuffer discriminator and points at the existing Blob test file.",
+      "bridge_verdict": "configured_binding_edge_credited",
+      "placement_verdict": "suggested_test_file:test/js/web/fetch/blob.test.ts",
+      "proof_mode": "missing_discriminator_advisory",
+      "receipt_state": "closed",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "raw_evidence_refs": [
+        "fixtures/typescript-bun-ub-calibration/corpus.json#bun_blob_resizable_missing",
+        "fixtures/cross-language-oracle-graph-corpus/corpus.json#bun_blob_missing_resizable_oracle_limitation"
+      ],
+      "non_claims": [
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no full cross-language proof"
+      ],
+      "reason": "The dogfood receipt proves the useful failure mode: the tool suggests the TypeScript Blob placement for the missing resizable branch instead of sending the operator to a Rust test."
+    },
+    {
+      "id": "bun_blob_mention_only",
+      "source_case": "bun_blob_max_byte_length_mention_not_observer",
+      "route_quality_case": "bun_blob_mention_not_observer_limitation",
+      "rust_file": "src/jsc/Blob.rs",
+      "rust_owner": "Blob::from_js_without_defer_gc",
+      "rust_boundary": "array_buffer.shared || array_buffer.resizable",
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "expected_state": "ts_mention_not_observer",
+      "observed_state": "ts_mention_not_observer",
+      "missing_discriminators": [],
+      "missing_graph_legs": [
+        "external_callsite:view_backed_blob_input",
+        "external_oracle:stable_byte_copy"
+      ],
+      "suggested_test_file": "not_applicable",
+      "manual_verdict": "agrees",
+      "operator_action": "reject_token_mention",
+      "review_before": "Manual review had to distinguish maxByteLength text from a real resizable ArrayBuffer Blob observer.",
+      "review_after": "TypeScript/Bun preview keeps the token mention as a limitation and does not credit it as bridge evidence.",
+      "bridge_verdict": "configured_binding_edge_not_enough_for_token_mention",
+      "placement_verdict": "not_applicable",
+      "proof_mode": "mention_not_observer_advisory",
+      "receipt_state": "closed",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "raw_evidence_refs": [
+        "fixtures/typescript-bun-ub-calibration/corpus.json#bun_blob_max_byte_length_mention_not_observer",
+        "fixtures/cross-language-oracle-graph-corpus/corpus.json#bun_blob_mention_not_observer_limitation"
+      ],
+      "non_claims": [
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no full cross-language proof"
+      ],
+      "reason": "The dogfood receipt pins the false-positive control: maxByteLength text is not an observer without Blob input and stable-byte assertion evidence."
+    }
+  ]
+}

@@ -11718,6 +11718,7 @@ fixtures/surface-projection-alignment/corpus.json
 fixtures/real-repair-attempts/corpus.json
 fixtures/python-real-repo-evals/corpus.json
 fixtures/user-surface-projection-alignment/corpus.json
+fixtures/bun-ub-cross-language-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -11771,6 +11772,15 @@ validity, concrete-discriminator and test-location coverage,
 false-actionable and crash rates, receipt closure rate, and unsupported
 limitation distribution. Eval cases with fewer than three ranked repair-card
 findings must include an explicit limit reason.
+The checked Bun UB cross-language witness receipts are read from
+`fixtures/bun-ub-cross-language-dogfood/` and record the calibrated
+#31648-shaped known-good, stripped-resizable, and maxByteLength mention-only
+operator cases. The `bun_ub_cross_language_witnesses` JSON section includes
+`default_ci_blocking: false`, `preview_authority: "advisory"`, summary counts,
+case ids, source calibration cases, route-quality cases, Rust seam fields,
+observed state, missing discriminators or graph legs, suggested TypeScript test
+file, manual verdict, operator action, bridge and placement verdicts, proof
+mode, raw evidence refs, non-claims, and `repair_packet_ready: false`.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
 and CI projection examples share the same canonical gap, packet or limitation

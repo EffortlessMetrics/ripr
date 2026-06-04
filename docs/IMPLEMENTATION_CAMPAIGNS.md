@@ -4695,6 +4695,7 @@ Work items:
 | `report/cross-language-oracle-route-quality` | done | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, mention-only limitations, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
 | `report/bun-ub-calibration` | done | `cargo xtask bun-ub-calibration` writes an operator-readable preview/advisory JSON/Markdown receipt for the Bun Blob TypeScript calibration corpus, including TS-discriminated, missing-discriminator, mention-not-observer, bridge_unknown, missing graph leg, non-claim, and `repair_packet_ready=false` rows. |
 | `output/bun-ub-missing-discriminator-placement` | done | Configured Bun Blob missing shared/resizable discriminator rows now name `test/js/web/fetch/blob.test.ts` as advisory TypeScript placement in preview cards, route-quality rows, and Bun UB calibration receipts while bridge-unknown, mention-only, partial-oracle, and target-unresolved rows remain `suggested_test_file=not_applicable` with no public repair packet. |
+| `dogfood/bun-ub-cross-language-witness-receipts` | done | `fixtures/bun-ub-cross-language-dogfood` and `cargo xtask dogfood` now record the #31648 known-good, stripped-resizable, and maxByteLength mention-only operator receipts, including before/after review behavior, manual verdict, advisory action, placement, and `repair_packet_ready=false`. |
 | `campaign/cross-language-oracle-graph-closeout` | deferred | Closeout is deferred until the broader post-0.8 loop reaches the cross-language graph and surface-alignment slices, or a narrower issue-backed closeout is selected. |
 
 Focused correction campaign ID:
@@ -4708,8 +4709,10 @@ rtk cargo xtask check-spec-numbering
 rtk cargo xtask check-traceability
 rtk cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
 rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
+rtk cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1
 rtk cargo test -p xtask bun_ub_calibration -- --test-threads=1
 rtk cargo xtask bun-ub-calibration
+rtk cargo xtask dogfood
 rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
 rtk cargo xtask ripr-swarm readiness
 rtk cargo xtask evidence-quality-scorecard
