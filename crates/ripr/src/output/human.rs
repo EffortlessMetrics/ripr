@@ -223,13 +223,14 @@ mod tests {
             "why_not_actionable: TypeScript cross-language preview is a named limitation until the external oracle path is visible".to_string(),
             "repair_route: analysis/cross-language-oracle-visibility".to_string(),
             "missing_graph_legs: boundary_discriminator:resizable_array_buffer".to_string(),
-            "unlock_condition: identify the missing external TypeScript discriminator(s) and connect them through analysis/cross-language-oracle-visibility before any repair packet projection".to_string(),
+            "unlock_condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists".to_string(),
             "evidence_needed_to_promote: bridge calibration and non-preview repair packet contract"
                 .to_string(),
             "raw_evidence_ref: leg=rust_seam;file=src/jsc/Blob.rs;line=42;kind=rust_boundary;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=array_buffer.shared || array_buffer.resizable".to_string(),
             "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
-            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
-            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
         ];
 
         let rendered = render_finding(&finding);
@@ -249,7 +250,7 @@ mod tests {
             )
         );
         assert!(rendered.contains(
-            "    unlock condition: identify the missing external TypeScript discriminator(s) and connect them through analysis/cross-language-oracle-visibility before any repair packet projection\n"
+            "    unlock condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists\n"
         ));
         assert!(
             rendered
@@ -259,8 +260,11 @@ mod tests {
         assert!(
             rendered.contains("    action: route_cross_language_oracle_visibility_limitation\n")
         );
-        assert!(rendered.contains("    suggested test file: not_applicable\n"));
-        assert!(!rendered.contains("    placement:"));
+        assert!(rendered.contains("    suggested test file: test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains("    placement: rank 1 test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains(
+            "    placement reason: existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\n"
+        ));
         assert!(rendered.contains("    authority: preview_advisory_only\n"));
         assert!(rendered.contains("    repair packet ready: false\n"));
     }

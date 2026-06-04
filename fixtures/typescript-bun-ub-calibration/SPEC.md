@@ -42,6 +42,11 @@ The corpus distinguishes:
 - `maxByteLength` mentioned without a relevant Blob observer;
 - TypeScript discriminators present while the bridge remains unknown.
 
+Configured missing shared/resizable discriminator cases may name
+`test/js/web/fetch/blob.test.ts` as advisory TypeScript placement because the
+bridge and stable-byte observer route are already pinned. That placement does
+not make the row a repair packet.
+
 ## Must Not
 
 - Promote TypeScript beyond preview.

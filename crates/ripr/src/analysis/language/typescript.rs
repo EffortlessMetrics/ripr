@@ -375,10 +375,10 @@ impl TypeScriptBunBridgeVerdict {
 
     fn suggested_test_file(self) -> &'static str {
         match self {
-            Self::TsDiscriminated
-            | Self::TsMissingResizable
+            Self::TsMissingResizable
             | Self::TsMissingShared
-            | Self::TsMissingSharedAndResizable
+            | Self::TsMissingSharedAndResizable => BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE,
+            Self::TsDiscriminated
             | Self::TsMissingExternalOracle
             | Self::TsMentionNotObserver
             | Self::BridgeUnknown => "not_applicable",
@@ -410,10 +410,16 @@ impl TypeScriptBunBridgeVerdict {
 
     fn placement_reason(self) -> Option<&'static str> {
         match self {
+            Self::TsMissingResizable => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer",
+            ),
+            Self::TsMissingShared => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is SharedArrayBuffer",
+            ),
+            Self::TsMissingSharedAndResizable => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminators are SharedArrayBuffer and resizable ArrayBuffer",
+            ),
             Self::TsDiscriminated
-            | Self::TsMissingResizable
-            | Self::TsMissingShared
-            | Self::TsMissingSharedAndResizable
             | Self::TsMissingExternalOracle
             | Self::TsMentionNotObserver
             | Self::BridgeUnknown => None,
@@ -4382,20 +4388,18 @@ fn typescript_bun_cross_language_actionability(
             gap_state: "static_limitation",
             category: "cross_language_oracle_visibility_unresolved",
             why_not_actionable: format!(
-                "configured Bun Blob TypeScript preview evidence is missing external discriminator(s): {}, and RIPR cannot prove the external oracle path from Rust static evidence",
+                "configured Bun Blob TypeScript preview evidence is missing external discriminator(s): {}; placement can name the existing TypeScript Blob test file, but RIPR cannot emit a public repair packet without verification, receipt, and edit-surface evidence",
                 hint.verdict.missing_discriminators().join(", ")
             ),
             repair_route: "analysis/cross-language-oracle-visibility".to_string(),
             missing_fields: vec![
-                "external_oracle_path",
                 "verify_command",
                 "receipt_command",
                 "must_not_change",
                 "allowed_edit_surface",
-                "raw_evidence_refs",
             ],
             evidence_needed:
-                "binding or FFI export, external language callsite, external assertion/oracle, verify command, receipt command, raw evidence refs, and edit constraints",
+                "the missing TypeScript discriminator in the configured Blob test file plus verify command, receipt command, and edit constraints before repair-packet projection",
         },
         TypeScriptBunBridgeVerdict::TsMissingExternalOracle => TypeScriptActionability {
             gap_state: "static_limitation",
@@ -4541,10 +4545,18 @@ fn bun_cross_language_stop_reasons(verdict: TypeScriptBunBridgeVerdict) -> Vec<S
 }
 
 fn bun_cross_language_recommendation(hint: &TypeScriptBunBridgeHint) -> String {
-    let no_new_test_guidance = if hint.verdict == TypeScriptBunBridgeVerdict::TsDiscriminated {
-        " no new test suggested;"
-    } else {
-        " route to `analysis/cross-language-oracle-visibility` before suggesting a test target;"
+    let placement_guidance = match hint.verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => " no new test suggested;",
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => {
+            " suggest the configured TypeScript observer file only as advisory placement;"
+        }
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle
+        | TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        | TypeScriptBunBridgeVerdict::BridgeUnknown => {
+            " route to `analysis/cross-language-oracle-visibility` before suggesting a test target;"
+        }
     };
     format!(
         "TypeScript cross-language preview: state `{}` for Rust seam `{}` `{}`; action `{}`;{} suggested_test_file `{}`; authority preview/advisory only.",
@@ -4552,7 +4564,7 @@ fn bun_cross_language_recommendation(hint: &TypeScriptBunBridgeHint) -> String {
         hint.rust_owner,
         hint.rust_boundary,
         hint.verdict.expected_action(),
-        no_new_test_guidance,
+        placement_guidance,
         hint.verdict.suggested_test_file()
     )
 }
@@ -4800,7 +4812,10 @@ fn bun_cross_language_unlock_condition(
         TypeScriptBunBridgeVerdict::TsMissingResizable
         | TypeScriptBunBridgeVerdict::TsMissingShared
         | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => Some(
-            "identify the missing external TypeScript discriminator(s) and connect them through analysis/cross-language-oracle-visibility before any repair packet projection".to_string(),
+            format!(
+                "add or inspect the missing external TypeScript discriminator(s) in {} and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists",
+                BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+            ),
         ),
         TypeScriptBunBridgeVerdict::TsMentionNotObserver => Some(
             "connect a Blob-backed external callsite and stable-byte oracle to the Rust seam before crediting token mentions".to_string(),
@@ -5610,6 +5625,16 @@ test("blob copies shared buffers", async () => {
             hint.verdict.expected_action(),
             "route_cross_language_oracle_visibility_limitation"
         );
+        assert_eq!(
+            hint.verdict.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.verdict.placement_reason(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+            )
+        );
         Ok(())
     }
 
@@ -5635,6 +5660,16 @@ test("blob copies resizable buffers", async () => {
         assert_eq!(
             hint.verdict.expected_action(),
             "route_cross_language_oracle_visibility_limitation"
+        );
+        assert_eq!(
+            hint.verdict.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.verdict.placement_reason(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is SharedArrayBuffer"
+            )
         );
         Ok(())
     }
@@ -5663,6 +5698,16 @@ test("blob copies scalar view buffers", async () => {
         assert_eq!(
             hint.verdict.expected_action(),
             "route_cross_language_oracle_visibility_limitation"
+        );
+        assert_eq!(
+            hint.verdict.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.verdict.placement_reason(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminators are SharedArrayBuffer and resizable ArrayBuffer"
+            )
         );
         Ok(())
     }
@@ -5911,7 +5956,7 @@ test("blob copies shared buffers", async () => {
         );
         assert_evidence_contains(
             &finding,
-            "unlock_condition: identify the missing external TypeScript discriminator(s)",
+            "unlock_condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts",
         );
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
         assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
@@ -5924,21 +5969,19 @@ test("blob copies shared buffers", async () => {
         );
         assert_evidence_contains(
             &finding,
-            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false",
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false",
         );
-        assert!(
-            finding
-                .evidence
-                .iter()
-                .all(|entry| !entry.starts_with("typescript_bun_ub_test_placement:")),
-            "unresolved cross-language oracle visibility must not emit placement: {:?}",
-            finding.evidence
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\"",
         );
         assert!(
             finding
                 .recommended_next_step
                 .as_deref()
-                .is_some_and(|step| step.contains("analysis/cross-language-oracle-visibility"))
+                .is_some_and(|step| step.contains(
+                    "suggest the configured TypeScript observer file only as advisory placement"
+                ))
         );
         Ok(())
     }

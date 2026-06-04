@@ -126,6 +126,13 @@ The report must not fall back to `no_static_path`, generic `weakly_gripped`
 remediation, a guessed Rust test file, or a TypeScript test target unless the
 graph has explicit typed evidence for that route.
 
+For the configured Bun Blob route, missing `shared_array_buffer` or
+`resizable_array_buffer` discriminator states have explicit typed target
+evidence when the bridge edge, external callsite, and stable-byte oracle are
+present. Those rows may name `test/js/web/fetch/blob.test.ts` as advisory
+placement while keeping `repair_packet_ready = false`, no verify command, no
+receipt command, no allowed edit surface, and no public repair packet.
+
 ### Public Projection
 
 Badge, LSP, PR, CI, readiness, scorecard, and swarm consumers must treat this
@@ -223,10 +230,12 @@ gap_state = static_limitation
 category = cross_language_oracle_visibility_unresolved
 repair_route = analysis/cross-language-oracle-visibility
 repair_packet_ready = false
-suggested_test_file = not_applicable
+suggested_test_file = test/js/web/fetch/blob.test.ts
 ```
 
-Expected result: the item becomes analyzer backlog, not a Rust test suggestion.
+Expected result: the item names the configured TypeScript observer file as
+advisory placement and remains analyzer backlog, not a Rust test suggestion or
+public repair packet.
 
 Configured bridge with partial external observer and missing stable oracle:
 
@@ -309,8 +318,8 @@ Current implementation surfaces:
   that raw ref and names missing `binding_or_ffi_edge` instead.
 - `crates/ripr/src/output/typescript_preview_card.rs` projects the advisory
   TypeScript preview card, including Bun cross-language limitation category,
-  route, graph legs, unlock condition, and raw refs while keeping
-  `repair_packet_ready=false`.
+  route, graph legs, unlock condition, configured missing-discriminator
+  placement when present, and raw refs while keeping `repair_packet_ready=false`.
 - `crates/ripr/src/output/review_comments.rs`, LSP gap artifacts, readiness,
   and scorecard code already suppress repair actions when target placement or
   public packet fields are unresolved.
@@ -320,7 +329,8 @@ Current implementation surfaces:
   `target/ripr/reports/evidence-quality-scorecard.{json,md}`, including
   complete advisory witnesses, missing discriminator limitations, mention-only
   limitations, unknown bridge limitations, public packet exclusions, missing
-  graph legs, unlock conditions, and `repair_packet_ready=false`.
+  graph legs, configured missing-discriminator placement, unlock conditions,
+  and `repair_packet_ready=false`.
 - `cargo xtask bun-ub-calibration` writes
   `target/ripr/reports/bun-ub-calibration.{json,md}` from the Bun Blob
   calibration corpus, deriving observed TS-discriminated, missing

@@ -4694,7 +4694,11 @@ Work items:
 | `analysis/cross-language-binding-route-witness` | done | Configured Bun Blob routes now credit a structured `binding_edge` raw ref, while complete TypeScript discriminators with unknown bridge confidence stay `bridge_unknown` static limitations with missing `binding_or_ffi_edge`, no binding raw ref, no placement, and no public repair packet. |
 | `report/cross-language-oracle-route-quality` | done | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, mention-only limitations, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
 | `report/bun-ub-calibration` | done | `cargo xtask bun-ub-calibration` writes an operator-readable preview/advisory JSON/Markdown receipt for the Bun Blob TypeScript calibration corpus, including TS-discriminated, missing-discriminator, mention-not-observer, bridge_unknown, missing graph leg, non-claim, and `repair_packet_ready=false` rows. |
+| `output/bun-ub-missing-discriminator-placement` | done | Configured Bun Blob missing shared/resizable discriminator rows now name `test/js/web/fetch/blob.test.ts` as advisory TypeScript placement in preview cards, route-quality rows, and Bun UB calibration receipts while bridge-unknown, mention-only, partial-oracle, and target-unresolved rows remain `suggested_test_file=not_applicable` with no public repair packet. |
 | `campaign/cross-language-oracle-graph-closeout` | deferred | Closeout is deferred until the broader post-0.8 loop reaches the cross-language graph and surface-alignment slices, or a narrower issue-backed closeout is selected. |
+
+Focused correction campaign ID:
+`typescript-bun-081-placement-receipt-correction`.
 
 Commands:
 

@@ -39,7 +39,7 @@ merge authority.
 | Stable-byte oracle classification | The TypeScript adapter distinguishes stable byte/text/value observers from smoke, snapshot, byte-read, and token-only evidence so a `maxByteLength` mention cannot stand in for a Blob observer. |
 | Bun bridge hints | The bounded internal Bun Blob profile maps `src/jsc/Blob.rs`, `Blob::from_js_without_defer_gc`, the Rust boundary text, and `test/js/web/fetch/blob.test.ts` into evidence-only `configured_hint` or `bridge_unknown` lines. |
 | Cross-language grip states | Changed Rust Blob boundary lines project advisory states for `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and `bridge_unknown`. |
-| Cross-language limitation route | Missing-discriminator cases keep `suggested_test_file=not_applicable` and route to `analysis/cross-language-oracle-visibility` before any TypeScript or Rust repair target is suggested. |
+| Cross-language limitation route | Configured missing-discriminator cases can name `test/js/web/fetch/blob.test.ts` as advisory TypeScript placement while staying routed to `analysis/cross-language-oracle-visibility` with `repair_packet_ready=false`; bridge-unknown, mention-only, and partial-oracle rows keep `suggested_test_file=not_applicable`. |
 | Opt-in profile | `[profiles.bun_ub]` records TypeScript-family test roots and a repo-relative bridge-hints path for operators; the profile is absent by default and does not enable runtime Bun, `tsc`, `tsserver`, generated tests, gates, badges, baselines, RIPR Zero, or support-tier promotion. |
 
 ## PR Chain

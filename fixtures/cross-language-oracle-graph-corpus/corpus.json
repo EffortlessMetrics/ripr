@@ -163,7 +163,7 @@
         "authority_boundary": "preview_advisory_only",
         "public_projection_eligible": false,
         "repair_packet_ready": false,
-        "suggested_test_file": "not_applicable",
+        "suggested_test_file": "test/js/web/fetch/blob.test.ts",
         "allowed_edit_surface": [],
         "missing_discriminators": [
           "resizable_array_buffer"
@@ -171,7 +171,7 @@
         "missing_graph_legs": [
           "boundary_discriminator:resizable_array_buffer"
         ],
-        "unlock_condition": "Prove a TypeScript Blob observer for a resizable ArrayBuffer on the configured bridge before placement or actionability is suggested."
+        "unlock_condition": "Add or inspect a TypeScript Blob observer for a resizable ArrayBuffer in test/js/web/fetch/blob.test.ts; keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists."
       },
       "raw_evidence_refs": [
         {

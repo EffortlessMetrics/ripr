@@ -485,17 +485,18 @@ The evidence-first fields are additive in schema `0.1`:
   `repair_route`, `missing_graph_legs[]`, nullable `unlock_condition`,
   `raw_evidence_refs[]`, `action`, `suggested_test_file`, optional
   `placement`, `authority_boundary`, and `repair_packet_ready`. The current
-  configured Bun Blob route keeps unresolved cross-language cases at
-  `suggested_test_file=not_applicable`, emits no `placement`, no verify or
+  configured Bun Blob route may name `test/js/web/fetch/blob.test.ts` as
+  advisory placement when shared/resizable boundary discriminators are missing
+  on a configured bridge. Mention-only, partial external-oracle,
+  bridge-unknown, and unresolved target cases stay at
+  `suggested_test_file=not_applicable`, emit no `placement`, no verify or
   receipt command, no allowed edit surface, and no public repair packet until
   the full public packet fields exist. Configured bridge evidence is a
   credited `raw_evidence_refs[].leg = "binding_edge"`; a `bridge_unknown`
   limitation must omit that credited binding raw ref and instead name
-  `binding_or_ffi_edge` in `missing_graph_legs[]`. A future route may populate
-  `placement` only after the binding or FFI edge, external callsite, external
-  oracle, verify route, receipt route, and edit surface are named. It is not a
-  generated test, source edit, runtime command, Rust-test placement, gate,
-  badge, baseline, or repair packet.
+  `binding_or_ffi_edge` in `missing_graph_legs[]`. It is not a generated test,
+  source edit, runtime command, Rust-test placement, gate, badge, baseline, or
+  repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
@@ -5906,12 +5907,12 @@ JSON shape:
         "max_byte_length_mention_only": false
       },
       "bridge_confidence": "configured_hint",
-      "expected_action": "add_resizable_discriminator_evidence",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
       "expected_missing_discriminators": ["resizable_array_buffer"],
       "missing_discriminators": ["resizable_array_buffer"],
       "missing_graph_legs": ["boundary_discriminator:resizable_array_buffer"],
-      "suggested_test_file": "not_applicable",
-      "suggested_shape": null,
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "suggested_shape": "add or inspect a resizable ArrayBuffer Blob stable-byte discriminator in the configured TypeScript observer file; keep repair_packet_ready=false until verify, receipt, and edit-surface evidence exists",
       "authority_boundary": "preview_advisory_only",
       "repair_packet_ready": false,
       "non_claims": ["runtime Bun execution", "generated tests"],

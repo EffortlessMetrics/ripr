@@ -49,11 +49,15 @@ without weakening the Bun Blob contract.
 Complete configured witnesses stay advisory and non-actionable. Incomplete graph
 rows become `static_limitation` records with a named limitation category,
 repair route, missing graph legs, unlock condition, and structured raw refs.
+Configured missing-discriminator rows may name
+`test/js/web/fetch/blob.test.ts` as advisory placement; bridge-unknown,
+mention-only, missing-oracle, and target-unresolved rows must not.
 
 ## Must Not
 
 - Emit public repair packets.
-- Suggest Rust or external-language test files.
+- Suggest Rust test files or external-language test files without configured
+  missing-discriminator placement evidence.
 - Emit verify or receipt commands.
 - Populate an allowed edit surface.
 - Claim provider evidence, source edits, generated tests, runtime Bun execution,

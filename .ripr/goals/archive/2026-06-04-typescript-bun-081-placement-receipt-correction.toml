@@ -1,0 +1,70 @@
+# Archived manually with the placement receipt correction PR on 2026-06-04.
+id = "typescript-bun-081-placement-receipt-correction"
+title = "TypeScript Bun 0.8.1 Placement Receipt Correction"
+status = "closed"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
+no_current_goal = true
+
+# Selected after the post-0.8 operating loop closed with `no_current_goal =
+# true`. Live inspection on 2026-06-04 showed the Bun UB route-quality and
+# calibration report commands were present, but configured missing
+# shared/resizable discriminator rows still carried the older
+# `suggested_test_file=not_applicable` receipt. This one-slice correction keeps
+# the preview/advisory and no-public-packet boundary while making the calibrated
+# missing-discriminator rows name the configured TypeScript observer file.
+
+objective = """
+Make the configured Bun Blob / ArrayBuffer TypeScript preview receipts name the
+right advisory TypeScript observer file when shared or resizable discriminator
+evidence is missing, without creating repair packets or widening preview
+authority.
+"""
+
+end_state = [
+  "configured missing shared/resizable discriminator rows suggest test/js/web/fetch/blob.test.ts as advisory TypeScript placement",
+  "complete discriminated rows keep the bounded no-missing-bridge-discriminator wording",
+  "bridge-unknown, mention-only, partial-oracle, and target-unresolved rows keep suggested_test_file=not_applicable",
+  "all Bun Blob TypeScript preview rows keep repair_packet_ready=false and public_projection_eligible=false where applicable",
+  "route-quality and calibration reports preserve preview/advisory authority and do not suggest Rust test placement",
+]
+
+hard_rules = [
+  "do not promote TypeScript or JavaScript beyond preview",
+  "do not emit public repair packets from Bun TypeScript preview evidence",
+  "do not add runtime Bun, tsc, tsserver, Jest, Vitest, mutation execution, generated tests, provider calls, source edits, default gates, badge inputs, baseline authority, RIPR Zero, or support-tier promotion",
+  "do not suggest Rust test placement for the configured Bun Blob observer route",
+  "bridge_unknown remains bridge_unknown with missing binding_or_ffi_edge and no placement",
+  "token mentions remain mention-only and not observers",
+]
+
+non_goals = [
+  "no full Bun binding graph",
+  "no generic cross-language oracle graph promotion",
+  "no runtime verification command",
+  "no source release, publish, tag, signing, marketplace, or install-doc work",
+]
+
+[[work_item]]
+id = "output/bun-ub-missing-discriminator-placement"
+status = "done"
+branch = "output-bun-ub-missing-discriminator-placement"
+stackable = false
+acceptance = "Configured Bun Blob missing shared/resizable discriminator cases project advisory TypeScript placement to test/js/web/fetch/blob.test.ts in analyzer preview cards, cross-language route-quality rows, and bun-ub-calibration reports while bridge_unknown, mention-only, partial-oracle, and target-unresolved rows keep suggested_test_file=not_applicable; all rows remain preview/advisory with repair_packet_ready=false and no Rust-test placement."
+commands = [
+  "cargo test -p ripr changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip -- --test-threads=1",
+  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
+  "cargo test -p ripr render_finding_includes_bun_cross_language_grip -- --test-threads=1",
+  "cargo test -p ripr render_includes_bun_cross_language_grip_annotation -- --test-threads=1",
+  "cargo test -p ripr sarif_preserves_bun_cross_language_grip_card_properties -- --test-threads=1",
+  "cargo test -p xtask bun_ub_calibration -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask bun-ub-calibration",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+]

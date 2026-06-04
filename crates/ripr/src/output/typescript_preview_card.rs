@@ -479,20 +479,21 @@ mod tests {
             "owner: Blob::from_js_without_defer_gc".to_string(),
             "gap_state: static_limitation".to_string(),
             "actionability_category: cross_language_oracle_visibility_unresolved".to_string(),
-            "why_not_actionable: configured Bun Blob TypeScript preview evidence is missing external discriminator(s): resizable_array_buffer, and RIPR cannot prove the external oracle path from Rust static evidence".to_string(),
+            "why_not_actionable: configured Bun Blob TypeScript preview evidence is missing external discriminator(s): resizable_array_buffer; placement can name the existing TypeScript Blob test file, but RIPR cannot emit a public repair packet without verification, receipt, and edit-surface evidence".to_string(),
             "repair_route: analysis/cross-language-oracle-visibility".to_string(),
-            "missing_actionability_fields: external_oracle_path, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs".to_string(),
+            "missing_actionability_fields: verify_command, receipt_command, must_not_change, allowed_edit_surface".to_string(),
             "missing_graph_legs: boundary_discriminator:resizable_array_buffer".to_string(),
-            "unlock_condition: identify the missing external TypeScript discriminator(s) and connect them through analysis/cross-language-oracle-visibility before any repair packet projection".to_string(),
-            "evidence_needed_to_promote: binding or FFI export, external language callsite, external assertion/oracle, verify command, receipt command, raw evidence refs, and edit constraints".to_string(),
+            "unlock_condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists".to_string(),
+            "evidence_needed_to_promote: the missing TypeScript discriminator in the configured Blob test file plus verify command, receipt command, and edit constraints before repair-packet projection".to_string(),
             "raw_evidence_ref: leg=rust_seam;file=src/jsc/Blob.rs;line=42;kind=rust_boundary;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=array_buffer.shared || array_buffer.resizable".to_string(),
             "raw_evidence_ref: leg=binding_edge;file=src/jsc/Blob.rs;line=42;kind=configured_bridge;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=configured Bun Blob bridge to test/js/web/fetch/blob.test.ts".to_string(),
             "raw_evidence_ref: leg=boundary_discriminator;file=test/js/web/fetch/blob.test.ts;line=12;kind=shared_array_buffer;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=const shared = new SharedArrayBuffer(4)".to_string(),
             "raw_evidence_ref: leg=external_callsite;file=test/js/web/fetch/blob.test.ts;line=13;kind=view_backed_blob_input;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=const blob = new Blob([new Uint8Array(shared)])".to_string(),
             "raw_evidence_ref: leg=external_oracle;file=test/js/web/fetch/blob.test.ts;line=15;kind=stable_byte_copy_oracle;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=expect([...copied]).toEqual([0, 0, 0, 0])".to_string(),
             "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
-            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
-            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
             "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
         ];
 
@@ -525,7 +526,7 @@ mod tests {
         assert_eq!(
             grip.unlock_condition.as_deref(),
             Some(
-                "identify the missing external TypeScript discriminator(s) and connect them through analysis/cross-language-oracle-visibility before any repair packet projection"
+                "add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists"
             )
         );
         assert_eq!(grip.raw_evidence_refs[0].leg.as_deref(), Some("rust_seam"));
@@ -534,8 +535,29 @@ mod tests {
                 .iter()
                 .any(|raw_ref| raw_ref.leg.as_deref() == Some("binding_edge"))
         );
-        assert_eq!(grip.suggested_test_file, "not_applicable");
-        assert!(grip.placement.is_none());
+        assert_eq!(grip.suggested_test_file, "test/js/web/fetch/blob.test.ts");
+        let placement = grip
+            .placement
+            .as_ref()
+            .ok_or_else(|| "expected advisory TypeScript placement".to_string())?;
+        assert_eq!(placement.rank, 1);
+        assert_eq!(
+            placement.suggested_test_file,
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(
+            placement.reason,
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+        );
+        assert_eq!(
+            placement.basis,
+            vec![
+                "configured_bridge_suggested_test_file",
+                "same_js_surface",
+                "same_boundary_vocabulary"
+            ]
+        );
+        assert!(!placement.repair_packet_ready);
         assert!(!grip.repair_packet_ready);
 
         let json = typescript_preview_card_json_value(&card);
@@ -549,8 +571,19 @@ mod tests {
             projected["typescript_evidence"]["missing_discriminators"][0],
             "resizable_array_buffer"
         );
-        assert_eq!(projected["suggested_test_file"], "not_applicable");
-        assert!(projected["placement"].is_null());
+        assert_eq!(
+            projected["suggested_test_file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(
+            projected["placement"]["suggested_test_file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(
+            projected["placement"]["reason"],
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+        );
+        assert_eq!(projected["placement"]["repair_packet_ready"], false);
         assert_eq!(
             projected["limitation_category"],
             "cross_language_oracle_visibility_unresolved"
