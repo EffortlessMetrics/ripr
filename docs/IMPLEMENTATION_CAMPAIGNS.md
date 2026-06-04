@@ -4805,9 +4805,9 @@ Closeout:
 
 Campaign ID: `lane1-cross-language-oracle-followup`
 
-Status: active. `.ripr/goals/active.toml` selects #908/#910 as the current
-repo-owned successor after the post-0.8 operating loop closed with
-`no_current_goal = true`.
+Status: closed. `.ripr/goals/active.toml` records `status = "closed"` and
+`no_current_goal = true`. The archived manifest lives at
+`.ripr/goals/archive/2026-06-04-lane1-cross-language-oracle-followup.toml`.
 
 This campaign extends cross-language oracle evidence only through measured,
 profile-backed graph slices. It must not convert TypeScript, binding, FFI, or
@@ -4847,3 +4847,7 @@ Non-claims:
 - no default blocking CI or badge semantic switch;
 - no source release, publish, tag, signing, marketplace, or install-doc work
   without explicit release authorization.
+
+Closeout:
+
+- [Lane 1 Cross-Language Oracle Follow-Up closeout](handoffs/2026-06-04-lane1-cross-language-oracle-followup-closeout.md)

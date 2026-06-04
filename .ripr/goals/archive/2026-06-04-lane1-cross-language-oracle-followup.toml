@@ -1,3 +1,4 @@
+# Archived by `cargo xtask closeout --goal lane1-cross-language-oracle-followup` on 2026-06-04.
 id = "lane1-cross-language-oracle-followup"
 title = "Lane 1 Cross-Language Oracle Follow-Up"
 status = "closed"
