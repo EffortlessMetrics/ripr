@@ -4738,14 +4738,19 @@ Blocking conditions:
 
 Campaign ID: `lane1-post-08-operating-loop`
 
-Status: active. `.ripr/goals/active.toml` records that live queue hygiene,
+Status: closed. `.ripr/goals/active.toml` records `status = "closed"` and
+`no_current_goal = true`. The archived manifest lives at
+`.ripr/goals/archive/2026-06-04-lane1-post-08-operating-loop.toml`, and the
+closeout handoff is
+`docs/handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md`.
+
+The closed manifest records that live queue hygiene,
 #913, #909/#912, Bun UB calibration reporting, diff-first changed-surface mode,
 cross-language oracle fail-closed routing, language-aware target placement
 navigation, the bounded cross-language oracle graph, repair-packet guidance
 quality, attempt-ledger outcome hardening, real repair/analyzer-attempt
 dogfood, route-quality metrics, and surface canonical-state alignment are
-complete in the current repo state. The next ready work item is
-`campaign/lane1-post-08-closeout`.
+complete in the current repo state. No successor campaign is selected.
 
 Objective:
 
@@ -4773,7 +4778,7 @@ Work items:
 | `dogfood/real-repair-analyzer-attempts` | done | The real-repair-attempts dogfood corpus and report record 67 repo-local repair or analyzer-route attempts with verify command, receipt route when applicable, before/after state, outcome, must-not-change boundaries, raw evidence refs, and operator notes; the set includes 61 improved, 2 resolved, 2 unchanged, and 2 attempted-without-receipt rows, while readiness keeps the latest 36 improved and 2 resolved packets current and preserves older non-success attempts in durable history. |
 | `report/route-quality-metrics` | done | Readiness and scorecard reports expose repair-route quality, language repair-route quality, top failing repair routes, top missing evidence fields, top limitation routes, limitation route quality, and cross-language oracle route quality. Current readiness derives 38 attempted packets, 36 improved packets, 2 resolved packets, and durable historical non-success counts from real-repair attempts, while focused route-quality tests cover non-empty failing, missing-field, and limitation-route fixtures. |
 | `surface/canonical-state-alignment` | done | Existing surface-projection and user-surface-projection dogfood corpora prove CLI-adjacent, review, LSP/editor, PR comment, badge, and CI examples consume the same canonical repair or limitation state, preserve `canonical_gap_id`, runtime status, receipt state, route-quality non-success cases, and missing-receipt cases, and keep raw findings as supporting evidence rather than product truth. |
-| `campaign/lane1-post-08-closeout` | ready | Close after the loop records what users can trust, what remains advisory, what remains non-actionable, validation commands, open issues, and explicit non-claims. |
+| `campaign/lane1-post-08-closeout` | done | [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md) records what users can trust, what remains advisory, what remains non-actionable, validation commands, open issues, explicit non-claims, the archived manifest, and no selected successor. |
 
 Non-claims:
 
@@ -4783,3 +4788,7 @@ Non-claims:
 - no default blocking CI or badge semantic switch;
 - no source release, publish, tag, signing, marketplace, or install-doc work
   without explicit release authorization.
+
+Closeout:
+
+- [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md)

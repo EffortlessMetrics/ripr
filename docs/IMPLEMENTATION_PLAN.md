@@ -73,17 +73,18 @@ than one behavior contract or touches repo shape.
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 | Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
 | Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Folded into the active post-0.8 operating loop after #943 through #948 landed SPEC-0062, the graph corpus, TS discriminator witnesses, and binding-route witness behavior. The route-quality report adds readiness and evidence-quality scorecard summaries for complete advisory witnesses, missing discriminators, mention-only rows, bridge-unknown rows, and public packet exclusions; the Bun UB calibration report adds an operator-readable JSON/Markdown receipt for the calibrated TypeScript/Bun Blob corpus without public repair packets. #908/#910 remain open as broader cross-language follow-ups rather than completed generic oracle support. |
-| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Active: `.ripr/goals/active.toml` records live queue hygiene, treats #913 and #909/#912 as closed, keeps source ripr as release authority, records the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, the bounded SPEC-0062 cross-language oracle graph, repair-packet guidance quality, attempt-ledger outcome hardening, real repair/analyzer-attempt dogfood, route-quality metrics, and surface canonical-state alignment as done, and selects `campaign/lane1-post-08-closeout` as the next ready work item. |
+| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Complete: [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md) records live queue hygiene, #913 and #909/#912 disposition, source `ripr` release authority, the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, the bounded SPEC-0062 cross-language oracle graph, repair-packet guidance quality, attempt-ledger outcome hardening, real repair/analyzer-attempt dogfood, route-quality metrics, and surface canonical-state alignment. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it records `status = "active"` for
-`lane1-post-08-operating-loop`. That post-release successor keeps normal
-development in ripr-swarm, preserves source ripr as release/distribution
-authority, and orders the next Lane 1 work around the evidence-to-repair
-operating loop: queue hygiene, navigable review comments, explicit large-repo
-limits, user-facing diff-first changed-surface mode, cross-language fail-closed
+it records `status = "closed"` and `no_current_goal = true` for
+`lane1-post-08-operating-loop`. That post-release successor kept normal
+development in ripr-swarm, preserved source ripr as release/distribution
+authority, and closed the selected Lane 1 evidence-to-repair operating loop:
+queue hygiene, navigable review comments, explicit large-repo limits,
+user-facing diff-first changed-surface mode, cross-language fail-closed
 routing, target placement, oracle graph proof, packet guidance, receipt/outcome
-hardening, dogfood attempts, route-quality metrics, and user-surface alignment.
+hardening, dogfood attempts, route-quality metrics, user-surface alignment, and
+the final closeout handoff.
 The fail-closed, target-placement, bounded oracle-graph, repair-packet
 guidance, attempt-ledger outcome hardening, and real repair/analyzer-attempt
 dogfood items now point at their
@@ -98,9 +99,10 @@ oracle quality. Surface canonical-state alignment now points at the checked
 surface-projection and user-surface-projection dogfood corpora, which preserve
 canonical gap identity, runtime state, repair or limitation state, receipt
 state, non-success route-quality cases, missing receipts, and raw-finding
-non-claims across badge, LSP/editor, PR comment, and CI examples. The active
-queue resumes at `campaign/lane1-post-08-closeout` rather than redoing those
-closed trust-boundary slices.
+non-claims across badge, LSP/editor, PR comment, and CI examples. The
+[closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md)
+records the trust boundary, advisory limits, validation evidence, remaining
+open work themes, archived manifest, and no selected successor.
 [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
 continues to define the bounded Bun Blob graph contract where complete
 configured external witnesses may become advisory external observation, but
