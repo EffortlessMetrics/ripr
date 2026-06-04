@@ -1268,12 +1268,14 @@ struct TypeScriptPreviewFalseActionableAuditCase {
 #[derive(Clone, Debug)]
 struct TypeScriptBunUbCalibrationCase {
     name: String,
+    source: String,
     language: String,
     language_status: String,
     rust_file: String,
     rust_owner: String,
     rust_boundary: String,
     ts_test_file: String,
+    ts_entrypoints: Vec<String>,
     shared_array_buffer: bool,
     resizable_array_buffer: bool,
     view_backed_blob_input: bool,
@@ -1282,11 +1284,20 @@ struct TypeScriptBunUbCalibrationCase {
     expected_verdict: String,
     expected_missing_discriminators: Vec<String>,
     bridge_confidence: String,
+    expected_action: String,
     suggested_test_file: String,
+    suggested_shape: Option<String>,
     repair_packet_ready: bool,
     authority_boundary: String,
     non_claims: Vec<String>,
     reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BunUbCalibrationArgs {
+    corpus: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -47010,12 +47021,14 @@ fn typescript_bun_ub_calibration_cases_at(
     let fallback = |reason: String| {
         vec![TypeScriptBunUbCalibrationCase {
             name: "corpus".to_string(),
+            source: "unknown".to_string(),
             language: "unknown".to_string(),
             language_status: "unknown".to_string(),
             rust_file: "unknown".to_string(),
             rust_owner: "unknown".to_string(),
             rust_boundary: "unknown".to_string(),
             ts_test_file: "unknown".to_string(),
+            ts_entrypoints: Vec::new(),
             shared_array_buffer: false,
             resizable_array_buffer: false,
             view_backed_blob_input: false,
@@ -47024,7 +47037,9 @@ fn typescript_bun_ub_calibration_cases_at(
             expected_verdict: "unknown".to_string(),
             expected_missing_discriminators: Vec::new(),
             bridge_confidence: "unknown".to_string(),
+            expected_action: "unknown".to_string(),
             suggested_test_file: "unknown".to_string(),
+            suggested_shape: None,
             repair_packet_ready: true,
             authority_boundary: "unknown".to_string(),
             non_claims: Vec::new(),
@@ -47064,6 +47079,7 @@ fn typescript_bun_ub_calibration_cases_at(
             let observed = case.get("observed_ts_facts").unwrap_or(&Value::Null);
             TypeScriptBunUbCalibrationCase {
                 name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                source: json_string_field(case, "source").unwrap_or_else(|| "unknown".to_string()),
                 language: json_string_field(case, "language")
                     .unwrap_or_else(|| "unknown".to_string()),
                 language_status: json_string_field(case, "language_status")
@@ -47076,6 +47092,7 @@ fn typescript_bun_ub_calibration_cases_at(
                     .unwrap_or_else(|| "unknown".to_string()),
                 ts_test_file: json_string_field(case, "ts_test_file")
                     .unwrap_or_else(|| "unknown".to_string()),
+                ts_entrypoints: json_string_array_field(case, "ts_entrypoints"),
                 shared_array_buffer: json_bool_field(observed, "shared_array_buffer")
                     .unwrap_or(false),
                 resizable_array_buffer: json_bool_field(observed, "resizable_array_buffer")
@@ -47097,8 +47114,11 @@ fn typescript_bun_ub_calibration_cases_at(
                 ),
                 bridge_confidence: json_string_field(case, "bridge_confidence")
                     .unwrap_or_else(|| "unknown".to_string()),
+                expected_action: json_string_field(case, "expected_action")
+                    .unwrap_or_else(|| "unknown".to_string()),
                 suggested_test_file: json_string_field(case, "suggested_test_file")
                     .unwrap_or_else(|| "unknown".to_string()),
+                suggested_shape: json_string_field(case, "suggested_shape"),
                 repair_packet_ready: json_bool_field(case, "repair_packet_ready").unwrap_or(true),
                 authority_boundary: json_string_field(case, "authority_boundary")
                     .unwrap_or_else(|| "unknown".to_string()),
@@ -47115,6 +47135,7 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
     let mut errors = Vec::new();
     for (label, value) in [
         ("case id", &case.name),
+        ("source", &case.source),
         ("language", &case.language),
         ("language_status", &case.language_status),
         ("rust_file", &case.rust_file),
@@ -47123,6 +47144,7 @@ fn typescript_bun_ub_calibration_case_errors(case: &TypeScriptBunUbCalibrationCa
         ("ts_test_file", &case.ts_test_file),
         ("expected_verdict", &case.expected_verdict),
         ("bridge_confidence", &case.bridge_confidence),
+        ("expected_action", &case.expected_action),
         ("suggested_test_file", &case.suggested_test_file),
         ("authority_boundary", &case.authority_boundary),
         ("reason", &case.reason),
@@ -47328,6 +47350,417 @@ fn typescript_bun_ub_calibration_required_non_claims() -> &'static [&'static str
         "RIPR Zero",
         "support-tier promotion",
     ]
+}
+
+pub(crate) fn bun_ub_calibration_impl(args: &[String]) -> Result<(), String> {
+    let args = parse_bun_ub_calibration_args(args)?;
+    let report = bun_ub_calibration_report_value(&args.corpus);
+    let json = serde_json::to_string_pretty(&report)
+        .map_err(|err| format!("failed to render Bun UB calibration JSON: {err}"))?;
+    write_parented_text_file(&args.out, "bun-ub-calibration JSON", &json)?;
+    write_parented_text_file(
+        &args.out_md,
+        "bun-ub-calibration Markdown",
+        &bun_ub_calibration_report_markdown(&report),
+    )
+}
+
+fn parse_bun_ub_calibration_args(args: &[String]) -> Result<BunUbCalibrationArgs, String> {
+    let mut corpus = PathBuf::from(TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS);
+    let mut out = PathBuf::from("target/ripr/reports/bun-ub-calibration.json");
+    let mut out_md = PathBuf::from("target/ripr/reports/bun-ub-calibration.md");
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--corpus" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `--corpus`\n{}",
+                        bun_ub_calibration_usage()
+                    ));
+                };
+                corpus = PathBuf::from(value);
+            }
+            "--out" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `--out`\n{}",
+                        bun_ub_calibration_usage()
+                    ));
+                };
+                out = PathBuf::from(value);
+            }
+            "--out-md" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `--out-md`\n{}",
+                        bun_ub_calibration_usage()
+                    ));
+                };
+                out_md = PathBuf::from(value);
+            }
+            "-h" | "--help" => {
+                return Err(bun_ub_calibration_usage());
+            }
+            other => {
+                return Err(format!(
+                    "unknown bun-ub-calibration argument `{other}`\n{}",
+                    bun_ub_calibration_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+    Ok(BunUbCalibrationArgs {
+        corpus,
+        out,
+        out_md,
+    })
+}
+
+fn bun_ub_calibration_usage() -> String {
+    "usage: cargo xtask bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]"
+        .to_string()
+}
+
+fn bun_ub_calibration_report_value(corpus_path: &Path) -> Value {
+    let cases = typescript_bun_ub_calibration_cases_at(corpus_path);
+    let mut rows = Vec::new();
+    let mut passing_cases = 0usize;
+    let mut failing_cases = 0usize;
+    let mut verdict_counts = BTreeMap::<String, usize>::new();
+    let mut missing_discriminator_cases = 0usize;
+    let mut bridge_unknown_cases = 0usize;
+    let mut mention_only_cases = 0usize;
+    let mut public_packet_exclusions = 0usize;
+    let mut repair_packet_ready_cases = 0usize;
+
+    for case in &cases {
+        let observed_state = bun_ub_calibration_observed_state(case);
+        let missing_discriminators =
+            bun_ub_calibration_observed_missing_discriminators(&observed_state);
+        let missing_graph_legs =
+            bun_ub_calibration_missing_graph_legs(&observed_state, &missing_discriminators);
+        let mut errors = typescript_bun_ub_calibration_case_errors(case);
+        if observed_state != case.expected_verdict {
+            errors.push(format!(
+                "observed_state {observed_state} did not match expected_verdict {}",
+                case.expected_verdict
+            ));
+        }
+        if case.repair_packet_ready {
+            errors.push("calibration report rows must not be repair-packet-ready".to_string());
+        }
+
+        if errors.is_empty() {
+            passing_cases += 1;
+        } else {
+            failing_cases += 1;
+        }
+        *verdict_counts.entry(observed_state.clone()).or_default() += 1;
+        if !missing_discriminators.is_empty() {
+            missing_discriminator_cases += 1;
+        }
+        if observed_state == "bridge_unknown" {
+            bridge_unknown_cases += 1;
+        }
+        if observed_state == "ts_mention_not_observer" {
+            mention_only_cases += 1;
+        }
+        if case.suggested_test_file == "not_applicable" {
+            public_packet_exclusions += 1;
+        }
+        if case.repair_packet_ready {
+            repair_packet_ready_cases += 1;
+        }
+
+        rows.push(serde_json::json!({
+            "case_id": case.name,
+            "source": case.source,
+            "expected_state": case.expected_verdict,
+            "observed_state": observed_state,
+            "status": if errors.is_empty() { "pass" } else { "fail" },
+            "rust_seam": {
+                "file": case.rust_file,
+                "owner": case.rust_owner,
+                "boundary": case.rust_boundary,
+            },
+            "typescript_evidence": {
+                "test_file": case.ts_test_file,
+                "entrypoints": case.ts_entrypoints,
+                "shared_array_buffer": case.shared_array_buffer,
+                "resizable_array_buffer": case.resizable_array_buffer,
+                "view_backed_blob_input": case.view_backed_blob_input,
+                "stable_byte_copy_oracle": case.stable_byte_copy_oracle,
+                "max_byte_length_mention_only": case.max_byte_length_mention_only,
+            },
+            "bridge_confidence": case.bridge_confidence,
+            "expected_action": case.expected_action,
+            "expected_missing_discriminators": case.expected_missing_discriminators,
+            "missing_discriminators": missing_discriminators,
+            "missing_graph_legs": missing_graph_legs,
+            "suggested_test_file": case.suggested_test_file,
+            "suggested_shape": case.suggested_shape,
+            "authority_boundary": case.authority_boundary,
+            "repair_packet_ready": case.repair_packet_ready,
+            "non_claims": case.non_claims,
+            "reason": case.reason,
+            "errors": errors,
+        }));
+    }
+
+    let status = if cases.is_empty() {
+        "empty"
+    } else if failing_cases == 0 && repair_packet_ready_cases == 0 {
+        "pass"
+    } else {
+        "fail"
+    };
+
+    serde_json::json!({
+        "schema_version": "0.1",
+        "report": "bun-ub-calibration",
+        "status": status,
+        "source_path": normalize_path(corpus_path),
+        "authority_boundary": "preview_advisory_only",
+        "summary": {
+            "cases_total": cases.len(),
+            "passing_cases": passing_cases,
+            "failing_cases": failing_cases,
+            "ts_discriminated_cases": verdict_counts.get("ts_discriminated").copied().unwrap_or_default(),
+            "ts_missing_resizable_cases": verdict_counts.get("ts_missing_resizable").copied().unwrap_or_default(),
+            "ts_missing_shared_cases": verdict_counts.get("ts_missing_shared").copied().unwrap_or_default(),
+            "ts_missing_shared_and_resizable_cases": verdict_counts.get("ts_missing_shared_and_resizable").copied().unwrap_or_default(),
+            "ts_mention_not_observer_cases": mention_only_cases,
+            "bridge_unknown_cases": bridge_unknown_cases,
+            "missing_discriminator_cases": missing_discriminator_cases,
+            "public_packet_exclusions": public_packet_exclusions,
+            "repair_packet_ready_cases": repair_packet_ready_cases,
+        },
+        "operator_question": "This Rust/FFI seam changed. Do Bun's TypeScript integration tests discriminate the boundary that would catch the stable-byte bug?",
+        "calibration_boundary": "Bun UB TypeScript calibration is preview/advisory only. It summarizes manifest evidence and does not run Bun, tsc, tsserver, mutation, provider calls, generated tests, source edits, gates, badges, baselines, RIPR Zero, or support-tier promotion.",
+        "non_claims": [
+            "no provider calls",
+            "no source edits",
+            "no generated tests",
+            "no runtime Bun execution",
+            "no mutation execution",
+            "no default gates",
+            "no public badge contribution",
+            "no baseline authority",
+            "no RIPR Zero authority",
+            "no support-tier promotion",
+            "no public repair packet",
+            "no full cross-language proof"
+        ],
+        "rows": rows,
+    })
+}
+
+fn bun_ub_calibration_observed_state(case: &TypeScriptBunUbCalibrationCase) -> String {
+    if case.bridge_confidence == "unknown" {
+        return "bridge_unknown".to_string();
+    }
+    if case.max_byte_length_mention_only
+        || !case.view_backed_blob_input
+        || !case.stable_byte_copy_oracle
+    {
+        return "ts_mention_not_observer".to_string();
+    }
+    match (case.shared_array_buffer, case.resizable_array_buffer) {
+        (true, true) => "ts_discriminated",
+        (true, false) => "ts_missing_resizable",
+        (false, true) => "ts_missing_shared",
+        (false, false) => "ts_missing_shared_and_resizable",
+    }
+    .to_string()
+}
+
+fn bun_ub_calibration_observed_missing_discriminators(state: &str) -> Vec<&'static str> {
+    match state {
+        "ts_missing_resizable" => vec!["resizable_array_buffer"],
+        "ts_missing_shared" => vec!["shared_array_buffer"],
+        "ts_missing_shared_and_resizable" => {
+            vec!["shared_array_buffer", "resizable_array_buffer"]
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn bun_ub_calibration_missing_graph_legs(
+    state: &str,
+    missing_discriminators: &[&str],
+) -> Vec<String> {
+    match state {
+        "bridge_unknown" => vec!["binding_or_ffi_edge".to_string()],
+        "ts_mention_not_observer" => vec!["external_blob_or_stable_byte_observer".to_string()],
+        _ => missing_discriminators
+            .iter()
+            .map(|missing| format!("boundary_discriminator:{missing}"))
+            .collect(),
+    }
+}
+
+fn bun_ub_calibration_report_markdown(value: &Value) -> String {
+    let mut out = String::new();
+    out.push_str("# Bun UB TypeScript Calibration\n\n");
+    out.push_str(&format!(
+        "Status: `{}`\n\n",
+        audit_markdown_cell(
+            value
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- source_path: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("source_path")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- authority_boundary: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("authority_boundary")
+                .and_then(Value::as_str)
+                .unwrap_or("preview_advisory_only")
+        )
+    ));
+    out.push_str(&format!(
+        "- operator_question: {}\n",
+        audit_markdown_cell(
+            value
+                .get("operator_question")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- calibration_boundary: {}\n\n",
+        audit_markdown_cell(
+            value
+                .get("calibration_boundary")
+                .and_then(Value::as_str)
+                .unwrap_or("preview/advisory only")
+        )
+    ));
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    let summary = value.get("summary").unwrap_or(&Value::Null);
+    for (label, key) in [
+        ("Cases", "cases_total"),
+        ("Passing cases", "passing_cases"),
+        ("Failing cases", "failing_cases"),
+        ("TS discriminated cases", "ts_discriminated_cases"),
+        ("Missing resizable cases", "ts_missing_resizable_cases"),
+        ("Missing shared cases", "ts_missing_shared_cases"),
+        (
+            "Missing shared and resizable cases",
+            "ts_missing_shared_and_resizable_cases",
+        ),
+        (
+            "Mention-not-observer cases",
+            "ts_mention_not_observer_cases",
+        ),
+        ("Bridge-unknown cases", "bridge_unknown_cases"),
+        ("Missing-discriminator cases", "missing_discriminator_cases"),
+        ("Public packet exclusions", "public_packet_exclusions"),
+        ("Repair-packet-ready cases", "repair_packet_ready_cases"),
+    ] {
+        audit_push_count(
+            &mut out,
+            label,
+            audit_usize(summary, &[key]).unwrap_or_default(),
+        );
+    }
+    out.push('\n');
+
+    let non_claims = audit_markdown_string_array_cell(
+        value
+            .get("non_claims")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice),
+    );
+    out.push_str(&format!(
+        "- non_claims: {}\n\n",
+        audit_markdown_cell(&non_claims)
+    ));
+
+    out.push_str("## Cases\n\n");
+    out.push_str("| Case | Expected | Observed | Status | Missing discriminators | Missing graph legs | Suggested file | Repair packet ready |\n");
+    out.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    let rows = value
+        .get("rows")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    if rows.is_empty() {
+        out.push_str("| none |  |  |  |  |  |  |  |\n");
+    }
+    for row in rows {
+        let missing_discriminators = audit_markdown_string_array_cell(
+            row.get("missing_discriminators")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice),
+        );
+        let missing_graph_legs = audit_markdown_string_array_cell(
+            row.get("missing_graph_legs")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice),
+        );
+        out.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` |\n",
+            audit_markdown_cell(
+                row.get("case_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            ),
+            audit_markdown_cell(
+                row.get("expected_state")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            ),
+            audit_markdown_cell(
+                row.get("observed_state")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            ),
+            audit_markdown_cell(
+                row.get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            ),
+            audit_markdown_cell(&missing_discriminators),
+            audit_markdown_cell(&missing_graph_legs),
+            audit_markdown_cell(
+                row.get("suggested_test_file")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            ),
+            row.get("repair_packet_ready")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        ));
+    }
+    out.push('\n');
+    out
+}
+
+fn write_parented_text_file(path: &Path, label: &str, contents: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {} parent: {err}", parent.display()))?;
+    }
+    fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
 }
 
 #[cfg(test)]
@@ -77712,6 +78145,147 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn bun_ub_calibration_report_summarizes_calibrated_states() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let report = super::bun_ub_calibration_report_value(Path::new(
+                super::TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS,
+            ));
+            assert_eq!(report["schema_version"], "0.1");
+            assert_eq!(report["report"], "bun-ub-calibration");
+            assert_eq!(report["status"], "pass");
+            assert_eq!(report["summary"]["cases_total"], serde_json::Value::from(6));
+            assert_eq!(
+                report["summary"]["ts_discriminated_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["ts_missing_resizable_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["ts_missing_shared_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["ts_missing_shared_and_resizable_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["ts_mention_not_observer_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["bridge_unknown_cases"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                report["summary"]["repair_packet_ready_cases"],
+                serde_json::Value::from(0)
+            );
+
+            let rows = report["rows"]
+                .as_array()
+                .ok_or_else(|| "Bun UB calibration rows must be an array".to_string())?;
+            let known_good = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_shared_and_resizable_present")
+                .ok_or_else(|| "missing known-good Bun Blob row".to_string())?;
+            assert_eq!(known_good["observed_state"], "ts_discriminated");
+            assert_eq!(known_good["status"], "pass");
+            assert_eq!(known_good["repair_packet_ready"], false);
+
+            let missing_resizable = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_resizable_missing")
+                .ok_or_else(|| "missing stripped-resizable row".to_string())?;
+            assert_eq!(missing_resizable["observed_state"], "ts_missing_resizable");
+            assert!(
+                missing_resizable["missing_discriminators"]
+                    .as_array()
+                    .is_some_and(|missing| missing
+                        .iter()
+                        .any(|item| item == "resizable_array_buffer"))
+            );
+            assert!(
+                missing_resizable["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| {
+                        legs.iter()
+                            .any(|item| item == "boundary_discriminator:resizable_array_buffer")
+                    })
+            );
+            assert_eq!(missing_resizable["suggested_test_file"], "not_applicable");
+
+            let mention_only = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_max_byte_length_mention_not_observer")
+                .ok_or_else(|| "missing mention-only row".to_string())?;
+            assert_eq!(mention_only["observed_state"], "ts_mention_not_observer");
+            assert!(
+                mention_only["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| {
+                        legs.iter()
+                            .any(|item| item == "external_blob_or_stable_byte_observer")
+                    })
+            );
+
+            let bridge_unknown = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_bridge_unknown_without_hint")
+                .ok_or_else(|| "missing bridge-unknown row".to_string())?;
+            assert_eq!(bridge_unknown["observed_state"], "bridge_unknown");
+            assert!(
+                bridge_unknown["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| legs.iter().any(|item| item == "binding_or_ffi_edge"))
+            );
+
+            let markdown = super::bun_ub_calibration_report_markdown(&report);
+            assert!(markdown.contains("# Bun UB TypeScript Calibration"));
+            assert!(markdown.contains("Bun UB TypeScript calibration is preview/advisory only"));
+            assert!(markdown.contains("bun_blob_resizable_missing"));
+            assert!(markdown.contains("binding_or_ffi_edge"));
+            assert!(markdown.contains("Repair-packet-ready cases"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bun_ub_calibration_command_writes_markdown_and_json() -> Result<(), String> {
+        with_temp_cwd("bun-ub-calibration-report", |_root| {
+            let out = PathBuf::from("target/ripr/reports/bun-ub-calibration.json");
+            let out_md = PathBuf::from("target/ripr/reports/bun-ub-calibration.md");
+            let corpus = repo_root()?.join(super::TYPESCRIPT_BUN_UB_CALIBRATION_CORPUS);
+            super::bun_ub_calibration_impl(&[
+                "--corpus".to_string(),
+                corpus.to_string_lossy().into_owned(),
+                "--out".to_string(),
+                out.to_string_lossy().into_owned(),
+                "--out-md".to_string(),
+                out_md.to_string_lossy().into_owned(),
+            ])?;
+
+            let json = fs::read_to_string(&out)
+                .map_err(|err| format!("failed to read Bun UB calibration JSON: {err}"))?;
+            let value: Value =
+                serde_json::from_str(&json).map_err(|err| format!("invalid JSON: {err}"))?;
+            assert_eq!(value["report"], "bun-ub-calibration");
+            assert_eq!(value["summary"]["cases_total"], serde_json::Value::from(6));
+            assert_eq!(
+                value["summary"]["repair_packet_ready_cases"],
+                serde_json::Value::from(0)
+            );
+
+            let markdown = fs::read_to_string(&out_md)
+                .map_err(|err| format!("failed to read Bun UB calibration Markdown: {err}"))?;
+            assert!(markdown.contains("# Bun UB TypeScript Calibration"));
+            assert!(markdown.contains("bridge_unknown"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn cross_language_oracle_graph_corpus_cases_are_checked() -> Result<(), String> {
         with_repo_cwd(|| {
             let cases = super::cross_language_oracle_graph_cases();
@@ -78374,12 +78948,14 @@ fn exact_owner_call_has_external_expected_value() {
     fn valid_typescript_bun_ub_calibration_case() -> super::TypeScriptBunUbCalibrationCase {
         super::TypeScriptBunUbCalibrationCase {
             name: "valid".to_string(),
+            source: "#31648-valid".to_string(),
             language: "typescript".to_string(),
             language_status: "preview".to_string(),
             rust_file: "src/jsc/Blob.rs".to_string(),
             rust_owner: "Blob::from_js_without_defer_gc".to_string(),
             rust_boundary: "array_buffer.shared || array_buffer.resizable".to_string(),
             ts_test_file: "test/js/web/fetch/blob.test.ts".to_string(),
+            ts_entrypoints: vec!["new Blob".to_string(), "blob.arrayBuffer".to_string()],
             shared_array_buffer: true,
             resizable_array_buffer: true,
             view_backed_blob_input: true,
@@ -78388,7 +78964,9 @@ fn exact_owner_call_has_external_expected_value() {
             expected_verdict: "ts_discriminated".to_string(),
             expected_missing_discriminators: Vec::new(),
             bridge_confidence: "configured_hint".to_string(),
+            expected_action: "no_new_test_needed".to_string(),
             suggested_test_file: "not_applicable".to_string(),
+            suggested_shape: None,
             repair_packet_ready: false,
             authority_boundary: "preview_advisory_only".to_string(),
             non_claims: vec![
@@ -89163,6 +89741,17 @@ jobs:
             XtaskCommand::VscodeCompile
         );
         assert_eq!(
+            XtaskCommand::parse([
+                "bun-ub-calibration".to_string(),
+                "--out".to_string(),
+                "target/ripr/reports/bun-ub-calibration.json".to_string(),
+            ]),
+            XtaskCommand::BunUbCalibration(vec![
+                "--out".to_string(),
+                "target/ripr/reports/bun-ub-calibration.json".to_string(),
+            ])
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-package".to_string()]),
             XtaskCommand::VscodePackage
         );
@@ -89218,6 +89807,7 @@ jobs:
                 XtaskCommand::ReleaseReadiness(vec!["--version".to_string(), "0.5.0".to_string()]),
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
+                XtaskCommand::BunUbCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
@@ -89782,6 +90372,10 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"release-readiness --version <version>"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
+        assert!(
+            commands
+                .contains(&"bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]")
+        );
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"badges [--check] [--gap-ledger <path>]"));
         assert!(commands.contains(&"pr-triage-report"));

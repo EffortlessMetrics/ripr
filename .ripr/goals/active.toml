@@ -99,6 +99,22 @@ commands = [
 ]
 
 [[work_item]]
+id = "report/bun-ub-calibration"
+status = "done"
+branch = "reports-bun-ub-calibration-report"
+stackable = false
+acceptance = "cargo xtask bun-ub-calibration writes preview/advisory target/ripr/reports/bun-ub-calibration.{json,md} from the Bun Blob TypeScript calibration corpus, summarizes TS-discriminated, missing-discriminator, mention-not-observer, and bridge_unknown states, preserves missing graph legs and repair_packet_ready=false, and indexes the artifact as calibration context when present."
+commands = [
+  "cargo test -p xtask bun_ub_calibration -- --test-threads=1",
+  "cargo xtask bun-ub-calibration",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-goals",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "ripr/diff-first-changed-surface-mode"
 status = "done"
 branch = "ripr-diff-first-changed-surface-mode"

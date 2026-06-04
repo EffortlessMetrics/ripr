@@ -4693,6 +4693,7 @@ Work items:
 | `analysis/cross-language-ts-discriminator-witness` | done | For the bounded configured Bun Blob route, complete TS discriminator witnesses stay preview-advisory with graph-leg raw refs, while missing-discriminator and mention-only evidence remain cross-language oracle visibility limitations with named missing graph legs and no public repair packets. |
 | `analysis/cross-language-binding-route-witness` | done | Configured Bun Blob routes now credit a structured `binding_edge` raw ref, while complete TypeScript discriminators with unknown bridge confidence stay `bridge_unknown` static limitations with missing `binding_or_ffi_edge`, no binding raw ref, no placement, and no public repair packet. |
 | `report/cross-language-oracle-route-quality` | done | Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, mention-only limitations, and public packet exclusions without treating cross-language preview evidence as repair-ready. |
+| `report/bun-ub-calibration` | done | `cargo xtask bun-ub-calibration` writes an operator-readable preview/advisory JSON/Markdown receipt for the Bun Blob TypeScript calibration corpus, including TS-discriminated, missing-discriminator, mention-not-observer, bridge_unknown, missing graph leg, non-claim, and `repair_packet_ready=false` rows. |
 | `campaign/cross-language-oracle-graph-closeout` | deferred | Closeout is deferred until the broader post-0.8 loop reaches the cross-language graph and surface-alignment slices, or a narrower issue-backed closeout is selected. |
 
 Commands:
@@ -4703,6 +4704,8 @@ rtk cargo xtask check-spec-numbering
 rtk cargo xtask check-traceability
 rtk cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
 rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
+rtk cargo test -p xtask bun_ub_calibration -- --test-threads=1
+rtk cargo xtask bun-ub-calibration
 rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
 rtk cargo xtask ripr-swarm readiness
 rtk cargo xtask evidence-quality-scorecard
@@ -4756,6 +4759,7 @@ Work items:
 | `repo/post-08-queue-hygiene` | done | Live state confirms #680, #582, and the same-file method-chain route split chain are merged or closed; stale local branches from merged PRs and two stale remote heads were pruned. |
 | `review/review-comments-file-line` | done | #913 is closed by #926; review-comments source locations are no longer the next active slice. |
 | `cache/large-seam-cache-explicit` | done | #912 and #909 are closed by the large-cache post-0.8 chain through #936, including explicit skip state and sharded cache follow-ups. |
+| `report/bun-ub-calibration` | done | Inserted before diff-first for the 0.8.1 TypeScript/Bun patch line: the xtask report turns the Bun Blob calibration corpus into advisory JSON/Markdown operator receipts without public repair-packet, gate, badge, runtime, or support-tier authority. |
 | `ripr/diff-first-changed-surface-mode` | done | `ripr diff --base <ref> --head <ref>` emits diff-complete changed-file and changed-seam evidence before full-repo analysis and preserves full-repo limited state. |
 | `analysis/cross-language-oracle-fail-closed` | ready | Unresolved external oracle paths remain limitations, not wrong-language repair packets. |
 | `report/language-aware-target-placement-v1` | blocked | Follows cross-language fail-closed routing; external targets require explicit oracle and observer evidence. |

@@ -300,7 +300,13 @@ Expected static evidence:
 
 Follow-up fixtures and tests cover the owner, test, assertion, related
 test, probe, and static-limit cases listed under Required Evidence, plus
-generated CI behavior and LSP smoke coverage.
+generated CI behavior and LSP smoke coverage. The Bun Blob / `ArrayBuffer`
+preview calibration corpus is also summarized by
+`xtask/src/main.rs::tests::bun_ub_calibration_report_summarizes_calibrated_states`
+and
+`xtask/src/main.rs::tests::bun_ub_calibration_command_writes_markdown_and_json`,
+which keep TS-discriminated, missing-discriminator, mention-only, and
+bridge-unknown cases advisory and non-repair-ready.
 
 ## Implementation Mapping
 
@@ -311,7 +317,10 @@ TypeScript preview completion lane and should use
 follow-up may change Rust behavior, preview advisory status, default gates,
 badges, baselines, RIPR Zero eligibility, provider behavior, generated tests,
 source-edit behavior, or runtime mutation execution unless a later accepted
-contract explicitly changes that boundary.
+contract explicitly changes that boundary. `cargo xtask bun-ub-calibration`
+is an xtask-only operator report over the existing Bun calibration corpus; it
+does not promote TypeScript/JavaScript preview evidence or run TypeScript,
+JavaScript, Bun, mutation, provider, generated-test, or source-edit workflows.
 
 ## Metrics
 

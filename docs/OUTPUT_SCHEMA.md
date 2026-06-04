@@ -5795,6 +5795,114 @@ Generated CI may upload and summarize the publish plan only when explicit
 configuration requests `plan` or `inline` mode. The default remains job summary,
 check annotations, and uploaded artifacts without durable PR comments.
 
+## Bun UB TypeScript Calibration Report
+
+The Bun UB TypeScript calibration report is a repo-local operator receipt for
+the preview Bun Blob / `ArrayBuffer` stable-byte corpus. It summarizes whether
+the calibrated cases are TS-discriminated, missing shared/resizable
+discriminators, mention-only rather than observed, or blocked by an unknown
+bridge. It is advisory preview evidence only.
+
+The repo-local report command is:
+
+```text
+cargo xtask bun-ub-calibration \
+  --corpus fixtures/typescript-bun-ub-calibration/corpus.json \
+  --out target/ripr/reports/bun-ub-calibration.json \
+  --out-md target/ripr/reports/bun-ub-calibration.md
+```
+
+With defaults, `cargo xtask bun-ub-calibration` writes:
+
+```text
+target/ripr/reports/bun-ub-calibration.json
+target/ripr/reports/bun-ub-calibration.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "report": "bun-ub-calibration",
+  "status": "pass",
+  "source_path": "fixtures/typescript-bun-ub-calibration/corpus.json",
+  "authority_boundary": "preview_advisory_only",
+  "summary": {
+    "cases_total": 6,
+    "passing_cases": 6,
+    "failing_cases": 0,
+    "ts_discriminated_cases": 1,
+    "ts_missing_resizable_cases": 1,
+    "ts_missing_shared_cases": 1,
+    "ts_missing_shared_and_resizable_cases": 1,
+    "ts_mention_not_observer_cases": 1,
+    "bridge_unknown_cases": 1,
+    "missing_discriminator_cases": 3,
+    "public_packet_exclusions": 6,
+    "repair_packet_ready_cases": 0
+  },
+  "operator_question": "This Rust/FFI seam changed. Do Bun's TypeScript integration tests discriminate the boundary that would catch the stable-byte bug?",
+  "calibration_boundary": "Bun UB TypeScript calibration is preview/advisory only...",
+  "non_claims": [
+    "no provider calls",
+    "no source edits",
+    "no generated tests",
+    "no runtime Bun execution",
+    "no mutation execution",
+    "no default gates",
+    "no public badge contribution",
+    "no baseline authority",
+    "no RIPR Zero authority",
+    "no support-tier promotion",
+    "no public repair packet",
+    "no full cross-language proof"
+  ],
+  "rows": [
+    {
+      "case_id": "bun_blob_resizable_missing",
+      "source": "#31648-stripped-resizable",
+      "expected_state": "ts_missing_resizable",
+      "observed_state": "ts_missing_resizable",
+      "status": "pass",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "typescript_evidence": {
+        "test_file": "test/js/web/fetch/blob.test.ts",
+        "entrypoints": ["new Blob", "blob.arrayBuffer"],
+        "shared_array_buffer": true,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "bridge_confidence": "configured_hint",
+      "expected_action": "add_resizable_discriminator_evidence",
+      "expected_missing_discriminators": ["resizable_array_buffer"],
+      "missing_discriminators": ["resizable_array_buffer"],
+      "missing_graph_legs": ["boundary_discriminator:resizable_array_buffer"],
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": null,
+      "authority_boundary": "preview_advisory_only",
+      "repair_packet_ready": false,
+      "non_claims": ["runtime Bun execution", "generated tests"],
+      "reason": "Missing the resizable ArrayBuffer discriminator in the manifest calibration case.",
+      "errors": []
+    }
+  ]
+}
+```
+
+`status` is `pass` only when every row matches its expected state and no row is
+`repair_packet_ready`. `bridge_unknown` rows name `binding_or_ffi_edge` in
+`missing_graph_legs[]`; mention-only rows name
+`external_blob_or_stable_byte_observer`. The report does not run Bun, `tsc`,
+`tsserver`, mutation, providers, generated tests, source edits, gates, badges,
+baselines, RIPR Zero, or support-tier promotion.
+
 ## Recommendation Calibration Report
 
 RIPR-SPEC-0013 defines the recommendation calibration report contract.

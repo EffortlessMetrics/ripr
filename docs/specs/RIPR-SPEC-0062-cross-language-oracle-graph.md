@@ -243,6 +243,8 @@ Current supporting proof:
 - `fixtures/cross-language-oracle-graph-corpus/corpus.json`
 - `xtask/src/main.rs::tests::cross_language_oracle_graph_corpus_cases_are_checked`
 - `xtask/src/main.rs::tests::cross_language_oracle_route_quality_summarizes_corpus_cases`
+- `xtask/src/main.rs::tests::bun_ub_calibration_report_summarizes_calibrated_states`
+- `xtask/src/main.rs::tests::bun_ub_calibration_command_writes_markdown_and_json`
 - `xtask/src/main.rs::tests::ripr_swarm_readiness_rolls_up_plan_and_outcomes`
 - `xtask/src/main.rs::tests::evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality`
 - `xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_actionability_and_location_holes`
@@ -285,6 +287,11 @@ Current implementation surfaces:
   complete advisory witnesses, missing discriminator limitations, mention-only
   limitations, unknown bridge limitations, public packet exclusions, missing
   graph legs, unlock conditions, and `repair_packet_ready=false`.
+- `cargo xtask bun-ub-calibration` writes
+  `target/ripr/reports/bun-ub-calibration.{json,md}` from the Bun Blob
+  calibration corpus, deriving observed TS-discriminated, missing
+  discriminator, mention-not-observer, and bridge-unknown states without
+  creating public repair packets or runtime proof claims.
 - `fixtures/typescript-bun-ub-calibration/corpus.json` records the existing
   Bun Blob calibration cases.
 - `fixtures/cross-language-oracle-graph-corpus/corpus.json` records the
