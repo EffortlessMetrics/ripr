@@ -2029,6 +2029,8 @@ tests = [
   "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip",
   "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip",
   "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_with_unknown_bridge_stays_limitation",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_copy_to_unshared_projects_configured_bridge_evidence",
+  "crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_copy_to_unshared_unknown_bridge_stays_limitation",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bun_cross_language_grip",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::typescript_preview_card_projects_bridge_unknown_without_binding_ref",
   "crates/ripr/src/config.rs::tests::bun_ub_profile_parses_advisory_roots_and_bridge_hint_path",

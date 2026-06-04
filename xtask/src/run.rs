@@ -781,18 +781,15 @@ mod tests {
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
         let started = std::time::Instant::now();
-        let current_exe =
-            std::env::current_exe().map_err(|err| format!("locate current test binary: {err}"))?;
-        let current_exe = current_exe.to_string_lossy().into_owned();
         let args = vec![
-            "--exact".to_string(),
-            "run::tests::pipe_inheriting_descendant_helper".to_string(),
-            "--nocapture".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            "$child = [System.Diagnostics.Process]::Start('powershell', '-NoProfile -Command Start-Sleep -Seconds 120'); Start-Sleep -Seconds 120; $child.WaitForExit()".to_string(),
         ];
         let output = capture_output_with_timeout(
-            &current_exe,
+            "powershell",
             &args,
-            &[("RIPR_XTASK_PIPE_DESCENDANT_HELPER", "1")],
+            &[],
             Duration::from_millis(100),
             "pipe-inheriting descendant",
         )?;
@@ -805,22 +802,6 @@ mod tests {
             started.elapsed() < Duration::from_secs(45),
             "pipe-inheriting descendant should not keep captured pipes open"
         );
-        Ok(())
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn pipe_inheriting_descendant_helper() -> Result<(), String> {
-        if std::env::var_os("RIPR_XTASK_PIPE_DESCENDANT_HELPER").is_none() {
-            return Ok(());
-        }
-
-        let mut child = Command::new("powershell")
-            .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 120"])
-            .spawn()
-            .map_err(|err| format!("spawn pipe-inheriting descendant: {err}"))?;
-        thread::sleep(Duration::from_mins(2));
-        let _ = child.wait();
         Ok(())
     }
 

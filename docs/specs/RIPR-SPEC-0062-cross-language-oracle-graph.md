@@ -68,9 +68,10 @@ The #910 follow-up profile is the `copy_to_unshared` ArrayBuffer copy route:
 This follow-up profile first landed as `bridge_unknown`. The bridge-route slice
 now names a configured binding edge from the external Blob observer path to
 `copy_to_unshared`, so the row can be credited only as a complete advisory
-witness. It still lacks public repair-packet fields and must not become a
-suggested test target, verify route, receipt route, allowed edit surface, badge,
-gate, or generic cross-language reachability claim.
+witness. Without that leg it remains `bridge_unknown`. It still lacks public
+repair-packet fields and must not become a suggested test target, verify route,
+receipt route, allowed edit surface, badge, gate, or generic cross-language
+reachability claim.
 
 ### Required Graph Legs
 
