@@ -4744,7 +4744,8 @@ cross-language oracle fail-closed routing, and language-aware target placement
 navigation, and the bounded cross-language oracle graph are complete in the
 current repo state. Repair-packet guidance quality and attempt-ledger outcome
 hardening are complete too. Real repair/analyzer-attempt dogfood is complete;
-the next ready work item is `report/route-quality-metrics`.
+route-quality metrics are complete; the next ready work item is
+`surface/canonical-state-alignment`.
 
 Objective:
 
@@ -4770,8 +4771,8 @@ Work items:
 | `analysis/repair-packet-guidance-quality` | done | Existing swarm-plan packet corpus and focused tests require typed repair route, target shape, verify command, receipt command, allowed edit surface, must-not-change boundaries, confidence, raw evidence refs, and fail-closed missing-field wording before a packet can be queued. |
 | `report/attempt-ledger-outcome-hardening` | done | SPEC-0057, the real-repair-attempts corpus, attempt-ledger report, readiness report, and focused xtask tests preserve latest and historical `not_attempted`, `attempted_no_receipt`, `receipt_present`, `evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`, `unknown`, stale synthetic placeholder cleanup, gap mismatch, latest-attempt projection, and orphan-receipt routing. |
 | `dogfood/real-repair-analyzer-attempts` | done | The real-repair-attempts dogfood corpus and report record 67 repo-local repair or analyzer-route attempts with verify command, receipt route when applicable, before/after state, outcome, must-not-change boundaries, raw evidence refs, and operator notes; the set includes 61 improved, 2 resolved, 2 unchanged, and 2 attempted-without-receipt rows, while readiness keeps the latest 36 improved and 2 resolved packets current and preserves older non-success attempts in durable history. |
-| `report/route-quality-metrics` | ready | Follows dogfood attempts; route-quality metrics derive from receipts and outcomes. |
-| `surface/canonical-state-alignment` | blocked | Follows route quality; CLI, review, LSP, PR, badge, and CI surfaces project canonical state. |
+| `report/route-quality-metrics` | done | Readiness and scorecard reports expose repair-route quality, language repair-route quality, top failing repair routes, top missing evidence fields, top limitation routes, limitation route quality, and cross-language oracle route quality. Current readiness derives 38 attempted packets, 36 improved packets, 2 resolved packets, and durable historical non-success counts from real-repair attempts, while focused route-quality tests cover non-empty failing, missing-field, and limitation-route fixtures. |
+| `surface/canonical-state-alignment` | ready | Follows route quality; CLI, review, LSP, PR, badge, and CI surfaces project canonical state. |
 | `campaign/lane1-post-08-closeout` | blocked | Close only after the loop can prove what users can trust and what remains advisory or non-actionable. |
 
 Non-claims:

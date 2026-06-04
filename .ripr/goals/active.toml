@@ -211,7 +211,7 @@ commands = [
 
 [[work_item]]
 id = "report/route-quality-metrics"
-status = "ready"
+status = "done"
 branch = "report-route-quality-metrics"
 stackable = false
 acceptance = "Readiness and scorecard reports derive repair-kind and limitation-route quality metrics from receipts and outcomes, including attempted, improved, unchanged, regressed, success-rate, sharpened, promoted, top failing routes, top missing fields, and top limitation routes."
@@ -225,10 +225,9 @@ commands = [
 
 [[work_item]]
 id = "surface/canonical-state-alignment"
-status = "blocked"
+status = "ready"
 branch = "surface-canonical-state-alignment"
 stackable = false
-blocked_by = ["report/route-quality-metrics"]
 acceptance = "CLI, review comments, LSP, PR comments, badge, and CI surfaces preserve the same canonical_gap_id, runtime status, repair or limitation state, receipt status, and non-claims without counting raw findings as product truth."
 commands = [
   "cargo xtask dogfood",
