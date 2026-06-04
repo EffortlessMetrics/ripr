@@ -3820,6 +3820,14 @@ regenerates or inspects the limiting input, for example
 `cargo xtask lane1-evidence-audit` for sampled, timed-out, runner-failed, or
 incomplete repo-exposure generation and cache report/GC commands for large cache
 limits.
+Readiness also includes `cross_language_oracle_route_quality`, a SPEC-0062
+preview-only summary over the checked Bun Blob cross-language oracle graph
+corpus. This section counts complete advisory witnesses, missing discriminator
+limitations, mention-only limitations, unknown bridge limitations, and public
+packet exclusions while keeping all rows `repair_packet_ready = false`. It is
+operator route-quality evidence only; it does not create repair packets, verify
+commands, receipt commands, source edits, generated tests, gates, badges, or
+support-tier claims.
 
 ```json
 {
@@ -4029,6 +4037,42 @@ limits.
       "sample_missing_receipt_reasons": []
     }
   ],
+  "cross_language_oracle_route_quality": {
+    "status": "pass",
+    "source_path": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
+    "cases_total": 5,
+    "passing_cases": 5,
+    "failing_cases": 0,
+    "cross_language_oracle_graph_complete_advisory_witnesses": 1,
+    "cross_language_oracle_graph_missing_discriminator_limitations": 1,
+    "cross_language_oracle_graph_bridge_unknown_limitations": 1,
+    "cross_language_oracle_graph_mention_only_limitations": 1,
+    "cross_language_oracle_graph_public_packet_exclusions": 5,
+    "repair_packet_ready_cases": 0,
+    "authority_boundary": "preview_advisory_only",
+    "non_claims": [
+      "not a public repair packet",
+      "not badge or gate input",
+      "not runtime Bun execution",
+      "not generated tests",
+      "not source edits",
+      "not full cross-language proof",
+      "not support-tier promotion"
+    ],
+    "rows": [
+      {
+        "case_id": "bun_blob_bridge_unknown_limitation",
+        "expected_state": "bridge_unknown",
+        "observed_state": "bridge_unknown",
+        "status": "pass",
+        "missing_discriminators": [],
+        "missing_graph_legs": ["binding_or_ffi_edge"],
+        "authority_boundary": "preview_advisory_only",
+        "repair_packet_ready": false,
+        "unlock_condition": "Name a configured or generated binding edge from the TypeScript Blob surface to Blob::from_js_without_defer_gc."
+      }
+    ]
+  },
   "top_failing_repair_routes": [
     {
       "language": null,
@@ -4224,6 +4268,14 @@ matching `static_limitations.by_category` rows as static limitations even if an
 older or partial audit summary did not increment `summary.static_limitations_total`.
 This keeps limited artifacts visible in the headline static-limitation count
 instead of presenting a misleading zero.
+The scorecard also includes `cross_language_oracle_route_quality`, the same
+SPEC-0062 preview-only route-quality summary emitted by swarm readiness. It is
+included so evidence-quality readers can see whether the checked Bun Blob
+cross-language corpus is credited, missing a discriminator, mention-only, bridge
+unknown, or excluded from public repair packets without running a separate
+analyzer path. It remains advisory and does not change gate, badge, baseline,
+repair-packet, generated-test, source-edit, provider, runtime, or support-tier
+authority.
 
 ```json
 {
@@ -4416,6 +4468,34 @@ instead of presenting a misleading zero.
     "public_projection_excluded_packets": 0,
     "projection_exclusion_reasons": []
   },
+  "cross_language_oracle_route_quality": {
+    "status": "pass",
+    "source_path": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
+    "cases_total": 5,
+    "passing_cases": 5,
+    "failing_cases": 0,
+    "cross_language_oracle_graph_complete_advisory_witnesses": 1,
+    "cross_language_oracle_graph_missing_discriminator_limitations": 1,
+    "cross_language_oracle_graph_bridge_unknown_limitations": 1,
+    "cross_language_oracle_graph_mention_only_limitations": 1,
+    "cross_language_oracle_graph_public_packet_exclusions": 5,
+    "repair_packet_ready_cases": 0,
+    "authority_boundary": "preview_advisory_only",
+    "rows": [
+      {
+        "case_id": "bun_blob_missing_resizable_oracle_limitation",
+        "expected_state": "rust_ungripped_ts_missing_discriminator",
+        "observed_state": "rust_ungripped_ts_missing_discriminator",
+        "status": "pass",
+        "missing_discriminators": ["resizable_array_buffer"],
+        "missing_graph_legs": [
+          "boundary_discriminator:resizable_array_buffer"
+        ],
+        "repair_packet_ready": false,
+        "unlock_condition": "Prove a TypeScript Blob observer for a resizable ArrayBuffer on the configured bridge before placement or actionability is suggested."
+      }
+    ]
+  },
   "recommended_repairs": [
     {
       "slice": "analysis/related-test-ranking-audit-fixes",
@@ -4499,6 +4579,14 @@ Field contract:
   exclusion reasons such as missing receipt paths. This is advisory
   badge-readiness evidence only; it does not switch public badges or PR/CI
   rendering.
+- `cross_language_oracle_route_quality` - the checked SPEC-0062 Bun Blob route
+  summary. It reports complete advisory witnesses, missing discriminator
+  limitations, mention-only limitations, unknown bridge limitations, public
+  packet exclusions, row-level missing graph legs, unlock conditions, and
+  `repair_packet_ready=false`. It is preview/advisory evidence only and does not
+  create public repair packets, verify commands, receipt commands, source edits,
+  generated tests, runtime execution, gates, badges, baselines, RIPR Zero, or
+  support-tier claims.
 - `evidence_class_work_queue` - the audit-derived
   `finding_alignment.coverage.evidence_class_work_queue` section carried
   forward so the scorecard names the next evidence classes to burn down from

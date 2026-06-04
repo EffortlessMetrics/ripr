@@ -23964,6 +23964,7 @@ struct RiprSwarmReadinessReport {
     blocked_state_routes: Vec<RiprSwarmReadinessBlockedStateRoute>,
     repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
     language_repair_route_quality: Vec<RiprSwarmRepairRouteQualityRow>,
+    cross_language_oracle_route_quality: Value,
     top_failing_repair_routes: Vec<RiprSwarmRepairRouteQualityRow>,
     top_missing_evidence_fields: Vec<RiprSwarmMissingEvidenceFieldRow>,
     next_actions: Vec<RiprSwarmReadinessNextAction>,
@@ -28069,6 +28070,7 @@ fn ripr_swarm_readiness_from_values(
         blocked_state_routes,
         repair_route_quality,
         language_repair_route_quality,
+        cross_language_oracle_route_quality: cross_language_oracle_route_quality_report_value(),
         top_failing_repair_routes,
         top_missing_evidence_fields,
         next_actions,
@@ -28523,6 +28525,7 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
         "language_repair_route_quality": ripr_swarm_repair_route_quality_json(
             &report.language_repair_route_quality
         ),
+        "cross_language_oracle_route_quality": report.cross_language_oracle_route_quality,
         "limitation_route_quality": ripr_swarm_limitation_route_quality_json(
             &report.top_limitation_routes
         ),
@@ -30555,6 +30558,10 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     ripr_swarm_readiness_push_limitation_route_quality_table(
         &mut out,
         &report.top_limitation_routes,
+    );
+    cross_language_oracle_route_quality_push_markdown(
+        &mut out,
+        &report.cross_language_oracle_route_quality,
     );
     out.push_str("\n## Repair Route Quality\n\n");
     ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality);
@@ -33648,6 +33655,7 @@ struct EvidenceQualityScorecardReport {
     actionable_gap_packet_public_projection: Value,
     evidence_class_work_queue: Value,
     language_aware_placement_route_quality: Value,
+    cross_language_oracle_route_quality: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -34022,6 +34030,7 @@ fn evidence_quality_scorecard_from_values(
         ),
         language_aware_placement_route_quality:
             evidence_quality_language_aware_placement_route_quality(audit),
+        cross_language_oracle_route_quality: cross_language_oracle_route_quality_report_value(),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -35322,6 +35331,7 @@ fn evidence_quality_scorecard_json(
         "actionable_gap_packet_public_projection": report.actionable_gap_packet_public_projection,
         "evidence_class_work_queue": report.evidence_class_work_queue,
         "language_aware_placement_route_quality": report.language_aware_placement_route_quality,
+        "cross_language_oracle_route_quality": report.cross_language_oracle_route_quality,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -36054,6 +36064,10 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     scorecard_push_language_aware_placement_route_quality(
         &mut out,
         &report.language_aware_placement_route_quality,
+    );
+    cross_language_oracle_route_quality_push_markdown(
+        &mut out,
+        &report.cross_language_oracle_route_quality,
     );
 
     out.push_str("## Evidence Class Work Queue\n\n");
@@ -47914,6 +47928,312 @@ fn cross_language_oracle_graph_required_non_claims() -> &'static [&'static str] 
         "receipt command",
         "allowed edit surface",
     ]
+}
+
+fn cross_language_oracle_graph_corpus_path() -> PathBuf {
+    let relative = Path::new(CROSS_LANGUAGE_ORACLE_GRAPH_CORPUS);
+    if relative.exists() {
+        return relative.to_path_buf();
+    }
+    repo_root()
+        .map(|root| root.join(relative))
+        .unwrap_or_else(|_| relative.to_path_buf())
+}
+
+fn cross_language_oracle_route_quality_report_value() -> Value {
+    let path = cross_language_oracle_graph_corpus_path();
+    cross_language_oracle_route_quality_from_cases(
+        normalize_path(&path),
+        &cross_language_oracle_graph_cases_at(&path),
+    )
+}
+
+fn cross_language_oracle_route_quality_from_cases(
+    source_path: String,
+    cases: &[CrossLanguageOracleGraphCase],
+) -> Value {
+    let mut complete_advisory_witnesses = 0usize;
+    let mut missing_discriminator_limitations = 0usize;
+    let mut bridge_unknown_limitations = 0usize;
+    let mut mention_only_limitations = 0usize;
+    let mut target_unresolved_limitations = 0usize;
+    let mut public_packet_exclusions = 0usize;
+    let mut public_projection_eligible_cases = 0usize;
+    let mut repair_packet_ready_cases = 0usize;
+    let mut failing_cases = 0usize;
+
+    let rows = cases
+        .iter()
+        .map(|case| {
+            match case.expected_state.as_str() {
+                "rust_ungripped_ts_discriminated" => complete_advisory_witnesses += 1,
+                "rust_ungripped_ts_missing_discriminator" => missing_discriminator_limitations += 1,
+                "bridge_unknown" => bridge_unknown_limitations += 1,
+                "ts_mention_not_observer" => mention_only_limitations += 1,
+                "cross_language_target_unresolved" => target_unresolved_limitations += 1,
+                _ => {}
+            }
+            if !case.public_projection_eligible {
+                public_packet_exclusions += 1;
+            } else {
+                public_projection_eligible_cases += 1;
+            }
+            if case.repair_packet_ready {
+                repair_packet_ready_cases += 1;
+            }
+
+            let errors = cross_language_oracle_graph_case_errors(case);
+            let status = if errors.is_empty() {
+                "pass"
+            } else {
+                failing_cases += 1;
+                "fail"
+            };
+            serde_json::json!({
+                "case_id": case.name,
+                "expected_state": case.expected_state,
+                "observed_state": case.expected_state,
+                "status": status,
+                "gap_state": case.gap_state,
+                "limitation_category": case.limitation_category,
+                "repair_route": case.repair_route,
+                "missing_discriminators": case.missing_discriminators,
+                "missing_graph_legs": case.missing_graph_legs,
+                "binding_edge_confidence": case.binding_edge_confidence,
+                "authority_boundary": case.authority_boundary,
+                "public_projection_eligible": case.public_projection_eligible,
+                "repair_packet_ready": case.repair_packet_ready,
+                "suggested_test_file": case.suggested_test_file,
+                "unlock_condition": case.unlock_condition,
+                "reason": case.reason,
+                "errors": errors,
+            })
+        })
+        .collect::<Vec<_>>();
+    let passing_cases = cases.len().saturating_sub(failing_cases);
+    let status = if cases.is_empty() {
+        "empty"
+    } else if failing_cases == 0 && repair_packet_ready_cases == 0 {
+        "pass"
+    } else {
+        "fail"
+    };
+
+    serde_json::json!({
+        "status": status,
+        "source_path": source_path,
+        "cases_total": cases.len(),
+        "passing_cases": passing_cases,
+        "failing_cases": failing_cases,
+        "cross_language_oracle_graph_complete_advisory_witnesses":
+            complete_advisory_witnesses,
+        "cross_language_oracle_graph_missing_discriminator_limitations":
+            missing_discriminator_limitations,
+        "cross_language_oracle_graph_bridge_unknown_limitations": bridge_unknown_limitations,
+        "cross_language_oracle_graph_mention_only_limitations": mention_only_limitations,
+        "cross_language_oracle_graph_target_unresolved_limitations":
+            target_unresolved_limitations,
+        "cross_language_oracle_graph_public_packet_exclusions": public_packet_exclusions,
+        "public_projection_eligible_cases": public_projection_eligible_cases,
+        "repair_packet_ready_cases": repair_packet_ready_cases,
+        "authority_boundary": "preview_advisory_only",
+        "calibration_boundary": "SPEC-0062 cross-language oracle graph route quality is preview/advisory only; it does not create public repair packets, gates, badges, verify commands, receipt commands, source edits, generated tests, or runtime execution.",
+        "non_claims": [
+            "not a public repair packet",
+            "not badge or gate input",
+            "not runtime Bun execution",
+            "not generated tests",
+            "not source edits",
+            "not full cross-language proof",
+            "not support-tier promotion"
+        ],
+        "rows": rows,
+    })
+}
+
+fn cross_language_oracle_route_quality_push_markdown(out: &mut String, value: &Value) {
+    out.push_str("## Cross-Language Oracle Route Quality\n\n");
+    out.push_str("This section summarizes the SPEC-0062 Bun Blob cross-language oracle graph corpus. It is preview/advisory route-quality evidence only and does not create public repair packets, gates, badges, verify commands, receipt commands, source edits, generated tests, or runtime execution.\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        out,
+        "Cases",
+        audit_usize(value, &["cases_total"]).unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Passing cases",
+        audit_usize(value, &["passing_cases"]).unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Complete advisory witnesses",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_complete_advisory_witnesses"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Missing discriminator limitations",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_missing_discriminator_limitations"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Bridge unknown limitations",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_bridge_unknown_limitations"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Mention-only limitations",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_mention_only_limitations"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Public packet exclusions",
+        audit_usize(
+            value,
+            &["cross_language_oracle_graph_public_packet_exclusions"],
+        )
+        .unwrap_or_default(),
+    );
+    audit_push_count(
+        out,
+        "Repair-packet-ready cases",
+        audit_usize(value, &["repair_packet_ready_cases"]).unwrap_or_default(),
+    );
+    out.push('\n');
+    out.push_str(&format!(
+        "- status: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- source_path: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("source_path")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
+    out.push_str(&format!(
+        "- authority_boundary: `{}`\n",
+        audit_markdown_cell(
+            value
+                .get("authority_boundary")
+                .and_then(Value::as_str)
+                .unwrap_or("preview_advisory_only")
+        )
+    ));
+    out.push_str(&format!(
+        "- calibration_boundary: {}\n\n",
+        audit_markdown_cell(
+            value
+                .get("calibration_boundary")
+                .and_then(Value::as_str)
+                .unwrap_or("preview/advisory only")
+        )
+    ));
+    let non_claims = audit_markdown_string_array_cell(
+        value
+            .get("non_claims")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice),
+    );
+    out.push_str(&format!(
+        "- non_claims: {}\n\n",
+        audit_markdown_cell(&non_claims)
+    ));
+
+    out.push_str("| Case | Expected | Observed | Status | Missing discriminators | Missing graph legs | Repair packet ready | Unlock condition |\n");
+    out.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    let rows = value
+        .get("rows")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    if rows.is_empty() {
+        out.push_str("| none |  |  |  |  |  |  | no corpus rows available |\n");
+    }
+    for row in rows {
+        let case_id = row
+            .get("case_id")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let expected = row
+            .get("expected_state")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let observed = row
+            .get("observed_state")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let status = row
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let missing_discriminators = audit_markdown_string_array_cell(
+            row.get("missing_discriminators")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice),
+        );
+        let missing_graph_legs = audit_markdown_string_array_cell(
+            row.get("missing_graph_legs")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice),
+        );
+        let repair_packet_ready = row
+            .get("repair_packet_ready")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let unlock_condition = row
+            .get("unlock_condition")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        out.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | {} |\n",
+            audit_markdown_cell(case_id),
+            audit_markdown_cell(expected),
+            audit_markdown_cell(observed),
+            audit_markdown_cell(status),
+            audit_markdown_cell(&missing_discriminators),
+            audit_markdown_cell(&missing_graph_legs),
+            repair_packet_ready,
+            audit_markdown_cell(unlock_condition),
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_markdown_string_array_cell(values: &[Value]) -> String {
+    let strings = values
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    if strings.is_empty() {
+        "none".to_string()
+    } else {
+        strings.join(", ")
+    }
 }
 
 fn dogfood_typescript_preview_repair_loop_scenarios()
@@ -77438,6 +77758,76 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
+    fn cross_language_oracle_route_quality_summarizes_corpus_cases() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let value = super::cross_language_oracle_route_quality_report_value();
+            assert_eq!(value["status"], "pass");
+            assert_eq!(value["cases_total"], serde_json::Value::from(5));
+            assert_eq!(
+                value["cross_language_oracle_graph_complete_advisory_witnesses"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["cross_language_oracle_graph_missing_discriminator_limitations"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["cross_language_oracle_graph_bridge_unknown_limitations"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["cross_language_oracle_graph_mention_only_limitations"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["cross_language_oracle_graph_public_packet_exclusions"],
+                serde_json::Value::from(5)
+            );
+            assert_eq!(
+                value["repair_packet_ready_cases"],
+                serde_json::Value::from(0)
+            );
+
+            let rows = value["rows"]
+                .as_array()
+                .ok_or_else(|| "route-quality rows must be an array".to_string())?;
+            let missing_resizable = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_missing_resizable_oracle_limitation")
+                .ok_or_else(|| "missing resizable route-quality row".to_string())?;
+            assert_eq!(
+                missing_resizable["observed_state"],
+                "rust_ungripped_ts_missing_discriminator"
+            );
+            assert!(
+                missing_resizable["missing_discriminators"]
+                    .as_array()
+                    .is_some_and(|missing| {
+                        missing.iter().any(|item| item == "resizable_array_buffer")
+                    })
+            );
+            let bridge_unknown = rows
+                .iter()
+                .find(|row| row["case_id"] == "bun_blob_bridge_unknown_limitation")
+                .ok_or_else(|| "missing bridge_unknown route-quality row".to_string())?;
+            assert!(
+                bridge_unknown["missing_graph_legs"]
+                    .as_array()
+                    .is_some_and(|legs| legs.iter().any(|item| item == "binding_or_ffi_edge"))
+            );
+
+            let mut markdown = String::new();
+            super::cross_language_oracle_route_quality_push_markdown(&mut markdown, &value);
+            assert!(markdown.contains("## Cross-Language Oracle Route Quality"));
+            assert!(markdown.contains("Complete advisory witnesses"));
+            assert!(markdown.contains("bun_blob_missing_resizable_oracle_limitation"));
+            assert!(markdown.contains("binding_or_ffi_edge"));
+            assert!(markdown.contains("preview/advisory route-quality evidence only"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn cross_language_oracle_graph_rejects_malformed_corpus_files() -> Result<(), String> {
         let root = temp_dir("cross-language-oracle-graph-malformed");
         let missing_path = root.join("missing.json");
@@ -94749,6 +95139,30 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from("collect_missing_attempt_receipts")
         );
         assert_eq!(
+            value["cross_language_oracle_route_quality"]["status"],
+            "pass"
+        );
+        assert_eq!(
+            value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_complete_advisory_witnesses"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_missing_discriminator_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_bridge_unknown_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["cross_language_oracle_route_quality"]["cross_language_oracle_graph_public_packet_exclusions"],
+            serde_json::Value::from(5)
+        );
+        assert_eq!(
+            value["cross_language_oracle_route_quality"]["repair_packet_ready_cases"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
             value["next_actions"][1]["kind"],
             serde_json::Value::from("inspect_missing_verify_results")
         );
@@ -94791,6 +95205,8 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("# RIPR Swarm Readiness"));
         assert!(markdown.contains("actionable gaps total"));
+        assert!(markdown.contains("## Cross-Language Oracle Route Quality"));
+        assert!(markdown.contains("bun_blob_bridge_unknown_limitation"));
         assert!(markdown.contains("## Top Next Action"));
         assert!(markdown.contains("## Next Actions"));
         assert!(
@@ -104308,6 +104724,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 .get("language_aware_placement_route_quality")
                 .is_some()
         );
+        assert!(value.get("cross_language_oracle_route_quality").is_some());
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -104671,6 +105088,7 @@ covered_by = ["cargo xtask check-file-policy"]
             "Actionable Gap Packet Public Projection Readiness",
             "Projection exclusion reason",
             "Language-Aware Placement Route Quality",
+            "Cross-Language Oracle Route Quality",
             "Evidence Class Work Queue",
             "Dominant signal",
             "Maturity By Class",
@@ -105033,6 +105451,67 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Navigation-only external target packets"));
         assert!(markdown.contains("navigation_only_external_target_status"));
         assert!(markdown.contains("not runtime calibration or public repair packets"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality()
+    -> Result<(), String> {
+        let audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let route_quality = &value["cross_language_oracle_route_quality"];
+
+        assert_eq!(route_quality["status"], "pass");
+        assert_eq!(
+            route_quality["cross_language_oracle_graph_complete_advisory_witnesses"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            route_quality["cross_language_oracle_graph_missing_discriminator_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            route_quality["cross_language_oracle_graph_bridge_unknown_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            route_quality["cross_language_oracle_graph_mention_only_limitations"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            route_quality["cross_language_oracle_graph_public_packet_exclusions"],
+            serde_json::Value::from(5)
+        );
+        assert_eq!(
+            route_quality["repair_packet_ready_cases"],
+            serde_json::Value::from(0)
+        );
+        assert!(
+            route_quality["rows"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| {
+                    row["case_id"] == "bun_blob_bridge_unknown_limitation"
+                        && row["missing_graph_legs"]
+                            .as_array()
+                            .is_some_and(|legs| legs.iter().any(|leg| leg == "binding_or_ffi_edge"))
+                }))
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("## Cross-Language Oracle Route Quality"));
+        assert!(markdown.contains("Missing discriminator limitations"));
+        assert!(markdown.contains("Bridge unknown limitations"));
+        assert!(markdown.contains("Repair-packet-ready cases"));
+        assert!(markdown.contains("not full cross-language proof"));
         Ok(())
     }
 

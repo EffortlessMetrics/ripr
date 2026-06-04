@@ -242,6 +242,9 @@ Current supporting proof:
 
 - `fixtures/cross-language-oracle-graph-corpus/corpus.json`
 - `xtask/src/main.rs::tests::cross_language_oracle_graph_corpus_cases_are_checked`
+- `xtask/src/main.rs::tests::cross_language_oracle_route_quality_summarizes_corpus_cases`
+- `xtask/src/main.rs::tests::ripr_swarm_readiness_rolls_up_plan_and_outcomes`
+- `xtask/src/main.rs::tests::evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality`
 - `xtask/src/main.rs::tests::cross_language_oracle_graph_rejects_actionability_and_location_holes`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip`
 - `crates/ripr/src/analysis/language/typescript.rs::tests::changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip`
@@ -252,10 +255,12 @@ Current supporting proof:
 - `crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved`
 - `crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_cross_language_target_unresolved_packet`
 
-Planned follow-up proof:
+Route-quality proof:
 
 - `report/cross-language-oracle-route-quality` keeps readiness and scorecard
-  summaries aligned with limitation routes.
+  summaries aligned with complete advisory witnesses, missing discriminator
+  limitations, mention-only limitations, unknown bridge limitations, and public
+  packet exclusions.
 
 ## Implementation Mapping
 
@@ -273,6 +278,13 @@ Current implementation surfaces:
 - `crates/ripr/src/output/review_comments.rs`, LSP gap artifacts, readiness,
   and scorecard code already suppress repair actions when target placement or
   public packet fields are unresolved.
+- `xtask/src/main.rs` projects the SPEC-0062 corpus into
+  `cross_language_oracle_route_quality` sections in
+  `target/ripr/reports/swarm-readiness.{json,md}` and
+  `target/ripr/reports/evidence-quality-scorecard.{json,md}`, including
+  complete advisory witnesses, missing discriminator limitations, mention-only
+  limitations, unknown bridge limitations, public packet exclusions, missing
+  graph legs, unlock conditions, and `repair_packet_ready=false`.
 - `fixtures/typescript-bun-ub-calibration/corpus.json` records the existing
   Bun Blob calibration cases.
 - `fixtures/cross-language-oracle-graph-corpus/corpus.json` records the
@@ -306,9 +318,6 @@ Current related metrics:
 - `cross_language_target_unresolved_signals`
 - `cross_language_test_target_inference_route_signals`
 - `cross_language_projection_exclusions`
-
-Planned promotion metrics:
-
 - `cross_language_oracle_graph_complete_advisory_witnesses`
 - `cross_language_oracle_graph_missing_discriminator_limitations`
 - `cross_language_oracle_graph_bridge_unknown_limitations`

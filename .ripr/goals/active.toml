@@ -85,6 +85,20 @@ commands = [
 ]
 
 [[work_item]]
+id = "report/cross-language-oracle-route-quality"
+status = "done"
+branch = "report-cross-language-oracle-route-quality"
+stackable = false
+acceptance = "Readiness and evidence-quality scorecard outputs summarize complete advisory witnesses, missing discriminators, unknown bridges, mention-only limitations, and public packet exclusions without treating cross-language preview evidence as repair-ready."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "ripr/diff-first-changed-surface-mode"
 status = "ready"
 branch = "ripr-diff-first-changed-surface-mode"

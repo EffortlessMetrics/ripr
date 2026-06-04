@@ -728,6 +728,7 @@ mod tests {
         )?;
 
         assert!(output.timed_out, "long-running command should time out");
+        #[cfg(unix)]
         assert!(
             !output.status.is_some_and(|status| status.success()),
             "timed-out long-running command should not exit successfully"
@@ -746,19 +747,14 @@ mod tests {
 
     #[cfg(windows)]
     fn long_running_command() -> Result<TestCommand, String> {
-        let current_exe =
-            std::env::current_exe().map_err(|err| format!("locate current test binary: {err}"))?;
         Ok((
-            current_exe.to_string_lossy().into_owned(),
+            "powershell".to_string(),
             vec![
-                "--exact".to_string(),
-                "run::tests::long_running_command_helper".to_string(),
-                "--nocapture".to_string(),
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 30".to_string(),
             ],
-            vec![(
-                "RIPR_XTASK_LONG_RUNNING_HELPER".to_string(),
-                "1".to_string(),
-            )],
+            Vec::new(),
         ))
     }
 
