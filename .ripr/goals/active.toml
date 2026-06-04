@@ -183,7 +183,7 @@ commands = [
 
 [[work_item]]
 id = "report/attempt-ledger-outcome-hardening"
-status = "ready"
+status = "done"
 branch = "report-attempt-ledger-outcome-hardening"
 stackable = false
 acceptance = "Attempt ledger and readiness surfaces preserve not_attempted, attempted_no_receipt, receipt_present, improved, unchanged, regressed, resolved, unknown, stale receipt, gap mismatch, latest-attempt, and orphan receipt states."
@@ -197,10 +197,9 @@ commands = [
 
 [[work_item]]
 id = "dogfood/real-repair-analyzer-attempts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-real-repair-analyzer-attempts"
 stackable = false
-blocked_by = ["report/attempt-ledger-outcome-hardening"]
 acceptance = "Record real repair or analyzer-backlog attempts with before packet or limitation route, attempted patch or analyzer change, verify result, receipt when applicable, after evidence, outcome, and operator note, including unchanged or missing-receipt cases when they happen."
 commands = [
   "cargo xtask dogfood",
