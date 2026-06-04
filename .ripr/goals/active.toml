@@ -156,10 +156,9 @@ commands = [
 
 [[work_item]]
 id = "analysis/cross-language-oracle-graph-v1"
-status = "ready"
+status = "done"
 branch = "analysis-cross-language-oracle-graph-v1"
 stackable = false
-blocked_by = ["report/language-aware-target-placement-v1"]
 acceptance = "Trace a bounded Rust seam through export, binding, or FFI surface to an external callsite and assertion or oracle; missing graph edges remain named limitations with language and source locations."
 commands = [
   "cargo test -p ripr cross_language -- --test-threads=1",
@@ -171,10 +170,9 @@ commands = [
 
 [[work_item]]
 id = "analysis/repair-packet-guidance-quality"
-status = "blocked"
+status = "ready"
 branch = "analysis-repair-packet-guidance-quality"
 stackable = false
-blocked_by = ["analysis/cross-language-oracle-graph-v1"]
 acceptance = "Repair packets provide precise discriminator, assertion shape, verify command, receipt command, allowed edit surface, and must-not-change guidance when known, while unknown values use clean fail-closed wording without nested placeholders."
 commands = [
   "cargo xtask ripr-swarm plan --top 10",

@@ -4741,8 +4741,9 @@ Campaign ID: `lane1-post-08-operating-loop`
 Status: active. `.ripr/goals/active.toml` records that live queue hygiene,
 #913, #909/#912, Bun UB calibration reporting, diff-first changed-surface mode,
 cross-language oracle fail-closed routing, and language-aware target placement
-navigation are complete in the current repo state. The next ready work item is
-`analysis/cross-language-oracle-graph-v1`.
+navigation, and the bounded cross-language oracle graph are complete in the
+current repo state. The next ready work item is
+`analysis/repair-packet-guidance-quality`.
 
 Objective:
 
@@ -4764,8 +4765,8 @@ Work items:
 | `ripr/diff-first-changed-surface-mode` | done | `ripr diff --base <ref> --head <ref>` emits diff-complete changed-file and changed-seam evidence before full-repo analysis and preserves full-repo limited state. |
 | `analysis/cross-language-oracle-fail-closed` | done | Existing evidence-record, packet-queue, readiness, and scorecard coverage routes unresolved external oracle paths to named limitations rather than wrong-language repair packets. |
 | `report/language-aware-target-placement-v1` | done | #938 through #941 already closed language-aware placement navigation: explicit external observer targets are navigation-only and unresolved binding/FFI targets stay limitations with no LSP repair action. |
-| `analysis/cross-language-oracle-graph-v1` | ready | Follows target placement; broader graph proof remains non-claimed until implemented. |
-| `analysis/repair-packet-guidance-quality` | blocked | Follows graph proof; packets should sharpen exact guidance without placeholders. |
+| `analysis/cross-language-oracle-graph-v1` | done | SPEC-0062, the cross-language oracle graph corpus, TS discriminator witness routes, unknown-bridge limitation routing, route-quality report, and Bun UB calibration receipt now validate the bounded configured Bun Blob graph route; broader generic graph support remains non-claimed. |
+| `analysis/repair-packet-guidance-quality` | ready | Follows bounded graph proof; packets should sharpen exact guidance without placeholders. |
 | `report/attempt-ledger-outcome-hardening` | blocked | Follows packet guidance; attempts, receipts, stale or mismatched receipts, and latest attempts remain durable. |
 | `dogfood/real-repair-analyzer-attempts` | blocked | Follows ledger hardening; dogfood should include improved and unchanged attempts. |
 | `report/route-quality-metrics` | blocked | Follows dogfood attempts; route-quality metrics derive from receipts and outcomes. |

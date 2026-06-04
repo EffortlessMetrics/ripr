@@ -73,7 +73,7 @@ than one behavior contract or touches repo shape.
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 | Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
 | Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Folded into the active post-0.8 operating loop after #943 through #948 landed SPEC-0062, the graph corpus, TS discriminator witnesses, and binding-route witness behavior. The route-quality report adds readiness and evidence-quality scorecard summaries for complete advisory witnesses, missing discriminators, mention-only rows, bridge-unknown rows, and public packet exclusions; the Bun UB calibration report adds an operator-readable JSON/Markdown receipt for the calibrated TypeScript/Bun Blob corpus without public repair packets. #908/#910 remain open as broader cross-language follow-ups rather than completed generic oracle support. |
-| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Active: `.ripr/goals/active.toml` records live queue hygiene, treats #913 and #909/#912 as closed, keeps source ripr as release authority, records the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, and language-aware target placement navigation as done, and selects `analysis/cross-language-oracle-graph-v1` as the next ready work item. |
+| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Active: `.ripr/goals/active.toml` records live queue hygiene, treats #913 and #909/#912 as closed, keeps source ripr as release authority, records the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, and the bounded SPEC-0062 cross-language oracle graph as done, and selects `analysis/repair-packet-guidance-quality` as the next ready work item. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
 it records `status = "active"` for
@@ -84,9 +84,10 @@ operating loop: queue hygiene, navigable review comments, explicit large-repo
 limits, user-facing diff-first changed-surface mode, cross-language fail-closed
 routing, target placement, oracle graph proof, packet guidance, receipt/outcome
 hardening, dogfood attempts, route-quality metrics, and user-surface alignment.
-The fail-closed and target-placement items now point at their already-merged
-#930 and #938-#941 evidence; the active queue resumes at bounded oracle graph
-proof rather than redoing those closed trust-boundary slices.
+The fail-closed, target-placement, and bounded oracle-graph items now point at
+their already-merged #930, #938-#941, and SPEC-0062 corpus/report evidence; the
+active queue resumes at repair-packet guidance quality rather than redoing
+those closed trust-boundary slices.
 [RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
 continues to define the bounded Bun Blob graph contract where complete
 configured external witnesses may become advisory external observation, but

@@ -1,6 +1,6 @@
 # RIPR-SPEC-0062: Cross-Language Oracle Graph
 
-Status: proposed
+Status: accepted
 
 Linked specs:
 
