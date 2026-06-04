@@ -28,7 +28,7 @@ can misread externally discriminated behavior as `weakly_gripped` or
 
 RIPR needs an explicit cross-language oracle graph before external test evidence
 can affect actionability. The first supported contract is deliberately bounded
-to the configured Bun Blob / ArrayBuffer route from #910:
+to named Bun TypeScript profiles from #910:
 
 ```text
 Rust seam
@@ -47,8 +47,8 @@ conditions.
 
 ### Scope
 
-This spec defines the cross-language oracle graph shape for one configured Bun
-Blob route:
+This spec defines the cross-language oracle graph shape for configured Bun
+TypeScript profiles. The initial profile is the Bun Blob route:
 
 - Rust seam file: `src/jsc/Blob.rs`
 - Rust owner: `Blob::from_js_without_defer_gc`
@@ -56,8 +56,20 @@ Blob route:
 - External test file: `test/js/web/fetch/blob.test.ts`
 - External entrypoints: `new Blob` and `blob.arrayBuffer`
 
-The same vocabulary may be reused by later graph profiles, but this spec does
-not claim generic cross-language reachability.
+The #910 follow-up profile is the `copy_to_unshared` ArrayBuffer copy route:
+
+- Rust seam file: `src/jsc/array_buffer.rs`
+- Rust owner: `copy_to_unshared`
+- Rust boundary: `SharedArrayBuffer and resizable ArrayBuffer copy semantics`
+- External test file: `test/js/web/fetch/blob.test.ts`
+- External entrypoints: `new Blob`, `blob.arrayBuffer`, and the Blob
+  ArrayBuffer copy path
+
+This follow-up profile is initially `bridge_unknown`: TypeScript discriminator
+and oracle samples are visible, but no configured or generated binding edge yet
+connects the external Blob observer path to `copy_to_unshared`. The same
+vocabulary may be reused by later graph profiles, but this spec does not claim
+generic cross-language reachability.
 
 ### Required Graph Legs
 
@@ -144,6 +156,8 @@ Implementations of this spec must provide:
   `rust_ungripped_ts_missing_discriminator`,
   `rust_ungripped_ts_missing_external_oracle`, `ts_mention_not_observer`, and
   `bridge_unknown`;
+- a profile-backed #910 `copy_to_unshared` bridge-unknown row before any
+  analyzer behavior credits that external oracle;
 - source samples naming the Rust seam, boundary, external TypeScript callsite,
   external assertion or observer, and configured bridge evidence where present;
 - raw evidence references for each credited graph leg;

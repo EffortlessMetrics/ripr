@@ -8,6 +8,7 @@
     {
       "id": "bun_blob_complete_ts_discriminated_advisory",
       "source": "#910-complete-configured-bun-blob-route",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -120,6 +121,7 @@
     {
       "id": "bun_blob_missing_resizable_oracle_limitation",
       "source": "#910-missing-resizable-discriminator",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -236,6 +238,7 @@
     {
       "id": "bun_blob_missing_external_oracle_limitation",
       "source": "#910-partial-blob-observer-without-stable-oracle",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -341,6 +344,7 @@
     {
       "id": "bun_blob_mention_not_observer_limitation",
       "source": "#910-max-byte-length-token-only",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -455,6 +459,7 @@
     {
       "id": "bun_blob_bridge_unknown_limitation",
       "source": "#910-discriminators-without-bridge",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -561,6 +566,7 @@
     {
       "id": "bun_blob_target_unresolved_limitation",
       "source": "#911-cross-language-test-target-unresolved",
+      "profile": "bun_blob_array_buffer",
       "language": "typescript",
       "language_status": "preview",
       "rust_seam": {
@@ -671,6 +677,114 @@
         "no allowed edit surface"
       ],
       "reason": "The fixture forces target inference to fail closed rather than point at an unrelated Rust file."
+    },
+    {
+      "id": "bun_array_buffer_copy_to_unshared_bridge_unknown_limitation",
+      "source": "#910-copy-to-unshared-ts-covered-bridge-unresolved",
+      "profile": "bun_array_buffer_copy_to_unshared",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/array_buffer.rs",
+        "line": 341,
+        "owner": "copy_to_unshared",
+        "boundary": "SharedArrayBuffer and resizable ArrayBuffer copy semantics"
+      },
+      "binding_edge": {
+        "kind": "unresolved",
+        "confidence": "unknown"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1280,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer",
+          "copy_to_unshared via Blob ArrayBuffer copy"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1286,
+        "kind": "stable_byte_copy",
+        "strength": "bridge_unknown"
+      },
+      "expected": {
+        "state": "bridge_unknown",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "binding_or_ffi_edge:copy_to_unshared"
+        ],
+        "unlock_condition": "Name a configured or generated binding edge from the TypeScript Blob ArrayBuffer observer path to copy_to_unshared before crediting the external oracle."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/array_buffer.rs",
+          "line": 341,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "copy_to_unshared is the reported Rust seam for the TypeScript-tested ArrayBuffer copy path"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1282,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer inputs are visible in the external Blob tests"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1280,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction and blob.arrayBuffer are visible externally, but no bridge to copy_to_unshared is available"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1286,
+          "kind": "typescript_assertion",
+          "source_id": "#910",
+          "sample": "stable copied bytes are asserted externally"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #910 copy_to_unshared sample has external TypeScript discriminator and oracle samples, but without a binding edge to that Rust owner it must remain a bridge_unknown limitation."
     }
   ]
 }

@@ -2,12 +2,13 @@
 
 Spec: RIPR-SPEC-0062
 
-This manifest-only fixture pins the bounded cross-language oracle graph states
-for the configured Bun Blob route before analyzer actionability changes.
+This manifest-only fixture pins bounded cross-language oracle graph states for
+configured Bun TypeScript profiles before analyzer actionability changes.
 
 ## Given
 
-A Rust seam in Bun is exercised through TypeScript-facing Blob behavior:
+A Rust seam in Bun is exercised through TypeScript-facing Blob behavior. The
+first profile is the configured Bun Blob route:
 
 ```text
 src/jsc/Blob.rs
@@ -19,6 +20,18 @@ The external evidence lives in `test/js/web/fetch/blob.test.ts`, and the graph
 must name the Rust seam, boundary discriminator, binding or FFI edge, external
 callsite, external oracle, source locations, raw evidence refs, and non-claims.
 
+The #910 follow-up profile also records the `copy_to_unshared` seam:
+
+```text
+src/jsc/array_buffer.rs:341
+copy_to_unshared
+SharedArrayBuffer and resizable ArrayBuffer copy semantics
+```
+
+That row has TypeScript Blob callsite and oracle samples, but it remains
+`bridge_unknown` until a configured or generated binding edge connects the
+external observer path to `copy_to_unshared`.
+
 ## When
 
 RIPR evaluates the fixture corpus, it should distinguish:
@@ -28,6 +41,8 @@ RIPR evaluates the fixture corpus, it should distinguish:
 - TypeScript token mentions that are not Blob observers;
 - unknown binding or FFI routes;
 - unresolved cross-language test target placement.
+Each row names its graph `profile` so later non-Blob profiles can be added
+without weakening the Bun Blob contract.
 
 ## Then
 

@@ -4792,3 +4792,45 @@ Non-claims:
 Closeout:
 
 - [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md)
+
+## Lane 1 Campaign: Cross-Language Oracle Follow-Up
+
+Campaign ID: `lane1-cross-language-oracle-followup`
+
+Status: active. `.ripr/goals/active.toml` selects #908/#910 as the current
+repo-owned successor after the post-0.8 operating loop closed with
+`no_current_goal = true`.
+
+This campaign extends cross-language oracle evidence only through measured,
+profile-backed graph slices. It must not convert TypeScript, binding, FFI, or
+external-oracle evidence into public repair packets until the graph legs and
+canonical actionability fields are explicit.
+
+Objective:
+
+```text
+Make #908/#910 cross-language oracle follow-ups more useful by adding measured
+graph profiles beyond the bounded Bun Blob route while preserving the rule that
+external-language evidence is advisory or a named limitation until every graph
+leg and public repair-packet field is explicit.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `fixtures/cross-language-copy-to-unshared-profile` | done | Selects the #908/#910 follow-up and pins the `copy_to_unshared` TypeScript-exercised Rust seam as a profile-backed `bridge_unknown` limitation with source locations, missing binding edge, repair route, unlock condition, raw evidence refs, and no public repair-packet fields. |
+| `analysis/cross-language-copy-to-unshared-bridge-route` | ready | Add explicit configured or generated bridge evidence for the `copy_to_unshared` profile before crediting the external TypeScript oracle; until then it stays `bridge_unknown` with no verify command, receipt command, allowed edit surface, suggested test file, or public projection eligibility. |
+
+Non-claims:
+
+- no generic cross-language oracle proof;
+- no runtime Bun execution;
+- no generated tests;
+- no public repair packet from preview or limitation evidence;
+- no provider integration;
+- no autonomous edits;
+- no mutation execution;
+- no default blocking CI or badge semantic switch;
+- no source release, publish, tag, signing, marketplace, or install-doc work
+  without explicit release authorization.
