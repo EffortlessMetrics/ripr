@@ -711,7 +711,8 @@ read preview labels, static limits, generated-CI grouping, editor projection,
 and rollback. See the
 [Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md) for
 the calibrated stable-byte review loop and the exact advisory actions for
-missing discriminators, token-only evidence, and unknown bridges.
+missing discriminators, token-only evidence, unknown bridges, and unresolved
+FFI panic-boundary visibility.
 
 ### Worked example
 

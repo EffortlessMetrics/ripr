@@ -100,7 +100,8 @@ or RIPR Zero, or promote TypeScript/JavaScript beyond preview.
 Use the [Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md)
 for the operator loop that reads `rust_ungripped_ts_discriminated`,
 `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and
-`bridge_unknown` results.
+`bridge_unknown` results, plus
+`public_reachable_panic_boundary_unrevealed` FFI limitation receipts.
 
 ## Run The Local Preview Loop
 

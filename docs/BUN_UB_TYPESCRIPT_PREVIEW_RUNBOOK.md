@@ -34,6 +34,16 @@ Boundary: array_buffer.shared || array_buffer.resizable
 Suggested TS file: test/js/web/fetch/blob.test.ts
 ```
 
+There is also a calibrated FFI panic-boundary limitation sample:
+
+```text
+Rust file: src/bun.js/bindings/FFIObject.rs
+Rust owner: FFIObject::read
+Boundary: usize::try_from(to_int32()).expect("int cast")
+External entrypoint sample: read.u8(ptr, -1)
+Suggested TS file: not_applicable
+```
+
 ## Configure The Preview
 
 In the Bun checkout, keep TypeScript preview explicit in `ripr.toml`:
@@ -153,6 +163,19 @@ seam. Do not call this no_static_path, and do not suggest a Rust test merely
 because the bridge is unknown.
 ```
 
+`public_reachable_panic_boundary_unrevealed`
+
+A public FFI entrypoint appears to reach a Rust panic boundary, but the
+negative-offset panic oracle and safe external observer target are unresolved.
+
+Action:
+
+```text
+Keep the named limitation. Do not suggest a Rust or TypeScript test file, do
+not invent a verify or receipt command, and do not emit a public repair packet.
+The unlock route is analysis/cross-language-panic-boundary-visibility.
+```
+
 ## Check Calibration Receipts
 
 From the `ripr` repository, the calibrated receipts are available without
@@ -175,7 +198,8 @@ target/ripr/reports/dogfood.json
 The calibration report should show the known-good Blob route, stripped
 shared/resizable variants, mention-only control, and bridge-unknown limitation.
 The dogfood report should include `bun_ub_cross_language_witnesses` with the
-#31648-style known-good, stripped-resizable, and mention-only operator receipts.
+#31648-style known-good, stripped-resizable, mention-only, and #950 FFI
+negative-offset panic-boundary operator receipts.
 
 ## Do Not Claim
 
@@ -194,5 +218,7 @@ The useful claim is only:
 ```text
 For calibrated Bun Blob / ArrayBuffer stable-byte seams, ripr can give an
 advisory signal that TypeScript evidence is discriminated, missing a named
-discriminator, token-only, or blocked by an unknown bridge.
+discriminator, token-only, or blocked by an unknown bridge. For the calibrated
+Bun FFI negative-offset sample, ripr can give an advisory named limitation when
+the panic-boundary oracle and safe external observer target are unresolved.
 ```
