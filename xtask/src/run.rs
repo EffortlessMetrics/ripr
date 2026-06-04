@@ -780,17 +780,26 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
-        let started = std::time::Instant::now();
+        let marker = std::env::temp_dir().join(format!(
+            "ripr-xtask-pipe-descendant-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
         let args = vec![
-            "-NoProfile".to_string(),
-            "-Command".to_string(),
-            "$child = [System.Diagnostics.Process]::Start('powershell', '-NoProfile -Command Start-Sleep -Seconds 120'); Start-Sleep -Seconds 120; $child.WaitForExit()".to_string(),
+            "/C".to_string(),
+            format!(
+                "ping -n 8 127.0.0.1 & echo alive > \"{}\"",
+                marker.display()
+            ),
         ];
         let output = capture_output_with_timeout(
-            "powershell",
+            "cmd",
             &args,
             &[],
-            Duration::from_millis(100),
+            Duration::from_secs(1),
             "pipe-inheriting descendant",
         )?;
 
@@ -798,10 +807,10 @@ mod tests {
             output.timed_out,
             "pipe-inheriting descendant should time out"
         );
-        assert!(
-            started.elapsed() < Duration::from_secs(45),
-            "pipe-inheriting descendant should not keep captured pipes open"
-        );
+        if marker.exists() {
+            let _ = fs::remove_file(&marker);
+            return Err("timed-out process tree should not run its continuation".to_string());
+        }
         Ok(())
     }
 
