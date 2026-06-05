@@ -4637,6 +4637,7 @@ tests = [
   "xtask/src/main.rs::tests::bun_ub_preview_summary_command_writes_markdown_and_json",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::bun_cross_language_agent_packet_projects_missing_discriminator",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::bun_cross_language_agent_packet_projects_bridge_unknown_stop_condition",
+  "crates/ripr/src/output/typescript_preview_card.rs::tests::stable_byte_proof_mode_is_advisory",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_bun_cross_language_grip",
 ]
 fixtures = [

@@ -82,6 +82,7 @@ pub(crate) struct TypeScriptBunCrossLanguageAdvisoryPacket {
     pub(crate) suggested_shape: String,
     pub(crate) bridge_confidence: String,
     pub(crate) missing_graph_legs: Vec<String>,
+    pub(crate) proof_mode: TypeScriptBunStableByteProofMode,
     pub(crate) next_action: String,
     pub(crate) authority_boundary: String,
     pub(crate) repair_packet_ready: bool,
@@ -89,6 +90,17 @@ pub(crate) struct TypeScriptBunCrossLanguageAdvisoryPacket {
     pub(crate) must_not_change: Vec<String>,
     pub(crate) stop_condition: String,
     pub(crate) raw_evidence_refs: Vec<PreviewRawEvidenceRef>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptBunStableByteProofMode {
+    pub(crate) mode: String,
+    pub(crate) reason: String,
+    pub(crate) authority_boundary: String,
+    pub(crate) runtime_execution: bool,
+    pub(crate) mutation_execution: bool,
+    pub(crate) miri_execution: bool,
+    pub(crate) proof_claim: bool,
 }
 
 pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPreviewCard> {
@@ -184,6 +196,7 @@ pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -
         "oracle_strength": card.oracle_strength.as_str(),
         "bun_cross_language_grip": card.bun_cross_language_grip.as_ref().map(|grip| {
             let advisory_packet = bun_cross_language_advisory_packet(grip);
+            let proof_mode = stable_byte_proof_mode(grip);
             json!({
                 "state": grip.state.as_str(),
                 "rust_seam": {
@@ -212,6 +225,7 @@ pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -
                     "authority_boundary": placement.authority_boundary.as_str(),
                     "repair_packet_ready": placement.repair_packet_ready,
                 })),
+                "proof_mode": proof_mode_json(&proof_mode),
                 "advisory_packet": advisory_packet_json(&advisory_packet),
                 "authority_boundary": grip.authority_boundary.as_str(),
                 "repair_packet_ready": grip.repair_packet_ready,
@@ -403,6 +417,7 @@ pub(crate) fn bun_cross_language_advisory_packet(
         suggested_shape: advisory_packet_suggested_shape(grip),
         bridge_confidence: grip.bridge_confidence.clone(),
         missing_graph_legs: grip.missing_graph_legs.clone(),
+        proof_mode: stable_byte_proof_mode(grip),
         next_action: advisory_packet_next_action(grip).to_string(),
         authority_boundary: grip.authority_boundary.clone(),
         repair_packet_ready: false,
@@ -425,6 +440,7 @@ fn advisory_packet_json(packet: &TypeScriptBunCrossLanguageAdvisoryPacket) -> Va
         "suggested_shape": packet.suggested_shape.as_str(),
         "bridge_confidence": packet.bridge_confidence.as_str(),
         "missing_graph_legs": &packet.missing_graph_legs,
+        "proof_mode": proof_mode_json(&packet.proof_mode),
         "next_action": packet.next_action.as_str(),
         "authority_boundary": packet.authority_boundary.as_str(),
         "repair_packet_ready": packet.repair_packet_ready,
@@ -432,6 +448,72 @@ fn advisory_packet_json(packet: &TypeScriptBunCrossLanguageAdvisoryPacket) -> Va
         "must_not_change": &packet.must_not_change,
         "stop_condition": packet.stop_condition.as_str(),
         "raw_evidence_refs": packet.raw_evidence_refs.iter().map(raw_ref_json).collect::<Vec<_>>(),
+    })
+}
+
+pub(crate) fn stable_byte_proof_mode(
+    grip: &TypeScriptBunCrossLanguageGrip,
+) -> TypeScriptBunStableByteProofMode {
+    let (mode, reason) = if is_bridge_unknown(grip) {
+        (
+            "bridge_unknown",
+            "The binding or FFI edge is missing, so TypeScript evidence cannot be credited to the Rust seam.",
+        )
+    } else if is_helper_gated(grip) {
+        (
+            "helper_gated",
+            "The route is visible, but proof is blocked on a helper or upstream primitive before a witness can be selected.",
+        )
+    } else if is_mutation_plus_miri(grip) {
+        (
+            "mutation_plus_miri",
+            "The calibrated route is non-observable through a direct TypeScript assertion and needs mutation plus Miri or model proof.",
+        )
+    } else if grip.state == "rust_ungripped_ts_discriminated" {
+        (
+            "observable_red_green",
+            "Configured TypeScript stable-byte evidence already observes the bridged Rust seam; future proof should be a system-Bun red/patched-green witness if behavior changes.",
+        )
+    } else if grip.state == "rust_ungripped_ts_missing_discriminator"
+        && !grip.missing_discriminators.is_empty()
+        && grip.placement.is_some()
+    {
+        (
+            "observable_red_green",
+            "The missing TypeScript discriminator belongs in an existing bridged stable-byte observer route; future proof should be a system-Bun red/patched-green witness after the discriminator is added.",
+        )
+    } else if grip.state == "ts_mention_not_observer" {
+        (
+            "static_limitation",
+            "Token evidence is not an observer, so proof mode remains a static limitation until callsite and oracle legs are credited.",
+        )
+    } else {
+        (
+            "static_limitation",
+            "The cross-language route is visible but lacks a credited observer, discriminator, placement, or safe action leg.",
+        )
+    };
+
+    TypeScriptBunStableByteProofMode {
+        mode: mode.to_string(),
+        reason: reason.to_string(),
+        authority_boundary: "preview_advisory_only".to_string(),
+        runtime_execution: false,
+        mutation_execution: false,
+        miri_execution: false,
+        proof_claim: false,
+    }
+}
+
+fn proof_mode_json(proof_mode: &TypeScriptBunStableByteProofMode) -> Value {
+    json!({
+        "mode": proof_mode.mode.as_str(),
+        "reason": proof_mode.reason.as_str(),
+        "authority_boundary": proof_mode.authority_boundary.as_str(),
+        "runtime_execution": proof_mode.runtime_execution,
+        "mutation_execution": proof_mode.mutation_execution,
+        "miri_execution": proof_mode.miri_execution,
+        "proof_claim": proof_mode.proof_claim,
     })
 }
 
@@ -571,6 +653,26 @@ fn is_bridge_unknown(grip: &TypeScriptBunCrossLanguageGrip) -> bool {
             .any(|leg| leg == "binding_or_ffi_edge")
 }
 
+fn is_helper_gated(grip: &TypeScriptBunCrossLanguageGrip) -> bool {
+    grip.state == "helper_gated"
+        || grip.state == "rust_ungripped_ts_helper_gated"
+        || grip.action.contains("helper_gated")
+        || grip
+            .missing_graph_legs
+            .iter()
+            .any(|leg| leg == "helper_gated" || leg.starts_with("helper:"))
+}
+
+fn is_mutation_plus_miri(grip: &TypeScriptBunCrossLanguageGrip) -> bool {
+    grip.state == "mutation_plus_miri"
+        || grip.state == "rust_ungripped_ts_mutation_plus_miri"
+        || grip.action.contains("mutation_plus_miri")
+        || grip
+            .missing_graph_legs
+            .iter()
+            .any(|leg| leg == "mutation_model" || leg == "miri_model" || leg.contains("miri"))
+}
+
 fn raw_ref_json(raw_ref: &PreviewRawEvidenceRef) -> Value {
     json!({
         "raw": raw_ref.raw.as_str(),
@@ -645,7 +747,7 @@ fn limits() -> Vec<String> {
 mod tests {
     use super::{
         TypeScriptBunCrossLanguageGrip, TypeScriptBunTestPlacement,
-        bun_cross_language_advisory_packet, typescript_preview_card,
+        bun_cross_language_advisory_packet, stable_byte_proof_mode, typescript_preview_card,
         typescript_preview_card_json_value,
     };
     use crate::domain::{
@@ -813,6 +915,15 @@ mod tests {
         );
         assert_eq!(projected["authority_boundary"], "preview_advisory_only");
         assert_eq!(projected["repair_packet_ready"], false);
+        assert_eq!(projected["proof_mode"]["mode"], "observable_red_green");
+        assert_eq!(
+            projected["proof_mode"]["authority_boundary"],
+            "preview_advisory_only"
+        );
+        assert_eq!(projected["proof_mode"]["runtime_execution"], false);
+        assert_eq!(projected["proof_mode"]["mutation_execution"], false);
+        assert_eq!(projected["proof_mode"]["miri_execution"], false);
+        assert_eq!(projected["proof_mode"]["proof_claim"], false);
         Ok(())
     }
 
@@ -857,6 +968,8 @@ mod tests {
             packet["next_action"],
             "add_typescript_discriminator_in_suggested_file"
         );
+        assert_eq!(packet["proof_mode"]["mode"], "observable_red_green");
+        assert_eq!(packet["proof_mode"]["proof_claim"], false);
         assert_eq!(packet["authority_boundary"], "preview_advisory_only");
         assert_eq!(packet["repair_packet_ready"], false);
         assert_eq!(packet["public_repair_packet"], false);
@@ -1019,6 +1132,14 @@ mod tests {
         assert_eq!(packet["ts_test_file"], serde_json::Value::Null);
         assert_eq!(packet["bridge_confidence"], "unknown");
         assert_eq!(packet["missing_graph_legs"][0], "binding_or_ffi_edge");
+        assert_eq!(packet["proof_mode"]["mode"], "bridge_unknown");
+        assert!(
+            packet["proof_mode"]["reason"]
+                .as_str()
+                .ok_or_else(|| "expected proof mode reason".to_string())?
+                .contains("binding or FFI edge")
+        );
+        assert_eq!(packet["proof_mode"]["runtime_execution"], false);
         assert_eq!(packet["next_action"], "inspect_or_add_bridge_evidence");
         assert!(
             packet["suggested_shape"]
@@ -1184,6 +1305,101 @@ mod tests {
                 .stop_condition
                 .contains("public repair packets")
         );
+    }
+
+    #[test]
+    fn stable_byte_proof_mode_is_advisory() {
+        let discriminated = stable_byte_proof_mode(&packet_grip(
+            "rust_ungripped_ts_discriminated",
+            Vec::new(),
+            Vec::new(),
+            None,
+        ));
+        assert_eq!(discriminated.mode, "observable_red_green");
+        assert!(discriminated.reason.contains("stable-byte evidence"));
+        assert_eq!(discriminated.authority_boundary, "preview_advisory_only");
+        assert!(!discriminated.runtime_execution);
+        assert!(!discriminated.mutation_execution);
+        assert!(!discriminated.miri_execution);
+        assert!(!discriminated.proof_claim);
+
+        let missing_with_placement = stable_byte_proof_mode(&packet_grip(
+            "rust_ungripped_ts_missing_discriminator",
+            vec!["resizable_array_buffer".to_string()],
+            vec!["boundary_discriminator:resizable_array_buffer".to_string()],
+            Some(packet_placement()),
+        ));
+        assert_eq!(missing_with_placement.mode, "observable_red_green");
+        assert!(
+            missing_with_placement
+                .reason
+                .contains("missing TypeScript discriminator")
+        );
+
+        let bridge_unknown = stable_byte_proof_mode(&packet_grip(
+            "bridge_unknown",
+            Vec::new(),
+            vec!["binding_or_ffi_edge".to_string()],
+            None,
+        ));
+        assert_eq!(bridge_unknown.mode, "bridge_unknown");
+        assert!(bridge_unknown.reason.contains("binding or FFI edge"));
+
+        let mention = stable_byte_proof_mode(&packet_grip(
+            "ts_mention_not_observer",
+            Vec::new(),
+            vec![
+                "external_callsite:view_backed_blob_input".to_string(),
+                "external_oracle:stable_byte_copy".to_string(),
+            ],
+            None,
+        ));
+        assert_eq!(mention.mode, "static_limitation");
+        assert!(mention.reason.contains("Token evidence"));
+
+        let missing_external = stable_byte_proof_mode(&packet_grip(
+            "rust_ungripped_ts_missing_external_oracle",
+            Vec::new(),
+            vec!["external_oracle:stable_byte_copy".to_string()],
+            None,
+        ));
+        assert_eq!(missing_external.mode, "static_limitation");
+        assert!(
+            missing_external
+                .reason
+                .contains("lacks a credited observer")
+        );
+
+        let helper_gated = stable_byte_proof_mode(&packet_grip(
+            "rust_ungripped_ts_helper_gated",
+            Vec::new(),
+            vec!["helper:bun_write_fixture_helper".to_string()],
+            None,
+        ));
+        assert_eq!(helper_gated.mode, "helper_gated");
+        assert!(helper_gated.reason.contains("blocked on a helper"));
+
+        let mutation_plus_miri = stable_byte_proof_mode(&packet_grip(
+            "rust_ungripped_ts_mutation_plus_miri",
+            Vec::new(),
+            vec!["miri_model".to_string()],
+            None,
+        ));
+        assert_eq!(mutation_plus_miri.mode, "mutation_plus_miri");
+        assert!(
+            mutation_plus_miri
+                .reason
+                .contains("mutation plus Miri or model proof")
+        );
+
+        let named_limitation = stable_byte_proof_mode(&packet_grip(
+            "named_static_limitation",
+            Vec::new(),
+            Vec::new(),
+            None,
+        ));
+        assert_eq!(named_limitation.mode, "static_limitation");
+        assert!(named_limitation.reason.contains("safe action leg"));
     }
 
     #[test]

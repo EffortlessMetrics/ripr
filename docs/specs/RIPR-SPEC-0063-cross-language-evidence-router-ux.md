@@ -305,8 +305,9 @@ Implemented and planned tests:
 - `xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked`
 
 Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
-current bounded graph behavior. The Bun preview summary and advisory packet
-rows are now implemented; later rows remain planned until their slices land.
+current bounded graph behavior. The Bun preview summary, advisory packet, and
+stable-byte proof-mode rows are now implemented; later rows remain planned
+until their slices land.
 
 ## Implementation Mapping
 

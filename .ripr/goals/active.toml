@@ -116,3 +116,19 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "output/stable-byte-proof-mode"
+status = "done"
+branch = "output-stable-byte-proof-mode"
+stackable = false
+acceptance = "Add advisory proof_mode projection for configured Bun cross-language preview rows with one mode and a short reason, including observable_red_green, mutation_plus_miri, helper_gated, bridge_unknown, and static_limitation; bridge_unknown must be used when the binding or FFI leg is missing, named static limitations must not become test-edit tasks, proof mode must appear in JSON and human output, and no runtime, mutation, Miri, UB-proof, gate, badge, support-tier, generated-test, or source-edit claim is introduced."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p ripr stable_byte_proof_mode -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

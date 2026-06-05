@@ -1,6 +1,6 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first three implementation work items complete
+Status: active; first four implementation work items complete
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
@@ -22,7 +22,9 @@ The patch proof packet for that closed 0.8.1 path is recorded in
 `cargo xtask bun-ub-preview-summary` now writes the compact advisory JSON and
 Markdown summary for the current Bun UB route states. The TypeScript preview
 card now projects a nested Bun cross-language advisory packet for configured
-routes. The next implementation slice is `output/stable-byte-proof-mode`.
+routes. Configured Bun cross-language grip output now includes advisory
+stable-byte proof-mode projection. The next implementation slice is
+`fixtures/bun-node-fs-scalar-write-profile`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -216,7 +218,7 @@ placement evidence exists.
 
 ## Work Item: output/stable-byte-proof-mode
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0063
 Linked ADR: n/a
@@ -265,6 +267,9 @@ Revert proof-mode fields, renderers, tests, and output contracts.
 
 This item should not decide whether a particular Bun bug is observable. It
 records the calibrated proof strategy encoded by the fixture or corpus row.
+The projection appears in TypeScript preview-card JSON and human output with
+`runtime_execution`, `mutation_execution`, `miri_execution`, and `proof_claim`
+all set to `false`.
 
 ## Work Item: fixtures/bun-node-fs-scalar-write-profile
 

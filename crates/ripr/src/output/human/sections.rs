@@ -5,7 +5,8 @@ use crate::output::preview_actionability::{
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
 use crate::output::typescript_preview_card::{
-    TypeScriptPreviewCard, bun_cross_language_advisory_packet, typescript_preview_card,
+    TypeScriptPreviewCard, bun_cross_language_advisory_packet, stable_byte_proof_mode,
+    typescript_preview_card,
 };
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
@@ -300,6 +301,16 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
             ));
             out.push_str(&format!("    placement reason: {}\n", placement.reason));
         }
+        let proof_mode = stable_byte_proof_mode(grip);
+        out.push_str(&format!("    proof mode: {}\n", proof_mode.mode));
+        out.push_str(&format!("    proof mode reason: {}\n", proof_mode.reason));
+        out.push_str(&format!(
+            "    proof execution: runtime={} mutation={} miri={} proof_claim={}\n",
+            proof_mode.runtime_execution,
+            proof_mode.mutation_execution,
+            proof_mode.miri_execution,
+            proof_mode.proof_claim
+        ));
         let advisory_packet = bun_cross_language_advisory_packet(grip);
         out.push_str("    advisory packet:\n");
         out.push_str(&format!(

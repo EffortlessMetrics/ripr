@@ -484,16 +484,24 @@ The evidence-first fields are additive in schema `0.1`:
   `typescript_evidence.missing_discriminators[]`, `limitation_category`,
   `repair_route`, `missing_graph_legs[]`, nullable `unlock_condition`,
   `raw_evidence_refs[]`, `action`, `suggested_test_file`, optional
-  `placement`, nested `advisory_packet`, `authority_boundary`, and
+  `placement`, nested `proof_mode`, nested `advisory_packet`, `authority_boundary`, and
   `repair_packet_ready`. The nested `advisory_packet` is a preview task-shaping
   packet, not public repair-packet authority. It carries
   `packet_version = "bun_cross_language_advisory_packet.v1"`,
   `cross_language_state`, `rust_file`, `rust_owner`, `rust_boundary`,
   nullable `ts_test_file`, `missing_discriminators[]`, `suggested_shape`,
-  `bridge_confidence`, `missing_graph_legs[]`, `next_action`,
+  `bridge_confidence`, `missing_graph_legs[]`, nested `proof_mode`,
+  `next_action`,
   `authority_boundary`, `repair_packet_ready = false`,
   `public_repair_packet = false`, `must_not_change[]`, `stop_condition`, and
-  `raw_evidence_refs[]`. The current configured Bun Blob route may name
+  `raw_evidence_refs[]`. The nested `proof_mode` object carries `mode`,
+  `reason`, `authority_boundary = "preview_advisory_only"`,
+  `runtime_execution = false`, `mutation_execution = false`,
+  `miri_execution = false`, and `proof_claim = false`. Current modes are
+  `observable_red_green`, `mutation_plus_miri`, `helper_gated`,
+  `bridge_unknown`, and `static_limitation`; these name an advisory proof
+  strategy only and do not report that any runtime, mutation, Miri, or model
+  proof was executed. The current configured Bun Blob route may name
   `test/js/web/fetch/blob.test.ts` as advisory placement when
   shared/resizable boundary discriminators are missing on a configured bridge.
   Mention-only, partial external-oracle, bridge-unknown, and unresolved target
