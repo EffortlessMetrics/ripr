@@ -348,8 +348,10 @@ current bounded graph behavior. The Bun preview summary, advisory packet,
 stable-byte proof-mode rows, and node:fs scalar-write manifest-only intake row
 are now implemented; the Bun.write helper-gated manifest-only intake row is
 also implemented. `cargo xtask configured-bridge-inventory` now implements the
-report-only bridge inventory over the existing graph corpus. Live dogfood
-expansion remains planned until that slice lands.
+report-only bridge inventory over the existing graph corpus. The live Bun
+stable-byte dogfood receipt pack is now implemented in
+`fixtures/bun-ub-cross-language-dogfood` and checked by
+`live_bun_stable_byte_dogfood_receipts_are_checked`.
 
 ## Implementation Mapping
 

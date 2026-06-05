@@ -12101,13 +12101,16 @@ limitation distribution. Eval cases with fewer than three ranked repair-card
 findings must include an explicit limit reason.
 The checked Bun UB cross-language witness receipts are read from
 `fixtures/bun-ub-cross-language-dogfood/` and record the calibrated
-#31648-shaped known-good, stripped-resizable, and maxByteLength mention-only
+#31648-shaped known-good, stripped-resizable, maxByteLength mention-only,
+bridge-unknown, configured copy_to_unshared, configured MarkdownObject, node:fs
+scalar write manifest-only, Bun.write helper-gated, and FFI panic-boundary
 operator cases. The `bun_ub_cross_language_witnesses` JSON section includes
 `default_ci_blocking: false`, `preview_authority: "advisory"`, summary counts,
-case ids, source calibration cases, route-quality cases, Rust seam fields,
-observed state, missing discriminators or graph legs, suggested TypeScript test
-file, manual verdict, operator action, bridge and placement verdicts, proof
-mode, raw evidence refs, non-claims, and `repair_packet_ready: false`.
+including `bridge_unknown` and `named_static_limitation`, case ids, source
+calibration or profile cases, route-quality cases, Rust seam fields, observed
+state, missing discriminators or graph legs, suggested TypeScript test file,
+manual verdict, operator action, bridge and placement verdicts, proof mode, raw
+evidence refs, non-claims, and `repair_packet_ready: false`.
 The checked user-surface projection receipts are read from
 `fixtures/user-surface-projection-alignment/` and prove badge, LSP, PR comment,
 and CI projection examples share the same canonical gap, packet or limitation

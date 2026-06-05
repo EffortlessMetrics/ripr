@@ -4651,6 +4651,7 @@ tests = [
   "xtask/src/main.rs::tests::configured_bridge_inventory_reports_missing_future_surfaces",
   "xtask/src/main.rs::tests::configured_bridge_inventory_command_writes_markdown_and_json",
   "xtask/src/main.rs::tests::configured_bridge_inventory_accepts_custom_paths_and_rejects_bad_args",
+  "xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_bun_cross_language_grip",
 ]
 fixtures = [

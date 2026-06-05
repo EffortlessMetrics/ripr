@@ -192,18 +192,37 @@ commands = [
 
 [[work_item]]
 id = "dogfood/live-bun-stable-byte-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-live-bun-stable-byte-receipts"
 stackable = false
-blocked_by = ["analysis/configured-bridge-inventory"]
-acceptance = "Add dogfood receipts for live or live-shaped Bun stable-byte cases with tool verdict, manual verdict, route-quality state, placement verdict, proof mode, and operator note. Receipts include at least one credited witness, one missing discriminator, one mention-only rejection, one bridge-unknown case, and one named static limitation; wrong-language placement regressions are absent and preview/advisory authority is repeated."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+acceptance = "Add live or live-shaped Bun stable-byte dogfood receipts for configured copy_to_unshared and MarkdownObject witnesses, stripped resizable missing discriminator placement, mention-only rejection, bridge_unknown inspection, node:fs scalar write manifest-only limitation, Bun.write helper-gated limitation, and the FFI panic-boundary limitation; every receipt records manual verdict, review work saved or avoided, proof mode, preview_advisory_only authority, repair_packet_ready=false, and no runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
 plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
 commands = [
   "cargo test -p xtask live_bun_stable_byte_dogfood -- --test-threads=1",
+  "cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1",
   "cargo xtask dogfood",
   "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/bun-ub-first-run-polish"
+status = "ready"
+branch = "docs-bun-ub-first-run-polish"
+stackable = false
+blocked_by = ["dogfood/live-bun-stable-byte-receipts"]
+acceptance = "Update the Bun UB TypeScript preview runbook and docs index for the actual command surface, report artifacts, failure modes, and next actions. The runbook starts from ripr.toml, ripr doctor, and ripr check; names next actions for missing config, missing discriminator, mention-only, bridge_unknown, and named static limitation states; links compact summary, agent packet, proof mode, bridge inventory, and dogfood receipts when they exist; and keeps known limits explicit without adding flags, analyzer behavior, generated tests, runtime execution, public repair packets, gates, badges, or support-tier promotion."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
