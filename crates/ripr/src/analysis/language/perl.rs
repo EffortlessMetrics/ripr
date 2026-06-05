@@ -1857,6 +1857,31 @@ mod tests {
         args.iter().map(|arg| (*arg).to_string()).collect()
     }
 
+    fn blocking_boundary_kind_cases() -> [(BoundaryKind, &'static str); 14] {
+        [
+            (BoundaryKind::DynamicDispatch, "dynamic_dispatch"),
+            (
+                BoundaryKind::ModuleResolutionUnknown,
+                "module_resolution_unknown",
+            ),
+            (BoundaryKind::GeneratedSymbol, "generated_symbol"),
+            (BoundaryKind::RoleComposition, "role_composition"),
+            (
+                BoundaryKind::MonkeypatchOrSymbolPatch,
+                "monkeypatch_or_symbol_patch",
+            ),
+            (BoundaryKind::EvalOrStringCode, "eval_or_string_code"),
+            (BoundaryKind::SymbolTableMutation, "symbol_table_mutation"),
+            (BoundaryKind::FrameworkIndirection, "framework_indirection"),
+            (BoundaryKind::UnknownHelper, "unknown_helper"),
+            (BoundaryKind::UnsupportedSyntax, "unsupported_syntax"),
+            (BoundaryKind::MissingTestRunner, "missing_test_runner"),
+            (BoundaryKind::MissingDiffOwner, "missing_diff_owner"),
+            (BoundaryKind::PacketIncomplete, "packet_incomplete"),
+            (BoundaryKind::Unknown, "unknown"),
+        ]
+    }
+
     #[test]
     fn perl_strict_command_guards_accept_only_bounded_verify_and_receipt_shapes() {
         assert!(is_verify_command(&command_args(&["prove", "t/app.t"])));
@@ -3102,6 +3127,96 @@ mod tests {
             partial.strict_actionability_for_change("change:lib/My/App.pm:22:call", &context),
             Err(PerlActionabilityBlocker::PacketNotComplete)
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_dynamic_boundary_kinds_fail_closed_before_canonical_gap_debt() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let context = complete_perl_actionability_context();
+
+        for (kind, label) in blocking_boundary_kind_cases() {
+            let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+            let change = packet
+                .change("change:lib/My/App.pm:8:return")
+                .ok_or_else(|| "missing return change".to_string())?;
+            packet.dynamic_boundaries = vec![DynamicBoundaryFact {
+                boundary_id: format!("limit:lib/My/App.pm:{label}:8"),
+                kind,
+                file_id: "file:lib/My/App.pm".to_string(),
+                owner_id: Some("perl:lib/My/App.pm::My::App::discount".to_string()),
+                range: change.range,
+                confidence: Confidence::High,
+                provenance_refs: vec!["prov:syntax:discount".to_string()],
+            }];
+
+            assert!(
+                packet
+                    .canonical_gap_identity_for_change("change:lib/My/App.pm:8:return")
+                    .is_none(),
+                "{label} must not become canonical gap debt"
+            );
+            assert_eq!(
+                packet.strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} must fail closed before strict actionability"
+            );
+            assert_eq!(
+                packet.repair_card_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} must not emit a repair card"
+            );
+            assert_eq!(
+                packet.agent_packet_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} must not emit an agent packet"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_blocking_limitation_kinds_fail_closed_before_repair_packets() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let context = complete_perl_actionability_context();
+
+        for (kind, label) in blocking_boundary_kind_cases() {
+            let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+            packet.limitations = vec![LimitationFact {
+                limitation_id: format!("limitation:{label}:discount"),
+                kind,
+                message: format!("{label} blocks strict Perl actionability"),
+                evidence_refs: vec!["change:lib/My/App.pm:8:return".to_string()],
+            }];
+
+            assert!(
+                packet
+                    .canonical_gap_identity_for_change("change:lib/My/App.pm:8:return")
+                    .is_some(),
+                "{label} limitation should block repair projection without hiding raw gap identity"
+            );
+            assert_eq!(
+                packet.strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} limitation must fail closed before strict actionability"
+            );
+            assert_eq!(
+                packet.repair_card_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} limitation must not emit a repair card"
+            );
+            assert_eq!(
+                packet.agent_packet_for_change("change:lib/My/App.pm:8:return", &context),
+                Err(PerlActionabilityBlocker::DynamicBoundary),
+                "{label} limitation must not emit an agent packet"
+            );
+        }
 
         Ok(())
     }
