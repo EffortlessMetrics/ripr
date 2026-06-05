@@ -525,8 +525,9 @@ The evidence-first fields are additive in schema `0.1`:
   that already have strict fact-packet evidence, canonical gap identity,
   related-test evidence, missing discriminator evidence, verify-command
   evidence, receipt evidence, stop conditions, must-not-change constraints, and
-  safe repo-relative raw evidence refs. It is a check JSON, human CLI, and
-  SARIF advisory card, not a public repair packet. The v1 card carries
+  safe repo-relative raw evidence refs. It is a check JSON, human CLI, SARIF,
+  GitHub annotation, and gap-ledger Markdown advisory card, not a public repair
+  packet. The v1 card carries
   `card_version`, `source`,
   `language`, `language_status`, `authority_boundary`, `surface_scope`,
   `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,
@@ -536,7 +537,8 @@ The evidence-first fields are additive in schema `0.1`:
   `current_test_evidence`, `missing_discriminator`, `target_test_shape`,
   `suggested_test_location`, `suggested_assertion`, `verify`, `receipt`,
   `confidence`, `raw_evidence_refs[]`, `stop_if[]`, `must_not_change[]`, and
-  `limits`. For this slice, `surface_scope = "check_json_human_sarif_github"`,
+  `limits`. For this slice,
+  `surface_scope = "check_json_human_sarif_github_gap_ledger_markdown"`,
   `public_repair_packet = false`, `repair_packet_ready = false`,
   `agent_packet_ready = false`, `gate_candidate = false`,
   `badge_candidate = false`, and `ripr_zero_candidate = false`.
@@ -544,10 +546,16 @@ The evidence-first fields are additive in schema `0.1`:
   `verify.status = "fact_only_not_delegated"`. `receipt.command` is always
   `null` even though receipt evidence is required internally, and
   `receipt.status = "available_not_delegated"`. Perl preview cards are public
-  check JSON, human CLI, diff-scoped SARIF, and GitHub annotation advisory
-  context only. They do not project allowed edit surfaces, forbidden files,
-  receipt argv, Markdown, PR, CI, LSP, swarm routing, badge authority, gate
-  authority, or RIPR Zero authority in this slice.
+  check JSON, human CLI, diff-scoped SARIF, GitHub annotation, and gap-ledger
+  Markdown advisory context only. Gap-ledger derivation may emit a PR-local
+  preview `GapRecord` with `projection_eligibility.markdown_advisory = true`
+  so the Markdown ledger can show the changed owner, missing discriminator,
+  suggested assertion, suggested test location, and fact-only verify command.
+  That derived record must keep `agent_packet`, `pr_comment`, `gate_candidate`,
+  `ripr_zero_count`, and `ripr_plus_count` ineligible and must not synthesize a
+  receipt command. Perl preview cards do not project allowed edit surfaces,
+  forbidden files, receipt argv, PR, CI, LSP, swarm routing, badge authority,
+  gate authority, or RIPR Zero authority in this slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
   Those records are advisory preview inputs for `ripr agent packet

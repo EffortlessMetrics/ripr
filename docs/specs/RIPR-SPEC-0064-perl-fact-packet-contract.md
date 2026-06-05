@@ -635,16 +635,18 @@ private `perl_repair_card.v1` / `perl_internal_agent_packet.v1` projection must
 keep `projection_scope = "internal_adapter_only"`,
 `language_status = "preview"`, `authority_boundary = "preview_advisory_only"`,
 `public_repair_packet = false`, and no public projection authority until the
-JSON, human CLI, SARIF, Markdown, PR, CI, LSP, and swarm surfaces are wired
-separately.
+target public surface has been wired separately.
 
 The first public projection is narrower than that private repair card:
 structured `findings[].perl_preview_card` in `ripr check --format json`, a
 matching human CLI advisory section, additive `properties.perl_preview_card` in
 diff-scoped SARIF, and compact GitHub annotation guidance rendered from the
-same card. It must keep
+same card. `ripr reports gap-ledger --check-output <check.json>` may also
+derive a Markdown-only advisory Perl `GapRecord` from the same card so humans
+can see the next missing proof in the gap-ledger Markdown report. It must keep
 `card_version = "perl_preview_card.v1"`,
-`surface_scope = "check_json_human_sarif_github"`, `language_status = "preview"`,
+`surface_scope = "check_json_human_sarif_github_gap_ledger_markdown"`,
+`language_status = "preview"`,
 `authority_boundary = "preview_advisory_only"`,
 `public_repair_packet = false`, `repair_packet_ready = false`,
 `agent_packet_ready = false`, `gate_candidate = false`,
@@ -652,8 +654,11 @@ same card. It must keep
 fact-packet verify command as `verify.command` with
 `verify.status = "fact_only_not_delegated"`, but it must render
 `receipt.command = null`, `receipt.status = "available_not_delegated"`, and
-must not expose receipt argv, allowed edit surfaces, forbidden files, Markdown,
-PR, CI, LSP, or swarm routing.
+must not expose receipt argv, allowed edit surfaces, forbidden files, PR, CI,
+LSP, or swarm routing. The derived gap-ledger record may set
+`projection_eligibility.markdown_advisory = true`; it must keep
+`agent_packet`, `pr_comment`, `gate_candidate`, `ripr_zero_count`, and
+`ripr_plus_count` ineligible and must not synthesize a receipt command.
 
 ### Smoke-only ok evidence
 
@@ -710,12 +715,13 @@ Follow-up implementation tests should map as:
 - `analysis/perl-repair-card-agent-packet`: private preview repair-card and
   agent-packet projection from strict actionability, plus fail-closed cases
   proving blocked strict actionability emits neither.
-- `output/perl-preview-card-public`: check JSON, human CLI, SARIF, and GitHub
-  annotation advisory projection, fail-closed missing receipt/provenance/unsafe
-  path cases, and assertions that public repair-packet, agent-packet, badge,
-  gate, RIPR Zero, edit-surface, and receipt-argv fields are not projected.
-- `output/perl-repair-cards`: later projection through Markdown, PR, CI, LSP,
-  and swarm packet surfaces after separate public contracts exist.
+- `output/perl-preview-card-public`: check JSON, human CLI, SARIF, GitHub
+  annotation, and gap-ledger Markdown advisory projection, fail-closed missing
+  receipt/provenance/unsafe path cases, and assertions that public
+  repair-packet, agent-packet, PR-comment, badge, gate, RIPR Zero,
+  edit-surface, and receipt-argv fields are not projected.
+- `output/perl-repair-cards`: later projection through PR, CI, LSP, and swarm
+  packet surfaces after separate public contracts exist.
 
 ## Implementation Mapping
 
@@ -730,10 +736,10 @@ The next PRs are:
 7. Add strict actionability and repair-packet fail-closed cases.
 8. Add private preview repair card and agent packet projection from strict
    actionability.
-9. Wire public check JSON, human CLI, SARIF, and GitHub annotation
-   `perl_preview_card.v1` projection.
-10. Wire Markdown, PR, CI, LSP, and swarm projection in separate output PRs
-    with their own public contracts.
+9. Wire public check JSON, human CLI, SARIF, GitHub annotation, and
+   gap-ledger Markdown `perl_preview_card.v1` projection.
+10. Wire PR, CI, LSP, and swarm projection in separate output PRs with their
+    own public contracts.
 
 This spec does not require all implementation slices to land in one PR.
 
