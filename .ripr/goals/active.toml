@@ -1,61 +1,86 @@
-# Closed as a one-slice successor on 2026-06-04 after live inspection showed
-# the generic cross-language target-unresolved review-comments path was covered,
-# but the exact #908 MarkdownObject wrong-target sample was not fixture-pinned.
-id = "lane1-cross-language-guidance-safety"
-title = "Lane 1 Cross-Language Guidance Safety"
-status = "closed"
+# Selected on 2026-06-05 after live queue inspection closed the current
+# dangling analysis PR (#982) and `cargo xtask goals next` reported
+# `no_current_goal = true`.
+id = "cross-language-evidence-router-ux"
+title = "Cross-Language Evidence Router UX"
+status = "active"
 lane = "lane1"
 issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
-no_current_goal = true
 
 objective = """
-Pin the #908 MarkdownObject review-comments guidance failure so externally
-observed TypeScript evidence remains navigation-only when safe target placement
-is unresolved, and the agent-facing prompt cannot suggest a wrong Rust test
-target.
+Turn the calibrated TypeScript/Bun graph path into a repeatable mixed
+TypeScript plus Rust operating loop for Bun operators and external coding
+agents, while preserving preview/advisory authority and preventing unresolved
+cross-language evidence from becoming public repair packets.
 """
 
 end_state = [
-  "the MarkdownObject TypeScript observer sample fails closed as a cross-language target limitation",
-  "review-comments JSON and Markdown do not suggest vendor/lolhtml or any guessed Rust test file for the sample",
-  "llm_guidance has no verify_command and says not to write a Rust test",
-  "the TypeScript observer is exposed only as a navigation-only target with repair_packet_ready=false",
-  "the slice does not claim #908 or #910 are resolved and does not promote cross-language preview evidence into public repair packets",
+  "Bun operators can read compact cross-language preview state without inspecting raw preview-card JSON",
+  "configured advisory packets bound agent work and stop when bridge or placement evidence is missing",
+  "proof-mode projection keeps static witnesses distinct from runtime, mutation, Miri, or model proof",
+  "manifest-only stable-byte profiles make future bridge debt visible before analyzer behavior changes",
+  "bridge inventory and dogfood receipts expose calibrated, missing, mention-only, bridge-unknown, and named limitation states",
+  "the campaign closes with TypeScript/Bun support still preview/advisory unless a separate accepted promotion contract changes that boundary",
 ]
 
 hard_rules = [
-  "do not force actionability",
-  "do not suggest wrong-language or unrelated Rust test files",
+  "do not force actionability from cross-language preview evidence",
   "do not create public repair packets from preview or limitation evidence",
-  "do not claim generic TypeScript, JavaScript, binding, or FFI oracle proof",
-  "do not add provider integration, autonomous edits, mutation execution, or a default blocking CI or badge semantic switch",
+  "do not suggest Rust or external-language test targets without explicit bridge, observer, and typed placement evidence",
+  "do not add or require a ripr check --profile flag",
+  "do not run tsc, tsserver, Bun, Jest, Vitest, Miri, mutation engines, providers, or generated tests",
+  "do not change gates, badges, baselines, RIPR Zero, support tiers, source release, publishing, signing, marketplace, or install-doc behavior",
   "source ripr remains release, signing, publishing, and distribution authority",
 ]
 
 non_goals = [
-  "no generic cross-language oracle graph promotion",
-  "no runtime Bun, Jest, Vitest, tsc, tsserver, Miri, or mutation execution",
+  "no stable TypeScript or JavaScript support claim",
+  "no full Bun binding graph",
+  "no generic cross-language support for every mixed-language repository",
+  "no runtime execution or UB proof claim",
   "no generated tests",
   "no provider integration",
   "no autonomous edits",
-  "no source release, publish, tag, signing, marketplace, or install-doc work",
+  "no public repair packets from preview cross-language evidence",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
 ]
 
 [[work_item]]
-id = "output/markdownobject-review-comments-target-safety"
+id = "goals/cross-language-evidence-router-ux-activation"
 status = "done"
-branch = "lane1-cross-language-guidance-safety"
+branch = "goals-cross-language-evidence-router-ux"
 stackable = false
-acceptance = "Pin the #908 MarkdownObject `llm_guidance` failure at the review-comments surface: `src/runtime/api/MarkdownObject.rs` with external `test/js/bun/md/md-edge-cases.test.ts` observer evidence stays `cross_language_target_unresolved`, emits no verify command, no public repair packet, no guessed Rust test target such as `vendor/lolhtml/tests/harness/input.rs`, and exposes the TypeScript observer only as navigation-only context routed to `analysis/cross-language-test-target-inference`."
+acceptance = "Select RIPR-SPEC-0063 and RIPR-PLAN-0063 as the active Lane 1 successor after `no_current_goal = true`, without changing analyzer behavior, report output, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
 commands = [
-  "cargo test -p ripr review_comments_markdownobject_external_observer_never_suggests_wrong_rust_target -- --test-threads=1",
-  "cargo test -p ripr review_comments_surface_external_observer_as_navigation_only_limitation -- --test-threads=1",
   "cargo xtask check-goals",
   "cargo xtask goals next",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
   "cargo xtask check-doc-roles",
-  "cargo xtask check-pr-shape",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "release/typescript-bun-preview-patch-proof"
+status = "ready"
+branch = "release-typescript-bun-preview-patch-proof"
+stackable = false
+acceptance = "Add a documentation or report artifact that records the current Bun Blob / ArrayBuffer calibrated states, `copy_to_unshared`, MarkdownObject, and FFI panic-boundary follow-up status from existing receipts, preview/advisory authority, `repair_packet_ready = false` for cross-language preview rows, and validation results as pass, fail, or not run, without performing a release."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask typescript_bun_ub_calibration -- --test-threads=1",
+  "cargo test -p xtask bun_ub_calibration -- --test-threads=1",
+  "cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1",
+  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
+  "cargo xtask bun-ub-calibration",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
 ]

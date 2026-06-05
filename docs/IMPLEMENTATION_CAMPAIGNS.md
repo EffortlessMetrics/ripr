@@ -4892,3 +4892,88 @@ Non-claims:
 - no autonomous edits;
 - no default blocking CI or badge semantic switch;
 - no source release, publish, tag, signing, marketplace, or install-doc work.
+
+## Lane 1 Campaign: Cross-Language Evidence Router UX
+
+Campaign ID: `cross-language-evidence-router-ux`
+
+Status: active. `.ripr/goals/active.toml` selects this campaign after live queue
+inspection closed the current dangling analysis PR (#982) and
+`cargo xtask goals next` reported `no_current_goal = true`.
+
+This campaign turns the calibrated TypeScript/Bun graph path into a repeatable
+mixed TypeScript plus Rust operating loop. It preserves preview/advisory
+authority: cross-language preview evidence may shape operator and agent
+guidance, but it must not create public repair packets, support-tier promotion,
+gates, badges, release authority, generated tests, or runtime proof claims.
+
+Objective:
+
+```text
+Turn the calibrated TypeScript/Bun graph path into a repeatable mixed
+TypeScript plus Rust operating loop for Bun operators and external coding
+agents, while preserving preview/advisory authority and preventing unresolved
+cross-language evidence from becoming public repair packets.
+```
+
+End state:
+
+- Bun operators can read compact cross-language preview state without
+  inspecting raw preview-card JSON.
+- Configured advisory packets bound agent work and stop when bridge or
+  placement evidence is missing.
+- Proof-mode projection keeps static witnesses distinct from runtime, mutation,
+  Miri, or model proof.
+- Manifest-only stable-byte profiles make future bridge debt visible before
+  analyzer behavior changes.
+- Bridge inventory and dogfood receipts expose calibrated, missing,
+  mention-only, bridge-unknown, and named limitation states.
+- The campaign closes with TypeScript/Bun support still preview/advisory unless
+  a separate accepted promotion contract changes that boundary.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `goals/cross-language-evidence-router-ux-activation` | done | Select RIPR-SPEC-0063 and RIPR-PLAN-0063 as the active Lane 1 successor after `no_current_goal = true`, without changing analyzer behavior, report output, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority. |
+| `release/typescript-bun-preview-patch-proof` | ready | Add a documentation or report artifact that records the current Bun Blob / ArrayBuffer calibrated states, `copy_to_unshared`, MarkdownObject, and FFI panic-boundary follow-up status from existing receipts, preview/advisory authority, `repair_packet_ready = false` for cross-language preview rows, and validation results as pass, fail, or not run, without performing a release. |
+
+Commands:
+
+```bash
+rtk cargo xtask check-goals
+rtk cargo xtask goals next
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-doc-roles
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- forcing actionability from cross-language preview evidence;
+- creating public repair packets from preview or limitation evidence;
+- suggesting Rust or external-language test targets without explicit bridge,
+  observer, and typed placement evidence;
+- adding or requiring a `ripr check --profile` flag;
+- running `tsc`, `tsserver`, Bun, Jest, Vitest, Miri, mutation engines,
+  providers, or generated tests;
+- changing gates, badges, baselines, RIPR Zero, support tiers, source release,
+  publishing, signing, marketplace, or install-doc behavior;
+- claiming stable TypeScript or JavaScript support, full Bun binding graph
+  coverage, generic cross-language support, runtime execution, or UB proof.
+
+Non-claims:
+
+- no stable TypeScript or JavaScript support claim;
+- no full Bun binding graph;
+- no generic cross-language support for every mixed-language repository;
+- no runtime execution or UB proof claim;
+- no generated tests;
+- no provider integration;
+- no autonomous edits;
+- no public repair packets from preview cross-language evidence;
+- no source release, publish, tag, signing, marketplace, or install-doc work
+  without explicit release authorization.
