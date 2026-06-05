@@ -151,3 +151,22 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "fixtures/bun-write-helper-gated-profile"
+status = "done"
+branch = "fixtures-bun-write-helper-gated-profile"
+stackable = false
+acceptance = "Add a manifest-only Bun.write helper-gated stable-byte profile with proof_mode=helper_gated, explicit bun_write_fixture_helper unblock condition, missing bridge/helper/oracle graph legs preserved as a named_static_limitation, suggested_test_file=not_applicable, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

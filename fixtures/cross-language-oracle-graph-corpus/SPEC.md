@@ -81,6 +81,22 @@ only recorded because the manifest includes an explicit typed placement raw ref;
 the row still does not create analyzer behavior, public actionability, a verify
 route, a receipt route, a generated test, or an allowed edit surface.
 
+The Bun.write helper-gated intake row records the next stable-byte profile as
+manifest-only:
+
+```text
+unresolved:bun-write-stable-byte-rust-seam
+Bun.write stable-byte sink
+JS-owned bytes must not cross Bun.write native sinks without a helper
+```
+
+The manifest witness path is `test/js/bun/write.test.ts`, but the row records
+`suggested_test_file = not_applicable` because the helper, bridge, and
+stable-byte write oracle are not credited. The advisory proof mode is
+`helper_gated`, and the unlock condition names `bun_write_fixture_helper`.
+There is no binding-edge raw ref, no placement raw ref, no verify route, no
+receipt route, no generated test, and no allowed edit surface.
+
 ## When
 
 RIPR evaluates the fixture corpus, it should distinguish:
@@ -93,6 +109,8 @@ RIPR evaluates the fixture corpus, it should distinguish:
 - public-reachable panic boundaries whose external oracle path is unresolved.
 - manifest-only profile intake rows that name future bridge or oracle legs
   without crediting them.
+- helper-gated manifest rows that name the missing helper or primitive without
+  suggesting a test file.
 Each row names its graph `profile` so later non-Blob profiles can be added
 without weakening the Bun Blob or MarkdownObject contracts.
 

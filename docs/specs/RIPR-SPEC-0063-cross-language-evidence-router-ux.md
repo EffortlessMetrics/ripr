@@ -188,8 +188,8 @@ Implementations of this spec must provide:
   `mutation_plus_miri`, `helper_gated`, `bridge_unknown`, and
   `static_limitation`;
 - manifest-only profile rows for node:fs scalar write and Bun.write before
-  analyzer behavior changes; node:fs scalar write is pinned first and Bun.write
-  remains the next fixture slice;
+  analyzer behavior changes; both rows are pinned before bridge inventory or
+  analyzer behavior changes;
 - a configured bridge inventory report with current configured bridges and
   explicitly missing future surfaces;
 - live Bun dogfood receipts with manual verdicts for at least one credited
@@ -237,7 +237,7 @@ Current states:
   rust_ungripped_ts_missing_discriminator: 0
   bridge_unknown: 0
   ts_mention_not_observer: 0
-  named_static_limitation: 1
+  named_static_limitation: 2
 
 Authority:
   preview/advisory only
@@ -311,6 +311,20 @@ Missing graph legs: binding_or_ffi_edge:node_fs_scalar_write, external_oracle:st
 Projection: not eligible for analyzer credit or repair packets until the bridge and oracle rows are audited
 ```
 
+Helper-gated manifest profile:
+
+```text
+Profile: bun_write_helper_gated
+Status: manifest_only
+Rust seam: unresolved until fixture audit
+TS witness path: test/js/bun/write.test.ts
+Proof mode: helper_gated
+State: named_static_limitation
+Missing graph legs: binding_or_ffi_edge:bun_write_sink, helper:bun_write_fixture_helper, external_oracle:stable_byte_write
+Suggested test file: not_applicable
+Projection: not eligible for analyzer credit, placement, or repair packets until the helper, bridge, and oracle are audited
+```
+
 ## Test Mapping
 
 Implemented and planned tests:
@@ -321,14 +335,16 @@ Implemented and planned tests:
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::bun_cross_language_agent_packet_projects_bridge_unknown_stop_condition`
 - `crates/ripr/src/output/typescript_preview_card.rs::tests::stable_byte_proof_mode_is_advisory`
 - `xtask/src/main.rs::tests::cross_language_profile_intake_requires_manifest_rows`
+- `xtask/src/main.rs::tests::cross_language_profile_intake_requires_helper_gated_rows`
 - `xtask/src/main.rs::tests::configured_bridge_inventory_reports_missing_future_surfaces`
 - `xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked`
 
 Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
 current bounded graph behavior. The Bun preview summary, advisory packet,
 stable-byte proof-mode rows, and node:fs scalar-write manifest-only intake row
-are now implemented; Bun.write, bridge inventory, and live dogfood expansion
-remain planned until their slices land.
+are now implemented; the Bun.write helper-gated manifest-only intake row is
+also implemented. Bridge inventory and live dogfood expansion remain planned
+until their slices land.
 
 ## Implementation Mapping
 
