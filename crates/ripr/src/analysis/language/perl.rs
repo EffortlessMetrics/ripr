@@ -5,6 +5,7 @@
 //! a Perl runtime, or an LSP protocol session. Production routing lands only
 //! after the fact packet and strict actionability slices are fixture-backed.
 
+use crate::domain::ExposureClass;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
@@ -248,6 +249,105 @@ impl PerlFactPacket {
             .collect()
     }
 
+    fn related_test_evidence_for_change(&self, change_id: &str) -> Vec<PerlRelatedTestEvidence> {
+        if self.packet_status != PacketStatus::Complete || self.change(change_id).is_none() {
+            return Vec::new();
+        }
+
+        self.relations
+            .iter()
+            .filter(|relation| relation.change_id == change_id)
+            .filter_map(|relation| self.related_test_evidence(relation))
+            .collect()
+    }
+
+    fn classify_change_from_related_tests(&self, change_id: &str) -> ExposureClass {
+        if self.packet_status != PacketStatus::Complete || self.change(change_id).is_none() {
+            return ExposureClass::StaticUnknown;
+        }
+
+        let related = self.related_test_evidence_for_change(change_id);
+        if related.is_empty() {
+            return ExposureClass::NoStaticPath;
+        }
+        if related
+            .iter()
+            .any(|evidence| evidence.class == ExposureClass::WeaklyExposed)
+        {
+            return ExposureClass::WeaklyExposed;
+        }
+        if related
+            .iter()
+            .any(|evidence| evidence.class == ExposureClass::ReachableUnrevealed)
+        {
+            return ExposureClass::ReachableUnrevealed;
+        }
+
+        ExposureClass::StaticUnknown
+    }
+
+    fn related_test_evidence(&self, relation: &RelationFact) -> Option<PerlRelatedTestEvidence> {
+        let test = self
+            .tests
+            .iter()
+            .find(|test| test.test_id == relation.test_id)?;
+        let test_file = self.file(&test.file_id)?;
+        let oracle = relation
+            .oracle_id
+            .as_deref()
+            .and_then(|oracle_id| self.oracle(oracle_id));
+        let verify_command = self
+            .verify_command_for_test(&test.test_id)
+            .map(|command| command.argv.clone());
+        let class = self.classify_related_relation(relation, oracle);
+        let mut evidence_refs = BTreeSet::new();
+        evidence_refs.extend(relation.provenance_refs.iter().cloned());
+        evidence_refs.extend(test.provenance_refs.iter().cloned());
+        if let Some(oracle) = oracle {
+            evidence_refs.extend(oracle.provenance_refs.iter().cloned());
+        }
+
+        Some(PerlRelatedTestEvidence {
+            relation_id: relation.relation_id.clone(),
+            change_id: relation.change_id.clone(),
+            owner_id: relation.owner_id.clone(),
+            test_id: test.test_id.clone(),
+            test_path: test_file.path.clone(),
+            test_name: test.name.clone(),
+            relation_kind: relation.relation_kind,
+            reachability_hint: relation.reachability_hint,
+            oracle_shape: oracle.map(|oracle| oracle.kind.assertion_shape().to_string()),
+            oracle_strength: oracle.map(|oracle| oracle.strength),
+            class,
+            verify_command,
+            evidence_refs: evidence_refs.into_iter().collect(),
+        })
+    }
+
+    fn classify_related_relation(
+        &self,
+        relation: &RelationFact,
+        oracle: Option<&OracleFact>,
+    ) -> ExposureClass {
+        match relation.reachability_hint {
+            ReachabilityHint::StaticUnknown => return ExposureClass::StaticUnknown,
+            ReachabilityHint::WeaklyReachable => return ExposureClass::ReachableUnrevealed,
+            ReachabilityHint::Reachable => {}
+        }
+
+        let Some(oracle) = oracle else {
+            return ExposureClass::ReachableUnrevealed;
+        };
+        if oracle.test_id == relation.test_id
+            && oracle.target_owner_id.as_deref() == Some(relation.owner_id.as_str())
+            && oracle.is_strong_exact()
+        {
+            ExposureClass::WeaklyExposed
+        } else {
+            ExposureClass::ReachableUnrevealed
+        }
+    }
+
     fn canonical_owner_identity(&self, owner_id: &str) -> Option<CanonicalPerlOwnerIdentity> {
         let owner = self.owner(owner_id)?;
         if owner.kind == OwnerKind::Unknown || !owner.owner_id.starts_with("perl:") {
@@ -331,6 +431,23 @@ struct CanonicalPerlGapIdentity {
     behavior_kind: String,
     missing_discriminator: String,
     assertion_shape: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlRelatedTestEvidence {
+    relation_id: String,
+    change_id: String,
+    owner_id: String,
+    test_id: String,
+    test_path: String,
+    test_name: String,
+    relation_kind: RelationKind,
+    reachability_hint: ReachabilityHint,
+    oracle_shape: Option<String>,
+    oracle_strength: Option<OracleStrength>,
+    class: ExposureClass,
+    verify_command: Option<Vec<String>>,
+    evidence_refs: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -1021,6 +1138,122 @@ mod tests {
         assert!(
             value.get("gap_state").is_none(),
             "Perl source/test/oracle fixture must not emit RIPR-derived actionability"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_related_test_linking_classifies_reachability_and_revealability() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+
+        let return_related =
+            packet.related_test_evidence_for_change("change:lib/My/App.pm:8:return");
+        assert_eq!(return_related.len(), 1);
+        let return_evidence = &return_related[0];
+        assert_eq!(
+            return_evidence.relation_id,
+            "relation:return:discount-smoke"
+        );
+        assert_eq!(return_evidence.test_path, "t/app.t");
+        assert_eq!(return_evidence.test_name, "discount_smoke");
+        assert_eq!(return_evidence.relation_kind, RelationKind::DirectOwnerCall);
+        assert_eq!(
+            return_evidence.reachability_hint,
+            ReachabilityHint::Reachable
+        );
+        assert_eq!(
+            return_evidence.oracle_shape.as_deref(),
+            Some("exact_return_assertion")
+        );
+        assert_eq!(
+            return_evidence.oracle_strength,
+            Some(OracleStrength::StrongExact)
+        );
+        assert_eq!(return_evidence.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            return_evidence.verify_command.as_deref(),
+            Some(&["prove".to_string(), "t/app.t".to_string()][..])
+        );
+        assert!(
+            return_evidence
+                .evidence_refs
+                .contains(&"prov:relation:return".to_string())
+        );
+        assert!(
+            return_evidence
+                .evidence_refs
+                .contains(&"prov:oracle:exact-return".to_string())
+        );
+
+        assert_eq!(
+            packet.classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
+            ExposureClass::WeaklyExposed
+        );
+        assert_eq!(
+            packet.classify_change_from_related_tests("change:lib/My/App.pm:14:predicate"),
+            ExposureClass::WeaklyExposed
+        );
+        assert_eq!(
+            packet.classify_change_from_related_tests("change:lib/My/App.pm:20:exception"),
+            ExposureClass::WeaklyExposed
+        );
+        assert_eq!(
+            packet.classify_change_from_related_tests("change:lib/My/App.pm:25:field"),
+            ExposureClass::NoStaticPath,
+            "unlinked Perl oracles must not imply related-test reachability"
+        );
+
+        let weak_text = fixture.replace(
+            r#""relation_id": "relation:return:discount-smoke",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app.t:discount_smoke",
+      "oracle_id": "oracle:t/app.t:7:is""#,
+            r#""relation_id": "relation:return:discount-smoke",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app.t:discount_smoke",
+      "oracle_id": "oracle:t/app.t:6:ok""#,
+        );
+        let weak_packet = PerlAdapter.consume_fact_packet(&weak_text)?;
+        let weak_related =
+            weak_packet.related_test_evidence_for_change("change:lib/My/App.pm:8:return");
+        assert_eq!(weak_related.len(), 1);
+        assert_eq!(
+            weak_related[0].oracle_shape.as_deref(),
+            Some("smoke_ok"),
+            "the relation still names the related test but keeps the advisory oracle shape"
+        );
+        assert_eq!(
+            weak_packet.classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
+            ExposureClass::ReachableUnrevealed
+        );
+
+        let static_unknown_text = fixture.replacen(
+            r#""reachability_hint": "reachable""#,
+            r#""reachability_hint": "static_unknown""#,
+            1,
+        );
+        let static_unknown_packet = PerlAdapter.consume_fact_packet(&static_unknown_text)?;
+        assert_eq!(
+            static_unknown_packet
+                .classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
+            ExposureClass::StaticUnknown
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_str(fixture).map_err(|err| err.to_string())?;
+        assert!(
+            value.get("repair_packet").is_none(),
+            "Perl related-test linking must not emit repair packets before strict actionability"
+        );
+        assert!(
+            value.get("gap_state").is_none(),
+            "Perl related-test linking must not emit RIPR-derived actionability"
         );
 
         Ok(())

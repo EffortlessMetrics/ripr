@@ -4683,6 +4683,7 @@ tests = [
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_fact_packet_adapter_consumes_exact_return_fixture",
   "crates/ripr/src/analysis/language/perl.rs::tests::perllsp_exporter_fixture_is_consumed_without_actionable_gap_state",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_fact_packet_adapter_preserves_source_test_and_oracle_taxonomy",
+  "crates/ripr/src/analysis/language/perl.rs::tests::perl_related_test_linking_classifies_reachability_and_revealability",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_export_request_renders_deterministic_batch_command",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_exporter_unavailable_stays_non_actionable",
 ]

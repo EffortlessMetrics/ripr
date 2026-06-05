@@ -694,7 +694,8 @@ The next PRs are:
 3. Add canonical Perl owner and gap ID mapping.
 4. Add `perl-lsp` exporter integration.
 5. Add source/test/oracle fact fixtures.
-6. Add related-test linking and strict actionability.
+6. Add related-test linking as preview reachability/revealability evidence.
+7. Add strict actionability and repair-packet fail-closed cases.
 
 This spec does not require all implementation slices to land in one PR.
 

@@ -38,6 +38,8 @@ The expected packet must keep:
   facts;
 - strong exact Perl oracle shapes separate from `ok(...)`, mention-only,
   dies-only, unknown-helper, and dynamic-framework advisory evidence;
+- related-test links classified as preview reachability/revealability evidence,
+  not repair-packet readiness;
 - verify commands as facts, not executed results;
 - no RIPR-derived `canonical_gap_id` or `gap_state`.
 
