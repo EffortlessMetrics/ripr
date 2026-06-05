@@ -4661,3 +4661,23 @@ metrics = [
   "cross_language_evidence_router_bridge_inventory_rows",
   "cross_language_evidence_router_public_packet_exclusions",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0064"
+name = "Perl fact packet contract"
+spec = "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md",
+  "docs/adr/0018-perl-lsp-fact-substrate.md",
+  "policy/doc-artifacts.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "perl_fact_packet_contract_preview_advisory",
+  "perl_fact_packet_public_repair_packet_exclusions",
+]

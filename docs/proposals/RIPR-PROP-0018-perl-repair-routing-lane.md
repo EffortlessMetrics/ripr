@@ -322,6 +322,18 @@ Evidence must scale with the claim:
   rate, false-actionable rate, static-limit distribution, and receipt closure
   rate.
 
+## Alternatives considered
+
+- Build Perl parsing and semantic analysis inside RIPR. Rejected because
+  `perl-lsp` already owns the Perl fact substrate and a second parser would
+  split provenance, confidence, and dynamic-boundary behavior.
+- Make `ripr check` launch a live Perl LSP session. Rejected for the first lane
+  because deterministic packet replay is easier to fixture, review, and keep
+  preview/advisory.
+- Generate Perl tests directly from weak evidence. Rejected because this lane
+  must route bounded repair packets or named limitations, not create
+  unreceipted edits.
+
 ## Risks
 
 - `perl-lsp` facts could drift from RIPR expectations. Mitigation: define a
