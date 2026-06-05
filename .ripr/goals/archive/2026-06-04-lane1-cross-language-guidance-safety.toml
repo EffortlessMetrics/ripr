@@ -1,12 +1,14 @@
-# Closed as a one-slice successor on 2026-06-04 after live inspection showed
-# the generic cross-language target-unresolved review-comments path was covered,
-# but the exact #908 MarkdownObject wrong-target sample was not fixture-pinned.
+# Archived manually with the guidance-safety PR on 2026-06-04.
 id = "lane1-cross-language-guidance-safety"
 title = "Lane 1 Cross-Language Guidance Safety"
 status = "closed"
 lane = "lane1"
 issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
 no_current_goal = true
+
+# Selected as a one-slice successor after live inspection showed the generic
+# cross-language target-unresolved review-comments path was covered, but the
+# exact #908 MarkdownObject wrong-target sample was not fixture-pinned.
 
 objective = """
 Pin the #908 MarkdownObject review-comments guidance failure so externally

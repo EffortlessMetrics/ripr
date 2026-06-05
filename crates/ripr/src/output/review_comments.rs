@@ -1227,6 +1227,47 @@ mod tests {
         }
     }
 
+    fn markdown_object_classified_with_external_observer() -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/runtime/api/MarkdownObject.rs",
+            "MarkdownObject::to_string",
+            SeamKind::PredicateBoundary,
+            60,
+            60,
+            "self.0.resizable && !self.0.shared",
+            RequiredDiscriminator::BoundaryValue {
+                description: "self.0.resizable && !self.0.shared".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let seam_id = seam.id().clone();
+        ClassifiedSeam {
+            seam,
+            class: SeamGripClass::WeaklyGripped,
+            evidence: TestGripEvidence {
+                seam_id,
+                related_tests: vec![RelatedTestGrip {
+                    test_name: "markdown snapshots resizable ArrayBuffer input".to_string(),
+                    file: PathBuf::from("test/js/bun/md/md-edge-cases.test.ts"),
+                    line: 42,
+                    oracle_kind: OracleKind::ExactValue,
+                    oracle_strength: OracleStrength::Strong,
+                    evidence_summary: "configured TypeScript bridge exact markdown output observer"
+                        .to_string(),
+                    relation_reason: RelationReason::DirectOwnerCall,
+                    relation_confidence: RelationConfidence::High,
+                }],
+                reach: stage(StageState::Yes),
+                activate: stage(StageState::Yes),
+                propagate: stage(StageState::Weak),
+                observe: stage(StageState::Weak),
+                discriminate: stage(StageState::Weak),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+        }
+    }
+
     fn selection<'a>(seams: &'a [ClassifiedSeam]) -> AgentBriefSelection<'a> {
         AgentBriefSelection {
             requested: 10,
@@ -1733,6 +1774,64 @@ mod tests {
         assert!(
             markdown.contains("limitation_route: `analysis/cross-language-test-target-inference`")
         );
+        assert!(!markdown.contains("ripr agent verify"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_markdownobject_external_observer_never_suggests_wrong_rust_target()
+    -> Result<(), String> {
+        let seams = [markdown_object_classified_with_external_observer()];
+        let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(
+            "test/js/bun/md/md-edge-cases.test.ts",
+        )]);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["summary_only"], 1);
+        let item = &value["summary_only"][0];
+        assert_eq!(item["gap_state"], "static_limitation");
+        assert_eq!(item["repairability"], "no_action");
+        assert_eq!(
+            item["limitation"], "cross_language_target_unresolved",
+            "MarkdownObject external observer must fail closed before target placement"
+        );
+        assert_eq!(
+            item["limitation_route"],
+            "analysis/cross-language-test-target-inference"
+        );
+        assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
+        assert_eq!(
+            item["navigation_only_target"]["file"],
+            "test/js/bun/md/md-edge-cases.test.ts"
+        );
+        assert_eq!(item["navigation_only_target"]["line"], 42);
+        assert!(
+            item["llm_guidance"].get("verify_command").is_none(),
+            "MarkdownObject target-unresolved guidance must not expose verify_command: {item:?}"
+        );
+        let prompt = item["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("llm_guidance prompt should be a string")?;
+        assert!(prompt.contains("Do not write a Rust test"));
+        assert!(prompt.contains("analysis/cross-language-test-target-inference"));
+        assert!(!prompt.contains("vendor/lolhtml/tests/harness/input.rs"));
+        assert!(!prompt.contains("Write one focused Rust test"));
+
+        let rendered = serde_json::to_string_pretty(&value)
+            .map_err(|err| format!("render review comment JSON: {err}"))?;
+        assert!(!rendered.contains("vendor/lolhtml/tests/harness/input.rs"));
+
+        let markdown = render_markdown(&working_set, &seams);
+        assert!(markdown.contains("`src/runtime/api/MarkdownObject.rs:60`"));
+        assert!(
+            markdown.contains("navigation_only_target: `test/js/bun/md/md-edge-cases.test.ts:42`")
+        );
+        assert!(markdown.contains("repair_packet_ready=false"));
+        assert!(
+            markdown.contains("limitation_route: `analysis/cross-language-test-target-inference`")
+        );
+        assert!(!markdown.contains("vendor/lolhtml/tests/harness/input.rs"));
         assert!(!markdown.contains("ripr agent verify"));
         Ok(())
     }

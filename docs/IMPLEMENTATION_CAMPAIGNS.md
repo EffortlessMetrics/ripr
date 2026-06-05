@@ -4851,3 +4851,44 @@ Non-claims:
 Closeout:
 
 - [Lane 1 Cross-Language Oracle Follow-Up closeout](handoffs/2026-06-04-lane1-cross-language-oracle-followup-closeout.md)
+
+## Lane 1 Campaign: Cross-Language Guidance Safety
+
+Campaign ID: `lane1-cross-language-guidance-safety`
+
+Status: closed. `.ripr/goals/active.toml` records `status = "closed"` and
+`no_current_goal = true`. The archived manifest lives at
+`.ripr/goals/archive/2026-06-04-lane1-cross-language-guidance-safety.toml`.
+
+This one-slice successor pins the #908 MarkdownObject review-comments guidance
+failure without reopening generic cross-language oracle support. It proves the
+agent-facing prompt fails closed when a Rust seam has external TypeScript
+observer evidence but safe repair target placement remains unresolved.
+
+Objective:
+
+```text
+Pin the #908 MarkdownObject review-comments guidance failure so externally
+observed TypeScript evidence remains navigation-only when safe target placement
+is unresolved, and the agent-facing prompt cannot suggest a wrong Rust test
+target.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `output/markdownobject-review-comments-target-safety` | done | Adds a MarkdownObject-specific review-comments regression for `src/runtime/api/MarkdownObject.rs` and `test/js/bun/md/md-edge-cases.test.ts`: the row stays `cross_language_target_unresolved`, has no verify command or public repair packet, does not mention `vendor/lolhtml/tests/harness/input.rs`, and exposes the TypeScript observer only as navigation-only context routed to `analysis/cross-language-test-target-inference`. |
+
+Non-claims:
+
+- no #908 or #910 closure claim;
+- no generic TypeScript, JavaScript, binding, or FFI oracle proof;
+- no runtime Bun, Jest, Vitest, `tsc`, `tsserver`, Miri, or mutation
+  execution;
+- no generated tests;
+- no public repair packet from preview or limitation evidence;
+- no provider integration;
+- no autonomous edits;
+- no default blocking CI or badge semantic switch;
+- no source release, publish, tag, signing, marketplace, or install-doc work.
