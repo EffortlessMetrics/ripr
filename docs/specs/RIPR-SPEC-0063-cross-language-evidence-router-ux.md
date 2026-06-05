@@ -188,7 +188,8 @@ Implementations of this spec must provide:
   `mutation_plus_miri`, `helper_gated`, `bridge_unknown`, and
   `static_limitation`;
 - manifest-only profile rows for node:fs scalar write and Bun.write before
-  analyzer behavior changes;
+  analyzer behavior changes; node:fs scalar write is pinned first and Bun.write
+  remains the next fixture slice;
 - a configured bridge inventory report with current configured bridges and
   explicitly missing future surfaces;
 - live Bun dogfood receipts with manual verdicts for at least one credited
@@ -300,12 +301,14 @@ Bridge-unknown packet:
 Manifest-only new profile:
 
 ```text
-Profile: node_fs_scalar_write
+Profile: bun_node_fs_scalar_write
 Status: manifest_only
 Rust seam: unresolved until fixture audit
 TS witness path: test/js/node/fs/fs.test.ts
 Proof mode: observable_red_green
-Projection: not eligible until corpus, bridge, and oracle rows are pinned
+State: named_static_limitation
+Missing graph legs: binding_or_ffi_edge:node_fs_scalar_write, external_oracle:stable_byte_scalar_write
+Projection: not eligible for analyzer credit or repair packets until the bridge and oracle rows are audited
 ```
 
 ## Test Mapping
@@ -322,9 +325,10 @@ Implemented and planned tests:
 - `xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked`
 
 Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
-current bounded graph behavior. The Bun preview summary, advisory packet, and
-stable-byte proof-mode rows are now implemented; later rows remain planned
-until their slices land.
+current bounded graph behavior. The Bun preview summary, advisory packet,
+stable-byte proof-mode rows, and node:fs scalar-write manifest-only intake row
+are now implemented; Bun.write, bridge inventory, and live dogfood expansion
+remain planned until their slices land.
 
 ## Implementation Mapping
 

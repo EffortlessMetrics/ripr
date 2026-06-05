@@ -65,6 +65,22 @@ unresolved. It is therefore a named static limitation with no Rust test
 suggestion, no external-language test placement, no verify route, no receipt
 route, and no allowed edit surface.
 
+The node:fs scalar-write intake row records the first non-Blob stable-byte
+profile as manifest-only:
+
+```text
+unresolved:node-fs-scalar-write-rust-seam
+node:fs scalar write sink
+JS-owned bytes must be copied before native write scalar sinks
+```
+
+The typed witness path is `test/js/node/fs/fs.test.ts`, and the advisory proof
+mode is `observable_red_green`. The row names missing bridge and scalar-write
+oracle graph legs, so it stays a named static limitation. The placement path is
+only recorded because the manifest includes an explicit typed placement raw ref;
+the row still does not create analyzer behavior, public actionability, a verify
+route, a receipt route, a generated test, or an allowed edit surface.
+
 ## When
 
 RIPR evaluates the fixture corpus, it should distinguish:
@@ -75,6 +91,8 @@ RIPR evaluates the fixture corpus, it should distinguish:
 - unknown binding or FFI routes;
 - unresolved cross-language test target placement.
 - public-reachable panic boundaries whose external oracle path is unresolved.
+- manifest-only profile intake rows that name future bridge or oracle legs
+  without crediting them.
 Each row names its graph `profile` so later non-Blob profiles can be added
 without weakening the Bun Blob or MarkdownObject contracts.
 

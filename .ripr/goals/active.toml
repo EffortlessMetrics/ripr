@@ -132,3 +132,22 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "fixtures/bun-node-fs-scalar-write-profile"
+status = "done"
+branch = "fixtures-bun-node-fs-scalar-write-profile"
+stackable = false
+acceptance = "Add a manifest-only node:fs scalar write stable-byte profile with typed witness placement at test/js/node/fs/fs.test.ts only when placement evidence exists, proof_mode=observable_red_green, missing bridge/oracle graph legs preserved as a named_static_limitation, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

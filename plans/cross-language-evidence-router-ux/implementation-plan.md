@@ -1,6 +1,6 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first four implementation work items complete
+Status: active; first five implementation work items complete
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
@@ -23,8 +23,10 @@ The patch proof packet for that closed 0.8.1 path is recorded in
 Markdown summary for the current Bun UB route states. The TypeScript preview
 card now projects a nested Bun cross-language advisory packet for configured
 routes. Configured Bun cross-language grip output now includes advisory
-stable-byte proof-mode projection. The next implementation slice is
-`fixtures/bun-node-fs-scalar-write-profile`.
+stable-byte proof-mode projection. The node:fs scalar write stable-byte route
+is now pinned as a manifest-only profile with typed witness placement,
+`observable_red_green` proof mode, and named missing bridge/oracle graph legs.
+The next implementation slice is `fixtures/bun-write-helper-gated-profile`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -273,7 +275,7 @@ all set to `false`.
 
 ## Work Item: fixtures/bun-node-fs-scalar-write-profile
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0062, RIPR-SPEC-0063
 Linked ADR: n/a
@@ -323,7 +325,11 @@ Revert the manifest rows, validator expectations, and docs references.
 ### Notes
 
 This PR establishes the target plate for a future analyzer route. It should not
-try to solve node:fs reachability.
+try to solve node:fs reachability. The row is a manifest-only
+`named_static_limitation`: it records `test/js/node/fs/fs.test.ts` only because
+typed placement evidence is present, keeps `repair_packet_ready = false`, and
+names `binding_or_ffi_edge:node_fs_scalar_write` plus
+`external_oracle:stable_byte_scalar_write` as missing graph legs.
 
 ## Work Item: fixtures/bun-write-helper-gated-profile
 

@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "kind": "cross_language_oracle_graph_corpus",
   "spec": "RIPR-SPEC-0062",
-  "description": "Bounded Bun Blob cross-language oracle graph corpus for #910/#908.",
+  "description": "Bounded Bun TypeScript cross-language oracle graph corpus for #910/#908 and stable-byte profile intake.",
   "authority_boundary": "preview_advisory_only",
   "cases": [
     {
@@ -1022,6 +1022,125 @@
         "no allowed edit surface"
       ],
       "reason": "The #950 Bun FFI negative-offset sample is public-reachable through TypeScript but the external panic-boundary oracle and safe placement route are unresolved, so it remains a named static limitation instead of a misleading Rust repair packet."
+    },
+    {
+      "id": "bun_node_fs_scalar_write_manifest_only_profile",
+      "source": "profile-intake-node-fs-scalar-write",
+      "profile": "bun_node_fs_scalar_write",
+      "profile_status": "manifest_only",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "unresolved:node-fs-scalar-write-rust-seam",
+        "line": null,
+        "owner": "node:fs scalar write sink",
+        "boundary": "JS-owned bytes must be copied before native write scalar sinks"
+      },
+      "binding_edge": {
+        "kind": "manifest_only",
+        "confidence": "manifest_only"
+      },
+      "external_callsite": {
+        "file": "test/js/node/fs/fs.test.ts",
+        "line": 1,
+        "entrypoints": [
+          "node:fs scalar write",
+          "fs.writeFileSync",
+          "fs.writeSync"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/node/fs/fs.test.ts",
+        "line": 1,
+        "kind": "stable_byte_scalar_write_oracle_manifest_only",
+        "strength": "manifest_only"
+      },
+      "expected": {
+        "state": "named_static_limitation",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_profile_manifest_only",
+        "repair_route": "analysis/cross-language-profile-intake",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "test/js/node/fs/fs.test.ts",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "binding_or_ffi_edge:node_fs_scalar_write",
+          "external_oracle:stable_byte_scalar_write"
+        ],
+        "unlock_condition": "Audit the node:fs scalar write Rust sink and bridge/oracle evidence before analyzer projection.",
+        "proof_mode": "observable_red_green"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "issue:node-fs-scalar-write-profile",
+          "line": 1,
+          "kind": "rust_seam_unresolved",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "node:fs scalar write Rust sink remains unresolved in the manifest-only profile"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "issue:node-fs-scalar-write-profile",
+          "line": 1,
+          "kind": "stable_byte_scalar_write_discriminator",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "scalar write is the stable-byte boundary shape under intake"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typescript_node_fs_callsite",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "node:fs scalar writes are expected to be witnessed in fs.test.ts"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typescript_assertion_manifest_only",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "stable-byte scalar write assertion shape is manifest-only"
+        },
+        {
+          "leg": "placement",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typed_test_placement",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "typed node:fs placement is pinned without actionability"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The node:fs scalar write stable-byte profile is pinned as manifest-only with observable red/green proof mode, typed witness placement, and missing bridge/oracle graph legs; it remains non-actionable until the Rust sink, bridge, and oracle evidence are audited."
     }
   ]
 }

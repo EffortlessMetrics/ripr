@@ -4638,6 +4638,7 @@ tests = [
   "crates/ripr/src/output/typescript_preview_card.rs::tests::bun_cross_language_agent_packet_projects_missing_discriminator",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::bun_cross_language_agent_packet_projects_bridge_unknown_stop_condition",
   "crates/ripr/src/output/typescript_preview_card.rs::tests::stable_byte_proof_mode_is_advisory",
+  "xtask/src/main.rs::tests::cross_language_profile_intake_requires_manifest_rows",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_bun_cross_language_grip",
 ]
 fixtures = [
@@ -4671,6 +4672,7 @@ metrics = [
   "cross_language_evidence_router_operator_summary_rows",
   "cross_language_evidence_router_agent_packets",
   "cross_language_evidence_router_proof_mode_projection",
+  "cross_language_evidence_router_manifest_only_profiles",
   "cross_language_evidence_router_bridge_inventory_rows",
   "cross_language_evidence_router_public_packet_exclusions",
 ]
