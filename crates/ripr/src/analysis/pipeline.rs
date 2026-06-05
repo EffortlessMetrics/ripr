@@ -30,6 +30,7 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
                 analyze_typescript_diff(options, oracle_policy, &changed_files)?
             }
             LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files)?,
+            LanguageId::Perl => analyze_perl_diff()?,
         };
         findings.extend(result.findings);
         total_changed_files += result.changed_files;
@@ -58,6 +59,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
                 analyze_typescript_repo(options, oracle_policy)?
             }
             LanguageId::Python => analyze_python_repo(options, oracle_policy)?,
+            LanguageId::Perl => analyze_perl_repo()?,
         };
         findings.extend(result.findings);
         total_production_files += result.production_files;
@@ -140,7 +142,38 @@ fn analyze_python_repo(
     unavailable_language(LanguageId::Python)
 }
 
-#[cfg(any(not(feature = "lang-typescript"), not(feature = "lang-python")))]
+#[cfg(feature = "lang-perl")]
+fn analyze_perl_diff() -> Result<LanguageDiffResult, String> {
+    perl_fact_packet_preview_unavailable()
+}
+
+#[cfg(not(feature = "lang-perl"))]
+fn analyze_perl_diff() -> Result<LanguageDiffResult, String> {
+    unavailable_language(LanguageId::Perl)
+}
+
+#[cfg(feature = "lang-perl")]
+fn analyze_perl_repo() -> Result<LanguageRepoResult, String> {
+    perl_fact_packet_preview_unavailable()
+}
+
+#[cfg(not(feature = "lang-perl"))]
+fn analyze_perl_repo() -> Result<LanguageRepoResult, String> {
+    unavailable_language(LanguageId::Perl)
+}
+
+#[cfg(feature = "lang-perl")]
+fn perl_fact_packet_preview_unavailable<T>() -> Result<T, String> {
+    Err(
+        "language `perl` is a fact-packet preview; `ripr check` does not launch perl-lsp or consume live Perl fact packets yet".to_string(),
+    )
+}
+
+#[cfg(any(
+    not(feature = "lang-typescript"),
+    not(feature = "lang-python"),
+    not(feature = "lang-perl")
+))]
 fn unavailable_language<T>(language: LanguageId) -> Result<T, String> {
     Err(format!(
         "language `{}` is not available in this ripr binary; rebuild with Cargo feature `{}` to enable it",

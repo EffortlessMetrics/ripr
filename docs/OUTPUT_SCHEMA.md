@@ -516,6 +516,30 @@ The evidence-first fields are additive in schema `0.1`:
   repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
+- `perl_preview_card` is an additive optional object for Perl preview findings
+  that already have strict fact-packet evidence, canonical gap identity,
+  related-test evidence, missing discriminator evidence, verify-command
+  evidence, receipt evidence, stop conditions, must-not-change constraints, and
+  safe repo-relative raw evidence refs. It is a check-JSON-only advisory card,
+  not a public repair packet. The v1 card carries `card_version`, `source`,
+  `language`, `language_status`, `authority_boundary`, `surface_scope`,
+  `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,
+  `agent_packet_ready`, `gate_candidate`, `badge_candidate`,
+  `ripr_zero_candidate`, `packet_id`, `canonical_gap_id`, `gap_state`,
+  `changed_owner`, `evidence_class`, `repair_route`,
+  `current_test_evidence`, `missing_discriminator`, `target_test_shape`,
+  `suggested_test_location`, `suggested_assertion`, `verify`, `receipt`,
+  `confidence`, `raw_evidence_refs[]`, `stop_if[]`, `must_not_change[]`, and
+  `limits`. For this slice, `surface_scope = "check_json_only"`,
+  `public_repair_packet = false`, `repair_packet_ready = false`,
+  `agent_packet_ready = false`, `gate_candidate = false`,
+  `badge_candidate = false`, and `ripr_zero_candidate = false`.
+  `verify.command` is copied from fact evidence with
+  `verify.status = "fact_only_not_delegated"`. `receipt.command` is always
+  `null` even though receipt evidence is required internally. Perl preview
+  cards do not project allowed edit surfaces, forbidden files, receipt argv,
+  SARIF properties, Markdown, PR, CI, LSP, swarm routing, badge authority, gate
+  authority, or RIPR Zero authority in this first public slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
   Those records are advisory preview inputs for `ripr agent packet
@@ -542,8 +566,8 @@ The evidence-first fields are additive in schema `0.1`:
   `<module>` as the owner segment.
 - `language` is the per-finding source language reported by the language
   adapter that produced it (see [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md)).
-  Values are `rust`, `typescript`, `javascript`, or `python`. Omitted when no
-  adapter populated it. Rust findings always carry `language: "rust"`;
+  Values are `rust`, `typescript`, `javascript`, `python`, or `perl`. Omitted
+  when no adapter populated it. Rust findings always carry `language: "rust"`;
   preview adapters set the preview-language value when configured.
 - `language_status` is the per-finding adapter status. Values are `stable`
   or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; configured preview
@@ -997,6 +1021,9 @@ Every result carries:
   the typed `static_limit_kind`, and use `not_applicable_static_limit` status.
   This is fail-closed review context only; it must not be treated as an agent
   packet or closure receipt.
+- Perl preview cards are intentionally not SARIF properties in this slice.
+  `findings[].perl_preview_card` is check-JSON-only advisory context until a
+  later output PR wires a separate SARIF contract.
 
 Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
 when their configured severity is visible. Results whose configured severity is

@@ -51,6 +51,7 @@ default = ["lang-rust", "lang-typescript", "lang-python"]
 lang-rust = []
 lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
 lang-python = ["dep:rustpython-parser"]
+lang-perl = []
 
 [lints]
 workspace = true

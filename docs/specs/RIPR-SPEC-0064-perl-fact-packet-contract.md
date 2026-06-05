@@ -637,6 +637,18 @@ keep `projection_scope = "internal_adapter_only"`,
 `public_repair_packet = false`, and no public projection authority until the
 JSON, Markdown, SARIF, PR, CI, LSP, and swarm surfaces are wired separately.
 
+The first public projection is narrower than that private repair card:
+`findings[].perl_preview_card` in `ripr check --format json` only. It must keep
+`card_version = "perl_preview_card.v1"`, `surface_scope = "check_json_only"`,
+`language_status = "preview"`, `authority_boundary = "preview_advisory_only"`,
+`public_repair_packet = false`, `repair_packet_ready = false`,
+`agent_packet_ready = false`, `gate_candidate = false`,
+`badge_candidate = false`, and `ripr_zero_candidate = false`. It may echo the
+fact-packet verify command as `verify.command` with
+`verify.status = "fact_only_not_delegated"`, but it must render
+`receipt.command = null` and must not expose receipt argv, allowed edit
+surfaces, forbidden files, Markdown, SARIF, PR, CI, LSP, or swarm routing.
+
 ### Smoke-only ok evidence
 
 Input facts:
@@ -692,8 +704,12 @@ Follow-up implementation tests should map as:
 - `analysis/perl-repair-card-agent-packet`: private preview repair-card and
   agent-packet projection from strict actionability, plus fail-closed cases
   proving blocked strict actionability emits neither.
-- `output/perl-repair-cards`: projection through JSON, Markdown, SARIF, PR, CI,
-  LSP, and swarm packet surfaces after the adapter exists.
+- `output/perl-preview-card-json`: check-JSON-only advisory projection,
+  fail-closed missing receipt/provenance/unsafe path cases, and assertions that
+  public repair-packet, agent-packet, badge, gate, RIPR Zero, edit-surface, and
+  receipt-argv fields are not projected.
+- `output/perl-repair-cards`: later projection through Markdown, SARIF, PR, CI,
+  LSP, and swarm packet surfaces after a separate public contract exists.
 
 ## Implementation Mapping
 
@@ -708,7 +724,9 @@ The next PRs are:
 7. Add strict actionability and repair-packet fail-closed cases.
 8. Add private preview repair card and agent packet projection from strict
    actionability.
-9. Wire public JSON, Markdown, SARIF, PR, CI, LSP, and swarm projection.
+9. Wire public check-JSON-only `perl_preview_card.v1` projection.
+10. Wire Markdown, SARIF, PR, CI, LSP, and swarm projection in separate output
+    PRs with their own public contracts.
 
 This spec does not require all implementation slices to land in one PR.
 

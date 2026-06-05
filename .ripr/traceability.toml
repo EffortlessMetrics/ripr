@@ -1959,9 +1959,12 @@ name = "Language adapter contract"
 spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
 tests = [
   "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/language.rs::tests::language_id_wire_strings_are_stable",
+  "crates/ripr/src/domain/language.rs::tests::language_feature_availability_matches_build",
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_dispatches_enabled_preview_feature_adapters",
   "crates/ripr/src/analysis/pipeline.rs::tests::repo_pipeline_dispatches_enabled_preview_feature_adapters",
   "crates/ripr/src/config.rs::tests::languages_section",
+  "crates/ripr/src/config.rs::tests::languages_section_rejects_unavailable_perl_adapter",
   "crates/ripr/src/output/json/mod.rs",
 ]
 fixtures = [
@@ -1975,6 +1978,7 @@ code = [
   "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/analysis/pipeline.rs",
   "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/perl_preview_card.rs",
   "crates/ripr/src/analysis/language/typescript.rs",
 ]
 outputs = [
@@ -4700,16 +4704,23 @@ tests = [
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_repair_card_and_agent_packet_fail_closed_without_strict_actionability",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_export_request_renders_deterministic_batch_command",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_exporter_unavailable_stays_non_actionable",
+  "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_projects_json_preview_only_card",
+  "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_fails_closed_without_strict_projection_inputs",
+  "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_rejects_unsafe_or_incomplete_raw_refs",
+  "crates/ripr/src/output/json/mod.rs::tests::finding_json_projects_perl_preview_card_json_only",
 ]
 fixtures = [
   "fixtures/perl_lsp_facts_exporter",
 ]
 code = [
   "crates/ripr/src/analysis/language/perl.rs",
+  "crates/ripr/src/output/perl_preview_card.rs",
+  "crates/ripr/src/output/json/report.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md",
   "docs/adr/0018-perl-lsp-fact-substrate.md",
   "policy/doc-artifacts.toml",

@@ -68,13 +68,14 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 
 [languages]
-# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters when the ripr binary was built with the
-# matching Cargo feature (`lang-typescript` or `lang-python`). When this file is
-# absent, Python project markers can enable Python preview analysis
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript`,
+# `python`, or `perl` to opt into preview adapters when the ripr binary was
+# built with the matching Cargo feature (`lang-typescript`, `lang-python`, or
+# `lang-perl`). When this file is absent, Python project markers can enable
+# Python preview analysis
 # automatically for the detected repository root; this explicit list remains
 # authoritative when present.
-# Valid values: rust, typescript, python.
+# Valid values: rust, typescript, python, perl.
 enabled = ["rust"]
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
@@ -681,9 +682,10 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             "rust" => LanguageId::Rust,
             "typescript" => LanguageId::TypeScript,
             "python" => LanguageId::Python,
+            "perl" => LanguageId::Perl,
             other => {
                 return Err(format!(
-                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python"
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl"
                 ));
             }
         };
@@ -1259,6 +1261,21 @@ enabled = ["rust", "typescript"]
         assert!(
             matches!(result, Err(ref message) if message.contains("lang-typescript")),
             "expected missing lang-typescript error, got {result:?}"
+        );
+    }
+
+    #[cfg(not(feature = "lang-perl"))]
+    #[test]
+    fn languages_section_rejects_unavailable_perl_adapter() {
+        let result = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "perl"]
+"#,
+        );
+        assert!(
+            matches!(result, Err(ref message) if message.contains("lang-perl")),
+            "expected missing lang-perl error, got {result:?}"
         );
     }
 
