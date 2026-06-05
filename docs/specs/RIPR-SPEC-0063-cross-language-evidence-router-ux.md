@@ -256,7 +256,15 @@ Missing discriminator agent packet:
   "suggested_shape": "new ArrayBuffer(..., { maxByteLength: ... }) through Blob/view with a stable-byte assertion",
   "bridge_confidence": "configured",
   "missing_graph_legs": [],
-  "proof_mode": "observable_red_green",
+  "proof_mode": {
+    "mode": "observable_red_green",
+    "reason": "The missing TypeScript discriminator belongs in an existing bridged stable-byte observer route; future proof should be a system-Bun red/patched-green witness after the discriminator is added.",
+    "authority_boundary": "preview_advisory_only",
+    "runtime_execution": false,
+    "mutation_execution": false,
+    "miri_execution": false,
+    "proof_claim": false
+  },
   "authority_boundary": "preview_advisory_only",
   "repair_packet_ready": false,
   "must_not_change": [
@@ -274,6 +282,15 @@ Bridge-unknown packet:
 {
   "cross_language_state": "bridge_unknown",
   "missing_graph_legs": ["binding_or_ffi_edge"],
+  "proof_mode": {
+    "mode": "bridge_unknown",
+    "reason": "The binding or FFI edge is missing, so TypeScript evidence cannot be credited to the Rust seam.",
+    "authority_boundary": "preview_advisory_only",
+    "runtime_execution": false,
+    "mutation_execution": false,
+    "miri_execution": false,
+    "proof_claim": false
+  },
   "next_action": "inspect or add bridge evidence before crediting TypeScript evidence",
   "ts_test_file": null,
   "repair_packet_ready": false
