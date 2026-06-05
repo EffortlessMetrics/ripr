@@ -80,6 +80,17 @@ RIPR owns:
 The fact exchange must be a deterministic batch packet, not a live LSP protocol
 dependency. The intended first contract name is `ripr-perl-facts-v1`.
 
+The first exporter request shape is a batch command:
+
+```text
+perl-lsp ripr-facts --schema ripr-perl-facts-v1 --root . --base origin/main --head HEAD --fact-classes owners,changes,tests,oracles --out target/ripr/reports/perl-facts.json
+```
+
+RIPR may model and render that request, but it must not make `ripr check`
+depend on launching `perl-lsp`, a Perl runtime, package installation, or test
+execution. If the exporter is missing or cannot produce a packet, RIPR records
+an unavailable/limitation state rather than creating repair guidance.
+
 The batch packet must be fixture-friendly so RIPR can implement and test a
 fixture-only `PerlAdapter` before a live exporter is available. Parser-specific
 or LSP-specific types must not leak into RIPR's public output schemas or

@@ -6,8 +6,11 @@
 //! after the fact packet and strict actionability slices are fixture-backed.
 
 use serde::Deserialize;
+use std::collections::BTreeSet;
 
 const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
+const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
+const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct PerlAdapter;
@@ -23,6 +26,129 @@ impl PerlAdapter {
             ));
         }
         Ok(packet)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlLspFactExportRequest {
+    root: String,
+    out: String,
+    base: Option<String>,
+    head: Option<String>,
+    requested_fact_classes: Vec<PerlFactClass>,
+}
+
+impl PerlLspFactExportRequest {
+    fn new(
+        root: impl Into<String>,
+        out: impl Into<String>,
+        requested_fact_classes: impl IntoIterator<Item = PerlFactClass>,
+    ) -> Result<Self, String> {
+        let root = stable_repo_path_arg(root.into(), "root")?;
+        let out = stable_repo_path_arg(out.into(), "out")?;
+        let requested_fact_classes = canonical_fact_classes(requested_fact_classes);
+        if requested_fact_classes.is_empty() {
+            return Err(
+                "perl-lsp fact export request requires at least one fact class".to_string(),
+            );
+        }
+
+        Ok(Self {
+            root,
+            out,
+            base: None,
+            head: None,
+            requested_fact_classes,
+        })
+    }
+
+    fn with_diff_range(
+        mut self,
+        base: impl Into<String>,
+        head: impl Into<String>,
+    ) -> PerlLspFactExportRequest {
+        self.base = Some(base.into());
+        self.head = Some(head.into());
+        self
+    }
+
+    fn render_command(&self) -> PerlLspFactExportCommand {
+        let mut argv = vec![
+            PERL_LSP_FACT_EXPORT_SUBCOMMAND.to_string(),
+            "--schema".to_string(),
+            PERL_FACT_PACKET_SCHEMA.to_string(),
+            "--root".to_string(),
+            self.root.clone(),
+        ];
+        if let Some(base) = self.base.as_ref() {
+            argv.push("--base".to_string());
+            argv.push(base.clone());
+        }
+        if let Some(head) = self.head.as_ref() {
+            argv.push("--head".to_string());
+            argv.push(head.clone());
+        }
+        argv.push("--fact-classes".to_string());
+        argv.push(fact_classes_arg(&self.requested_fact_classes));
+        argv.push("--out".to_string());
+        argv.push(self.out.clone());
+
+        PerlLspFactExportCommand {
+            program: PERL_LSP_FACT_EXPORTER.to_string(),
+            argv,
+        }
+    }
+
+    fn exporter_unavailable(reason: impl Into<String>) -> PerlLspFactExportUnavailable {
+        PerlLspFactExportUnavailable {
+            packet_status: PacketStatus::Unavailable,
+            limitation_kind: BoundaryKind::PacketIncomplete,
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlLspFactExportCommand {
+    program: String,
+    argv: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlLspFactExportUnavailable {
+    packet_status: PacketStatus,
+    limitation_kind: BoundaryKind,
+    reason: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum PerlFactClass {
+    Files,
+    Owners,
+    Changes,
+    Tests,
+    Oracles,
+    Relations,
+    DynamicBoundaries,
+    VerifyCommands,
+    Limitations,
+    Provenance,
+}
+
+impl PerlFactClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Files => "files",
+            Self::Owners => "owners",
+            Self::Changes => "changes",
+            Self::Tests => "tests",
+            Self::Oracles => "oracles",
+            Self::Relations => "relations",
+            Self::DynamicBoundaries => "dynamic_boundaries",
+            Self::VerifyCommands => "verify_commands",
+            Self::Limitations => "limitations",
+            Self::Provenance => "provenance",
+        }
     }
 }
 
@@ -581,6 +707,42 @@ fn canonical_perl_gap_id<'a>(parts: impl IntoIterator<Item = &'a str>) -> String
     format!("gap:perl:{hash:016x}")
 }
 
+fn canonical_fact_classes(
+    requested_fact_classes: impl IntoIterator<Item = PerlFactClass>,
+) -> Vec<PerlFactClass> {
+    requested_fact_classes
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn fact_classes_arg(fact_classes: &[PerlFactClass]) -> String {
+    fact_classes
+        .iter()
+        .map(|fact_class| fact_class.as_str())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn stable_repo_path_arg(path: String, field: &str) -> Result<String, String> {
+    if path.is_empty() {
+        return Err(format!(
+            "perl-lsp fact export `{field}` path must not be empty"
+        ));
+    }
+    if path.contains('\\')
+        || path.starts_with('/')
+        || path.contains(':')
+        || path.split('/').any(|component| component == "..")
+    {
+        return Err(format!(
+            "perl-lsp fact export `{field}` path must be repo-relative and use `/` separators"
+        ));
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -666,6 +828,42 @@ mod tests {
                 .iter()
                 .any(|fact| fact.provenance_id == "prov:runner:1"),
             "runner detection is provenance, not an executed result"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perllsp_exporter_fixture_is_consumed_without_actionable_gap_state() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+
+        assert_eq!(packet.producer.name, "perl-lsp");
+        assert_eq!(packet.schema_version, PERL_FACT_PACKET_SCHEMA);
+        assert_eq!(packet.packet_status, PacketStatus::Complete);
+        assert_eq!(
+            packet.input.requested_fact_classes,
+            ["owners", "changes", "tests", "oracles"]
+        );
+        assert!(
+            packet
+                .files
+                .iter()
+                .all(|file| !file.path.contains('\\') && !file.path.contains(':')),
+            "exporter fixture paths must stay repo-relative"
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_str(fixture).map_err(|err| err.to_string())?;
+        assert!(
+            value.get("canonical_gap_id").is_none(),
+            "perl-lsp packets must not emit RIPR-derived gap IDs"
+        );
+        assert!(
+            value.get("gap_state").is_none(),
+            "perl-lsp packets must not emit RIPR-derived actionability"
         );
 
         Ok(())
@@ -882,6 +1080,110 @@ mod tests {
         for (kind, expected) in oracle_cases {
             assert_eq!(kind.assertion_shape(), expected);
         }
+    }
+
+    #[test]
+    fn perl_lsp_export_request_renders_deterministic_batch_command() -> Result<(), String> {
+        let request = PerlLspFactExportRequest::new(
+            ".",
+            "target/ripr/reports/perl-facts.json",
+            [
+                PerlFactClass::Tests,
+                PerlFactClass::Owners,
+                PerlFactClass::Oracles,
+                PerlFactClass::Changes,
+                PerlFactClass::Owners,
+            ],
+        )?
+        .with_diff_range("origin/main", "HEAD");
+
+        let command = request.render_command();
+
+        assert_eq!(command.program, "perl-lsp");
+        assert_eq!(
+            command.argv,
+            [
+                "ripr-facts",
+                "--schema",
+                "ripr-perl-facts-v1",
+                "--root",
+                ".",
+                "--base",
+                "origin/main",
+                "--head",
+                "HEAD",
+                "--fact-classes",
+                "owners,changes,tests,oracles",
+                "--out",
+                "target/ripr/reports/perl-facts.json"
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_lsp_export_request_covers_all_fact_class_labels() {
+        let cases = [
+            (PerlFactClass::Files, "files"),
+            (PerlFactClass::Owners, "owners"),
+            (PerlFactClass::Changes, "changes"),
+            (PerlFactClass::Tests, "tests"),
+            (PerlFactClass::Oracles, "oracles"),
+            (PerlFactClass::Relations, "relations"),
+            (PerlFactClass::DynamicBoundaries, "dynamic_boundaries"),
+            (PerlFactClass::VerifyCommands, "verify_commands"),
+            (PerlFactClass::Limitations, "limitations"),
+            (PerlFactClass::Provenance, "provenance"),
+        ];
+
+        for (fact_class, expected) in cases {
+            assert_eq!(fact_class.as_str(), expected);
+        }
+    }
+
+    #[test]
+    fn perl_lsp_export_request_rejects_host_specific_paths() -> Result<(), String> {
+        let host_qualified_root = PerlLspFactExportRequest::new(
+            "host:repo",
+            "target/ripr/reports/perl-facts.json",
+            [PerlFactClass::Owners],
+        );
+        let backslash_out = PerlLspFactExportRequest::new(
+            ".",
+            r"target\ripr\reports\perl-facts.json",
+            [PerlFactClass::Owners],
+        );
+        let parent_path_out = PerlLspFactExportRequest::new(
+            ".",
+            "../target/ripr/reports/perl-facts.json",
+            [PerlFactClass::Owners],
+        );
+
+        assert!(
+            matches!(host_qualified_root, Err(ref message) if message.contains("repo-relative")),
+            "host-qualified roots must not enter deterministic exporter requests"
+        );
+        assert!(
+            matches!(backslash_out, Err(ref message) if message.contains("repo-relative")),
+            "backslash paths must not enter deterministic exporter requests"
+        );
+        assert!(
+            matches!(parent_path_out, Err(ref message) if message.contains("repo-relative")),
+            "parent-relative paths must not leave the repository"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_lsp_exporter_unavailable_stays_non_actionable() {
+        let unavailable =
+            PerlLspFactExportRequest::exporter_unavailable("perl-lsp exporter was not found");
+
+        assert_eq!(unavailable.packet_status, PacketStatus::Unavailable);
+        assert_eq!(unavailable.limitation_kind, BoundaryKind::PacketIncomplete);
+        assert!(unavailable.reason.contains("not found"));
     }
 
     const EXACT_RETURN_PACKET: &str = r#"{

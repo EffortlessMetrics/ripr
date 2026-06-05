@@ -4675,9 +4675,18 @@ metrics = [
 id = "RIPR-SPEC-0064"
 name = "Perl fact packet contract"
 spec = "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/analysis/language/perl.rs::tests::perl_fact_packet_adapter_consumes_exact_return_fixture",
+  "crates/ripr/src/analysis/language/perl.rs::tests::perllsp_exporter_fixture_is_consumed_without_actionable_gap_state",
+  "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_export_request_renders_deterministic_batch_command",
+  "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_exporter_unavailable_stays_non_actionable",
+]
+fixtures = [
+  "fixtures/perl_lsp_facts_exporter",
+]
+code = [
+  "crates/ripr/src/analysis/language/perl.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md",
   "docs/specs/README.md",

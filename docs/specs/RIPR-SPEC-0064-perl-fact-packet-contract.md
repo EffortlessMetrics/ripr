@@ -88,6 +88,25 @@ The packet must be consumable from fixtures before a live exporter exists.
 RIPR must not require a live LSP protocol session, Perl runtime, package
 install, or test execution to parse a packet.
 
+### Exporter request
+
+The first integration path is a deterministic batch request to `perl-lsp`, not
+a live LSP session:
+
+```text
+perl-lsp ripr-facts --schema ripr-perl-facts-v1 --root . --base origin/main --head HEAD --fact-classes owners,changes,tests,oracles --out target/ripr/reports/perl-facts.json
+```
+
+RIPR may render this request shape for fixture-backed integration tests and
+future operator workflows, but it must not execute the exporter by default in
+`ripr check`. Request paths are repo-relative, use `/`, and must not carry host,
+drive, temp, or user-specific paths. Requested fact classes are deduplicated and
+emitted in a deterministic contract order.
+
+If the exporter is unavailable, RIPR records an unavailable/limitation state.
+It must not invent a packet, canonical actionable gap, repair card, verify
+result, or badge movement from the missing exporter.
+
 ### Packet status
 
 Top-level `packet_status` is one of:
