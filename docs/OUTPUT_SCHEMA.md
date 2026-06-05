@@ -530,16 +530,18 @@ The evidence-first fields are additive in schema `0.1`:
   `current_test_evidence`, `missing_discriminator`, `target_test_shape`,
   `suggested_test_location`, `suggested_assertion`, `verify`, `receipt`,
   `confidence`, `raw_evidence_refs[]`, `stop_if[]`, `must_not_change[]`, and
-  `limits`. For this slice, `surface_scope = "check_json_only"`,
+  `limits`. For this slice, `surface_scope = "check_json_and_human"`,
   `public_repair_packet = false`, `repair_packet_ready = false`,
   `agent_packet_ready = false`, `gate_candidate = false`,
   `badge_candidate = false`, and `ripr_zero_candidate = false`.
   `verify.command` is copied from fact evidence with
   `verify.status = "fact_only_not_delegated"`. `receipt.command` is always
-  `null` even though receipt evidence is required internally. Perl preview
-  cards do not project allowed edit surfaces, forbidden files, receipt argv,
-  SARIF properties, Markdown, PR, CI, LSP, swarm routing, badge authority, gate
-  authority, or RIPR Zero authority in this first public slice.
+  `null` even though receipt evidence is required internally, and
+  `receipt.status = "available_not_delegated"`. Perl preview cards are public
+  check JSON plus human CLI advisory context only. They do not project allowed
+  edit surfaces, forbidden files, receipt argv, SARIF properties, Markdown, PR,
+  CI, LSP, swarm routing, badge authority, gate authority, or RIPR Zero
+  authority in this slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
   Those records are advisory preview inputs for `ripr agent packet
@@ -1022,8 +1024,8 @@ Every result carries:
   This is fail-closed review context only; it must not be treated as an agent
   packet or closure receipt.
 - Perl preview cards are intentionally not SARIF properties in this slice.
-  `findings[].perl_preview_card` is check-JSON-only advisory context until a
-  later output PR wires a separate SARIF contract.
+  `findings[].perl_preview_card` and the matching human CLI section are
+  advisory context until a later output PR wires a separate SARIF contract.
 
 Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
 when their configured severity is visible. Results whose configured severity is

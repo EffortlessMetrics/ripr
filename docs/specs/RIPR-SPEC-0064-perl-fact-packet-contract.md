@@ -638,16 +638,19 @@ keep `projection_scope = "internal_adapter_only"`,
 JSON, Markdown, SARIF, PR, CI, LSP, and swarm surfaces are wired separately.
 
 The first public projection is narrower than that private repair card:
-`findings[].perl_preview_card` in `ripr check --format json` only. It must keep
-`card_version = "perl_preview_card.v1"`, `surface_scope = "check_json_only"`,
-`language_status = "preview"`, `authority_boundary = "preview_advisory_only"`,
+structured `findings[].perl_preview_card` in `ripr check --format json` plus a
+matching human CLI advisory section rendered from the same card. It must keep
+`card_version = "perl_preview_card.v1"`,
+`surface_scope = "check_json_and_human"`, `language_status = "preview"`,
+`authority_boundary = "preview_advisory_only"`,
 `public_repair_packet = false`, `repair_packet_ready = false`,
 `agent_packet_ready = false`, `gate_candidate = false`,
 `badge_candidate = false`, and `ripr_zero_candidate = false`. It may echo the
 fact-packet verify command as `verify.command` with
 `verify.status = "fact_only_not_delegated"`, but it must render
-`receipt.command = null` and must not expose receipt argv, allowed edit
-surfaces, forbidden files, Markdown, SARIF, PR, CI, LSP, or swarm routing.
+`receipt.command = null`, `receipt.status = "available_not_delegated"`, and
+must not expose receipt argv, allowed edit surfaces, forbidden files, Markdown,
+SARIF, PR, CI, LSP, or swarm routing.
 
 ### Smoke-only ok evidence
 
@@ -724,7 +727,7 @@ The next PRs are:
 7. Add strict actionability and repair-packet fail-closed cases.
 8. Add private preview repair card and agent packet projection from strict
    actionability.
-9. Wire public check-JSON-only `perl_preview_card.v1` projection.
+9. Wire public check JSON and human CLI `perl_preview_card.v1` projection.
 10. Wire Markdown, SARIF, PR, CI, LSP, and swarm projection in separate output
     PRs with their own public contracts.
 
