@@ -535,6 +535,29 @@ packet and existing RIPR context:
 If any field is missing, low-confidence, contradicted, or blocked by a dynamic
 boundary, RIPR emits a weak advisory state or named limitation.
 
+### RIPR-derived identities
+
+Packet `owner_id` values are the canonical Perl owner identity when they are
+language-qualified and path-qualified:
+
+```text
+perl:<normalized/path>::<package-or-script>::<owner-name>
+```
+
+RIPR-derived Perl gap IDs are not emitted by `perl-lsp` fact packets. RIPR
+derives them only after consuming packet facts. The first fixture-backed
+identity key is:
+
+```text
+owner_id + behavior_hint + missing_discriminator + assertion_shape
+```
+
+The key must not include line ranges, array positions, `change_id`, test IDs,
+host paths, temp paths, or timestamps. A line move or changed `change_id` for
+the same owner, behavior, discriminator, and assertion shape must keep the same
+canonical gap ID. Partial packets, unknown owners, and dynamic-boundary cases
+can still expose facts, but they must not become canonical actionable debt.
+
 ## Non-Goals
 
 - No RIPR-owned Perl parser.
