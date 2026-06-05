@@ -206,6 +206,48 @@ impl PerlFactPacket {
             .find(|command| command.test_id.as_deref() == Some(test_id))
     }
 
+    fn files_with_role(&self, role: FileRole) -> Vec<&FileFact> {
+        self.files
+            .iter()
+            .filter(|file| file.role.contains(&role))
+            .collect()
+    }
+
+    fn tests_for_framework(&self, framework: TestFramework) -> Vec<&TestFact> {
+        self.tests
+            .iter()
+            .filter(|test| test.framework == framework)
+            .collect()
+    }
+
+    fn oracles_for_kind(&self, kind: OracleKind) -> Vec<&OracleFact> {
+        self.oracles
+            .iter()
+            .filter(|oracle| oracle.kind == kind)
+            .collect()
+    }
+
+    fn strong_exact_oracles(&self) -> Vec<&OracleFact> {
+        self.oracles
+            .iter()
+            .filter(|oracle| oracle.is_strong_exact())
+            .collect()
+    }
+
+    fn advisory_oracles(&self) -> Vec<&OracleFact> {
+        self.oracles
+            .iter()
+            .filter(|oracle| !oracle.is_strong_exact())
+            .collect()
+    }
+
+    fn verify_command_runners(&self) -> BTreeSet<Runner> {
+        self.verify_commands
+            .iter()
+            .map(|command| command.runner)
+            .collect()
+    }
+
     fn canonical_owner_identity(&self, owner_id: &str) -> Option<CanonicalPerlOwnerIdentity> {
         let owner = self.owner(owner_id)?;
         if owner.kind == OwnerKind::Unknown || !owner.owner_id.starts_with("perl:") {
@@ -331,7 +373,7 @@ struct FileFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum FileRole {
     Source,
@@ -354,7 +396,7 @@ struct OwnerFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum OwnerKind {
     Package,
@@ -391,7 +433,7 @@ struct ChangeFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum BehaviorHint {
     PredicateBoundary,
@@ -461,7 +503,7 @@ struct TestFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 enum TestFramework {
     #[serde(rename = "Test::More")]
     TestMore,
@@ -477,7 +519,7 @@ enum TestFramework {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum RunnerHint {
     Prove,
@@ -500,7 +542,7 @@ struct OracleFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum OracleKind {
     ExactReturnAssertion,
@@ -536,9 +578,22 @@ impl OracleKind {
             Self::Unknown => "unknown_assertion",
         }
     }
+
+    fn supports_strong_exact(self) -> bool {
+        matches!(
+            self,
+            Self::ExactReturnAssertion
+                | Self::PredicateBoundaryAssertion
+                | Self::ExceptionObserver
+                | Self::HashOrObjectFieldAssertion
+                | Self::OutputObserver
+                | Self::WarnObserver
+                | Self::LogObserver
+        )
+    }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum OracleStrength {
     StrongExact,
@@ -546,6 +601,12 @@ enum OracleStrength {
     WeakBroad,
     MentionOnly,
     Unknown,
+}
+
+impl OracleFact {
+    fn is_strong_exact(&self) -> bool {
+        self.strength == OracleStrength::StrongExact && self.kind.supports_strong_exact()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -561,7 +622,7 @@ struct RelationFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum RelationKind {
     DirectOwnerCall,
@@ -574,7 +635,7 @@ enum RelationKind {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum ReachabilityHint {
     Reachable,
@@ -601,7 +662,7 @@ struct LimitationFact {
     evidence_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum BoundaryKind {
     DynamicDispatch,
@@ -632,7 +693,7 @@ struct VerifyCommandFact {
     provenance_refs: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum Runner {
     Prove,
@@ -642,7 +703,7 @@ enum Runner {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum CommandScope {
     Test,
@@ -660,7 +721,7 @@ struct ProvenanceFact {
     confidence: Confidence,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum ProvenanceSource {
     Syntax,
@@ -675,7 +736,7 @@ enum ProvenanceSource {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum Confidence {
     High,
@@ -864,6 +925,102 @@ mod tests {
         assert!(
             value.get("gap_state").is_none(),
             "perl-lsp packets must not emit RIPR-derived actionability"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_fact_packet_adapter_preserves_source_test_and_oracle_taxonomy() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+
+        assert_eq!(packet.files_with_role(FileRole::Source).len(), 1);
+        assert_eq!(packet.files_with_role(FileRole::Test).len(), 6);
+        assert_eq!(packet.tests_for_framework(TestFramework::TestMore).len(), 1);
+        assert_eq!(packet.tests_for_framework(TestFramework::Test2V0).len(), 1);
+        assert_eq!(
+            packet.tests_for_framework(TestFramework::Test2Suite).len(),
+            1
+        );
+        assert_eq!(
+            packet
+                .tests_for_framework(TestFramework::TestException)
+                .len(),
+            1
+        );
+        assert_eq!(
+            packet.tests_for_framework(TestFramework::TestFatal).len(),
+            1
+        );
+        assert_eq!(packet.tests_for_framework(TestFramework::Unknown).len(), 1);
+
+        assert_eq!(
+            packet.verify_command_runners(),
+            BTreeSet::from([Runner::Prove, Runner::Yath, Runner::Carton, Runner::Dzil])
+        );
+
+        let strong_shapes = packet
+            .strong_exact_oracles()
+            .into_iter()
+            .map(|oracle| oracle.kind.assertion_shape())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            strong_shapes,
+            BTreeSet::from([
+                "exact_return_assertion",
+                "predicate_boundary_assertion",
+                "exception_observer",
+                "hash_or_object_field_assertion",
+                "output_observer",
+                "warn_observer",
+                "log_observer"
+            ])
+        );
+
+        let advisory_shapes = packet
+            .advisory_oracles()
+            .into_iter()
+            .map(|oracle| oracle.kind.assertion_shape())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            advisory_shapes,
+            BTreeSet::from([
+                "smoke_ok",
+                "mention_only",
+                "dies_only",
+                "unknown_helper",
+                "dynamic_framework_indirection"
+            ])
+        );
+
+        for kind in [
+            OracleKind::SmokeOk,
+            OracleKind::MentionOnly,
+            OracleKind::DiesOnly,
+            OracleKind::UnknownHelper,
+            OracleKind::DynamicFrameworkIndirection,
+        ] {
+            assert!(
+                packet
+                    .oracles_for_kind(kind)
+                    .iter()
+                    .all(|oracle| !oracle.is_strong_exact()),
+                "{kind:?} must stay advisory and non-strong in Perl preview facts"
+            );
+        }
+
+        let value: serde_json::Value =
+            serde_json::from_str(fixture).map_err(|err| err.to_string())?;
+        assert!(
+            value.get("canonical_gap_id").is_none(),
+            "Perl source/test/oracle fixture must not emit RIPR-derived gap IDs"
+        );
+        assert!(
+            value.get("gap_state").is_none(),
+            "Perl source/test/oracle fixture must not emit RIPR-derived actionability"
         );
 
         Ok(())

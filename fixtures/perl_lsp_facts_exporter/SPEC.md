@@ -18,6 +18,7 @@ The fixture-level Perl adapter consumes:
 
 ```text
 fixtures/perl_lsp_facts_exporter/expected/ripr-perl-facts-v1.json
+fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json
 ```
 
 The corpus validator reads:
@@ -33,6 +34,10 @@ The expected packet must keep:
 - `producer.name = "perl-lsp"`;
 - `schema_version = "ripr-perl-facts-v1"`;
 - repo-relative paths with `/` separators;
+- source, test, oracle, runner, limitation, and provenance facts as packet
+  facts;
+- strong exact Perl oracle shapes separate from `ok(...)`, mention-only,
+  dies-only, unknown-helper, and dynamic-framework advisory evidence;
 - verify commands as facts, not executed results;
 - no RIPR-derived `canonical_gap_id` or `gap_state`.
 
