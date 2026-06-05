@@ -942,6 +942,18 @@ impl PerlStrictActionability {
     }
 }
 
+fn perl_raw_evidence_refs_json(refs: &[PerlRawEvidenceRef]) -> Vec<serde_json::Value> {
+    refs.iter()
+        .map(|reference| {
+            serde_json::json!({
+                "kind": reference.kind.as_str(),
+                "source_id": reference.source_id.as_str(),
+                "path": reference.path.as_str()
+            })
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PerlRepairCard {
     card_version: String,
@@ -973,6 +985,44 @@ struct PerlRepairCard {
     must_not_change: Vec<String>,
 }
 
+impl PerlRepairCard {
+    fn json_value(&self) -> serde_json::Value {
+        serde_json::json!({
+            "card_version": self.card_version.as_str(),
+            "source": self.source.as_str(),
+            "language": self.language.as_str(),
+            "language_status": self.language_status.as_str(),
+            "authority_boundary": self.authority_boundary.as_str(),
+            "projection_scope": self.projection_scope.as_str(),
+            "public_repair_packet": self.public_repair_packet,
+            "public_projection_ready": self.public_projection_ready,
+            "packet_id": self.packet_id.as_str(),
+            "canonical_gap_id": self.canonical_gap_id.as_str(),
+            "gap_state": self.gap_state.as_str(),
+            "changed_owner": self.changed_owner.as_str(),
+            "evidence_class": self.evidence_class.as_str(),
+            "repair_kind": self.repair_kind.as_str(),
+            "current_test_evidence": self.current_test_evidence.as_str(),
+            "missing_discriminator": self.missing_discriminator.as_str(),
+            "target_test_shape": self.target_test_shape.as_str(),
+            "suggested_test_location": self.suggested_test_location.as_str(),
+            "suggested_assertion": self.suggested_assertion.as_str(),
+            "verify": {
+                "command": self.verify_command.as_str()
+            },
+            "receipt": {
+                "command": self.receipt_command.as_str()
+            },
+            "confidence": self.confidence.as_str(),
+            "raw_evidence_refs": perl_raw_evidence_refs_json(&self.raw_evidence_refs),
+            "allowed_edit_boundaries": &self.allowed_edit_boundaries,
+            "forbidden_edit_boundaries": &self.forbidden_edit_boundaries,
+            "stop_if": &self.stop_if,
+            "must_not_change": &self.must_not_change
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PerlInternalAgentPacket {
     packet_version: String,
@@ -1002,6 +1052,46 @@ struct PerlInternalAgentPacket {
     forbidden_files: Vec<String>,
     stop_if: Vec<String>,
     must_not_change: Vec<String>,
+}
+
+impl PerlInternalAgentPacket {
+    fn json_value(&self) -> serde_json::Value {
+        serde_json::json!({
+            "packet_version": self.packet_version.as_str(),
+            "packet_id": self.packet_id.as_str(),
+            "canonical_gap_id": self.canonical_gap_id.as_str(),
+            "language": self.language.as_str(),
+            "language_status": self.language_status.as_str(),
+            "authority_boundary": self.authority_boundary.as_str(),
+            "projection_scope": self.projection_scope.as_str(),
+            "gap_state": self.gap_state.as_str(),
+            "evidence_class": self.evidence_class.as_str(),
+            "repair_packet_ready": self.repair_packet_ready,
+            "public_repair_packet": self.public_repair_packet,
+            "public_projection_ready": self.public_projection_ready,
+            "repair_route": self.repair_route.as_str(),
+            "changed_owner": self.changed_owner.as_str(),
+            "missing_discriminator": self.missing_discriminator.as_str(),
+            "target_test_shape": self.target_test_shape.as_str(),
+            "suggested_test_location": self.suggested_test_location.as_str(),
+            "commands": {
+                "verify": {
+                    "command": self.verify_command.as_str(),
+                    "argv": &self.verify_command_argv
+                },
+                "receipt": {
+                    "command": self.receipt_command.as_str(),
+                    "argv": &self.receipt_command_argv
+                }
+            },
+            "confidence": self.confidence.as_str(),
+            "raw_evidence_refs": perl_raw_evidence_refs_json(&self.raw_evidence_refs),
+            "allowed_edit_surface": &self.allowed_edit_surface,
+            "forbidden_files": &self.forbidden_files,
+            "stop_if": &self.stop_if,
+            "must_not_change": &self.must_not_change
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2623,6 +2713,92 @@ mod tests {
         assert_eq!(agent_packet.stop_if, card.stop_if);
         assert_eq!(agent_packet.must_not_change, card.must_not_change);
         assert_eq!(agent_packet.raw_evidence_refs, card.raw_evidence_refs);
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_private_repair_card_and_agent_packet_json_preserve_internal_projection_boundary()
+    -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+        let context = complete_perl_actionability_context();
+        let card = packet
+            .repair_card_for_change("change:lib/My/App.pm:8:return", &context)
+            .map_err(|err| format!("{err:?}"))?;
+        let agent_packet = packet
+            .agent_packet_for_change("change:lib/My/App.pm:8:return", &context)
+            .map_err(|err| format!("{err:?}"))?;
+
+        let card_json = card.json_value();
+        assert_eq!(card_json["card_version"], "perl_repair_card.v1");
+        assert_eq!(card_json["language"], "perl");
+        assert_eq!(card_json["language_status"], "preview");
+        assert_eq!(card_json["authority_boundary"], "preview_advisory_only");
+        assert_eq!(card_json["projection_scope"], "internal_adapter_only");
+        assert_eq!(card_json["public_repair_packet"], false);
+        assert_eq!(card_json["public_projection_ready"], false);
+        assert_eq!(card_json["gap_state"], "actionable");
+        assert_eq!(
+            card_json["canonical_gap_id"],
+            card.canonical_gap_id.as_str()
+        );
+        assert_eq!(card_json["verify"]["command"], "prove t/app.t");
+        assert_eq!(
+            card_json["receipt"]["command"],
+            "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id perl-gap --json"
+        );
+        assert!(
+            card_json["raw_evidence_refs"]
+                .as_array()
+                .is_some_and(|refs| refs.iter().any(|reference| {
+                    reference["kind"] == "perl_provenance"
+                        && reference["source_id"] == "prov:oracle:exact-return"
+                        && reference["path"] == "t/app.t"
+                }))
+        );
+
+        let agent_json = agent_packet.json_value();
+        assert_eq!(
+            agent_json["packet_version"],
+            "perl_internal_agent_packet.v1"
+        );
+        assert_eq!(agent_json["language"], "perl");
+        assert_eq!(agent_json["language_status"], "preview");
+        assert_eq!(agent_json["authority_boundary"], "preview_advisory_only");
+        assert_eq!(agent_json["projection_scope"], "internal_adapter_only");
+        assert_eq!(agent_json["repair_packet_ready"], true);
+        assert_eq!(agent_json["public_repair_packet"], false);
+        assert_eq!(agent_json["public_projection_ready"], false);
+        assert_eq!(
+            agent_json["commands"]["verify"]["argv"],
+            serde_json::json!(["prove", "t/app.t"])
+        );
+        assert_eq!(
+            agent_json["commands"]["receipt"]["argv"],
+            serde_json::json!([
+                "ripr",
+                "agent",
+                "receipt",
+                "--root",
+                ".",
+                "--verify-json",
+                "target/ripr/workflow/agent-verify.json",
+                "--seam-id",
+                "perl-gap",
+                "--json"
+            ])
+        );
+        assert_eq!(
+            agent_json["allowed_edit_surface"],
+            serde_json::json!(["t/app.t"])
+        );
+        assert_eq!(
+            agent_json["forbidden_files"],
+            serde_json::json!(["lib/My/App.pm", "badges/ripr-plus.json"])
+        );
 
         Ok(())
     }

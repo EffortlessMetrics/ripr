@@ -4694,6 +4694,7 @@ tests = [
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_strict_actionability_requires_all_packet_and_context_fields",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_strict_actionability_fails_closed_for_missing_or_weak_fields",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_repair_card_and_agent_packet_project_strict_actionability",
+  "crates/ripr/src/analysis/language/perl.rs::tests::perl_private_repair_card_and_agent_packet_json_preserve_internal_projection_boundary",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_repair_card_and_agent_packet_fail_closed_without_strict_actionability",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_export_request_renders_deterministic_batch_command",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_exporter_unavailable_stays_non_actionable",
