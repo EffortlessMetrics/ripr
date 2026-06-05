@@ -796,7 +796,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/configured-bridge-inventory.{json,md} or explicit --out paths",
             false,
-            "Writes a report-only configured bridge inventory from existing cross-language oracle graph data; does not infer reachability, create repair packets, suggest placement from missing inventory rows, run Bun or TypeScript, or promote support status.",
+            "Writes a report-only configured bridge inventory from existing cross-language oracle graph data; does not infer reachability, create repair packets, suggest placement from missing inventory rows, run Bun or TypeScript, create gates/badges, or promote support status.",
         ),
         command_entry(
             "recommendation-calibration [--root <path>] [--pr-guidance <path>] [--outcome-receipts <path>] [--out <path>]",

@@ -447,7 +447,10 @@ Revert the inventory report, tests, and docs references.
 ### Notes
 
 This item makes configuration debt visible while deliberately avoiding a full
-binding graph.
+binding graph. The implemented report command is
+`cargo xtask configured-bridge-inventory`; it intentionally omits S3 or any
+other placeholder unless corpus metadata backs it, and all inventory rows remain
+non-repair tasks.
 
 ## Work Item: dogfood/live-bun-stable-byte-receipts
 

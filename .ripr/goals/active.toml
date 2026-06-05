@@ -153,11 +153,30 @@ commands = [
 ]
 
 [[work_item]]
+id = "fixtures/bun-write-helper-gated-profile"
+status = "done"
+branch = "fixtures-bun-write-helper-gated-profile"
+stackable = false
+acceptance = "Add a manifest-only Bun.write helper-gated stable-byte profile with proof_mode=helper_gated, explicit bun_write_fixture_helper unblock condition, missing bridge/helper/oracle graph legs preserved as a named_static_limitation, suggested_test_file=not_applicable, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "analysis/configured-bridge-inventory"
 status = "done"
 branch = "analysis-configured-bridge-inventory"
 stackable = false
-acceptance = "Add a report-only configured bridge inventory that lists Blob ArrayBuffer, copy_to_unshared, and MarkdownObject configured bridges; node:fs scalar write and Bun.write manifest-only future surfaces when backed by corpus metadata; bridge_unknown rows; named static limitations; authority_boundary=preview_advisory_only; repair_packet_ready=false; and no analyzer behavior, reachability inference, public repair packet, placement from missing inventory rows, gate, badge, or support-tier promotion."
+acceptance = "Add a report-only configured bridge inventory that lists credited configured bridges, manifest-only surfaces, bridge-unknown rows, and future surfaces from corpus-backed metadata; Blob ArrayBuffer, copy_to_unshared, and MarkdownObject configured profiles are visible; node:fs scalar write and Bun.write missing or future surfaces are visible without emitting S3 or other unbacked placeholders; all rows remain preview/advisory with repair_packet_ready=false, public_projection_eligible=false, repair_target=not_applicable, no verify/receipt command, and no allowed edit surface."
 specs = [
   "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
   "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
@@ -172,18 +191,17 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/bun-write-helper-gated-profile"
-status = "done"
-branch = "fixtures-bun-write-helper-gated-profile"
+id = "dogfood/live-bun-stable-byte-receipts"
+status = "ready"
+branch = "dogfood-live-bun-stable-byte-receipts"
 stackable = false
-acceptance = "Add a manifest-only Bun.write helper-gated stable-byte profile with proof_mode=helper_gated, explicit bun_write_fixture_helper unblock condition, missing bridge/helper/oracle graph legs preserved as a named_static_limitation, suggested_test_file=not_applicable, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
+blocked_by = ["analysis/configured-bridge-inventory"]
+acceptance = "Add dogfood receipts for live or live-shaped Bun stable-byte cases with tool verdict, manual verdict, route-quality state, placement verdict, proof mode, and operator note. Receipts include at least one credited witness, one missing discriminator, one mention-only rejection, one bridge-unknown case, and one named static limitation; wrong-language placement regressions are absent and preview/advisory authority is repeated."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
 plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
 commands = [
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask live_bun_stable_byte_dogfood -- --test-threads=1",
+  "cargo xtask dogfood",
   "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",

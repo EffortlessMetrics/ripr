@@ -165,11 +165,13 @@ Configured:
 Missing or future:
   node:fs scalar write sink
   Bun.write sink
-  S3 stable-byte sink
+  S3 stable-byte sink (only after corpus metadata backs it)
 ```
 
 The inventory is report-only. It must not infer reachability, emit repair
-packets, or promote support status.
+packets, or promote support status. Future rows must come from corpus-backed
+metadata; the inventory must not emit S3 or any other placeholder from prose
+alone.
 
 ## Required Evidence
 
@@ -337,6 +339,8 @@ Implemented and planned tests:
 - `xtask/src/main.rs::tests::cross_language_profile_intake_requires_manifest_rows`
 - `xtask/src/main.rs::tests::cross_language_profile_intake_requires_helper_gated_rows`
 - `xtask/src/main.rs::tests::configured_bridge_inventory_reports_missing_future_surfaces`
+- `xtask/src/main.rs::tests::configured_bridge_inventory_command_writes_markdown_and_json`
+- `xtask/src/main.rs::tests::configured_bridge_inventory_accepts_custom_paths_and_rejects_bad_args`
 - `xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked`
 
 Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
