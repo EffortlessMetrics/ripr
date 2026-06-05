@@ -4632,20 +4632,29 @@ metrics = [
 id = "RIPR-SPEC-0063"
 name = "Cross-language evidence router UX"
 spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-tests = []
+tests = [
+  "xtask/src/main.rs::tests::bun_ub_preview_summary_summarizes_existing_cross_language_state",
+  "xtask/src/main.rs::tests::bun_ub_preview_summary_command_writes_markdown_and_json",
+]
 fixtures = [
+  "fixtures/typescript-bun-ub-calibration",
   "fixtures/cross-language-oracle-graph-corpus",
   "fixtures/bun-ub-cross-language-dogfood",
 ]
 code = [
   "crates/ripr/src/output/typescript_preview_card.rs",
   "crates/ripr/src/output/evidence_record.rs",
+  "crates/ripr/src/output/report_packet_index.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
   "xtask/src/main.rs",
   "xtask/src/reports/bun.rs",
+  "xtask/src/reports/mod.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md",
   "docs/handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md",
   "docs/DOCUMENTATION.md",

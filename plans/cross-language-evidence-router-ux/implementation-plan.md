@@ -1,6 +1,6 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first work item complete
+Status: active; first two work items complete
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
@@ -18,8 +18,10 @@ bridge-unknown limitation handling, route-quality and calibration reports,
 dogfood receipts, a runbook, and a closeout boundary.
 
 The patch proof packet for that closed 0.8.1 path is recorded in
-`docs/handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md`. The
-next implementation slice is `output/bun-ub-preview-summary`.
+`docs/handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md`.
+`cargo xtask bun-ub-preview-summary` now writes the compact advisory JSON and
+Markdown summary for the current Bun UB route states. The next implementation
+slice is `agent/bun-cross-language-advisory-packet`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -98,7 +100,7 @@ or install-doc updates require separate explicit release authorization.
 
 ## Work Item: output/bun-ub-preview-summary
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0063
 Linked ADR: n/a
@@ -148,7 +150,10 @@ Revert the summary renderer, tests, and any generated golden/report updates.
 
 ### Notes
 
-This should be output/report work only. Do not widen the analyzer in this PR.
+This is output/report work only. It adds `cargo xtask bun-ub-preview-summary`
+and report-packet index discovery for
+`target/ripr/reports/bun-ub-preview-summary.{json,md}` without widening the
+analyzer.
 
 ## Work Item: agent/bun-cross-language-advisory-packet
 

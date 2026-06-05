@@ -87,7 +87,7 @@ commands = [
 
 [[work_item]]
 id = "output/bun-ub-preview-summary"
-status = "ready"
+status = "done"
 branch = "output-bun-ub-preview-summary"
 stackable = false
 acceptance = "Add a compact Bun UB preview summary built from existing graph, calibration, and dogfood data that lists calibrated routes and counts for `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`, `bridge_unknown`, `ts_mention_not_observer`, and named static limitations, includes `authority = preview_advisory_only`, confirms `repair_packet_ready = false`, and does not change analyzer behavior, public repair-packet authority, generated tests, gates, badges, or support tiers."

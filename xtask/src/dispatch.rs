@@ -54,6 +54,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
         XtaskCommand::BunUbCalibration(args) => super::reports::bun_ub_calibration(&args),
+        XtaskCommand::BunUbPreviewSummary(args) => super::reports::bun_ub_preview_summary(&args),
         XtaskCommand::RecommendationCalibration(args) => {
             super::reports::recommendation_calibration(&args)
         }

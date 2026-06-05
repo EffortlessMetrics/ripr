@@ -5932,6 +5932,152 @@ JSON shape:
 `tsserver`, mutation, providers, generated tests, source edits, gates, badges,
 baselines, RIPR Zero, or support-tier promotion.
 
+## Bun UB Preview Summary Report
+
+The Bun UB preview summary is a compact operator surface built from existing
+Bun UB calibration, cross-language oracle graph, and dogfood receipt data. It
+summarizes route counts, named static limitations, public packet exclusions,
+and receipt state without creating public repair packets.
+
+The repo-local report command is:
+
+```text
+cargo xtask bun-ub-preview-summary \
+  --calibration-corpus fixtures/typescript-bun-ub-calibration/corpus.json \
+  --graph-corpus fixtures/cross-language-oracle-graph-corpus/corpus.json \
+  --dogfood-corpus fixtures/bun-ub-cross-language-dogfood/corpus.json \
+  --out target/ripr/reports/bun-ub-preview-summary.json \
+  --out-md target/ripr/reports/bun-ub-preview-summary.md
+```
+
+With defaults, `cargo xtask bun-ub-preview-summary` writes:
+
+```text
+target/ripr/reports/bun-ub-preview-summary.json
+target/ripr/reports/bun-ub-preview-summary.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "report": "bun-ub-preview-summary",
+  "status": "pass",
+  "authority": "preview_advisory_only",
+  "authority_boundary": "preview_advisory_only",
+  "repair_packet_ready": false,
+  "source_paths": {
+    "calibration": "fixtures/typescript-bun-ub-calibration/corpus.json",
+    "cross_language_oracle_graph": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
+    "dogfood": "fixtures/bun-ub-cross-language-dogfood/corpus.json"
+  },
+  "summary": {
+    "calibration_cases_total": 7,
+    "route_quality_cases_total": 9,
+    "dogfood_receipts_total": 4,
+    "route_state_counts": {
+      "rust_ungripped_ts_discriminated": 3,
+      "rust_ungripped_ts_missing_discriminator": 1,
+      "bridge_unknown": 1,
+      "ts_mention_not_observer": 1
+    },
+    "dogfood_state_counts": {
+      "rust_ungripped_ts_discriminated": 1,
+      "rust_ungripped_ts_missing_discriminator": 1,
+      "ts_mention_not_observer": 1,
+      "public_reachable_panic_boundary_unrevealed": 1
+    },
+    "named_static_limitations": [
+      {
+        "category": "cross_language_oracle_visibility_unresolved",
+        "count": 4,
+        "repair_routes": ["analysis/cross-language-oracle-visibility"],
+        "sample_case_ids": ["bun_blob_bridge_unknown_limitation"]
+      }
+    ],
+    "public_packet_exclusions": 20,
+    "repair_packet_ready_cases": 0
+  },
+  "calibrated_routes": [
+    {
+      "route_label": "bun_blob_missing_resizable_oracle_limitation",
+      "profile": "bun_blob_array_buffer",
+      "case_id": "bun_blob_missing_resizable_oracle_limitation",
+      "state": "rust_ungripped_ts_missing_discriminator",
+      "gap_state": "static_limitation",
+      "limitation_category": "cross_language_oracle_visibility_unresolved",
+      "repair_route": "analysis/cross-language-oracle-visibility",
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "missing_discriminators": ["resizable_array_buffer"],
+      "missing_graph_legs": ["boundary_discriminator:resizable_array_buffer"],
+      "public_projection_eligible": false,
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "unlock_condition": "prove the external oracle path and keep typed placement evidence"
+    }
+  ],
+  "dogfood_receipts": [
+    {
+      "case_id": "bun_blob_missing_resizable_receipt",
+      "source_case": "bun_blob_resizable_missing",
+      "route_quality_case": "bun_blob_missing_resizable_oracle_limitation",
+      "state": "rust_ungripped_ts_missing_discriminator",
+      "receipt_state": "closed",
+      "operator_action": "add_resizable_blob_discriminator",
+      "proof_mode": "preview_manifest_receipt",
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "errors": []
+    }
+  ],
+  "non_claims": [
+    "preview/advisory only",
+    "no public repair packet",
+    "no runtime Bun execution",
+    "no TypeScript execution",
+    "no mutation execution",
+    "no provider calls",
+    "no generated tests",
+    "no source edits",
+    "no gates or badges",
+    "no support-tier promotion",
+    "no full cross-language proof"
+  ],
+  "errors": []
+}
+```
+
+Markdown shape:
+
+```text
+# Bun UB Preview Summary
+
+Status: `pass`
+
+authority = preview_advisory_only
+
+repair_packet_ready: false
+
+## Source Paths
+## Summary
+## State Counts
+## Named Static Limitations
+## Calibrated Routes
+## Dogfood Receipts
+## Non-Claims
+```
+
+`status` is `pass` only when the source calibration and route-quality reports
+pass, dogfood receipts validate, every source keeps
+`authority_boundary = preview_advisory_only`, and
+`repair_packet_ready_cases = 0`. This report does not run Bun, `tsc`,
+`tsserver`, Jest, Vitest, Miri, mutation, providers, generated tests, source
+edits, gates, badges, baselines, RIPR Zero, support-tier promotion, or
+`ripr check --profile`. It is not a TypeScript/JavaScript stability claim, a
+full Bun binding graph, a runtime UB proof, or a public repair packet source.
+
 ## Recommendation Calibration Report
 
 RIPR-SPEC-0013 defines the recommendation calibration report contract.

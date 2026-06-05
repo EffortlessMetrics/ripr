@@ -4937,7 +4937,7 @@ Work items:
 | --- | --- | --- |
 | `goals/cross-language-evidence-router-ux-activation` | done | Select RIPR-SPEC-0063 and RIPR-PLAN-0063 as the active Lane 1 successor after `no_current_goal = true`, without changing analyzer behavior, report output, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority. |
 | `release/typescript-bun-preview-patch-proof` | done | [0.8.1 TypeScript/Bun preview patch proof](handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md) records the current Bun Blob / ArrayBuffer calibrated states, `copy_to_unshared`, MarkdownObject, and FFI panic-boundary follow-up status from existing receipts, preview/advisory authority, `repair_packet_ready = false` for cross-language preview rows, and validation results as pass, fail, or not run, without performing a release. |
-| `output/bun-ub-preview-summary` | ready | Add a compact Bun UB preview summary built from existing graph, calibration, and dogfood data without changing analyzer behavior, public repair-packet authority, generated tests, gates, badges, or support tiers. |
+| `output/bun-ub-preview-summary` | done | `cargo xtask bun-ub-preview-summary` writes compact advisory JSON/Markdown from existing graph, calibration, and dogfood data, including route counts, named limitations, public packet exclusions, `authority = preview_advisory_only`, and `repair_packet_ready = false`, without changing analyzer behavior, public repair-packet authority, generated tests, gates, badges, or support tiers. |
 
 Commands:
 

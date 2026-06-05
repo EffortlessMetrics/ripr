@@ -27,7 +27,7 @@ pub(crate) use badges::{
     badge_artifacts, badge_basis, check_badge_endpoints, repo_badge_artifacts, ripr_plus,
     update_badge_endpoints,
 };
-pub(crate) use bun::bun_ub_calibration;
+pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary};
 pub(crate) use dogfood::dogfood;
 pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};

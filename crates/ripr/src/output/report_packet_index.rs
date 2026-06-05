@@ -511,6 +511,19 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
             next_command: None,
         },
         ArtifactSpec {
+            id: "bun_ub_preview_summary",
+            label: "Bun UB preview summary",
+            group: "calibration",
+            kind: "markdown",
+            path: reports.join("bun-ub-preview-summary.md"),
+            json_path: Some(reports.join("bun-ub-preview-summary.json")),
+            required: false,
+            authority: false,
+            description: "Compact advisory TypeScript/Bun cross-language route and limitation summary.",
+            default_status: "available",
+            next_command: None,
+        },
+        ArtifactSpec {
             id: "coverage_grip_frontier",
             label: "Coverage/grip frontier",
             group: "calibration",
@@ -780,6 +793,7 @@ fn group_for_entry(id: &str) -> &'static str {
         "recommendation_calibration"
         | "mutation_calibration"
         | "bun_ub_calibration"
+        | "bun_ub_preview_summary"
         | "coverage_grip_frontier" => "calibration",
         "agent_receipt" | "pr_summary" | "check_pr" => "validation_receipts",
         "sarif" | "badge" => "sarif_badges",
@@ -926,6 +940,10 @@ mod tests {
             "Status: pass\n",
         )?;
         write(
+            &root.join("target/ripr/reports/bun-ub-preview-summary.md"),
+            "Status: pass\n",
+        )?;
+        write(
             &root.join("target/ripr/reports/coverage-grip-frontier.md"),
             "Status: pass\n",
         )?;
@@ -944,7 +962,11 @@ mod tests {
             .get("entries")
             .and_then(Value::as_array)
             .ok_or_else(|| "missing calibration entries".to_string())?;
-        for expected in ["bun_ub_calibration", "coverage_grip_frontier"] {
+        for expected in [
+            "bun_ub_calibration",
+            "bun_ub_preview_summary",
+            "coverage_grip_frontier",
+        ] {
             assert!(
                 entries
                     .iter()
@@ -1293,6 +1315,7 @@ mod tests {
             ("recommendation_calibration", "calibration"),
             ("mutation_calibration", "calibration"),
             ("bun_ub_calibration", "calibration"),
+            ("bun_ub_preview_summary", "calibration"),
             ("coverage_grip_frontier", "calibration"),
             ("agent_receipt", "validation_receipts"),
             ("pr_summary", "validation_receipts"),
