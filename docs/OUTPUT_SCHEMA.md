@@ -6095,6 +6095,135 @@ edits, gates, badges, baselines, RIPR Zero, support-tier promotion, or
 `ripr check --profile`. It is not a TypeScript/JavaScript stability claim, a
 full Bun binding graph, a runtime UB proof, or a public repair packet source.
 
+## Configured Bridge Inventory Report
+
+The configured bridge inventory is a report-only Bun cross-language profile
+inventory built from the existing cross-language oracle graph corpus. It makes
+current configured bridges and manifest-only future surfaces visible without
+adding analyzer behavior or a full Bun binding graph.
+
+The repo-local report command is:
+
+```text
+cargo xtask configured-bridge-inventory \
+  --graph-corpus fixtures/cross-language-oracle-graph-corpus/corpus.json \
+  --out target/ripr/reports/configured-bridge-inventory.json \
+  --out-md target/ripr/reports/configured-bridge-inventory.md
+```
+
+With defaults, `cargo xtask configured-bridge-inventory` writes:
+
+```text
+target/ripr/reports/configured-bridge-inventory.json
+target/ripr/reports/configured-bridge-inventory.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "report": "configured-bridge-inventory",
+  "status": "pass",
+  "authority": "preview_advisory_only",
+  "authority_boundary": "preview_advisory_only",
+  "repair_packet_ready": false,
+  "source_path": "fixtures/cross-language-oracle-graph-corpus/corpus.json",
+  "summary": {
+    "configured_bridge_profiles": 3,
+    "bridge_unknown_profiles": 1,
+    "future_or_missing_surfaces": 2,
+    "named_static_limitation_profiles": 1,
+    "repair_packet_ready_cases": 0,
+    "s3_surfaces_backed_by_corpus": false
+  },
+  "configured_bridges": [
+    {
+      "profile": "bun_blob_array_buffer",
+      "label": "Blob ArrayBuffer",
+      "surface_state": "configured",
+      "rust_file": "src/jsc/Blob.rs",
+      "rust_owner": "Blob::from_js_without_defer_gc",
+      "bridge_kind": "configured_bridge",
+      "bridge_confidence": "configured_hint",
+      "external_surface": "test/js/web/fetch/blob.test.ts",
+      "source_cases": ["bun_blob_complete_ts_discriminated_advisory"],
+      "missing_graph_legs": [],
+      "inventory_action": "inventory_only",
+      "repair_packet_ready": false,
+      "public_projection_eligible": false,
+      "authority_boundary": "preview_advisory_only"
+    }
+  ],
+  "bridge_unknown": [
+    {
+      "profile": "bun_blob_array_buffer",
+      "label": "Blob ArrayBuffer",
+      "surface_state": "bridge_unknown",
+      "missing_graph_legs": ["binding_or_ffi_edge"],
+      "inventory_action": "inventory_only",
+      "repair_packet_ready": false
+    }
+  ],
+  "future_or_missing_surfaces": [
+    {
+      "profile": "bun_write_helper_gated",
+      "label": "Bun.write sink",
+      "surface_state": "manifest_only",
+      "missing_graph_legs": [
+        "helper:bun_write_fixture_helper",
+        "binding_or_ffi_edge:bun_write_sink",
+        "external_oracle:stable_byte_write"
+      ],
+      "inventory_action": "inventory_only",
+      "repair_packet_ready": false
+    }
+  ],
+  "named_static_limitations": [],
+  "non_claims": [
+    "preview/advisory only",
+    "report-only bridge inventory",
+    "no inferred reachability",
+    "no full Bun binding graph",
+    "no public repair packet",
+    "no placement from missing inventory rows",
+    "no runtime Bun execution",
+    "no TypeScript execution",
+    "no mutation execution",
+    "no provider calls",
+    "no generated tests",
+    "no source edits",
+    "no gates or badges",
+    "no support-tier promotion"
+  ],
+  "errors": []
+}
+```
+
+Markdown shape:
+
+```text
+# Configured Bridge Inventory
+
+Status: `pass`
+
+authority = preview_advisory_only
+
+repair_packet_ready: false
+
+## Summary
+## Configured Bridges
+## Bridge Unknown
+## Future Or Missing Surfaces
+## Named Static Limitations
+## Non-Claims
+```
+
+`status` is `pass` only when required configured bridge profiles and
+manifest-only future surfaces are present in the corpus and no row claims a
+repair packet. Missing inventory entries are `inventory_only`; they do not
+become repair tasks or TypeScript placement suggestions.
+
 ## Recommendation Calibration Report
 
 RIPR-SPEC-0013 defines the recommendation calibration report contract.

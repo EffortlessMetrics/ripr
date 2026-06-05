@@ -343,8 +343,9 @@ Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
 current bounded graph behavior. The Bun preview summary, advisory packet,
 stable-byte proof-mode rows, and node:fs scalar-write manifest-only intake row
 are now implemented; the Bun.write helper-gated manifest-only intake row is
-also implemented. Bridge inventory and live dogfood expansion remain planned
-until their slices land.
+also implemented. `cargo xtask configured-bridge-inventory` now implements the
+report-only bridge inventory over the existing graph corpus. Live dogfood
+expansion remains planned until that slice lands.
 
 ## Implementation Mapping
 

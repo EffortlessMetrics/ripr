@@ -1,6 +1,6 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first six implementation work items complete
+Status: active; first seven implementation work items complete
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
@@ -28,8 +28,11 @@ is now pinned as a manifest-only profile with typed witness placement,
 `observable_red_green` proof mode, and named missing bridge/oracle graph legs.
 The Bun.write stable-byte route is now pinned as a manifest-only helper-gated
 profile with `proof_mode = helper_gated`, no suggested test file, and explicit
-helper, bridge, and oracle unlock legs. The next implementation slice is
-`analysis/configured-bridge-inventory`.
+helper, bridge, and oracle unlock legs. `cargo xtask configured-bridge-inventory`
+now writes a report-only configured bridge inventory from existing graph-corpus
+data, listing configured bridges, bridge-unknown rows, manifest-only future
+surfaces, and named limitations without analyzer inference or repair packets.
+The next implementation slice is `dogfood/live-bun-stable-byte-receipts`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -394,7 +397,7 @@ and `external_oracle:stable_byte_write` as missing graph legs, and keeps
 
 ## Work Item: analysis/configured-bridge-inventory
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0062, RIPR-SPEC-0063
 Linked ADR: n/a

@@ -153,6 +153,25 @@ commands = [
 ]
 
 [[work_item]]
+id = "analysis/configured-bridge-inventory"
+status = "done"
+branch = "analysis-configured-bridge-inventory"
+stackable = false
+acceptance = "Add a report-only configured bridge inventory that lists Blob ArrayBuffer, copy_to_unshared, and MarkdownObject configured bridges; node:fs scalar write and Bun.write manifest-only future surfaces when backed by corpus metadata; bridge_unknown rows; named static limitations; authority_boundary=preview_advisory_only; repair_packet_ready=false; and no analyzer behavior, reachability inference, public repair packet, placement from missing inventory rows, gate, badge, or support-tier promotion."
+specs = [
+  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask configured_bridge_inventory -- --test-threads=1",
+  "cargo xtask configured-bridge-inventory",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "fixtures/bun-write-helper-gated-profile"
 status = "done"
 branch = "fixtures-bun-write-helper-gated-profile"
