@@ -506,6 +506,24 @@ impl PerlFactPacket {
         })
     }
 
+    fn repair_card_for_change(
+        &self,
+        change_id: &str,
+        context: &PerlActionabilityContext,
+    ) -> Result<PerlRepairCard, PerlActionabilityBlocker> {
+        self.strict_actionability_for_change(change_id, context)
+            .map(|actionability| actionability.repair_card())
+    }
+
+    fn agent_packet_for_change(
+        &self,
+        change_id: &str,
+        context: &PerlActionabilityContext,
+    ) -> Result<PerlInternalAgentPacket, PerlActionabilityBlocker> {
+        self.strict_actionability_for_change(change_id, context)
+            .map(|actionability| actionability.agent_packet())
+    }
+
     fn raw_actionability_refs(
         &self,
         change: &ChangeFact,
@@ -787,9 +805,151 @@ struct PerlStrictActionability {
     must_not_change: Vec<String>,
 }
 
+impl PerlStrictActionability {
+    fn repair_card(&self) -> PerlRepairCard {
+        PerlRepairCard {
+            card_version: "perl_repair_card.v1".to_string(),
+            source: "perl_adapter_strict_actionability".to_string(),
+            language: "perl".to_string(),
+            language_status: "preview".to_string(),
+            authority_boundary: "preview_advisory_only".to_string(),
+            projection_scope: "internal_adapter_only".to_string(),
+            public_repair_packet: false,
+            public_projection_ready: false,
+            packet_id: self.packet_id.clone(),
+            canonical_gap_id: self.canonical_gap_id.clone(),
+            gap_state: self.gap_state.as_str().to_string(),
+            changed_owner: self.changed_owner_id.clone(),
+            evidence_class: self.evidence_class.as_str().to_string(),
+            repair_kind: self.repair_kind.clone(),
+            current_test_evidence: format!(
+                "{} currently weakly exposes {} through {}",
+                self.related_test_id, self.changed_owner_id, self.target_test_shape
+            ),
+            missing_discriminator: self.missing_discriminator.clone(),
+            target_test_shape: self.target_test_shape.clone(),
+            suggested_test_location: self.suggested_test_location.clone(),
+            suggested_assertion: perl_suggested_assertion(
+                &self.repair_kind,
+                &self.missing_discriminator,
+            ),
+            verify_command: command_string(&self.verify_command),
+            receipt_command: command_string(&self.receipt_command),
+            confidence: self.confidence.as_str().to_string(),
+            raw_evidence_refs: self.raw_evidence_refs.clone(),
+            allowed_edit_boundaries: self.allowed_edit_boundaries.clone(),
+            forbidden_edit_boundaries: self.forbidden_edit_boundaries.clone(),
+            stop_if: self.stop_if.clone(),
+            must_not_change: self.must_not_change.clone(),
+        }
+    }
+
+    fn agent_packet(&self) -> PerlInternalAgentPacket {
+        PerlInternalAgentPacket {
+            packet_version: "perl_internal_agent_packet.v1".to_string(),
+            packet_id: self.packet_id.clone(),
+            canonical_gap_id: self.canonical_gap_id.clone(),
+            language: "perl".to_string(),
+            language_status: "preview".to_string(),
+            authority_boundary: "preview_advisory_only".to_string(),
+            projection_scope: "internal_adapter_only".to_string(),
+            gap_state: self.gap_state.as_str().to_string(),
+            evidence_class: self.evidence_class.as_str().to_string(),
+            repair_packet_ready: true,
+            public_repair_packet: false,
+            public_projection_ready: false,
+            repair_route: self.repair_kind.clone(),
+            changed_owner: self.changed_owner_id.clone(),
+            missing_discriminator: self.missing_discriminator.clone(),
+            target_test_shape: self.target_test_shape.clone(),
+            suggested_test_location: self.suggested_test_location.clone(),
+            verify_command: command_string(&self.verify_command),
+            receipt_command: command_string(&self.receipt_command),
+            verify_command_argv: self.verify_command.clone(),
+            receipt_command_argv: self.receipt_command.clone(),
+            confidence: self.confidence.as_str().to_string(),
+            raw_evidence_refs: self.raw_evidence_refs.clone(),
+            allowed_edit_surface: self.allowed_edit_boundaries.clone(),
+            forbidden_files: self.forbidden_edit_boundaries.clone(),
+            stop_if: self.stop_if.clone(),
+            must_not_change: self.must_not_change.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlRepairCard {
+    card_version: String,
+    source: String,
+    language: String,
+    language_status: String,
+    authority_boundary: String,
+    projection_scope: String,
+    public_repair_packet: bool,
+    public_projection_ready: bool,
+    packet_id: String,
+    canonical_gap_id: String,
+    gap_state: String,
+    changed_owner: String,
+    evidence_class: String,
+    repair_kind: String,
+    current_test_evidence: String,
+    missing_discriminator: String,
+    target_test_shape: String,
+    suggested_test_location: String,
+    suggested_assertion: String,
+    verify_command: String,
+    receipt_command: String,
+    confidence: String,
+    raw_evidence_refs: Vec<PerlRawEvidenceRef>,
+    allowed_edit_boundaries: Vec<String>,
+    forbidden_edit_boundaries: Vec<String>,
+    stop_if: Vec<String>,
+    must_not_change: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PerlInternalAgentPacket {
+    packet_version: String,
+    packet_id: String,
+    canonical_gap_id: String,
+    language: String,
+    language_status: String,
+    authority_boundary: String,
+    projection_scope: String,
+    gap_state: String,
+    evidence_class: String,
+    repair_packet_ready: bool,
+    public_repair_packet: bool,
+    public_projection_ready: bool,
+    repair_route: String,
+    changed_owner: String,
+    missing_discriminator: String,
+    target_test_shape: String,
+    suggested_test_location: String,
+    verify_command: String,
+    receipt_command: String,
+    verify_command_argv: Vec<String>,
+    receipt_command_argv: Vec<String>,
+    confidence: String,
+    raw_evidence_refs: Vec<PerlRawEvidenceRef>,
+    allowed_edit_surface: Vec<String>,
+    forbidden_files: Vec<String>,
+    stop_if: Vec<String>,
+    must_not_change: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PerlGapState {
     Actionable,
+}
+
+impl PerlGapState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Actionable => "actionable",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1318,6 +1478,15 @@ impl Confidence {
     fn is_strict_actionable(self) -> bool {
         matches!(self, Self::High | Self::Medium)
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 
 fn combined_confidence(confidences: impl IntoIterator<Item = Confidence>) -> Confidence {
@@ -1357,6 +1526,37 @@ fn has_required_must_not_change(must_not_change: &[String]) -> bool {
         .iter()
         .any(|rule| rule.contains("suppressions") || rule.contains("intent ledger"));
     mentions_production_code && mentions_suppression_or_intent
+}
+
+fn command_string(command: &[String]) -> String {
+    command.join(" ")
+}
+
+fn perl_suggested_assertion(repair_kind: &str, missing_discriminator: &str) -> String {
+    match repair_kind {
+        "add_predicate_boundary_assertion" => {
+            format!("add a boundary assertion for `{missing_discriminator}`")
+        }
+        "add_exact_return_assertion" => {
+            format!("assert the exact returned `{missing_discriminator}` value")
+        }
+        "add_exception_observer" => {
+            format!("assert the observed `{missing_discriminator}` exception")
+        }
+        "add_hash_or_object_field_assertion" => {
+            format!("assert the changed `{missing_discriminator}` field")
+        }
+        "add_output_observer" => {
+            format!("assert the emitted `{missing_discriminator}` output")
+        }
+        "add_warn_observer" => {
+            format!("assert the emitted `{missing_discriminator}` warning")
+        }
+        "add_log_observer" => {
+            format!("assert the emitted `{missing_discriminator}` log")
+        }
+        _ => format!("add a discriminating assertion for `{missing_discriminator}`"),
+    }
 }
 
 fn push_actionability_ref(
@@ -1935,6 +2135,152 @@ mod tests {
                 && reference.source_id == "prov:diff:return"
                 && reference.path == "lib/My/App.pm"
         }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_repair_card_and_agent_packet_project_strict_actionability() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+        let context = complete_perl_actionability_context();
+        let card = packet
+            .repair_card_for_change("change:lib/My/App.pm:8:return", &context)
+            .map_err(|err| format!("{err:?}"))?;
+
+        assert_eq!(card.card_version, "perl_repair_card.v1");
+        assert_eq!(card.source, "perl_adapter_strict_actionability");
+        assert_eq!(card.language, "perl");
+        assert_eq!(card.language_status, "preview");
+        assert_eq!(card.authority_boundary, "preview_advisory_only");
+        assert_eq!(card.projection_scope, "internal_adapter_only");
+        assert!(!card.public_repair_packet);
+        assert!(!card.public_projection_ready);
+        assert_eq!(card.gap_state, "actionable");
+        assert_eq!(card.changed_owner, "perl:lib/My/App.pm::My::App::discount");
+        assert_eq!(card.evidence_class, "weakly_exposed");
+        assert_eq!(card.repair_kind, "add_exact_return_assertion");
+        assert_eq!(card.missing_discriminator, "return_value");
+        assert_eq!(card.target_test_shape, "Test::More exact_return_assertion");
+        assert_eq!(card.suggested_test_location, "t/app.t::discount_smoke");
+        assert_eq!(
+            card.suggested_assertion,
+            "assert the exact returned `return_value` value"
+        );
+        assert_eq!(card.verify_command, "prove t/app.t");
+        assert_eq!(
+            card.receipt_command,
+            "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id perl-gap --json"
+        );
+        assert_eq!(card.confidence, "medium");
+        assert_eq!(card.allowed_edit_boundaries, ["t/app.t"]);
+        assert_eq!(
+            card.forbidden_edit_boundaries,
+            ["lib/My/App.pm", "badges/ripr-plus.json"]
+        );
+        assert!(
+            card.current_test_evidence
+                .contains("test:t/app.t:discount_smoke")
+        );
+        assert!(card.raw_evidence_refs.iter().any(|reference| {
+            reference.kind == "perl_provenance"
+                && reference.source_id == "prov:oracle:exact-return"
+                && reference.path == "t/app.t"
+        }));
+
+        let agent_packet = packet
+            .agent_packet_for_change("change:lib/My/App.pm:8:return", &context)
+            .map_err(|err| format!("{err:?}"))?;
+        assert_eq!(agent_packet.packet_version, "perl_internal_agent_packet.v1");
+        assert_eq!(agent_packet.packet_id, card.packet_id);
+        assert_eq!(agent_packet.canonical_gap_id, card.canonical_gap_id);
+        assert_eq!(agent_packet.language, "perl");
+        assert_eq!(agent_packet.language_status, "preview");
+        assert_eq!(agent_packet.authority_boundary, "preview_advisory_only");
+        assert_eq!(agent_packet.projection_scope, "internal_adapter_only");
+        assert_eq!(agent_packet.gap_state, "actionable");
+        assert_eq!(agent_packet.evidence_class, "weakly_exposed");
+        assert!(agent_packet.repair_packet_ready);
+        assert!(!agent_packet.public_repair_packet);
+        assert!(!agent_packet.public_projection_ready);
+        assert_eq!(agent_packet.repair_route, "add_exact_return_assertion");
+        assert_eq!(agent_packet.changed_owner, card.changed_owner);
+        assert_eq!(
+            agent_packet.missing_discriminator,
+            card.missing_discriminator
+        );
+        assert_eq!(agent_packet.target_test_shape, card.target_test_shape);
+        assert_eq!(
+            agent_packet.suggested_test_location,
+            card.suggested_test_location
+        );
+        assert_eq!(agent_packet.verify_command, card.verify_command);
+        assert_eq!(agent_packet.receipt_command, card.receipt_command);
+        assert_eq!(agent_packet.verify_command_argv, ["prove", "t/app.t"]);
+        assert_eq!(
+            agent_packet.receipt_command_argv,
+            [
+                "ripr",
+                "agent",
+                "receipt",
+                "--root",
+                ".",
+                "--verify-json",
+                "target/ripr/workflow/agent-verify.json",
+                "--seam-id",
+                "perl-gap",
+                "--json"
+            ]
+        );
+        assert_eq!(agent_packet.confidence, card.confidence);
+        assert_eq!(agent_packet.allowed_edit_surface, ["t/app.t"]);
+        assert_eq!(
+            agent_packet.forbidden_files,
+            ["lib/My/App.pm", "badges/ripr-plus.json"]
+        );
+        assert_eq!(agent_packet.stop_if, card.stop_if);
+        assert_eq!(agent_packet.must_not_change, card.must_not_change);
+        assert_eq!(agent_packet.raw_evidence_refs, card.raw_evidence_refs);
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_repair_card_and_agent_packet_fail_closed_without_strict_actionability()
+    -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let packet = PerlAdapter.consume_fact_packet(fixture)?;
+        let mut missing_receipt = complete_perl_actionability_context();
+        missing_receipt.receipt_command = None;
+        assert_eq!(
+            packet.repair_card_for_change("change:lib/My/App.pm:8:return", &missing_receipt),
+            Err(PerlActionabilityBlocker::MissingReceiptCommand)
+        );
+        assert_eq!(
+            packet.agent_packet_for_change("change:lib/My/App.pm:8:return", &missing_receipt),
+            Err(PerlActionabilityBlocker::MissingReceiptCommand)
+        );
+
+        let context = complete_perl_actionability_context();
+        let mut weak_oracle = packet.clone();
+        let relation = weak_oracle
+            .relations
+            .iter_mut()
+            .find(|relation| relation.relation_id == "relation:return:discount-smoke")
+            .ok_or_else(|| "missing return relation".to_string())?;
+        relation.oracle_id = Some("oracle:t/app.t:6:ok".to_string());
+        assert_eq!(
+            weak_oracle.repair_card_for_change("change:lib/My/App.pm:8:return", &context),
+            Err(PerlActionabilityBlocker::MissingStrongRelatedEvidence)
+        );
+        assert_eq!(
+            weak_oracle.agent_packet_for_change("change:lib/My/App.pm:8:return", &context),
+            Err(PerlActionabilityBlocker::MissingStrongRelatedEvidence)
+        );
 
         Ok(())
     }

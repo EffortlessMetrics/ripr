@@ -630,6 +630,13 @@ Expected RIPR behavior:
 - emit a repair card only if all strict actionability fields are present;
 - otherwise emit a named limitation that identifies the missing field.
 
+The first repair-card implementation may stay private to the Perl adapter. A
+private `perl_repair_card.v1` / `perl_internal_agent_packet.v1` projection must
+keep `projection_scope = "internal_adapter_only"`,
+`language_status = "preview"`, `authority_boundary = "preview_advisory_only"`,
+`public_repair_packet = false`, and no public projection authority until the
+JSON, Markdown, SARIF, PR, CI, LSP, and swarm surfaces are wired separately.
+
 ### Smoke-only ok evidence
 
 Input facts:
@@ -682,6 +689,9 @@ Follow-up implementation tests should map as:
   dynamic boundary, verify command, and provenance fixtures.
 - `analysis/perl-strict-actionability`: all required actionability fields,
   missing-field fail-closed cases, and weak-oracle non-actionability.
+- `analysis/perl-repair-card-agent-packet`: private preview repair-card and
+  agent-packet projection from strict actionability, plus fail-closed cases
+  proving blocked strict actionability emits neither.
 - `output/perl-repair-cards`: projection through JSON, Markdown, SARIF, PR, CI,
   LSP, and swarm packet surfaces after the adapter exists.
 
@@ -696,6 +706,9 @@ The next PRs are:
 5. Add source/test/oracle fact fixtures.
 6. Add related-test linking as preview reachability/revealability evidence.
 7. Add strict actionability and repair-packet fail-closed cases.
+8. Add private preview repair card and agent packet projection from strict
+   actionability.
+9. Wire public JSON, Markdown, SARIF, PR, CI, LSP, and swarm projection.
 
 This spec does not require all implementation slices to land in one PR.
 
