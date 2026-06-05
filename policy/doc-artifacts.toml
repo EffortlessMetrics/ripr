@@ -120,6 +120,14 @@ owner = "language-adapter-swarm"
 linked_proposal = "RIPR-PROP-0018"
 
 [[artifact]]
+id = "RIPR-SPEC-0064"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+linked_proposal = "RIPR-PROP-0018"
+
+[[artifact]]
 id = "RIPR-PLAN-0017"
 kind = "plan"
 path = "plans/python-repair-routing/implementation-plan.md"

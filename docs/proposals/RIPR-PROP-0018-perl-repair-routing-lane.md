@@ -11,7 +11,7 @@ Target campaign: Perl repair routing
 Linked specs:
 
 - `RIPR-SPEC-0026`: Language adapter contract
-- Future `RIPR-SPEC-NNNN`: Perl fact packet contract
+- `RIPR-SPEC-0064`: Perl fact packet contract
 - `RIPR-SPEC-0057`: RIPR swarm repair loop
 - `RIPR-SPEC-0058`: RIPR swarm external agent handoff
 - `RIPR-SPEC-0061`: Lane 1 canonical actionability contract
@@ -256,7 +256,7 @@ Unsupported Perl dynamics become explicit limitations, not repair packets.
 
 - Update `RIPR-SPEC-0026` only when the language-neutral adapter contract needs
   an additive Perl field or vocabulary update.
-- Add `RIPR-SPEC-NNNN: Perl fact packet contract` to define
+- Add `RIPR-SPEC-0064: Perl fact packet contract` to define
   `ripr-perl-facts-v1`, owner IDs, test facts, oracle facts, provenance,
   confidence, dynamic-boundary facts, and failure modes.
 - Update `RIPR-SPEC-0057`, `RIPR-SPEC-0058`, and `RIPR-SPEC-0061` only when

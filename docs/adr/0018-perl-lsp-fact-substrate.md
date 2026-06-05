@@ -15,7 +15,7 @@ Linked proposal:
 Linked specs:
 
 - [RIPR-SPEC-0026: Language adapter contract](../specs/RIPR-SPEC-0026-language-adapter-contract.md)
-- Future `RIPR-SPEC-NNNN`: Perl fact packet contract
+- [RIPR-SPEC-0064: Perl fact packet contract](../specs/RIPR-SPEC-0064-perl-fact-packet-contract.md)
 - [RIPR-SPEC-0057: RIPR swarm repair loop](../specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md)
 - [RIPR-SPEC-0058: RIPR swarm external agent handoff](../specs/RIPR-SPEC-0058-ripr-swarm-external-agent-handoff.md)
 - [RIPR-SPEC-0061: Lane 1 canonical actionability contract](../specs/RIPR-SPEC-0061-lane1-canonical-actionability-contract.md)
