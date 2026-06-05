@@ -399,9 +399,6 @@ impl PerlFactPacket {
         if !owner.confidence.is_strict_actionable() {
             return Err(PerlActionabilityBlocker::LowConfidence);
         }
-        let gap = self
-            .canonical_gap_identity_for_change(change_id)
-            .ok_or(PerlActionabilityBlocker::MissingCanonicalGapId)?;
         let repair_kind = change
             .behavior_hint
             .repair_kind()
@@ -422,6 +419,12 @@ impl PerlFactPacket {
         if evidence.oracle_shape.as_deref() != Some(expected_oracle_shape) {
             return Err(PerlActionabilityBlocker::OracleShapeMismatch);
         }
+        let gap = self
+            .canonical_gap_identity_for_change_with_assertion_shape(
+                change_id,
+                expected_oracle_shape,
+            )
+            .ok_or(PerlActionabilityBlocker::MissingCanonicalGapId)?;
         if self.has_blocking_dynamic_boundary(change, Some(evidence))
             || self.has_blocking_limitation(change, evidence)
         {
@@ -433,7 +436,7 @@ impl PerlFactPacket {
             .clone()
             .filter(|command| !command.is_empty())
             .ok_or(PerlActionabilityBlocker::MissingVerifyCommand)?;
-        if !is_executable_command(&verify_command) {
+        if !is_verify_command(&verify_command) {
             return Err(PerlActionabilityBlocker::MissingVerifyCommand);
         }
         let receipt_command = context
@@ -441,12 +444,34 @@ impl PerlFactPacket {
             .clone()
             .filter(|command| !command.is_empty())
             .ok_or(PerlActionabilityBlocker::MissingReceiptCommand)?;
-        if !is_executable_command(&receipt_command) {
+        if !is_receipt_command(&receipt_command) {
             return Err(PerlActionabilityBlocker::InvalidReceiptCommand);
         }
         let source_file = self
             .file(&change.file_id)
             .ok_or(PerlActionabilityBlocker::MissingEvidenceRefs)?;
+        let test = self
+            .test(&evidence.test_id)
+            .ok_or(PerlActionabilityBlocker::MissingEvidenceRefs)?;
+        let test_file = self
+            .file(&test.file_id)
+            .ok_or(PerlActionabilityBlocker::MissingEvidenceRefs)?;
+        if test_file.path != evidence.test_path || !test_file.role.contains(&FileRole::Test) {
+            return Err(PerlActionabilityBlocker::MissingAllowedEditBoundary);
+        }
+        if !is_safe_repo_relative_path(&source_file.path)
+            || !is_safe_repo_relative_path(&test_file.path)
+        {
+            return Err(PerlActionabilityBlocker::UnsafeEditBoundary);
+        }
+        if context
+            .allowed_edit_boundaries
+            .iter()
+            .chain(context.forbidden_edit_boundaries.iter())
+            .any(|path| !is_safe_repo_relative_path(path))
+        {
+            return Err(PerlActionabilityBlocker::UnsafeEditBoundary);
+        }
         if !context
             .allowed_edit_boundaries
             .iter()
@@ -460,6 +485,13 @@ impl PerlFactPacket {
             .any(|path| path == &source_file.path)
         {
             return Err(PerlActionabilityBlocker::AllowedProductionEditBoundary);
+        }
+        if context
+            .allowed_edit_boundaries
+            .iter()
+            .any(|path| path != &evidence.test_path)
+        {
+            return Err(PerlActionabilityBlocker::UnexpectedAllowedEditBoundary);
         }
         if !context
             .forbidden_edit_boundaries
@@ -575,10 +607,26 @@ impl PerlFactPacket {
         push_actionability_ref(
             &mut refs,
             &mut provenance_ids,
+            "perl_source_file",
+            &source_file.file_id,
+            &source_file.path,
+            &source_file.provenance_refs,
+        )?;
+        push_actionability_ref(
+            &mut refs,
+            &mut provenance_ids,
             "perl_owner",
             &owner.owner_id,
             &owner_file.path,
             &owner.provenance_refs,
+        )?;
+        push_actionability_ref(
+            &mut refs,
+            &mut provenance_ids,
+            "perl_owner_file",
+            &owner_file.file_id,
+            &owner_file.path,
+            &owner_file.provenance_refs,
         )?;
         push_actionability_ref(
             &mut refs,
@@ -595,6 +643,14 @@ impl PerlFactPacket {
             &test.test_id,
             &test_file.path,
             &test.provenance_refs,
+        )?;
+        push_actionability_ref(
+            &mut refs,
+            &mut provenance_ids,
+            "perl_test_file",
+            &test_file.file_id,
+            &test_file.path,
+            &test_file.provenance_refs,
         )?;
         push_actionability_ref(
             &mut refs,
@@ -708,6 +764,27 @@ impl PerlFactPacket {
         &self,
         change_id: &str,
     ) -> Option<CanonicalPerlGapIdentity> {
+        let change = self.change(change_id)?;
+        let assertion_shape = self
+            .relations
+            .iter()
+            .filter(|relation| relation.change_id == change.change_id)
+            .find_map(|relation| {
+                relation
+                    .oracle_id
+                    .as_deref()
+                    .and_then(|oracle_id| self.oracle(oracle_id))
+                    .map(|oracle| oracle.kind.assertion_shape().to_string())
+            })
+            .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string());
+        self.canonical_gap_identity_for_change_with_assertion_shape(change_id, &assertion_shape)
+    }
+
+    fn canonical_gap_identity_for_change_with_assertion_shape(
+        &self,
+        change_id: &str,
+        assertion_shape: &str,
+    ) -> Option<CanonicalPerlGapIdentity> {
         if self.packet_status != PacketStatus::Complete {
             return None;
         }
@@ -723,18 +800,6 @@ impl PerlFactPacket {
 
         let owner = self.canonical_owner_identity(&change.owner_id)?;
         let behavior_kind = change.behavior_hint.as_str().to_string();
-        let assertion_shape = self
-            .relations
-            .iter()
-            .filter(|relation| relation.change_id == change.change_id)
-            .find_map(|relation| {
-                relation
-                    .oracle_id
-                    .as_deref()
-                    .and_then(|oracle_id| self.oracle(oracle_id))
-                    .map(|oracle| oracle.kind.assertion_shape().to_string())
-            })
-            .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string());
         let missing_discriminator = change
             .behavior_hint
             .default_missing_discriminator()
@@ -743,7 +808,7 @@ impl PerlFactPacket {
             owner.id.as_str(),
             behavior_kind.as_str(),
             missing_discriminator.as_str(),
-            assertion_shape.as_str(),
+            assertion_shape,
         ]);
 
         Some(CanonicalPerlGapIdentity {
@@ -751,7 +816,7 @@ impl PerlFactPacket {
             owner_id: owner.id,
             behavior_kind,
             missing_discriminator,
-            assertion_shape,
+            assertion_shape: assertion_shape.to_string(),
         })
     }
 }
@@ -975,6 +1040,8 @@ enum PerlActionabilityBlocker {
     InvalidReceiptCommand,
     MissingAllowedEditBoundary,
     AllowedProductionEditBoundary,
+    UnexpectedAllowedEditBoundary,
+    UnsafeEditBoundary,
     MissingForbiddenEditBoundary,
     MissingStopIf,
     MissingMustNotChange,
@@ -1505,17 +1572,126 @@ fn combined_confidence(confidences: impl IntoIterator<Item = Confidence>) -> Con
     }
 }
 
-fn is_executable_command(command: &[String]) -> bool {
-    let Some(program) = command.first() else {
-        return false;
-    };
-    if program.contains('/') || program.contains('\\') || program.ends_with(".json") {
+fn is_verify_command(command: &[String]) -> bool {
+    if command.iter().any(|arg| !is_safe_command_arg(arg)) {
         return false;
     }
-    matches!(
-        program.as_str(),
-        "ripr" | "cargo" | "prove" | "yath" | "carton" | "dzil"
-    )
+
+    match command {
+        [program, test_paths @ ..] if program == "prove" => {
+            !test_paths.is_empty() && test_paths.iter().all(|path| is_safe_test_path(path))
+        }
+        [program, subcommand, test_paths @ ..] if program == "yath" && subcommand == "test" => {
+            !test_paths.is_empty() && test_paths.iter().all(|path| is_safe_test_path(path))
+        }
+        [program, subcommand, runner, test_paths @ ..]
+            if program == "carton" && subcommand == "exec" && runner == "prove" =>
+        {
+            !test_paths.is_empty() && test_paths.iter().all(|path| is_safe_test_path(path))
+        }
+        [program, subcommand, test_flag, test_path]
+            if program == "dzil" && subcommand == "test" && test_flag == "--test" =>
+        {
+            is_safe_test_path(test_path)
+        }
+        _ => false,
+    }
+}
+
+fn is_receipt_command(command: &[String]) -> bool {
+    if command.iter().any(|arg| !is_safe_command_arg(arg)) {
+        return false;
+    }
+
+    if command.first().is_some_and(|program| program == "ripr")
+        && command.get(1).is_some_and(|arg| arg == "agent")
+        && command.get(2).is_some_and(|arg| arg == "receipt")
+    {
+        return has_required_agent_receipt_args(&command[3..]);
+    }
+
+    if command.first().is_some_and(|program| program == "cargo")
+        && command.get(1).is_some_and(|arg| arg == "run")
+        && command.get(2).is_some_and(|arg| arg == "-p")
+        && command.get(3).is_some_and(|arg| arg == "ripr")
+        && command.get(4).is_some_and(|arg| arg == "--")
+        && command.get(5).is_some_and(|arg| arg == "agent")
+        && command.get(6).is_some_and(|arg| arg == "receipt")
+    {
+        return has_required_agent_receipt_args(&command[7..]);
+    }
+
+    false
+}
+
+fn has_required_agent_receipt_args(args: &[String]) -> bool {
+    let mut has_json = false;
+    let mut has_verify_json = false;
+    let mut has_seam_id = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                has_json = true;
+                index += 1;
+            }
+            "--root" | "--verify-json" | "--seam-id" | "--test" | "--command" | "--out" => {
+                let Some(value) = args.get(index + 1) else {
+                    return false;
+                };
+                if value.trim().is_empty() || value.starts_with("--") {
+                    return false;
+                }
+                match args[index].as_str() {
+                    "--root" if !is_safe_receipt_root(value) => return false,
+                    "--root" => {}
+                    "--verify-json" if !is_safe_repo_relative_path(value) => return false,
+                    "--verify-json" => {
+                        has_verify_json = true;
+                    }
+                    "--test" | "--out" if !is_safe_repo_relative_path(value) => return false,
+                    "--test" | "--out" => {}
+                    "--seam-id" => has_seam_id = true,
+                    "--command" => {}
+                    _ => {}
+                }
+                index += 2;
+            }
+            _ => return false,
+        }
+    }
+
+    has_json && has_verify_json && has_seam_id
+}
+
+fn is_safe_command_arg(arg: &str) -> bool {
+    !arg.is_empty()
+        && !arg.chars().any(char::is_control)
+        && ![
+            ';', '|', '&', '>', '<', '`', '$', '(', ')', '{', '}', '*', '?',
+        ]
+        .iter()
+        .any(|metachar| arg.contains(*metachar))
+}
+
+fn is_safe_test_path(path: &str) -> bool {
+    is_safe_repo_relative_path(path) && path.starts_with("t/") && path.ends_with(".t")
+}
+
+fn is_safe_receipt_root(path: &str) -> bool {
+    path == "." || is_safe_repo_relative_path(path)
+}
+
+fn is_safe_repo_relative_path(path: &str) -> bool {
+    !(path.is_empty()
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || path.contains('\\')
+        || path.contains(':')
+        || path
+            .split('/')
+            .any(|component| component.is_empty() || component == "." || component == ".."))
 }
 
 fn has_required_must_not_change(must_not_change: &[String]) -> bool {
@@ -1675,6 +1851,120 @@ mod tests {
                 "do not add suppressions or intent ledger entries".to_string(),
             ],
         }
+    }
+
+    fn command_args(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_string()).collect()
+    }
+
+    #[test]
+    fn perl_strict_command_guards_accept_only_bounded_verify_and_receipt_shapes() {
+        assert!(is_verify_command(&command_args(&["prove", "t/app.t"])));
+        assert!(is_verify_command(&command_args(&[
+            "yath",
+            "test",
+            "t/app_test2.t"
+        ])));
+        assert!(is_verify_command(&command_args(&[
+            "carton",
+            "exec",
+            "prove",
+            "t/app_exception.t"
+        ])));
+        assert!(is_verify_command(&command_args(&[
+            "dzil",
+            "test",
+            "--test",
+            "t/app_fatal.t"
+        ])));
+        assert!(!is_verify_command(&command_args(&["cargo", "test"])));
+        assert!(!is_verify_command(&command_args(&[
+            "prove",
+            "../outside.t"
+        ])));
+        assert!(!is_verify_command(&command_args(&[
+            "prove", "t/app.t", "&&"
+        ])));
+
+        assert!(is_receipt_command(&command_args(&[
+            "ripr",
+            "agent",
+            "receipt",
+            "--root",
+            ".",
+            "--verify-json",
+            "target/ripr/workflow/agent-verify.json",
+            "--seam-id",
+            "perl-gap",
+            "--json",
+        ])));
+        assert!(is_receipt_command(&command_args(&[
+            "cargo",
+            "run",
+            "-p",
+            "ripr",
+            "--",
+            "agent",
+            "receipt",
+            "--verify-json",
+            "target/ripr/workflow/agent-verify.json",
+            "--seam-id",
+            "perl-gap",
+            "--test",
+            "t/app.t",
+            "--command",
+            "prove",
+            "--out",
+            "target/ripr/reports/agent-receipt.json",
+            "--json",
+        ])));
+        assert!(!is_receipt_command(&command_args(&[
+            "ripr",
+            "agent",
+            "receipt",
+            "--root",
+            "../outside",
+            "--verify-json",
+            "target/ripr/workflow/agent-verify.json",
+            "--seam-id",
+            "perl-gap",
+            "--json",
+        ])));
+        assert!(!is_receipt_command(&command_args(&[
+            "ripr",
+            "agent",
+            "receipt",
+            "--verify-json",
+            "../agent-verify.json",
+            "--seam-id",
+            "perl-gap",
+            "--json",
+        ])));
+        assert!(!is_receipt_command(&command_args(&[
+            "ripr",
+            "agent",
+            "receipt",
+            "--verify-json",
+            "target/ripr/workflow/agent-verify.json",
+            "--json",
+        ])));
+        assert!(!is_receipt_command(&command_args(&[
+            "ripr",
+            "agent",
+            "receipt",
+            "--verify-json",
+            "target/ripr/workflow/agent-verify.json",
+            "--seam-id",
+            "--json",
+            "--json",
+        ])));
+
+        assert!(is_safe_repo_relative_path(
+            "target/ripr/reports/agent-receipt.json"
+        ));
+        assert!(!is_safe_repo_relative_path("../outside.pm"));
+        assert!(!is_safe_repo_relative_path("crate:outside.pm"));
+        assert!(!is_safe_repo_relative_path("t\\app.t"));
     }
 
     #[test]
@@ -2111,6 +2401,16 @@ mod tests {
                 && reference.path == "lib/My/App.pm"
         }));
         assert!(actionable.raw_evidence_refs.iter().any(|reference| {
+            reference.kind == "perl_source_file"
+                && reference.source_id == "file:lib/My/App.pm"
+                && reference.path == "lib/My/App.pm"
+        }));
+        assert!(actionable.raw_evidence_refs.iter().any(|reference| {
+            reference.kind == "perl_owner_file"
+                && reference.source_id == "file:lib/My/App.pm"
+                && reference.path == "lib/My/App.pm"
+        }));
+        assert!(actionable.raw_evidence_refs.iter().any(|reference| {
             reference.kind == "perl_relation"
                 && reference.source_id == "relation:return:discount-smoke"
                 && reference.path == "t/app.t"
@@ -2118,6 +2418,11 @@ mod tests {
         assert!(actionable.raw_evidence_refs.iter().any(|reference| {
             reference.kind == "perl_test"
                 && reference.source_id == "test:t/app.t:discount_smoke"
+                && reference.path == "t/app.t"
+        }));
+        assert!(actionable.raw_evidence_refs.iter().any(|reference| {
+            reference.kind == "perl_test_file"
+                && reference.source_id == "file:t/app.t"
                 && reference.path == "t/app.t"
         }));
         assert!(actionable.raw_evidence_refs.iter().any(|reference| {
@@ -2135,6 +2440,56 @@ mod tests {
                 && reference.source_id == "prov:diff:return"
                 && reference.path == "lib/My/App.pm"
         }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn perl_strict_actionability_uses_selected_strict_evidence_for_gap_identity()
+    -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+        );
+        let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+        packet.relations.insert(
+            0,
+            RelationFact {
+                relation_id: "relation:return:smoke-first".to_string(),
+                change_id: "change:lib/My/App.pm:8:return".to_string(),
+                owner_id: "perl:lib/My/App.pm::My::App::discount".to_string(),
+                test_id: "test:t/app.t:discount_smoke".to_string(),
+                oracle_id: Some("oracle:t/app.t:6:ok".to_string()),
+                relation_kind: RelationKind::DirectOwnerCall,
+                reachability_hint: ReachabilityHint::Reachable,
+                confidence: Confidence::High,
+                provenance_refs: vec!["prov:relation:return".to_string()],
+            },
+        );
+
+        let advisory_first_gap = packet
+            .canonical_gap_identity_for_change("change:lib/My/App.pm:8:return")
+            .ok_or_else(|| "missing canonical gap identity".to_string())?;
+        assert_eq!(advisory_first_gap.assertion_shape, "smoke_ok");
+
+        let expected_strict_gap = packet
+            .canonical_gap_identity_for_change_with_assertion_shape(
+                "change:lib/My/App.pm:8:return",
+                "exact_return_assertion",
+            )
+            .ok_or_else(|| "missing strict canonical gap identity".to_string())?;
+        let actionable = packet
+            .strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &complete_perl_actionability_context(),
+            )
+            .map_err(|err| format!("{err:?}"))?;
+
+        assert_ne!(actionable.canonical_gap_id, advisory_first_gap.id);
+        assert_eq!(actionable.canonical_gap_id, expected_strict_gap.id);
+        assert_eq!(
+            actionable.target_test_shape,
+            "Test::More exact_return_assertion"
+        );
 
         Ok(())
     }
@@ -2310,6 +2665,66 @@ mod tests {
             Err(PerlActionabilityBlocker::InvalidReceiptCommand)
         );
 
+        let mut non_receipt_command = context.clone();
+        non_receipt_command.receipt_command = Some(vec!["cargo".to_string(), "test".to_string()]);
+        assert_eq!(
+            packet.strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &non_receipt_command
+            ),
+            Err(PerlActionabilityBlocker::InvalidReceiptCommand)
+        );
+
+        let mut incomplete_receipt_command = context.clone();
+        incomplete_receipt_command.receipt_command = Some(
+            [
+                "ripr",
+                "agent",
+                "receipt",
+                "--root",
+                ".",
+                "--verify-json",
+                "target/ripr/workflow/agent-verify.json",
+                "--json",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        );
+        assert_eq!(
+            packet.strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &incomplete_receipt_command
+            ),
+            Err(PerlActionabilityBlocker::InvalidReceiptCommand)
+        );
+
+        let mut outside_receipt_root = context.clone();
+        outside_receipt_root.receipt_command = Some(
+            [
+                "ripr",
+                "agent",
+                "receipt",
+                "--root",
+                "../outside",
+                "--verify-json",
+                "target/ripr/workflow/agent-verify.json",
+                "--seam-id",
+                "perl-gap",
+                "--json",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        );
+        assert_eq!(
+            packet.strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &outside_receipt_root
+            ),
+            Err(PerlActionabilityBlocker::InvalidReceiptCommand)
+        );
+
         let mut missing_allowed = context.clone();
         missing_allowed.allowed_edit_boundaries = vec!["t/other.t".to_string()];
         assert_eq!(
@@ -2330,6 +2745,28 @@ mod tests {
             Err(PerlActionabilityBlocker::AllowedProductionEditBoundary)
         );
 
+        let mut unsafe_allowed = context.clone();
+        unsafe_allowed
+            .allowed_edit_boundaries
+            .push("../outside.pm".to_string());
+        assert_eq!(
+            packet
+                .strict_actionability_for_change("change:lib/My/App.pm:8:return", &unsafe_allowed),
+            Err(PerlActionabilityBlocker::UnsafeEditBoundary)
+        );
+
+        let mut unrelated_allowed = context.clone();
+        unrelated_allowed
+            .allowed_edit_boundaries
+            .push("t/unrelated.t".to_string());
+        assert_eq!(
+            packet.strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &unrelated_allowed
+            ),
+            Err(PerlActionabilityBlocker::UnexpectedAllowedEditBoundary)
+        );
+
         let mut missing_forbidden = context.clone();
         missing_forbidden.forbidden_edit_boundaries.clear();
         assert_eq!(
@@ -2346,6 +2783,18 @@ mod tests {
             packet
                 .strict_actionability_for_change("change:lib/My/App.pm:8:return", &wrong_forbidden),
             Err(PerlActionabilityBlocker::MissingForbiddenEditBoundary)
+        );
+
+        let mut unsafe_forbidden = context.clone();
+        unsafe_forbidden
+            .forbidden_edit_boundaries
+            .push("../outside.pm".to_string());
+        assert_eq!(
+            packet.strict_actionability_for_change(
+                "change:lib/My/App.pm:8:return",
+                &unsafe_forbidden
+            ),
+            Err(PerlActionabilityBlocker::UnsafeEditBoundary)
         );
 
         let mut missing_stop_if = context.clone();
@@ -2396,6 +2845,32 @@ mod tests {
         command.argv = vec!["target/ripr/workflow/agent-verify.json".to_string()];
         assert_eq!(
             invalid_verify
+                .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+            Err(PerlActionabilityBlocker::MissingVerifyCommand)
+        );
+
+        let mut outside_verify_path = packet.clone();
+        let command = outside_verify_path
+            .verify_commands
+            .iter_mut()
+            .find(|command| command.command_id == "verify:t/app.t:prove")
+            .ok_or_else(|| "missing prove verify command".to_string())?;
+        command.argv = vec!["prove".to_string(), "../outside.t".to_string()];
+        assert_eq!(
+            outside_verify_path
+                .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+            Err(PerlActionabilityBlocker::MissingVerifyCommand)
+        );
+
+        let mut unsafe_verify_arg = packet.clone();
+        let command = unsafe_verify_arg
+            .verify_commands
+            .iter_mut()
+            .find(|command| command.command_id == "verify:t/app.t:prove")
+            .ok_or_else(|| "missing prove verify command".to_string())?;
+        command.argv = vec!["prove".to_string(), "t/app.t".to_string(), "&&".to_string()];
+        assert_eq!(
+            unsafe_verify_arg
                 .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
             Err(PerlActionabilityBlocker::MissingVerifyCommand)
         );
@@ -2590,6 +3065,19 @@ mod tests {
         change.provenance_refs.clear();
         assert_eq!(
             missing_provenance_refs
+                .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+            Err(PerlActionabilityBlocker::MissingProvenanceRefs)
+        );
+
+        let mut missing_file_provenance_refs = packet.clone();
+        let test_file = missing_file_provenance_refs
+            .files
+            .iter_mut()
+            .find(|file| file.file_id == "file:t/app.t")
+            .ok_or_else(|| "missing test file fact".to_string())?;
+        test_file.provenance_refs.clear();
+        assert_eq!(
+            missing_file_provenance_refs
                 .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
             Err(PerlActionabilityBlocker::MissingProvenanceRefs)
         );
