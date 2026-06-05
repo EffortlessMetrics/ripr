@@ -250,13 +250,17 @@ impl PerlFactPacket {
     }
 
     fn related_test_evidence_for_change(&self, change_id: &str) -> Vec<PerlRelatedTestEvidence> {
-        if self.packet_status != PacketStatus::Complete || self.change(change_id).is_none() {
+        if self.packet_status != PacketStatus::Complete {
             return Vec::new();
         }
+        let Some(change) = self.change(change_id) else {
+            return Vec::new();
+        };
 
         self.relations
             .iter()
             .filter(|relation| relation.change_id == change_id)
+            .filter(|relation| relation.owner_id == change.owner_id)
             .filter_map(|relation| self.related_test_evidence(relation))
             .collect()
     }
@@ -1205,6 +1209,30 @@ mod tests {
             packet.classify_change_from_related_tests("change:lib/My/App.pm:25:field"),
             ExposureClass::NoStaticPath,
             "unlinked Perl oracles must not imply related-test reachability"
+        );
+
+        let stale_owner_text = fixture.replace(
+            r#""relation_id": "relation:return:discount-smoke",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app.t:discount_smoke",
+      "oracle_id": "oracle:t/app.t:7:is""#,
+            r#""relation_id": "relation:return:discount-smoke",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "test_id": "test:t/app.t:discount_smoke",
+      "oracle_id": "oracle:t/app.t:7:is""#,
+        );
+        let stale_owner_packet = PerlAdapter.consume_fact_packet(&stale_owner_text)?;
+        assert!(
+            stale_owner_packet
+                .related_test_evidence_for_change("change:lib/My/App.pm:8:return")
+                .is_empty(),
+            "stale relation owners must not count as related-test evidence for the change"
+        );
+        assert_eq!(
+            stale_owner_packet.classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
+            ExposureClass::NoStaticPath
         );
 
         let weak_text = fixture.replace(
