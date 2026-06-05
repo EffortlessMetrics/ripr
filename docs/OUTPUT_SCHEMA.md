@@ -520,8 +520,9 @@ The evidence-first fields are additive in schema `0.1`:
   that already have strict fact-packet evidence, canonical gap identity,
   related-test evidence, missing discriminator evidence, verify-command
   evidence, receipt evidence, stop conditions, must-not-change constraints, and
-  safe repo-relative raw evidence refs. It is a check-JSON-only advisory card,
-  not a public repair packet. The v1 card carries `card_version`, `source`,
+  safe repo-relative raw evidence refs. It is a check JSON, human CLI, and
+  SARIF advisory card, not a public repair packet. The v1 card carries
+  `card_version`, `source`,
   `language`, `language_status`, `authority_boundary`, `surface_scope`,
   `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,
   `agent_packet_ready`, `gate_candidate`, `badge_candidate`,
@@ -530,7 +531,7 @@ The evidence-first fields are additive in schema `0.1`:
   `current_test_evidence`, `missing_discriminator`, `target_test_shape`,
   `suggested_test_location`, `suggested_assertion`, `verify`, `receipt`,
   `confidence`, `raw_evidence_refs[]`, `stop_if[]`, `must_not_change[]`, and
-  `limits`. For this slice, `surface_scope = "check_json_and_human"`,
+  `limits`. For this slice, `surface_scope = "check_json_human_sarif"`,
   `public_repair_packet = false`, `repair_packet_ready = false`,
   `agent_packet_ready = false`, `gate_candidate = false`,
   `badge_candidate = false`, and `ripr_zero_candidate = false`.
@@ -538,9 +539,9 @@ The evidence-first fields are additive in schema `0.1`:
   `verify.status = "fact_only_not_delegated"`. `receipt.command` is always
   `null` even though receipt evidence is required internally, and
   `receipt.status = "available_not_delegated"`. Perl preview cards are public
-  check JSON plus human CLI advisory context only. They do not project allowed
-  edit surfaces, forbidden files, receipt argv, SARIF properties, Markdown, PR,
-  CI, LSP, swarm routing, badge authority, gate authority, or RIPR Zero
+  check JSON, human CLI, and diff-scoped SARIF advisory context only. They do
+  not project allowed edit surfaces, forbidden files, receipt argv, Markdown,
+  PR, CI, LSP, swarm routing, badge authority, gate authority, or RIPR Zero
   authority in this slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
   Python `GapRecord` entries from findings that carry `python_repair_card`.
@@ -1023,9 +1024,12 @@ Every result carries:
   the typed `static_limit_kind`, and use `not_applicable_static_limit` status.
   This is fail-closed review context only; it must not be treated as an agent
   packet or closure receipt.
-- Perl preview cards are intentionally not SARIF properties in this slice.
-  `findings[].perl_preview_card` and the matching human CLI section are
-  advisory context until a later output PR wires a separate SARIF contract.
+- Perl preview cards with strict fact-packet evidence also carry additive
+  `properties.perl_preview_card` in diff-scoped SARIF. The nested card matches
+  the `ripr check --format json` shape, keeps receipt commands null and edit
+  boundaries hidden, and remains code-scanning context only. It does not make
+  SARIF a repair executor, receipt authority, gate, badge input, or RIPR Zero
+  authority.
 
 Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
 when their configured severity is visible. Results whose configured severity is

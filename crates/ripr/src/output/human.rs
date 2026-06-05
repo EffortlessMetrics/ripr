@@ -304,7 +304,7 @@ mod tests {
         assert!(rendered.contains("Perl preview card (advisory)\n"));
         assert!(rendered.contains("  card version: perl_preview_card.v1\n"));
         assert!(rendered.contains("  authority: preview_advisory_only (perl/preview)\n"));
-        assert!(rendered.contains("  surface scope: check_json_and_human\n"));
+        assert!(rendered.contains("  surface scope: check_json_human_sarif\n"));
         assert!(rendered.contains("  public projection ready: true\n"));
         assert!(rendered.contains("  public repair packet: false\n"));
         assert!(rendered.contains("  repair packet ready: false\n"));

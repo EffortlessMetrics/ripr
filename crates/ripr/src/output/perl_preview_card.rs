@@ -4,7 +4,7 @@ use crate::domain::{
 use serde_json::{Value, json};
 
 const AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
-const SURFACE_SCOPE: &str = "check_json_and_human";
+const SURFACE_SCOPE: &str = "check_json_human_sarif";
 const VERIFY_STATUS: &str = "fact_only_not_delegated";
 const RECEIPT_STATUS: &str = "available_not_delegated";
 
@@ -335,7 +335,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn perl_preview_card_projects_json_and_human_preview_card() -> Result<(), String> {
+    fn perl_preview_card_projects_public_preview_card() -> Result<(), String> {
         let finding = sample_perl_finding();
         let card = perl_preview_card(&finding).ok_or_else(|| "expected Perl card".to_string())?;
 
@@ -344,7 +344,7 @@ mod tests {
         assert_eq!(card.language, "perl");
         assert_eq!(card.language_status, "preview");
         assert_eq!(card.authority_boundary, "preview_advisory_only");
-        assert_eq!(card.surface_scope, "check_json_and_human");
+        assert_eq!(card.surface_scope, "check_json_human_sarif");
         assert!(card.public_projection_ready);
         assert!(!card.public_repair_packet);
         assert!(!card.repair_packet_ready);
@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(card.verify_command, "prove t/app.t");
 
         let value = perl_preview_card_json_value(&card);
-        assert_eq!(value["surface_scope"], "check_json_and_human");
+        assert_eq!(value["surface_scope"], "check_json_human_sarif");
         assert_eq!(value["public_repair_packet"], false);
         assert_eq!(value["public_projection_ready"], true);
         assert_eq!(value["repair_packet_ready"], false);

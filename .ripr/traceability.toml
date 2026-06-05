@@ -4705,11 +4705,12 @@ tests = [
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_repair_card_and_agent_packet_fail_closed_without_strict_actionability",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_export_request_renders_deterministic_batch_command",
   "crates/ripr/src/analysis/language/perl.rs::tests::perl_lsp_exporter_unavailable_stays_non_actionable",
-  "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_projects_json_and_human_preview_card",
+  "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_projects_public_preview_card",
   "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_fails_closed_without_strict_projection_inputs",
   "crates/ripr/src/output/perl_preview_card.rs::tests::perl_preview_card_rejects_unsafe_or_incomplete_raw_refs",
-  "crates/ripr/src/output/json/mod.rs::tests::finding_json_projects_perl_preview_card_json_and_human_scope",
+  "crates/ripr/src/output/json/mod.rs::tests::finding_json_projects_perl_preview_card_public_preview_scope",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_perl_preview_card_as_advisory_human_surface",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_projects_perl_preview_card_properties",
 ]
 fixtures = [
   "fixtures/perl_lsp_facts_exporter",
@@ -4719,6 +4720,7 @@ code = [
   "crates/ripr/src/output/perl_preview_card.rs",
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/human/sections.rs",
+  "crates/ripr/src/output/sarif.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md",

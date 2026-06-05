@@ -747,7 +747,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_json_projects_perl_preview_card_json_and_human_scope() -> Result<(), String> {
+    fn finding_json_projects_perl_preview_card_public_preview_scope() -> Result<(), String> {
         let mut finding = unknown_finding();
         add_perl_preview_card_inputs(&mut finding);
         let mut out = String::new();
@@ -761,7 +761,7 @@ mod tests {
         assert_eq!(card["language"], "perl");
         assert_eq!(card["language_status"], "preview");
         assert_eq!(card["authority_boundary"], "preview_advisory_only");
-        assert_eq!(card["surface_scope"], "check_json_and_human");
+        assert_eq!(card["surface_scope"], "check_json_human_sarif");
         assert_eq!(card["public_projection_ready"], true);
         assert_eq!(card["public_repair_packet"], false);
         assert_eq!(card["repair_packet_ready"], false);
