@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.8.1 TypeScript/Bun Preview Patch Proof](2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md)
 - [Lane 1 Cross-Language Oracle Follow-Up closeout](2026-06-04-lane1-cross-language-oracle-followup-closeout.md)
 - [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](2026-06-04-lane1-post-08-operating-loop-closeout.md)
 - [Lane 1 Language-Aware Placement Navigation closeout](2026-06-03-lane1-language-aware-placement-navigation-closeout.md)

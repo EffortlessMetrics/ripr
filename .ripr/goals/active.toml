@@ -65,8 +65,8 @@ commands = [
 
 [[work_item]]
 id = "release/typescript-bun-preview-patch-proof"
-status = "ready"
-branch = "release-typescript-bun-preview-patch-proof"
+status = "done"
+branch = "release-ts-bun-preview-patch-proof"
 stackable = false
 acceptance = "Add a documentation or report artifact that records the current Bun Blob / ArrayBuffer calibrated states, `copy_to_unshared`, MarkdownObject, and FFI panic-boundary follow-up status from existing receipts, preview/advisory authority, `repair_packet_ready = false` for cross-language preview rows, and validation results as pass, fail, or not run, without performing a release."
 specs = [
@@ -82,5 +82,21 @@ commands = [
   "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
   "cargo xtask bun-ub-calibration",
   "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "output/bun-ub-preview-summary"
+status = "ready"
+branch = "output-bun-ub-preview-summary"
+stackable = false
+acceptance = "Add a compact Bun UB preview summary built from existing graph, calibration, and dogfood data that lists calibrated routes and counts for `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`, `bridge_unknown`, `ts_mention_not_observer`, and named static limitations, includes `authority = preview_advisory_only`, confirms `repair_packet_ready = false`, and does not change analyzer behavior, public repair-packet authority, generated tests, gates, badges, or support tiers."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p xtask bun_ub_preview_summary -- --test-threads=1",
+  "cargo xtask bun-ub-calibration",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]

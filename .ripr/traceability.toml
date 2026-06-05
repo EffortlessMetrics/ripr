@@ -4647,6 +4647,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
   "docs/specs/README.md",
   "docs/BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md",
+  "docs/handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md",
   "docs/DOCUMENTATION.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "plans/README.md",
