@@ -24,3 +24,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0015](0015-start-here-surfaces-use-canonical-gap-records.md) | accepted | Keep start-here surfaces centered on canonical gap records. |
 | [0016](0016-editor-adoption-assurance-remains-read-only.md) | proposed | Keep editor adoption assurance read-only. |
 | [0017](0017-editor-gap-queue-is-read-only.md) | accepted | Keep editor actionable gap queue projection read-only. |
+| [0018](0018-perl-lsp-fact-substrate.md) | proposed | Use `perl-lsp` batch fact export as the Perl intelligence substrate. |
