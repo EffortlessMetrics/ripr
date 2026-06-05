@@ -36,7 +36,7 @@ surfaces, and named limitations without analyzer inference or repair packets.
 receipts for configured copy_to_unshared and MarkdownObject witnesses, stripped
 resizable placement, mention-only rejection, bridge_unknown routing, node:fs and
 Bun.write manifest-only limitations, and the FFI panic-boundary limitation. The
-next implementation slice is `docs/bun-ub-first-run-polish`.
+next implementation slice is `docs/post-081-support-decision`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -513,7 +513,7 @@ for the next profile or bridge slice.
 
 ## Work Item: docs/bun-ub-first-run-polish
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0063
 Linked ADR: n/a

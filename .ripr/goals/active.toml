@@ -213,7 +213,7 @@ commands = [
 
 [[work_item]]
 id = "docs/bun-ub-first-run-polish"
-status = "ready"
+status = "done"
 branch = "docs-bun-ub-first-run-polish"
 stackable = false
 blocked_by = ["dogfood/live-bun-stable-byte-receipts"]
@@ -224,5 +224,28 @@ commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/post-081-support-decision"
+status = "ready"
+branch = "docs-post-081-support-decision"
+stackable = false
+blocked_by = [
+  "dogfood/live-bun-stable-byte-receipts",
+  "docs/bun-ub-first-run-polish",
+]
+acceptance = "Add a support-decision note or closeout that lists evidence, gaps, non-claims, and the next required proof for any stronger TypeScript/Bun claim. The current claim stays TypeScript/JavaScript opt-in preview, and calibrated Bun stable-byte cases remain advisory cross-language evidence that distinguishes TS-discriminated, missing-discriminator, mention-only, bridge-unknown, and named-limitation states. The note rejects TypeScript stable support, Bun UB proof, runtime execution, generated tests, default gates, public repair packets, and full Bun binding graph coverage; any promotion proposal lists missing proof and requires a separate PR."
+specs = [
+  "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+]
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]

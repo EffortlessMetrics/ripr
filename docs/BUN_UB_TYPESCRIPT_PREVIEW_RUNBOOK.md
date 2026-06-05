@@ -14,6 +14,33 @@ The answer is preview/advisory only. It helps the operator avoid manual grep
 and wrong-language test placement. It does not prove UB, run Bun, generate
 tests, or create repair packets.
 
+## First-Run Loop
+
+In the Bun checkout:
+
+1. Add or inspect the repo-root `ripr.toml` Bun UB preview stanza.
+2. Run `ripr doctor --root .` and confirm the Bun UB profile is configured.
+3. Run `ripr check --root . --base origin/main --mode draft --format human`
+   for the current Rust/FFI change.
+4. If an agent or reviewer needs structured evidence, also write JSON with
+   `ripr check --root . --base origin/main --mode draft --format json`.
+
+In the `ripr` checkout, use the calibrated receipts when you need a known-good
+operator reference without running Bun:
+
+```bash
+cargo xtask bun-ub-preview-summary
+cargo xtask configured-bridge-inventory
+cargo xtask bun-ub-calibration
+cargo xtask dogfood
+```
+
+The first screen to read is
+`target/ripr/reports/bun-ub-preview-summary.md`. If the summary points at a
+missing bridge or manifest-only surface, read
+`target/ripr/reports/configured-bridge-inventory.md` before suggesting any
+test placement.
+
 ## When To Run
 
 Run this loop when all of these are true:
@@ -67,7 +94,7 @@ Blob / ArrayBuffer bridge evidence remains preview/advisory.
 Check the config first:
 
 ```bash
-ripr doctor --root /path/to/bun
+ripr doctor --root .
 ```
 
 Expected signal:
@@ -77,7 +104,9 @@ Bun UB profile: configured (preview advisory only)
 ```
 
 If the profile is not configured, do not credit TypeScript evidence to a Rust
-seam as a configured Bun UB review result.
+seam as a configured Bun UB review result. Add or fix `ripr.toml` first, then
+rerun `ripr doctor`; do not replace missing configuration with a guessed Rust
+test target.
 
 ## Run Diff-Scoped Evidence
 
@@ -85,7 +114,7 @@ For ordinary PR review, start with changed-surface output:
 
 ```bash
 ripr check \
-  --root /path/to/bun \
+  --root . \
   --base origin/main \
   --mode draft \
   --format human
@@ -96,7 +125,7 @@ For a machine-readable artifact:
 ```bash
 mkdir -p target/ripr/bun-ub
 ripr check \
-  --root /path/to/bun \
+  --root . \
   --base origin/main \
   --mode draft \
   --format json \
@@ -105,6 +134,14 @@ ripr check \
 
 Use repo-wide `repo-exposure-json` only for an intentional large-repo refresh.
 The normal Bun UB operator loop should not require a full no-ledger repo scan.
+
+The JSON preview card may include a Bun cross-language advisory packet with
+the Rust seam, TypeScript placement, missing discriminators, bridge confidence,
+missing graph legs, `must_not_change`, stop condition, raw refs, and
+`repair_packet_ready=false`. The proof-mode fields are advisory labels such as
+`observable_red_green`, `mutation_plus_miri`, `helper_gated`,
+`bridge_unknown`, or `static_limitation`; they do not mean RIPR ran Bun, Miri,
+or mutation tests.
 
 ## Read The States
 
@@ -176,12 +213,28 @@ not invent a verify or receipt command, and do not emit a public repair packet.
 The unlock route is analysis/cross-language-panic-boundary-visibility.
 ```
 
+`named_static_limitation`
+
+A configured or manifest-only row is visible but intentionally not safely
+actionable yet. Examples include node:fs scalar write manifest-only routing,
+Bun.write helper-gated routing, or an unresolved public panic-boundary route.
+
+Action:
+
+```text
+Read the named missing graph legs and unlock condition. Do not infer placement
+from the inventory row, do not emit a public repair packet, and do not claim
+coverage until the bridge, helper, and observer legs are credited.
+```
+
 ## Check Calibration Receipts
 
 From the `ripr` repository, the calibrated receipts are available without
 running Bun:
 
 ```bash
+cargo xtask bun-ub-preview-summary
+cargo xtask configured-bridge-inventory
 cargo xtask bun-ub-calibration
 cargo xtask dogfood
 ```
@@ -189,17 +242,38 @@ cargo xtask dogfood
 Useful output files:
 
 ```text
+target/ripr/reports/bun-ub-preview-summary.md
+target/ripr/reports/bun-ub-preview-summary.json
+target/ripr/reports/configured-bridge-inventory.md
+target/ripr/reports/configured-bridge-inventory.json
 target/ripr/reports/bun-ub-calibration.md
 target/ripr/reports/bun-ub-calibration.json
 target/ripr/reports/dogfood.md
 target/ripr/reports/dogfood.json
 ```
 
+The preview summary is the one-screen operator receipt. It reports calibrated
+routes, state counts, named static limitations, dogfood receipt counts, public
+packet exclusions, and the preview/advisory authority boundary.
+
+The configured bridge inventory is report-only. It lists configured Blob,
+`copy_to_unshared`, and MarkdownObject bridge profiles, the Blob
+`bridge_unknown` row, node:fs scalar write and Bun.write manifest-only future
+surfaces, and named limitations. It must not be used as inferred reachability
+or automatic placement evidence.
+
 The calibration report should show the known-good Blob route, stripped
 shared/resizable variants, mention-only control, and bridge-unknown limitation.
 The dogfood report should include `bun_ub_cross_language_witnesses` with the
-#31648-style known-good, stripped-resizable, mention-only, and #950 FFI
-negative-offset panic-boundary operator receipts.
+#31648-style known-good, stripped-resizable, mention-only, bridge-unknown,
+`copy_to_unshared`, MarkdownObject, node:fs scalar write, Bun.write, and #950
+FFI negative-offset panic-boundary operator receipts.
+
+Schema details for these surfaces live in:
+
+- [Bun UB Preview Summary Report](OUTPUT_SCHEMA.md#bun-ub-preview-summary-report)
+- [Configured Bridge Inventory Report](OUTPUT_SCHEMA.md#configured-bridge-inventory-report)
+- [Cross-language evidence router UX](specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md)
 
 ## Do Not Claim
 
