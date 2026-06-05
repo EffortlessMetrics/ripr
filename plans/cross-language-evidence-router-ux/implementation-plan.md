@@ -36,7 +36,7 @@ surfaces, and named limitations without analyzer inference or repair packets.
 receipts for configured copy_to_unshared and MarkdownObject witnesses, stripped
 resizable placement, mention-only rejection, bridge_unknown routing, node:fs and
 Bun.write manifest-only limitations, and the FFI panic-boundary limitation. The
-next implementation slice is `docs/post-081-support-decision`.
+campaign is closed with no selected successor.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -566,7 +566,7 @@ plan, not in the operator runbook.
 
 ## Work Item: docs/post-081-support-decision
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0030, RIPR-SPEC-0063
 Linked ADR: n/a

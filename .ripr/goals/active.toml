@@ -3,9 +3,10 @@
 # `no_current_goal = true`.
 id = "cross-language-evidence-router-ux"
 title = "Cross-Language Evidence Router UX"
-status = "active"
+status = "closed"
 lane = "lane1"
 issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
+no_current_goal = true
 
 objective = """
 Turn the calibrated TypeScript/Bun graph path into a repeatable mixed
@@ -229,7 +230,7 @@ commands = [
 
 [[work_item]]
 id = "docs/post-081-support-decision"
-status = "ready"
+status = "done"
 branch = "docs-post-081-support-decision"
 stackable = false
 blocked_by = [
@@ -242,6 +243,7 @@ specs = [
   "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
 ]
 plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+closeout = "docs/handoffs/2026-06-05-post-081-typescript-bun-support-decision.md"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
