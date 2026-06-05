@@ -73,3 +73,4 @@ observable behavior.
 | [RIPR-SPEC-0060](RIPR-SPEC-0060-source-of-truth-stack.md) | accepted | Source-of-truth stack |
 | [RIPR-SPEC-0061](RIPR-SPEC-0061-lane1-canonical-actionability-contract.md) | proposed | Lane 1 canonical actionability contract |
 | [RIPR-SPEC-0062](RIPR-SPEC-0062-cross-language-oracle-graph.md) | proposed | Cross-language oracle graph |
+| [RIPR-SPEC-0063](RIPR-SPEC-0063-cross-language-evidence-router-ux.md) | proposed | Cross-language evidence router UX |

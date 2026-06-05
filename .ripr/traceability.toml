@@ -4627,3 +4627,36 @@ metrics = [
   "cross_language_oracle_graph_mention_only_limitations",
   "cross_language_oracle_graph_public_packet_exclusions",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0063"
+name = "Cross-language evidence router UX"
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+tests = []
+fixtures = [
+  "fixtures/cross-language-oracle-graph-corpus",
+  "fixtures/bun-ub-cross-language-dogfood",
+]
+code = [
+  "crates/ripr/src/output/typescript_preview_card.rs",
+  "crates/ripr/src/output/evidence_record.rs",
+  "xtask/src/main.rs",
+  "xtask/src/reports/bun.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
+  "docs/specs/README.md",
+  "docs/BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md",
+  "docs/DOCUMENTATION.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "plans/README.md",
+  "plans/cross-language-evidence-router-ux/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "cross_language_evidence_router_operator_summary_rows",
+  "cross_language_evidence_router_agent_packets",
+  "cross_language_evidence_router_proof_mode_projection",
+  "cross_language_evidence_router_bridge_inventory_rows",
+  "cross_language_evidence_router_public_packet_exclusions",
+]

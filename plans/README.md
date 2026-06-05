@@ -74,6 +74,8 @@ they are active, closed, complete, blocked, or historical.
   (proposed, not active until explicitly selected)
 - [TypeScript preview completion](typescript-preview-completion/implementation-plan.md)
   (proposed lane plan; preview/advisory boundary preserved)
+- [Cross-language evidence router UX](cross-language-evidence-router-ux/implementation-plan.md)
+  (proposed successor plan; preview/advisory cross-language routing only)
 
 ### Closed or Complete Plans
 
