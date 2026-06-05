@@ -640,11 +640,11 @@ separately.
 
 The first public projection is narrower than that private repair card:
 structured `findings[].perl_preview_card` in `ripr check --format json`, a
-matching human CLI advisory section, and additive
-`properties.perl_preview_card` in diff-scoped SARIF rendered from the same
-card. It must keep
+matching human CLI advisory section, additive `properties.perl_preview_card` in
+diff-scoped SARIF, and compact GitHub annotation guidance rendered from the
+same card. It must keep
 `card_version = "perl_preview_card.v1"`,
-`surface_scope = "check_json_human_sarif"`, `language_status = "preview"`,
+`surface_scope = "check_json_human_sarif_github"`, `language_status = "preview"`,
 `authority_boundary = "preview_advisory_only"`,
 `public_repair_packet = false`, `repair_packet_ready = false`,
 `agent_packet_ready = false`, `gate_candidate = false`,
@@ -710,10 +710,10 @@ Follow-up implementation tests should map as:
 - `analysis/perl-repair-card-agent-packet`: private preview repair-card and
   agent-packet projection from strict actionability, plus fail-closed cases
   proving blocked strict actionability emits neither.
-- `output/perl-preview-card-public`: check JSON, human CLI, and SARIF advisory
-  projection, fail-closed missing receipt/provenance/unsafe path cases, and
-  assertions that public repair-packet, agent-packet, badge, gate, RIPR Zero,
-  edit-surface, and receipt-argv fields are not projected.
+- `output/perl-preview-card-public`: check JSON, human CLI, SARIF, and GitHub
+  annotation advisory projection, fail-closed missing receipt/provenance/unsafe
+  path cases, and assertions that public repair-packet, agent-packet, badge,
+  gate, RIPR Zero, edit-surface, and receipt-argv fields are not projected.
 - `output/perl-repair-cards`: later projection through Markdown, PR, CI, LSP,
   and swarm packet surfaces after separate public contracts exist.
 
@@ -730,8 +730,8 @@ The next PRs are:
 7. Add strict actionability and repair-packet fail-closed cases.
 8. Add private preview repair card and agent packet projection from strict
    actionability.
-9. Wire public check JSON, human CLI, and SARIF `perl_preview_card.v1`
-   projection.
+9. Wire public check JSON, human CLI, SARIF, and GitHub annotation
+   `perl_preview_card.v1` projection.
 10. Wire Markdown, PR, CI, LSP, and swarm projection in separate output PRs
     with their own public contracts.
 

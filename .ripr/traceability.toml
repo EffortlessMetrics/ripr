@@ -4712,6 +4712,7 @@ tests = [
   "crates/ripr/src/output/json/mod.rs::tests::finding_json_projects_perl_preview_card_public_preview_scope",
   "crates/ripr/src/output/human.rs::tests::render_finding_includes_perl_preview_card_as_advisory_human_surface",
   "crates/ripr/src/output/sarif.rs::tests::sarif_projects_perl_preview_card_properties",
+  "crates/ripr/src/output/github.rs::tests::render_includes_perl_preview_card_guidance",
 ]
 fixtures = [
   "fixtures/perl_lsp_facts_exporter",
@@ -4722,6 +4723,7 @@ code = [
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/human/sections.rs",
   "crates/ripr/src/output/sarif.rs",
+  "crates/ripr/src/output/github.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md",
