@@ -265,6 +265,24 @@ mod tests {
         assert!(rendered.contains(
             "    placement reason: existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\n"
         ));
+        assert!(rendered.contains("    advisory packet:\n"));
+        assert!(rendered.contains("      version: bun_cross_language_advisory_packet.v1\n"));
+        assert!(
+            rendered
+                .contains("      next action: add_typescript_discriminator_in_suggested_file\n")
+        );
+        assert!(rendered.contains("      ts test file: test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains(
+            "      suggested shape: Add new ArrayBuffer(..., { maxByteLength: ... }) through Blob/view with a stable-byte byte/text/value assertion.\n"
+        ));
+        assert!(rendered.contains(
+            "      stop condition: Stop if placement evidence disappears or the stable-byte assertion requires production-code, public API, or test-framework changes.\n"
+        ));
+        assert!(rendered.contains(
+            "      must not change: Rust production behavior, public API, test framework shape, generated tests, runtime Bun/TypeScript execution, public repair-packet authority\n"
+        ));
+        assert!(rendered.contains("      public repair packet: false\n"));
+        assert!(rendered.contains("      repair packet ready: false\n"));
         assert!(rendered.contains("    authority: preview_advisory_only\n"));
         assert!(rendered.contains("    repair packet ready: false\n"));
     }

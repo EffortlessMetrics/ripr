@@ -1,6 +1,6 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first two work items complete
+Status: active; first three implementation work items complete
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
@@ -20,8 +20,9 @@ dogfood receipts, a runbook, and a closeout boundary.
 The patch proof packet for that closed 0.8.1 path is recorded in
 `docs/handoffs/2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md`.
 `cargo xtask bun-ub-preview-summary` now writes the compact advisory JSON and
-Markdown summary for the current Bun UB route states. The next implementation
-slice is `agent/bun-cross-language-advisory-packet`.
+Markdown summary for the current Bun UB route states. The TypeScript preview
+card now projects a nested Bun cross-language advisory packet for configured
+routes. The next implementation slice is `output/stable-byte-proof-mode`.
 
 This plan turns that bounded path into a repeatable mixed TypeScript plus Rust
 operating loop. It does not reopen generic TypeScript support and it does not
@@ -157,7 +158,7 @@ analyzer.
 
 ## Work Item: agent/bun-cross-language-advisory-packet
 
-Status: ready
+Status: done
 Linked proposal: n/a
 Linked spec: RIPR-SPEC-0058, RIPR-SPEC-0061, RIPR-SPEC-0063
 Linked ADR: n/a
@@ -208,7 +209,10 @@ Revert packet fields, renderers, tests, and output contracts for this packet.
 ### Notes
 
 This packet is an advisory task-shaping surface. It must remain distinct from
-RIPR-SPEC-0061 public actionability.
+RIPR-SPEC-0061 public actionability. It is projected through JSON and human
+output only, keeps `repair_packet_ready = false`, names `bridge_unknown` as an
+inspect-bridge stop condition, and only emits TypeScript placement when
+placement evidence exists.
 
 ## Work Item: output/stable-byte-proof-mode
 

@@ -4,7 +4,9 @@ use crate::output::preview_actionability::{
     PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
-use crate::output::typescript_preview_card::{TypeScriptPreviewCard, typescript_preview_card};
+use crate::output::typescript_preview_card::{
+    TypeScriptPreviewCard, bun_cross_language_advisory_packet, typescript_preview_card,
+};
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
 
@@ -298,6 +300,43 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
             ));
             out.push_str(&format!("    placement reason: {}\n", placement.reason));
         }
+        let advisory_packet = bun_cross_language_advisory_packet(grip);
+        out.push_str("    advisory packet:\n");
+        out.push_str(&format!(
+            "      version: {}\n",
+            advisory_packet.packet_version
+        ));
+        out.push_str(&format!(
+            "      next action: {}\n",
+            advisory_packet.next_action
+        ));
+        out.push_str(&format!(
+            "      ts test file: {}\n",
+            advisory_packet
+                .ts_test_file
+                .as_deref()
+                .unwrap_or("not_applicable")
+        ));
+        out.push_str(&format!(
+            "      suggested shape: {}\n",
+            advisory_packet.suggested_shape
+        ));
+        out.push_str(&format!(
+            "      stop condition: {}\n",
+            advisory_packet.stop_condition
+        ));
+        out.push_str(&format!(
+            "      must not change: {}\n",
+            advisory_packet.must_not_change.join(", ")
+        ));
+        out.push_str(&format!(
+            "      public repair packet: {}\n",
+            advisory_packet.public_repair_packet
+        ));
+        out.push_str(&format!(
+            "      repair packet ready: {}\n",
+            advisory_packet.repair_packet_ready
+        ));
         out.push_str(&format!("    authority: {}\n", grip.authority_boundary));
         out.push_str(&format!(
             "    repair packet ready: {}\n",

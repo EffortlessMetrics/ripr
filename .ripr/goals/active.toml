@@ -100,3 +100,19 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "agent/bun-cross-language-advisory-packet"
+status = "done"
+branch = "agent-bun-cross-language-advisory-packet"
+stackable = false
+acceptance = "Add JSON and human output for configured Bun cross-language advisory packets with state, Rust seam, eligible TypeScript file, missing discriminators, suggested shape, bridge confidence, missing graph legs, authority boundary, must-not-change list, stop condition, raw evidence refs, and repair_packet_ready=false; bridge_unknown must emit an inspect-bridge packet, not a test-edit packet, and placement must appear only when placement evidence exists."
+spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
+plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+commands = [
+  "cargo test -p ripr bun_cross_language_agent_packet -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

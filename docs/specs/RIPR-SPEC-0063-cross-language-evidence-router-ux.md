@@ -293,7 +293,7 @@ Projection: not eligible until corpus, bridge, and oracle rows are pinned
 
 ## Test Mapping
 
-Planned tests:
+Implemented and planned tests:
 
 - `xtask/src/main.rs::tests::bun_ub_preview_summary_reports_route_quality`
 - `xtask/src/main.rs::tests::bun_ub_preview_summary_rejects_public_repair_packets`
@@ -305,11 +305,12 @@ Planned tests:
 - `xtask/src/main.rs::tests::live_bun_stable_byte_dogfood_receipts_are_checked`
 
 Existing related tests are owned by RIPR-SPEC-0062 and remain the proof for the
-current bounded graph behavior until these user-experience slices land.
+current bounded graph behavior. The Bun preview summary and advisory packet
+rows are now implemented; later rows remain planned until their slices land.
 
 ## Implementation Mapping
 
-Planned implementation surfaces:
+Implementation surfaces:
 
 - `crates/ripr/src/output/typescript_preview_card.rs` for packet projection and
   proof-mode rendering;

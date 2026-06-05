@@ -484,11 +484,20 @@ The evidence-first fields are additive in schema `0.1`:
   `typescript_evidence.missing_discriminators[]`, `limitation_category`,
   `repair_route`, `missing_graph_legs[]`, nullable `unlock_condition`,
   `raw_evidence_refs[]`, `action`, `suggested_test_file`, optional
-  `placement`, `authority_boundary`, and `repair_packet_ready`. The current
-  configured Bun Blob route may name `test/js/web/fetch/blob.test.ts` as
-  advisory placement when shared/resizable boundary discriminators are missing
-  on a configured bridge. Mention-only, partial external-oracle,
-  bridge-unknown, and unresolved target cases stay at
+  `placement`, nested `advisory_packet`, `authority_boundary`, and
+  `repair_packet_ready`. The nested `advisory_packet` is a preview task-shaping
+  packet, not public repair-packet authority. It carries
+  `packet_version = "bun_cross_language_advisory_packet.v1"`,
+  `cross_language_state`, `rust_file`, `rust_owner`, `rust_boundary`,
+  nullable `ts_test_file`, `missing_discriminators[]`, `suggested_shape`,
+  `bridge_confidence`, `missing_graph_legs[]`, `next_action`,
+  `authority_boundary`, `repair_packet_ready = false`,
+  `public_repair_packet = false`, `must_not_change[]`, `stop_condition`, and
+  `raw_evidence_refs[]`. The current configured Bun Blob route may name
+  `test/js/web/fetch/blob.test.ts` as advisory placement when
+  shared/resizable boundary discriminators are missing on a configured bridge.
+  Mention-only, partial external-oracle, bridge-unknown, and unresolved target
+  cases stay at
   `suggested_test_file=not_applicable`, emit no `placement`, no verify or
   receipt command, no allowed edit surface, and no public repair packet until
   the full public packet fields exist. Configured bridge evidence is a
