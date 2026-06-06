@@ -189,6 +189,7 @@ Current reference docs:
 - [Droid rollout checklist](agent-context/droid-rollout.md)
 - [CI verification ladder](ci/verification-ladder.md)
 - [CI current state](ci/current-state.md)
+- [CI upstream tool substrate](ci/upstream-tool-substrate.md)
 - [CI LEM budgeting](ci/lem-budgeting.md)
 - [CI labels](ci/labels.md)
 - [CI cost and verification policy](ci/cost-and-verification-policy.md)
