@@ -77,8 +77,8 @@ fork is permitted.
 
 Additive optional fields:
 
-- `language`: one of `rust`, `typescript`, `javascript`, `python`. Omitted
-  when unknown.
+- `language`: one of `rust`, `typescript`, `javascript`, `python`, `perl`.
+  Omitted when unknown.
 - `language_status`: `stable` or `preview`. Omitted when `rust`.
 - `probe.owner`: stable owner identifier when a preview adapter can map the
   changed line to an owner. Per-language specs define the identifier shape.
@@ -115,6 +115,10 @@ Routing rules:
 - `*.js`, `*.jsx` → TypeScript-family adapter with JavaScript preview labels
   (preview, opt-in).
 - `*.py` → Python adapter (preview, opt-in).
+- Perl fact-packet preview is a producer/consumer path, not a live Perl parser
+  route in this contract slice. A configured Perl language value must fail
+  closed unless the binary was built with `lang-perl`, and `ripr check` must not
+  launch `perl-lsp` or inspect live Perl package/runtime state by default.
 - Files matched by no adapter pass through unchanged (no probes, not an
   error).
 
@@ -123,7 +127,8 @@ Repo configuration adds a `[languages]` section to `ripr.toml`:
 ```toml
 [languages]
 enabled = ["rust"]
-# Preview adapters are opt-in. Adding "typescript" or "python" enables them.
+# Preview adapters are opt-in. Adding "typescript", "python", or "perl" enables
+# the corresponding preview surface when the binary supports it.
 ```
 
 The default `enabled` value is `["rust"]`. Preview adapters do not run
@@ -141,7 +146,7 @@ default build may include preview adapter support, but Rust-only binaries
 are allowed. If `languages.enabled` names a preview language that was not
 compiled into the current binary, config validation must fail closed with
 an actionable message naming the missing Cargo feature, such as
-`lang-typescript` or `lang-python`. The editor and other projection
+`lang-typescript`, `lang-python`, or `lang-perl`. The editor and other projection
 surfaces must treat that as unavailable adapter state, not as a reason to
 invent diagnostics.
 
@@ -160,7 +165,9 @@ The contract is supported only when the implementation can show:
 - Additive `language` and `language_status` fields appear only when
   populated and roundtrip through JSON serialization.
 - The language router has fixture coverage for `.rs`, `.ts`, `.tsx`,
-  `.js`, `.jsx`, `.py`, unmatched extensions, and excluded paths.
+  `.js`, `.jsx`, `.py`, unmatched extensions, and excluded paths. Perl
+  fact-packet preview coverage belongs to RIPR-SPEC-0064 until a live Perl
+  router is intentionally added.
 - `ripr.toml` parses `[languages] enabled` and rejects unsupported
   values with a clear error.
 - `ripr.toml` rejects languages whose adapter Cargo feature is unavailable
@@ -229,6 +236,8 @@ Follow-up fixtures and tests cover:
   `.py`, unmatched extensions, and excluded paths.
 - Repo configuration parsing of `[languages] enabled` including
   unsupported values.
+- Repo configuration parsing rejects `perl` with a clear `lang-perl` message
+  when the current binary lacks the Perl preview feature.
 - Generated CI fixtures for Rust-default and language-grouped advisory
   summaries.
 

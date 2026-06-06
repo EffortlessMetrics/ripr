@@ -68,19 +68,87 @@ than one behavior contract or touches repo shape.
 | Editor Actionable Gap Queue (Lane 3 tracker) | Project existing actionable-gap artifacts into the editor as a bounded local repair queue. | Complete: [RIPR-PROP-0013](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md), [RIPR-SPEC-0055](specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md), [ADR-0017](adr/0017-editor-gap-queue-is-read-only.md), and [the implementation plan](../plans/editor-actionable-gap-queue/implementation-plan.md) define the closed stack. Validation, Show Status queue projection, Copy Current Repair Packet, Copy Repo Gap Map, fixtures, VS Code smoke, [workflow docs](EDITOR_ACTIONABLE_GAP_QUEUE.md), dogfood receipts, and [closeout proof](handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md) are in place. |
 | Actionable Surface Translation | Make badge, PR, editor, swarm dry-run, and outcome/trend first screens translate existing actionable canonical gap evidence into the same repair-first user questions. | Complete: [RIPR-PROP-0016](proposals/RIPR-PROP-0016-actionable-surface-translation.md), [RIPR-SPEC-0059](specs/RIPR-SPEC-0059-actionable-surface-translation.md), [RIPR-PLAN-0059](../plans/actionable-surface-translation/implementation-plan.md), and [the closeout handoff](handoffs/2026-05-23-actionable-surface-translation-closeout.md) record the accepted source-of-truth stack, badge/PR/editor/swarm/outcome first-screen proof, advisory claim boundary, and no selected successor. |
 | First Useful PR Loop Continuation | Make one changed Rust behavior become one clear repairable gap, one focused proof intent, one verification command, and one reviewer- and agent-readable receipt. | Complete: the goal-freshness guardrail, first-pr front door, one-screen recommendation contract, reviewer-native outcome, first-pr demo story, generated CI/VS Code/agent packet convergence, and [closeout handoff](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md) are in place. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
-| Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Active: tracked by [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34) and [#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24). The activation PR selects this as the current repo-ops goal without changing analyzer, product, release, badge, or branch-protection behavior. |
+| Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Complete: [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md) records CX53/CX43 routed proof, #24/#34 issue-ledger updates, unchanged branch-protection boundary, and remaining non-goal follow-ups. |
+| Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
+| Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
+| Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
+| Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Folded into the active post-0.8 operating loop after #943 through #948 landed SPEC-0062, the graph corpus, TS discriminator witnesses, and binding-route witness behavior. The route-quality report adds readiness and evidence-quality scorecard summaries for complete advisory witnesses, missing discriminators, mention-only rows, bridge-unknown rows, and public packet exclusions; the Bun UB calibration report adds an operator-readable JSON/Markdown receipt for the calibrated TypeScript/Bun Blob corpus without public repair packets. A follow-up placement receipt correction makes configured missing shared/resizable discriminator rows name `test/js/web/fetch/blob.test.ts` as advisory TypeScript placement while keeping bridge-unknown, mention-only, and partial-oracle rows at `not_applicable`. #908/#910 remain open as broader cross-language follow-ups rather than completed generic oracle support. |
+| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Complete: [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md) records live queue hygiene, #913 and #909/#912 disposition, source `ripr` release authority, the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, the bounded SPEC-0062 cross-language oracle graph, repair-packet guidance quality, attempt-ledger outcome hardening, real repair/analyzer-attempt dogfood, route-quality metrics, and surface canonical-state alignment. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
+| Lane 1 Cross-Language Oracle Follow-Up | Extend #908/#910 cross-language oracle evidence through measured, profile-backed graph slices beyond the bounded Bun Blob route while preserving preview/advisory and fail-closed boundaries. | Complete: [Lane 1 Cross-Language Oracle Follow-Up closeout](handoffs/2026-06-04-lane1-cross-language-oracle-followup-closeout.md) records the measured Bun Blob, `copy_to_unshared`, #951 MarkdownObject, and #950 FFI panic-boundary slices, their advisory/limitation claim boundary, and `no_current_goal = true`. #908/#910 remain open as broader cross-language oracle follow-ups rather than completed generic oracle support. |
+| Lane 1 Cross-Language Guidance Safety | Pin the #908 MarkdownObject review-comments wrong-target sample so externally observed TypeScript evidence remains navigation-only when target placement is unresolved. | Complete: `output/markdownobject-review-comments-target-safety` adds a MarkdownObject-specific review-comments regression proving no guessed `vendor/lolhtml` Rust test target, no verify command, no public repair packet, and navigation-only `test/js/bun/md/md-edge-cases.test.ts` context routed to `analysis/cross-language-test-target-inference`; #908/#910 remain open for broader cross-language oracle work. |
+| Cross-Language Evidence Router UX | Turn the calibrated TypeScript/Bun graph path into a repeatable mixed TypeScript plus Rust operating loop for Bun operators, Claude Code, and other configured projects without promoting preview evidence. | Complete: [RIPR-SPEC-0063](specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md) and [RIPR-PLAN-0063](../plans/cross-language-evidence-router-ux/implementation-plan.md) defined PR-sized slices for 0.8.1 patch proof, compact Bun UB summary, advisory agent packet, proof-mode projection, node:fs and Bun.write manifest-only profiles, bridge inventory, live Bun dogfood, runbook polish, and the post-0.8.1 support decision. The [post-0.8.1 TypeScript/Bun support decision](handoffs/2026-06-05-post-081-typescript-bun-support-decision.md) keeps TypeScript/JavaScript preview/advisory, confirms calibrated Bun stable-byte evidence is useful for TS-discriminated, missing-discriminator, mention-only, bridge-unknown, and named-limitation states, and requires a separate accepted promotion contract for any stronger claim. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it currently records `status = "active"` for the
-`self-hosted-routed-runner-proof` repo-ops goal after First Useful PR Loop
-Continuation closed and archived at
-`.ripr/goals/archive/2026-05-23-first-useful-pr-loop-continuation.toml`. The
-selected successor is intentionally operational: prove the CX53/CX43
-self-hosted routed Rust path in [#34](https://github.com/EffortlessMetrics/ripr-swarm/issues/34)
-and mirror the cutover disposition in
-[#24](https://github.com/EffortlessMetrics/ripr-swarm/issues/24), or keep the
-runner image-readiness/visibility blocker explicit while the protected
-GitHub-hosted fallback remains healthy. The goal-freshness guardrail is pinned,
+it records `status = "active"` for `cross-language-evidence-router-ux` and
+records `release/typescript-bun-preview-patch-proof`,
+`output/bun-ub-preview-summary`, and
+`agent/bun-cross-language-advisory-packet`,
+`output/stable-byte-proof-mode`, and
+`fixtures/bun-node-fs-scalar-write-profile`, and
+`fixtures/bun-write-helper-gated-profile`,
+`analysis/configured-bridge-inventory`, and
+`dogfood/live-bun-stable-byte-receipts`,
+`docs/bun-ub-first-run-polish`, and
+`docs/post-081-support-decision` as completed selected slices. The active
+manifest now records `no_current_goal = true`. The prior
+post-release successor kept normal development in
+ripr-swarm, preserved source ripr as release/distribution authority, and closed
+the selected Lane 1 evidence-to-repair operating loop:
+queue hygiene, navigable review comments, explicit large-repo limits,
+user-facing diff-first changed-surface mode, cross-language fail-closed
+routing, target placement, oracle graph proof, packet guidance, receipt/outcome
+hardening, dogfood attempts, route-quality metrics, user-surface alignment, and
+the final closeout handoff.
+The fail-closed, target-placement, bounded oracle-graph, repair-packet
+guidance, attempt-ledger outcome hardening, and real repair/analyzer-attempt
+dogfood items now point at their
+already-merged #930, #938-#941, SPEC-0062 corpus/report evidence,
+swarm-plan packet corpus evidence, SPEC-0057 state coverage, and
+attempt-ledger/readiness report evidence, plus the real-repair-attempts corpus
+and dogfood report covering improved, resolved, unchanged, and
+attempted-without-receipt outcomes. Route-quality metrics now point at
+readiness and evidence-quality scorecard route summaries for repair-kind,
+language, missing-field, failing-route, limitation-route, and cross-language
+oracle quality. Surface canonical-state alignment now points at the checked
+surface-projection and user-surface-projection dogfood corpora, which preserve
+canonical gap identity, runtime state, repair or limitation state, receipt
+state, non-success route-quality cases, missing receipts, and raw-finding
+non-claims across badge, LSP/editor, PR comment, and CI examples. The
+[closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md)
+records the trust boundary, advisory limits, validation evidence, remaining
+open work themes, and archived manifest. The later #908/#910
+cross-language oracle follow-up is also closed for the current repo state:
+it added profile-backed `copy_to_unshared`, #951 MarkdownObject, and #950
+FFI panic-boundary evidence while preserving advisory-only and fail-closed
+behavior. No successor campaign is selected; future #908/#910 work must start
+from live issue and artifact state with a fresh measured profile or narrow
+analyzer route instead of extending the closed manifest. A later one-slice
+guidance-safety campaign pins the exact #908 MarkdownObject review-comments
+wrong-target sample at the agent prompt surface while preserving the same
+non-closure boundary for #908/#910.
+[RIPR-SPEC-0062](specs/RIPR-SPEC-0062-cross-language-oracle-graph.md)
+continues to define bounded named Bun TypeScript graph profiles where complete
+configured external witnesses may become advisory external observation, but
+missing discriminators, mention-only samples, unknown bridges, and unresolved
+targets remain named limitations until the Rust seam, binding or FFI edge,
+external callsite, external assertion or oracle, raw evidence refs, verify
+command, receipt command, and edit constraints are all explicit. The
+closed
+`lane1-language-aware-placement-navigation` campaign records that #938 made
+explicit external observer target evidence navigation-only across
+review-comments, LSP, and packet-adjacent output, #940 summarized those
+limitations in readiness and scorecard surfaces, and #942 closed #911. The
+closed
+`lane1-large-repo-runtime-completeness`
+campaign records the #909 post-0.8 trust-debt PR chain through #935, including
+explicit large-cache skip state, sharded classified seam cache storage,
+cache-report shard summaries, and diff-scoped review-comments runtime. The
+preceding `lane1-real-repo-trust-readiness` closeout records that #913, #912,
+and the post-0.8 issue-batch slices landed through #931 while #908 and #910
+remain broader follow-up routes rather than completed cross-language oracle
+support. Live repo handoff state says 0.8.0 has already been published, so
+these post-release trust-debt campaigns must not be represented as behavior
+included in the published tag. The goal-freshness guardrail is pinned,
 the first-pr front-door stdout behavior landed in #332, the one-screen
 recommendation contract landed in #335, reviewer-native outcome claim
 boundaries landed in #338, the fixture-backed first successful PR demo story

@@ -93,6 +93,7 @@ Required review-comments fields:
 | `root` | Workspace root used by the producer. |
 | `base` / `head` | Git revisions used for the diff. |
 | `mode` | Public RIPR analysis mode label. |
+| `analysis_scope` | Optional scoped-input metadata for analysis-backed review-comments output. Default diff rendering reports `limited_diff_scope`, changed production files, bounded immediate callers, considered seam counts, and the `review_comments_diff_scope_only` limitation route instead of claiming full-repo truth. |
 | `rendering_limits` | Producer-side caps for comments and summary items. |
 | `limits_note` | Human-readable explanation of rendering limits. |
 

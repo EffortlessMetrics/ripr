@@ -211,6 +211,141 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_includes_bun_cross_language_grip() {
+        let mut finding = unknown_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.evidence = vec![
+            "owner: Blob::from_js_without_defer_gc".to_string(),
+            "gap_state: static_limitation".to_string(),
+            "actionability_category: cross_language_oracle_visibility_unresolved".to_string(),
+            "why_not_actionable: TypeScript cross-language preview is a named limitation until the external oracle path is visible".to_string(),
+            "repair_route: analysis/cross-language-oracle-visibility".to_string(),
+            "missing_graph_legs: boundary_discriminator:resizable_array_buffer".to_string(),
+            "unlock_condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists".to_string(),
+            "evidence_needed_to_promote: bridge calibration and non-preview repair packet contract"
+                .to_string(),
+            "raw_evidence_ref: leg=rust_seam;file=src/jsc/Blob.rs;line=42;kind=rust_boundary;source_id=probe:src_jsc_Blob_rs:42:typescript_bun_ub_cross_language_preview;owner=Blob::from_js_without_defer_gc;sample=array_buffer.shared || array_buffer.resizable".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/Blob.rs rust_owner=Blob::from_js_without_defer_gc rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
+        ];
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("  Bun cross-language grip:\n"));
+        assert!(rendered.contains("    state: rust_ungripped_ts_missing_discriminator\n"));
+        assert!(rendered.contains(
+            "    Rust seam: src/jsc/Blob.rs owner=Blob::from_js_without_defer_gc boundary=array_buffer.shared || array_buffer.resizable\n"
+        ));
+        assert!(rendered.contains(
+            "    TypeScript evidence: test/js/web/fetch/blob.test.ts verdict=ts_missing_resizable confidence=configured_hint\n"
+        ));
+        assert!(rendered.contains("    missing discriminators: resizable_array_buffer\n"));
+        assert!(
+            rendered.contains(
+                "    missing graph legs: boundary_discriminator:resizable_array_buffer\n"
+            )
+        );
+        assert!(rendered.contains(
+            "    unlock condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists\n"
+        ));
+        assert!(
+            rendered
+                .contains("    limitation category: cross_language_oracle_visibility_unresolved\n")
+        );
+        assert!(rendered.contains("    repair route: analysis/cross-language-oracle-visibility\n"));
+        assert!(
+            rendered.contains("    action: route_cross_language_oracle_visibility_limitation\n")
+        );
+        assert!(rendered.contains("    suggested test file: test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains("    placement: rank 1 test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains(
+            "    placement reason: existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\n"
+        ));
+        assert!(rendered.contains("    proof mode: observable_red_green\n"));
+        assert!(rendered.contains(
+            "    proof mode reason: The missing TypeScript discriminator belongs in an existing bridged stable-byte observer route; future proof should be a system-Bun red/patched-green witness after the discriminator is added.\n"
+        ));
+        assert!(rendered.contains(
+            "    proof execution: runtime=false mutation=false miri=false proof_claim=false\n"
+        ));
+        assert!(rendered.contains("    advisory packet:\n"));
+        assert!(rendered.contains("      version: bun_cross_language_advisory_packet.v1\n"));
+        assert!(
+            rendered
+                .contains("      next action: add_typescript_discriminator_in_suggested_file\n")
+        );
+        assert!(rendered.contains("      ts test file: test/js/web/fetch/blob.test.ts\n"));
+        assert!(rendered.contains(
+            "      suggested shape: Add new ArrayBuffer(..., { maxByteLength: ... }) through Blob/view with a stable-byte byte/text/value assertion.\n"
+        ));
+        assert!(rendered.contains(
+            "      stop condition: Stop if placement evidence disappears or the stable-byte assertion requires production-code, public API, or test-framework changes.\n"
+        ));
+        assert!(rendered.contains(
+            "      must not change: Rust production behavior, public API, test framework shape, generated tests, runtime Bun/TypeScript execution, public repair-packet authority\n"
+        ));
+        assert!(rendered.contains("      public repair packet: false\n"));
+        assert!(rendered.contains("      repair packet ready: false\n"));
+        assert!(rendered.contains("    authority: preview_advisory_only\n"));
+        assert!(rendered.contains("    repair packet ready: false\n"));
+    }
+
+    #[test]
+    fn render_finding_includes_perl_preview_card_as_advisory_human_surface() {
+        let mut finding = unknown_finding();
+        add_perl_preview_card_inputs(&mut finding);
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("Perl preview card (advisory)\n"));
+        assert!(rendered.contains("  card version: perl_preview_card.v1\n"));
+        assert!(rendered.contains("  authority: preview_advisory_only (perl/preview)\n"));
+        assert!(
+            rendered
+                .contains("  surface scope: check_json_human_sarif_github_gap_ledger_markdown\n")
+        );
+        assert!(rendered.contains("  public projection ready: true\n"));
+        assert!(rendered.contains("  public repair packet: false\n"));
+        assert!(rendered.contains("  repair packet ready: false\n"));
+        assert!(rendered.contains("  agent packet ready: false\n"));
+        assert!(rendered.contains("  gate candidate: false\n"));
+        assert!(rendered.contains("  badge candidate: false\n"));
+        assert!(rendered.contains("  RIPR Zero candidate: false\n"));
+        assert!(rendered.contains("  packet id: perl-preview:gap-return\n"));
+        assert!(rendered.contains(
+            "  canonical gap: gap:perl:lib/My/App.pm:My::App::discount:return_value:exact_return_assertion:return_value\n"
+        ));
+        assert!(rendered.contains("  changed owner: perl:lib/My/App.pm::My::App::discount\n"));
+        assert!(rendered.contains("  repair route: add_exact_return_assertion\n"));
+        assert!(rendered.contains("  missing discriminator: return_value\n"));
+        assert!(rendered.contains("  target test shape: Test::More exact_return_assertion\n"));
+        assert!(rendered.contains("  suggested location: t/app.t::discount_smoke\n"));
+        assert!(
+            rendered.contains(
+                "  suggested assertion: assert the exact returned `return_value` value\n"
+            )
+        );
+        assert!(rendered.contains("  verify: prove t/app.t (fact_only_not_delegated)\n"));
+        assert!(rendered.contains("  receipt: available_not_delegated\n"));
+        assert!(rendered.contains("  raw evidence: perl_change lib/My/App.pm:8 (perl_change)"));
+        assert!(rendered.contains("  stop if:\n"));
+        assert!(rendered.contains("    - perl-lsp packet status changes\n"));
+        assert!(rendered.contains("  must not change:\n"));
+        assert!(rendered.contains("    - do not edit Perl production code\n"));
+        assert!(!rendered.contains("ripr agent receipt --root"));
+        assert!(!rendered.contains("perl_allowed_edit_boundary"));
+        assert!(!rendered.contains("perl_forbidden_edit_boundary"));
+        assert!(!rendered.contains("allowed edit"));
+        assert!(!rendered.contains("forbidden edit"));
+        assert!(!rendered.contains("perl_internal_agent_packet"));
+        assert!(!rendered.contains("perl_repair_card"));
+    }
+
+    #[test]
     fn render_finding_omits_language_metadata_when_absent() {
         let rendered = render_finding(&sample_finding());
 
@@ -269,6 +404,99 @@ mod tests {
 
         assert!(output.contains("Stop reasons:"));
         assert!(output.contains("  - static_probe_unknown"));
+    }
+
+    fn add_perl_preview_card_inputs(finding: &mut Finding) {
+        finding.id = "probe:lib_My_App_pm:8:perl_return".to_string();
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:perl:lib/My/App.pm:My::App::discount:return_value:exact_return_assertion:return_value"
+                .to_string(),
+            language: "perl".to_string(),
+            file: "lib/My/App.pm".to_string(),
+            owner: "perl:lib/My/App.pm::My::App::discount".to_string(),
+            behavior_kind: "return_value".to_string(),
+            probe_kind: "exact_return_assertion".to_string(),
+            normalized_discriminator: "return_value".to_string(),
+        });
+        finding.probe = Probe {
+            id: ProbeId("probe:lib_My_App_pm:8:perl_return".to_string()),
+            location: SourceLocation::new("lib/My/App.pm", 8, 5),
+            owner: Some(SymbolId(
+                "perl:lib/My/App.pm::My::App::discount".to_string(),
+            )),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: Some("return $price".to_string()),
+            after: Some("return $discounted".to_string()),
+            expression: "return $discounted".to_string(),
+            expected_sinks: vec!["return_value".to_string()],
+            required_oracles: vec!["exact_return_assertion".to_string()],
+        };
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.ripr = RiprEvidence {
+            reach: stage(
+                StageState::Yes,
+                Confidence::Medium,
+                "Perl fact packet links the related test to the changed owner",
+            ),
+            infect: stage(
+                StageState::Yes,
+                Confidence::Medium,
+                "Changed return value reaches the owner result",
+            ),
+            propagate: stage(
+                StageState::Yes,
+                Confidence::Medium,
+                "Return value can propagate to Test::More assertion",
+            ),
+            reveal: RevealEvidence {
+                observe: stage(
+                    StageState::Yes,
+                    Confidence::Medium,
+                    "Related test reaches the changed owner",
+                ),
+                discriminate: stage(
+                    StageState::Weak,
+                    Confidence::Medium,
+                    "Exact return discriminator is missing",
+                ),
+            },
+        };
+        finding.confidence = 0.8;
+        finding.evidence = vec![
+            "perl_packet_id: perl-preview:gap-return".to_string(),
+            "perl_repair_kind: add_exact_return_assertion".to_string(),
+            "perl_target_test_shape: Test::More exact_return_assertion".to_string(),
+            "perl_suggested_test_location: t/app.t::discount_smoke".to_string(),
+            "perl_suggested_assertion: assert the exact returned `return_value` value".to_string(),
+            "perl_verify_command: prove t/app.t".to_string(),
+            "perl_receipt_command: ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id perl-gap --json".to_string(),
+            "perl_confidence: medium".to_string(),
+            "perl_allowed_edit_boundary: t/app.t".to_string(),
+            "perl_forbidden_edit_boundary: lib/My/App.pm, badges/ripr-plus.json".to_string(),
+            "perl_stop_if: perl-lsp packet status changes".to_string(),
+            "perl_must_not_change: do not edit Perl production code".to_string(),
+            "raw_evidence_ref: leg=perl_change;file=lib/My/App.pm;line=8;kind=perl_change;source_id=change:lib/My/App.pm:8:return;owner=perl:lib/My/App.pm::My::App::discount;sample=return $discounted".to_string(),
+            "raw_evidence_ref: leg=perl_oracle;file=t/app.t;line=7;kind=perl_oracle;source_id=oracle:t/app.t:7:is;owner=perl:lib/My/App.pm::My::App::discount;sample=is(discount(...), 90)".to_string(),
+        ];
+        finding.missing = vec!["return_value".to_string()];
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "return_value".to_string(),
+            reason: "Related Perl test reaches the owner but lacks an exact return discriminator"
+                .to_string(),
+            flow_sink: None,
+        }];
+        finding.related_tests = vec![RelatedTest {
+            name: "discount_smoke".to_string(),
+            file: PathBuf::from("t/app.t"),
+            line: 7,
+            oracle: Some("ok(discount(...))".to_string()),
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Weak,
+        }];
+        finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
+        finding.language = Some(LanguageId::Perl);
+        finding.language_status = Some(LanguageStatus::Preview);
     }
 
     fn sample_finding() -> Finding {

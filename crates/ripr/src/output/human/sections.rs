@@ -1,10 +1,14 @@
 use crate::config::RiprConfig;
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::perl_preview_card::{PerlPreviewCard, PerlRawEvidenceRef, perl_preview_card};
 use crate::output::preview_actionability::{
     PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
-use crate::output::typescript_preview_card::{TypeScriptPreviewCard, typescript_preview_card};
+use crate::output::typescript_preview_card::{
+    TypeScriptPreviewCard, bun_cross_language_advisory_packet, stable_byte_proof_mode,
+    typescript_preview_card,
+};
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
 
@@ -91,6 +95,8 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
         push_typescript_preview_card(&mut out, &card);
+    } else if let Some(card) = perl_preview_card(finding) {
+        push_perl_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {
         out.push_str("\nRepair placement\n");
         out.push_str(&format!("  suggested file: {}\n", placement.test_file));
@@ -138,6 +144,15 @@ fn push_preview_actionability(out: &mut String, actionability: &PreviewActionabi
             actionability.missing_actionability_fields.join(", ")
         ));
     }
+    if !actionability.missing_graph_legs.is_empty() {
+        out.push_str(&format!(
+            "  missing graph legs: {}\n",
+            actionability.missing_graph_legs.join(", ")
+        ));
+    }
+    if let Some(unlock_condition) = &actionability.unlock_condition {
+        out.push_str(&format!("  unlock condition: {unlock_condition}\n"));
+    }
     out.push_str(&format!(
         "  evidence needed: {}\n",
         actionability.evidence_needed_to_promote
@@ -151,6 +166,9 @@ fn push_preview_actionability(out: &mut String, actionability: &PreviewActionabi
 
 fn push_raw_ref(out: &mut String, raw_ref: &PreviewRawEvidenceRef) {
     if let (Some(file), Some(line)) = (raw_ref.file.as_deref(), raw_ref.line) {
+        if let Some(leg) = &raw_ref.leg {
+            out.push_str(&format!("{leg} "));
+        }
         out.push_str(&format!("{file}:{line}"));
         if let Some(kind) = &raw_ref.kind {
             out.push_str(&format!(" ({kind})"));
@@ -160,6 +178,9 @@ fn push_raw_ref(out: &mut String, raw_ref: &PreviewRawEvidenceRef) {
         }
         if let Some(owner) = &raw_ref.owner {
             out.push_str(&format!(" owner={owner}"));
+        }
+        if let Some(sample) = &raw_ref.sample {
+            out.push_str(&format!(" sample={sample}"));
         }
     } else {
         out.push_str(&raw_ref.raw);
@@ -240,6 +261,102 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
         "  oracle: {} ({})\n",
         card.oracle_kind, card.oracle_strength
     ));
+    if let Some(grip) = &card.bun_cross_language_grip {
+        out.push_str("  Bun cross-language grip:\n");
+        out.push_str(&format!("    state: {}\n", grip.state));
+        out.push_str(&format!(
+            "    Rust seam: {} owner={} boundary={}\n",
+            grip.rust_file, grip.rust_owner, grip.rust_boundary
+        ));
+        out.push_str(&format!(
+            "    TypeScript evidence: {} verdict={} confidence={}\n",
+            grip.ts_test_file, grip.ts_verdict, grip.bridge_confidence
+        ));
+        if !grip.missing_discriminators.is_empty() {
+            out.push_str(&format!(
+                "    missing discriminators: {}\n",
+                grip.missing_discriminators.join(", ")
+            ));
+        }
+        if !grip.missing_graph_legs.is_empty() {
+            out.push_str(&format!(
+                "    missing graph legs: {}\n",
+                grip.missing_graph_legs.join(", ")
+            ));
+        }
+        if let Some(unlock_condition) = &grip.unlock_condition {
+            out.push_str(&format!("    unlock condition: {unlock_condition}\n"));
+        }
+        out.push_str(&format!(
+            "    limitation category: {}\n",
+            grip.limitation_category
+        ));
+        out.push_str(&format!("    repair route: {}\n", grip.repair_route));
+        out.push_str(&format!("    action: {}\n", grip.action));
+        out.push_str(&format!(
+            "    suggested test file: {}\n",
+            grip.suggested_test_file
+        ));
+        if let Some(placement) = &grip.placement {
+            out.push_str(&format!(
+                "    placement: rank {} {}\n",
+                placement.rank, placement.suggested_test_file
+            ));
+            out.push_str(&format!("    placement reason: {}\n", placement.reason));
+        }
+        let proof_mode = stable_byte_proof_mode(grip);
+        out.push_str(&format!("    proof mode: {}\n", proof_mode.mode));
+        out.push_str(&format!("    proof mode reason: {}\n", proof_mode.reason));
+        out.push_str(&format!(
+            "    proof execution: runtime={} mutation={} miri={} proof_claim={}\n",
+            proof_mode.runtime_execution,
+            proof_mode.mutation_execution,
+            proof_mode.miri_execution,
+            proof_mode.proof_claim
+        ));
+        let advisory_packet = bun_cross_language_advisory_packet(grip);
+        out.push_str("    advisory packet:\n");
+        out.push_str(&format!(
+            "      version: {}\n",
+            advisory_packet.packet_version
+        ));
+        out.push_str(&format!(
+            "      next action: {}\n",
+            advisory_packet.next_action
+        ));
+        out.push_str(&format!(
+            "      ts test file: {}\n",
+            advisory_packet
+                .ts_test_file
+                .as_deref()
+                .unwrap_or("not_applicable")
+        ));
+        out.push_str(&format!(
+            "      suggested shape: {}\n",
+            advisory_packet.suggested_shape
+        ));
+        out.push_str(&format!(
+            "      stop condition: {}\n",
+            advisory_packet.stop_condition
+        ));
+        out.push_str(&format!(
+            "      must not change: {}\n",
+            advisory_packet.must_not_change.join(", ")
+        ));
+        out.push_str(&format!(
+            "      public repair packet: {}\n",
+            advisory_packet.public_repair_packet
+        ));
+        out.push_str(&format!(
+            "      repair packet ready: {}\n",
+            advisory_packet.repair_packet_ready
+        ));
+        out.push_str(&format!("    authority: {}\n", grip.authority_boundary));
+        out.push_str(&format!(
+            "    repair packet ready: {}\n",
+            grip.repair_packet_ready
+        ));
+    }
     if let Some(discriminator) = &card.missing_discriminator {
         out.push_str(&format!("  missing discriminator: {discriminator}\n"));
     }
@@ -268,6 +385,104 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
     out.push_str("  limits:\n");
     for limit in &card.limits {
         out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+fn push_perl_preview_card(out: &mut String, card: &PerlPreviewCard) {
+    out.push_str("\nPerl preview card (advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  surface scope: {}\n", card.surface_scope));
+    out.push_str(&format!(
+        "  public projection ready: {}\n",
+        card.public_projection_ready
+    ));
+    out.push_str(&format!(
+        "  public repair packet: {}\n",
+        card.public_repair_packet
+    ));
+    out.push_str(&format!(
+        "  repair packet ready: {}\n",
+        card.repair_packet_ready
+    ));
+    out.push_str(&format!(
+        "  agent packet ready: {}\n",
+        card.agent_packet_ready
+    ));
+    out.push_str(&format!("  gate candidate: {}\n", card.gate_candidate));
+    out.push_str(&format!("  badge candidate: {}\n", card.badge_candidate));
+    out.push_str(&format!(
+        "  RIPR Zero candidate: {}\n",
+        card.ripr_zero_candidate
+    ));
+    out.push_str(&format!("  packet id: {}\n", card.packet_id));
+    out.push_str(&format!("  canonical gap: {}\n", card.canonical_gap_id));
+    out.push_str(&format!("  gap state: {}\n", card.gap_state));
+    out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
+    out.push_str(&format!("  evidence class: {}\n", card.evidence_class));
+    out.push_str(&format!("  repair route: {}\n", card.repair_route));
+    out.push_str(&format!(
+        "  current test evidence: {}\n",
+        card.current_test_evidence
+    ));
+    out.push_str(&format!(
+        "  missing discriminator: {}\n",
+        card.missing_discriminator
+    ));
+    out.push_str(&format!(
+        "  target test shape: {}\n",
+        card.target_test_shape
+    ));
+    out.push_str(&format!(
+        "  suggested location: {}\n",
+        card.suggested_test_location
+    ));
+    out.push_str(&format!(
+        "  suggested assertion: {}\n",
+        card.suggested_assertion
+    ));
+    out.push_str(&format!(
+        "  verify: {} (fact_only_not_delegated)\n",
+        card.verify_command
+    ));
+    out.push_str("  receipt: available_not_delegated\n");
+    out.push_str(&format!("  confidence: {}\n", card.confidence));
+    for raw_ref in &card.raw_evidence_refs {
+        out.push_str("  raw evidence: ");
+        push_perl_raw_ref(out, raw_ref);
+        out.push('\n');
+    }
+    if !card.stop_if.is_empty() {
+        out.push_str("  stop if:\n");
+        for condition in &card.stop_if {
+            out.push_str(&format!("    - {condition}\n"));
+        }
+    }
+    if !card.must_not_change.is_empty() {
+        out.push_str("  must not change:\n");
+        for boundary in &card.must_not_change {
+            out.push_str(&format!("    - {boundary}\n"));
+        }
+    }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+fn push_perl_raw_ref(out: &mut String, raw_ref: &PerlRawEvidenceRef) {
+    out.push_str(&format!(
+        "{} {}:{}",
+        raw_ref.leg, raw_ref.file, raw_ref.line
+    ));
+    out.push_str(&format!(" ({})", raw_ref.kind));
+    out.push_str(&format!(" source={}", raw_ref.source_id));
+    out.push_str(&format!(" owner={}", raw_ref.owner));
+    if let Some(sample) = &raw_ref.sample {
+        out.push_str(&format!(" sample={sample}"));
     }
 }
 

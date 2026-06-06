@@ -31,6 +31,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Swarm(args) => commands::swarm(&args),
+        CliCommand::Diff(args) => commands::diff(&args),
         CliCommand::Check(args) => commands::check(&args),
         CliCommand::Explain(args) => commands::explain(&args),
         CliCommand::Context(args) => commands::context(&args),
@@ -155,6 +156,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Swarm(args(&["queue", "--top", "0"]))),
             Err("invalid swarm queue --top: expected a positive integer".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Diff(args(&["--format", "xml"]))),
+            Err("unknown diff format \"xml\"".to_string())
         );
     }
 

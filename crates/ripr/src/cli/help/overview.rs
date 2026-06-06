@@ -39,6 +39,7 @@ Usage:
   ripr agent review-summary --root . [--json]
   ripr swarm queue [--root .] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--language python] [--top 10]
   ripr swarm ingest [--root .] --result target/ripr/workflow/agent-result.json
+  ripr diff [--root .] [--base origin/main] [--head HEAD] [--mode draft] [--json]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -89,6 +90,7 @@ Quick start:
   ripr agent review-summary --root .
   ripr swarm queue --language python --top 10
   ripr swarm ingest --result target/ripr/workflow/agent-result.json
+  ripr diff --base origin/main --head HEAD --json
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>

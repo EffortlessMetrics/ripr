@@ -4,6 +4,12 @@ These fixtures pin the bounded `ripr review-comments` report shapes used by
 Campaign 13. They are renderer fixtures, not source-edit or generated-test
 fixtures.
 
+Each JSON/Markdown pair carries `analysis_scope` metadata. The CLI default uses
+`diff_scoped_changed_files` for live diffs, while these renderer-level fixtures
+use `working_set` scope because they construct the changed-file set directly.
+In both cases, scope metadata is part of the contract: review guidance must
+name its narrowed input instead of implying full-repo truth.
+
 Cases:
 
 - `exact-line`: seam maps directly to a changed line.

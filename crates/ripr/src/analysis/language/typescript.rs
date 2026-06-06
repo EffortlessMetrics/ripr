@@ -204,6 +204,516 @@ struct TypeScriptAssertion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptBunArrayBufferFact {
+    kind: TypeScriptBunArrayBufferFactKind,
+    file: PathBuf,
+    line: usize,
+    text: String,
+}
+
+impl TypeScriptBunArrayBufferFact {
+    fn evidence_line(&self) -> String {
+        format!(
+            "typescript_bun_ub_advisory_fact: {} at {}:{} ({})",
+            self.kind.as_str(),
+            normalized_path(&self.file),
+            self.line,
+            self.text
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TypeScriptBunArrayBufferFactKind {
+    SharedArrayBuffer,
+    ResizableArrayBuffer,
+    ArrayBufferResize,
+    ArrayBufferView,
+    ViewBackedBlobInput,
+    BlobArrayBufferObserver,
+    MarkdownExternalCallsite,
+    StableByteCopyOracle,
+    MarkdownStrongOracle,
+    WeakByteSmokeOracle,
+    WeakByteSnapshotOracle,
+    ByteOracleMentionOnly,
+    MaxByteLengthMentionOnly,
+}
+
+impl TypeScriptBunArrayBufferFactKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SharedArrayBuffer => "shared_array_buffer",
+            Self::ResizableArrayBuffer => "resizable_array_buffer",
+            Self::ArrayBufferResize => "array_buffer_resize",
+            Self::ArrayBufferView => "array_buffer_view",
+            Self::ViewBackedBlobInput => "view_backed_blob_input",
+            Self::BlobArrayBufferObserver => "blob_array_buffer_observer",
+            Self::MarkdownExternalCallsite => "bun_markdown_callsite",
+            Self::StableByteCopyOracle => "stable_byte_copy_oracle",
+            Self::MarkdownStrongOracle => "markdown_strong_oracle",
+            Self::WeakByteSmokeOracle => "weak_byte_smoke_oracle",
+            Self::WeakByteSnapshotOracle => "weak_byte_snapshot_oracle",
+            Self::ByteOracleMentionOnly => "byte_oracle_mention_only",
+            Self::MaxByteLengthMentionOnly => "max_byte_length_mention_only",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptBunBridgeHint {
+    profile_kind: TypeScriptBunBridgeProfileKind,
+    confidence: TypeScriptBunBridgeConfidence,
+    verdict: TypeScriptBunBridgeVerdict,
+    rust_file: &'static str,
+    rust_owner: &'static str,
+    rust_boundary: &'static str,
+    ts_test_file: PathBuf,
+}
+
+impl TypeScriptBunBridgeHint {
+    fn evidence_lines(&self) -> Vec<String> {
+        let missing = self.verdict.missing_discriminators();
+        let missing = if missing.is_empty() {
+            "none".to_string()
+        } else {
+            missing.join(",")
+        };
+        let mut lines = vec![
+            format!(
+                "typescript_bun_ub_bridge_hint: confidence={} rust_file={} rust_owner={} rust_boundary=\"{}\" ts_test_file={}",
+                self.confidence.as_str(),
+                self.rust_file,
+                self.rust_owner,
+                self.rust_boundary,
+                normalized_path(&self.ts_test_file)
+            ),
+            format!(
+                "typescript_bun_ub_bridge_verdict: {} missing_discriminators={} action={} suggested_test_file={} repair_packet_ready=false",
+                self.verdict.as_str(),
+                missing,
+                self.verdict.expected_action(),
+                self.suggested_test_file()
+            ),
+            format!(
+                "typescript_bun_ub_cross_language_grip: state={} rust_grip=ungripped ts_verdict={} action={} authority=preview_advisory_only suggested_test_file={} repair_packet_ready=false",
+                self.verdict.cross_language_state(),
+                self.verdict.as_str(),
+                self.verdict.expected_action(),
+                self.suggested_test_file()
+            ),
+            "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
+        ];
+        if let Some(reason) = self.placement_reason() {
+            lines.push(format!(
+                "typescript_bun_ub_test_placement: rank=1 suggested_test_file={} reason=\"{}\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false",
+                self.suggested_test_file(),
+                reason
+            ));
+        }
+        lines
+    }
+
+    fn suggested_test_file(&self) -> &'static str {
+        match (self.profile_kind, self.verdict) {
+            (
+                TypeScriptBunBridgeProfileKind::BlobArrayBuffer,
+                TypeScriptBunBridgeVerdict::TsMissingResizable
+                | TypeScriptBunBridgeVerdict::TsMissingShared
+                | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable,
+            ) => self.profile_kind.ts_test_file(),
+            _ => "not_applicable",
+        }
+    }
+
+    fn placement_reason(&self) -> Option<String> {
+        self.profile_kind.placement_reason(self.verdict)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TypeScriptBunBridgeConfidence {
+    ConfiguredHint,
+    Unknown,
+}
+
+impl TypeScriptBunBridgeConfidence {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ConfiguredHint => "configured_hint",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TypeScriptBunBridgeVerdict {
+    TsDiscriminated,
+    TsMissingResizable,
+    TsMissingShared,
+    TsMissingSharedAndResizable,
+    TsMissingExternalOracle,
+    TsMentionNotObserver,
+    BridgeUnknown,
+}
+
+impl TypeScriptBunBridgeVerdict {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TsDiscriminated => "ts_discriminated",
+            Self::TsMissingResizable => "ts_missing_resizable",
+            Self::TsMissingShared => "ts_missing_shared",
+            Self::TsMissingSharedAndResizable => "ts_missing_shared_and_resizable",
+            Self::TsMissingExternalOracle => "ts_missing_external_oracle",
+            Self::TsMentionNotObserver => "ts_mention_not_observer",
+            Self::BridgeUnknown => "bridge_unknown",
+        }
+    }
+
+    fn missing_discriminators(self) -> &'static [&'static str] {
+        match self {
+            Self::TsMissingResizable => &["resizable_array_buffer"],
+            Self::TsMissingShared => &["shared_array_buffer"],
+            Self::TsMissingSharedAndResizable => &["shared_array_buffer", "resizable_array_buffer"],
+            Self::TsDiscriminated
+            | Self::TsMissingExternalOracle
+            | Self::TsMentionNotObserver
+            | Self::BridgeUnknown => &[],
+        }
+    }
+
+    fn expected_action(self) -> &'static str {
+        match self {
+            Self::TsDiscriminated => "no_missing_bridge_discriminator",
+            Self::TsMissingResizable
+            | Self::TsMissingShared
+            | Self::TsMissingSharedAndResizable
+            | Self::TsMissingExternalOracle => "route_cross_language_oracle_visibility_limitation",
+            Self::TsMentionNotObserver => "do_not_credit_token_mention",
+            Self::BridgeUnknown => "report_bridge_unknown_not_no_static_path",
+        }
+    }
+
+    fn cross_language_state(self) -> &'static str {
+        match self {
+            Self::TsDiscriminated => "rust_ungripped_ts_discriminated",
+            Self::TsMissingResizable
+            | Self::TsMissingShared
+            | Self::TsMissingSharedAndResizable => "rust_ungripped_ts_missing_discriminator",
+            Self::TsMissingExternalOracle => "rust_ungripped_ts_missing_external_oracle",
+            Self::TsMentionNotObserver => "ts_mention_not_observer",
+            Self::BridgeUnknown => "bridge_unknown",
+        }
+    }
+
+    fn exposure_class(self) -> ExposureClass {
+        match self {
+            Self::TsDiscriminated => ExposureClass::Exposed,
+            Self::TsMissingResizable
+            | Self::TsMissingShared
+            | Self::TsMissingSharedAndResizable
+            | Self::TsMissingExternalOracle => ExposureClass::StaticUnknown,
+            Self::TsMentionNotObserver | Self::BridgeUnknown => ExposureClass::StaticUnknown,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TypeScriptBunBridgeProfile {
+    kind: TypeScriptBunBridgeProfileKind,
+    confidence: TypeScriptBunBridgeConfidence,
+    rust_file: &'static str,
+    rust_owner: &'static str,
+    rust_boundary: &'static str,
+    ts_test_file: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TypeScriptBunBridgeProfileKind {
+    BlobArrayBuffer,
+    ArrayBufferCopyToUnshared,
+    MarkdownResizableArrayBuffer,
+}
+
+impl TypeScriptBunBridgeProfileKind {
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::BlobArrayBuffer => "Bun Blob",
+            Self::ArrayBufferCopyToUnshared => "Bun ArrayBuffer copy_to_unshared",
+            Self::MarkdownResizableArrayBuffer => "Bun MarkdownObject",
+        }
+    }
+
+    fn ts_test_file(self) -> &'static str {
+        match self {
+            Self::BlobArrayBuffer | Self::ArrayBufferCopyToUnshared => {
+                BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+            }
+            Self::MarkdownResizableArrayBuffer => BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE,
+        }
+    }
+
+    fn line_text_matches(self, line_text: &str) -> bool {
+        match self {
+            Self::BlobArrayBuffer => {
+                line_text.contains("array_buffer.shared")
+                    && line_text.contains("array_buffer.resizable")
+            }
+            Self::ArrayBufferCopyToUnshared => {
+                line_text_matches_bun_copy_to_unshared_boundary(line_text)
+            }
+            Self::MarkdownResizableArrayBuffer => {
+                line_text.contains("self.0.resizable") && line_text.contains("!self.0.shared")
+            }
+        }
+    }
+
+    fn expected_sinks(self) -> Vec<String> {
+        match self {
+            Self::BlobArrayBuffer | Self::ArrayBufferCopyToUnshared => {
+                vec!["stable_byte_copy".to_string()]
+            }
+            Self::MarkdownResizableArrayBuffer => vec!["markdown_output".to_string()],
+        }
+    }
+
+    fn required_oracles(self) -> Vec<String> {
+        match self {
+            Self::BlobArrayBuffer | Self::ArrayBufferCopyToUnshared => vec![
+                "shared_array_buffer".to_string(),
+                "resizable_array_buffer".to_string(),
+                "stable_byte_copy_oracle".to_string(),
+            ],
+            Self::MarkdownResizableArrayBuffer => vec![
+                "resizable_array_buffer".to_string(),
+                "bun_markdown_callsite".to_string(),
+                "markdown_strong_oracle".to_string(),
+            ],
+        }
+    }
+
+    fn placement_reason(self, verdict: TypeScriptBunBridgeVerdict) -> Option<String> {
+        match (self, verdict) {
+            (Self::BlobArrayBuffer, TypeScriptBunBridgeVerdict::TsMissingResizable) => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer".to_string(),
+            ),
+            (Self::BlobArrayBuffer, TypeScriptBunBridgeVerdict::TsMissingShared) => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is SharedArrayBuffer".to_string(),
+            ),
+            (Self::BlobArrayBuffer, TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable) => Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminators are SharedArrayBuffer and resizable ArrayBuffer".to_string(),
+            ),
+            _ => None,
+        }
+    }
+
+    fn complete_observe_summary(self) -> &'static str {
+        match self {
+            Self::BlobArrayBuffer => {
+                "TypeScript Blob ArrayBuffer integration evidence contains a stable-byte observer."
+            }
+            Self::ArrayBufferCopyToUnshared => {
+                "TypeScript Blob ArrayBuffer copy evidence contains a stable-byte observer."
+            }
+            Self::MarkdownResizableArrayBuffer => {
+                "TypeScript Bun markdown integration evidence contains a strong output observer."
+            }
+        }
+    }
+
+    fn complete_discriminate_summary(self) -> &'static str {
+        match self {
+            Self::BlobArrayBuffer => {
+                "TypeScript evidence discriminates SharedArrayBuffer and resizable ArrayBuffer branches for the configured Rust seam."
+            }
+            Self::ArrayBufferCopyToUnshared => {
+                "TypeScript evidence discriminates SharedArrayBuffer and resizable ArrayBuffer copy semantics for the configured Rust seam."
+            }
+            Self::MarkdownResizableArrayBuffer => {
+                "TypeScript evidence discriminates a resizable non-shared ArrayBuffer for the configured Rust seam."
+            }
+        }
+    }
+
+    fn missing_resizable_summary(self) -> &'static str {
+        match self {
+            Self::BlobArrayBuffer => {
+                "TypeScript evidence is missing the resizable ArrayBuffer discriminator for the configured Rust seam."
+            }
+            Self::ArrayBufferCopyToUnshared => {
+                "TypeScript evidence is missing the resizable ArrayBuffer copy discriminator for the configured Rust seam."
+            }
+            Self::MarkdownResizableArrayBuffer => {
+                "TypeScript evidence is missing the resizable non-shared ArrayBuffer discriminator for the configured Rust seam."
+            }
+        }
+    }
+
+    fn configured_bridge_sample(self, ts_test_file: &Path) -> String {
+        match self {
+            Self::BlobArrayBuffer => {
+                format!(
+                    "configured Bun Blob bridge to {}",
+                    normalized_path(ts_test_file)
+                )
+            }
+            Self::ArrayBufferCopyToUnshared => {
+                format!(
+                    "configured Bun copy_to_unshared bridge to {}",
+                    normalized_path(ts_test_file)
+                )
+            }
+            Self::MarkdownResizableArrayBuffer => {
+                format!(
+                    "configured Bun MarkdownObject bridge to {}",
+                    normalized_path(ts_test_file)
+                )
+            }
+        }
+    }
+}
+
+const BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE: &str = "test/js/web/fetch/blob.test.ts";
+const BUN_BLOB_ARRAY_BUFFER_RUST_FILE: &str = "src/jsc/Blob.rs";
+const BUN_BLOB_ARRAY_BUFFER_RUST_OWNER: &str = "Blob::from_js_without_defer_gc";
+const BUN_BLOB_ARRAY_BUFFER_RUST_BOUNDARY: &str = "array_buffer.shared || array_buffer.resizable";
+const BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_FILE: &str = "src/jsc/array_buffer.rs";
+const BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_OWNER: &str = "copy_to_unshared";
+const BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_BOUNDARY: &str =
+    "SharedArrayBuffer and resizable ArrayBuffer copy semantics";
+
+const BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE: TypeScriptBunBridgeProfile =
+    TypeScriptBunBridgeProfile {
+        kind: TypeScriptBunBridgeProfileKind::BlobArrayBuffer,
+        confidence: TypeScriptBunBridgeConfidence::ConfiguredHint,
+        rust_file: BUN_BLOB_ARRAY_BUFFER_RUST_FILE,
+        rust_owner: BUN_BLOB_ARRAY_BUFFER_RUST_OWNER,
+        rust_boundary: BUN_BLOB_ARRAY_BUFFER_RUST_BOUNDARY,
+        ts_test_file: BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE,
+    };
+
+const BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE: &str = "test/js/bun/md/md-edge-cases.test.ts";
+const BUN_MARKDOWN_RESIZABLE_RUST_FILE: &str = "src/runtime/api/MarkdownObject.rs";
+const BUN_MARKDOWN_RESIZABLE_RUST_OWNER: &str = "MarkdownObject::to_string";
+const BUN_MARKDOWN_RESIZABLE_RUST_BOUNDARY: &str = "self.0.resizable && !self.0.shared";
+
+const BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_BRIDGE_PROFILE: TypeScriptBunBridgeProfile =
+    TypeScriptBunBridgeProfile {
+        confidence: TypeScriptBunBridgeConfidence::ConfiguredHint,
+        kind: TypeScriptBunBridgeProfileKind::ArrayBufferCopyToUnshared,
+        rust_file: BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_FILE,
+        rust_owner: BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_OWNER,
+        rust_boundary: BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_BOUNDARY,
+        ts_test_file: BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE,
+    };
+
+const BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE: TypeScriptBunBridgeProfile =
+    TypeScriptBunBridgeProfile {
+        kind: TypeScriptBunBridgeProfileKind::MarkdownResizableArrayBuffer,
+        confidence: TypeScriptBunBridgeConfidence::ConfiguredHint,
+        rust_file: BUN_MARKDOWN_RESIZABLE_RUST_FILE,
+        rust_owner: BUN_MARKDOWN_RESIZABLE_RUST_OWNER,
+        rust_boundary: BUN_MARKDOWN_RESIZABLE_RUST_BOUNDARY,
+        ts_test_file: BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE,
+    };
+
+const BUN_RUST_CROSS_LANGUAGE_BRIDGE_PROFILES: &[TypeScriptBunBridgeProfile] = &[
+    BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE,
+    BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_BRIDGE_PROFILE,
+    BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE,
+];
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct TypeScriptBunArrayBufferObservation {
+    shared_array_buffer: bool,
+    resizable_array_buffer: bool,
+    view_backed_blob_input: bool,
+    markdown_external_callsite: bool,
+    stable_byte_copy_oracle: bool,
+    markdown_strong_oracle: bool,
+    max_byte_length_mention_only: bool,
+}
+
+impl TypeScriptBunArrayBufferObservation {
+    fn has_complete_blob_observer(&self) -> bool {
+        self.view_backed_blob_input && self.stable_byte_copy_oracle
+    }
+
+    fn has_partial_blob_observer(&self) -> bool {
+        self.view_backed_blob_input || self.stable_byte_copy_oracle
+    }
+
+    fn has_all_bridge_discriminators(&self) -> bool {
+        self.shared_array_buffer && self.resizable_array_buffer && self.has_complete_blob_observer()
+    }
+
+    fn has_complete_markdown_observer(&self) -> bool {
+        self.markdown_external_callsite && self.markdown_strong_oracle
+    }
+
+    fn has_partial_markdown_observer(&self) -> bool {
+        self.markdown_external_callsite || self.markdown_strong_oracle
+    }
+
+    fn bridge_verdict(
+        &self,
+        confidence: TypeScriptBunBridgeConfidence,
+        profile_kind: TypeScriptBunBridgeProfileKind,
+    ) -> Option<TypeScriptBunBridgeVerdict> {
+        if profile_kind == TypeScriptBunBridgeProfileKind::MarkdownResizableArrayBuffer {
+            return self.markdown_bridge_verdict(confidence);
+        }
+        self.blob_bridge_verdict(confidence)
+    }
+
+    fn blob_bridge_verdict(
+        &self,
+        confidence: TypeScriptBunBridgeConfidence,
+    ) -> Option<TypeScriptBunBridgeVerdict> {
+        if confidence == TypeScriptBunBridgeConfidence::Unknown {
+            return self
+                .has_all_bridge_discriminators()
+                .then_some(TypeScriptBunBridgeVerdict::BridgeUnknown);
+        }
+        if self.max_byte_length_mention_only && !self.has_partial_blob_observer() {
+            return Some(TypeScriptBunBridgeVerdict::TsMentionNotObserver);
+        }
+        if !self.has_complete_blob_observer() {
+            if self.has_partial_blob_observer() {
+                return Some(TypeScriptBunBridgeVerdict::TsMissingExternalOracle);
+            }
+            return None;
+        }
+        match (self.shared_array_buffer, self.resizable_array_buffer) {
+            (true, true) => Some(TypeScriptBunBridgeVerdict::TsDiscriminated),
+            (true, false) => Some(TypeScriptBunBridgeVerdict::TsMissingResizable),
+            (false, true) => Some(TypeScriptBunBridgeVerdict::TsMissingShared),
+            (false, false) => Some(TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable),
+        }
+    }
+
+    fn markdown_bridge_verdict(
+        &self,
+        confidence: TypeScriptBunBridgeConfidence,
+    ) -> Option<TypeScriptBunBridgeVerdict> {
+        let complete = self.resizable_array_buffer && self.has_complete_markdown_observer();
+        if confidence == TypeScriptBunBridgeConfidence::Unknown {
+            return complete.then_some(TypeScriptBunBridgeVerdict::BridgeUnknown);
+        }
+        if !self.has_complete_markdown_observer() {
+            if self.resizable_array_buffer || self.has_partial_markdown_observer() {
+                return Some(TypeScriptBunBridgeVerdict::TsMissingExternalOracle);
+            }
+            return None;
+        }
+        if self.resizable_array_buffer {
+            Some(TypeScriptBunBridgeVerdict::TsDiscriminated)
+        } else {
+            Some(TypeScriptBunBridgeVerdict::TsMissingResizable)
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptMockPayload {
     target: String,
     expected: String,
@@ -2048,6 +2558,668 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
         .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
+fn collect_related_bun_array_buffer_facts(
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+) -> Vec<TypeScriptBunArrayBufferFact> {
+    let mut facts = Vec::new();
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.relation.uses_oracle())
+    {
+        for fact in bun_array_buffer_facts_for_test(candidate.test) {
+            push_unique_bun_array_buffer_fact(&mut facts, fact);
+        }
+    }
+    sort_bun_array_buffer_facts(&mut facts);
+    facts
+}
+
+fn collect_related_bun_bridge_hints(
+    facts: &[TypeScriptBunArrayBufferFact],
+) -> Vec<TypeScriptBunBridgeHint> {
+    let mut hints = Vec::new();
+    for profile in [
+        BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE,
+        BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE,
+    ] {
+        if let Some(hint) = bun_bridge_hint_for_profile(facts, profile) {
+            push_unique_bun_bridge_hint(&mut hints, hint);
+        }
+    }
+    sort_bun_bridge_hints(&mut hints);
+    hints
+}
+
+fn collect_profile_bun_array_buffer_facts(
+    all_tests: &[TypeScriptTest],
+    profile: TypeScriptBunBridgeProfile,
+) -> Vec<TypeScriptBunArrayBufferFact> {
+    let mut facts = Vec::new();
+    for test in all_tests
+        .iter()
+        .filter(|test| normalized_path(&test.file) == profile.ts_test_file)
+    {
+        for fact in bun_array_buffer_facts_for_test(test) {
+            push_unique_bun_array_buffer_fact(&mut facts, fact);
+        }
+    }
+    sort_bun_array_buffer_facts(&mut facts);
+    facts
+}
+
+fn related_profile_bun_tests(
+    all_tests: &[TypeScriptTest],
+    profile: TypeScriptBunBridgeProfile,
+) -> Vec<RelatedTest> {
+    let mut related = all_tests
+        .iter()
+        .filter(|test| normalized_path(&test.file) == profile.ts_test_file)
+        .filter(|test| !bun_array_buffer_facts_for_test(test).is_empty())
+        .map(|test| {
+            let strongest = strongest_assertion(&test.assertions);
+            let (oracle_kind, oracle_strength, oracle_text) = match strongest {
+                Some(assertion) => (
+                    assertion.oracle_kind.clone(),
+                    assertion.oracle_strength.clone(),
+                    Some(assertion_oracle_text(assertion)),
+                ),
+                None => (OracleKind::Unknown, OracleStrength::Unknown, None),
+            };
+            RelatedTest {
+                name: test.name.clone(),
+                file: test.file.clone(),
+                line: test.line,
+                oracle: oracle_text,
+                oracle_kind,
+                oracle_strength,
+            }
+        })
+        .collect::<Vec<_>>();
+    related.sort_by(|left, right| {
+        right
+            .oracle_strength
+            .rank()
+            .cmp(&left.oracle_strength.rank())
+            .then_with(|| left.file.cmp(&right.file))
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    related
+}
+
+fn bun_bridge_hint_for_profile(
+    facts: &[TypeScriptBunArrayBufferFact],
+    profile: TypeScriptBunBridgeProfile,
+) -> Option<TypeScriptBunBridgeHint> {
+    let observation = bun_array_buffer_observation_for_profile(facts, profile)?;
+    let verdict = observation.bridge_verdict(profile.confidence, profile.kind)?;
+    Some(TypeScriptBunBridgeHint {
+        profile_kind: profile.kind,
+        confidence: profile.confidence,
+        verdict,
+        rust_file: profile.rust_file,
+        rust_owner: profile.rust_owner,
+        rust_boundary: profile.rust_boundary,
+        ts_test_file: PathBuf::from(profile.ts_test_file),
+    })
+}
+
+fn bun_array_buffer_observation_for_profile(
+    facts: &[TypeScriptBunArrayBufferFact],
+    profile: TypeScriptBunBridgeProfile,
+) -> Option<TypeScriptBunArrayBufferObservation> {
+    let mut observation = TypeScriptBunArrayBufferObservation::default();
+    let mut observed_any_profile_fact = false;
+    for fact in facts
+        .iter()
+        .filter(|fact| normalized_path(&fact.file) == profile.ts_test_file)
+    {
+        match fact.kind {
+            TypeScriptBunArrayBufferFactKind::SharedArrayBuffer => {
+                observation.shared_array_buffer = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::ResizableArrayBuffer => {
+                observation.resizable_array_buffer = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput => {
+                observation.view_backed_blob_input = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::MarkdownExternalCallsite => {
+                observation.markdown_external_callsite = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::StableByteCopyOracle => {
+                observation.stable_byte_copy_oracle = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::MarkdownStrongOracle => {
+                observation.markdown_strong_oracle = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::MaxByteLengthMentionOnly => {
+                observation.max_byte_length_mention_only = true;
+                observed_any_profile_fact = true;
+            }
+            TypeScriptBunArrayBufferFactKind::ArrayBufferResize
+            | TypeScriptBunArrayBufferFactKind::ArrayBufferView
+            | TypeScriptBunArrayBufferFactKind::BlobArrayBufferObserver
+            | TypeScriptBunArrayBufferFactKind::WeakByteSmokeOracle
+            | TypeScriptBunArrayBufferFactKind::WeakByteSnapshotOracle
+            | TypeScriptBunArrayBufferFactKind::ByteOracleMentionOnly => {}
+        }
+    }
+    observed_any_profile_fact.then_some(observation)
+}
+
+fn bun_array_buffer_facts_for_test(test: &TypeScriptTest) -> Vec<TypeScriptBunArrayBufferFact> {
+    extract_bun_array_buffer_facts_from_body(
+        &test.file,
+        &test.body_text,
+        test.line,
+        &test.assertions,
+    )
+}
+
+fn extract_bun_array_buffer_facts_from_body(
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    assertions: &[TypeScriptAssertion],
+) -> Vec<TypeScriptBunArrayBufferFact> {
+    let mut facts = Vec::new();
+
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        "new SharedArrayBuffer(",
+        TypeScriptBunArrayBufferFactKind::SharedArrayBuffer,
+    );
+    push_resizable_array_buffer_facts(&mut facts, file, body_text, start_line);
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        ".resize(",
+        TypeScriptBunArrayBufferFactKind::ArrayBufferResize,
+    );
+    for view_shape in [
+        "new Uint8Array(",
+        "new Uint8ClampedArray(",
+        "new Uint16Array(",
+        "new Uint32Array(",
+        "new BigUint64Array(",
+        "new Int8Array(",
+        "new Int16Array(",
+        "new Int32Array(",
+        "new BigInt64Array(",
+        "new Float32Array(",
+        "new Float64Array(",
+        "new DataView(",
+    ] {
+        push_bun_facts_for_shape(
+            &mut facts,
+            file,
+            body_text,
+            start_line,
+            view_shape,
+            TypeScriptBunArrayBufferFactKind::ArrayBufferView,
+        );
+    }
+    push_bun_facts_for_shape(
+        &mut facts,
+        file,
+        body_text,
+        start_line,
+        ".arrayBuffer(",
+        TypeScriptBunArrayBufferFactKind::BlobArrayBufferObserver,
+    );
+
+    let has_view = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::ArrayBufferView);
+    if has_view {
+        push_view_backed_blob_input_facts(&mut facts, file, body_text, start_line);
+    }
+
+    push_byte_oracle_facts(&mut facts, file, body_text, start_line, assertions);
+    push_markdown_oracle_facts(&mut facts, file, body_text, start_line, assertions);
+
+    let has_view_backed_blob = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput);
+    let has_stable_byte_oracle = facts
+        .iter()
+        .any(|fact| fact.kind == TypeScriptBunArrayBufferFactKind::StableByteCopyOracle);
+    if (!has_view_backed_blob || !has_stable_byte_oracle)
+        && let Some(idx) = first_unquoted_token_index(body_text, "maxByteLength")
+    {
+        push_unique_bun_array_buffer_fact(
+            &mut facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::MaxByteLengthMentionOnly,
+            ),
+        );
+    }
+
+    sort_bun_array_buffer_facts(&mut facts);
+    facts
+}
+
+fn push_resizable_array_buffer_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+) {
+    for idx in unquoted_shape_indices(body_text, "new ArrayBuffer(") {
+        let Some(call_text) = delimited_call_text_at(body_text, idx, "new ArrayBuffer(") else {
+            continue;
+        };
+        if contains_unquoted_token(call_text, "maxByteLength") {
+            push_unique_bun_array_buffer_fact(
+                facts,
+                bun_array_buffer_fact(
+                    file,
+                    body_text,
+                    start_line,
+                    idx,
+                    TypeScriptBunArrayBufferFactKind::ResizableArrayBuffer,
+                ),
+            );
+        }
+    }
+}
+
+fn push_bun_facts_for_shape(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    shape: &str,
+    kind: TypeScriptBunArrayBufferFactKind,
+) {
+    for idx in unquoted_shape_indices(body_text, shape) {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(file, body_text, start_line, idx, kind),
+        );
+    }
+}
+
+fn push_view_backed_blob_input_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+) {
+    for idx in unquoted_shape_indices(body_text, "new Blob(") {
+        let Some(call_text) = delimited_call_text_at(body_text, idx, "new Blob(") else {
+            continue;
+        };
+        if contains_unquoted_shape(call_text, "[") {
+            push_unique_bun_array_buffer_fact(
+                facts,
+                bun_array_buffer_fact(
+                    file,
+                    body_text,
+                    start_line,
+                    idx,
+                    TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+                ),
+            );
+        }
+    }
+}
+
+fn push_byte_oracle_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    assertions: &[TypeScriptAssertion],
+) {
+    let Some(blob_read_idx) = first_blob_byte_read_index(body_text) else {
+        return;
+    };
+    if assertions.iter().any(assertion_is_exact_value)
+        && body_has_byte_or_text_observer(body_text)
+        && let Some(idx) = first_exact_value_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+            ),
+        );
+        return;
+    }
+    if assertions.iter().any(assertion_is_snapshot)
+        && let Some(idx) = first_snapshot_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::WeakByteSnapshotOracle,
+            ),
+        );
+        return;
+    }
+    if assertions.iter().any(assertion_is_smoke)
+        && let Some(idx) = first_smoke_matcher_index(body_text).or(Some(blob_read_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::WeakByteSmokeOracle,
+            ),
+        );
+        return;
+    }
+    push_unique_bun_array_buffer_fact(
+        facts,
+        bun_array_buffer_fact(
+            file,
+            body_text,
+            start_line,
+            blob_read_idx,
+            TypeScriptBunArrayBufferFactKind::ByteOracleMentionOnly,
+        ),
+    );
+}
+
+fn push_markdown_oracle_facts(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    assertions: &[TypeScriptAssertion],
+) {
+    let Some(markdown_idx) = first_bun_markdown_callsite_index(body_text) else {
+        return;
+    };
+    push_unique_bun_array_buffer_fact(
+        facts,
+        bun_array_buffer_fact(
+            file,
+            body_text,
+            start_line,
+            markdown_idx,
+            TypeScriptBunArrayBufferFactKind::MarkdownExternalCallsite,
+        ),
+    );
+    if assertions.iter().any(assertion_is_exact_value)
+        && let Some(idx) = first_exact_value_matcher_index(body_text).or(Some(markdown_idx))
+    {
+        push_unique_bun_array_buffer_fact(
+            facts,
+            bun_array_buffer_fact(
+                file,
+                body_text,
+                start_line,
+                idx,
+                TypeScriptBunArrayBufferFactKind::MarkdownStrongOracle,
+            ),
+        );
+    }
+}
+
+fn first_bun_markdown_callsite_index(body_text: &str) -> Option<usize> {
+    [
+        "Bun.markdown(",
+        "Bun.md(",
+        "Bun.Markdown(",
+        "Bun.MarkdownObject(",
+    ]
+    .into_iter()
+    .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+    .min()
+}
+
+fn first_blob_byte_read_index(body_text: &str) -> Option<usize> {
+    first_unquoted_shape_index(body_text, ".arrayBuffer(")
+        .or_else(|| first_unquoted_shape_index(body_text, ".text("))
+}
+
+fn body_has_byte_or_text_observer(body_text: &str) -> bool {
+    [
+        "new Uint8Array(",
+        "new Uint8ClampedArray(",
+        "new DataView(",
+        "Array.from(",
+        "[...",
+        ".text(",
+    ]
+    .into_iter()
+    .any(|shape| contains_unquoted_shape(body_text, shape))
+}
+
+fn assertion_is_exact_value(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::ExactValue
+        && assertion.oracle_strength.rank() >= OracleStrength::Strong.rank()
+}
+
+fn assertion_is_snapshot(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::Snapshot
+}
+
+fn assertion_is_smoke(assertion: &TypeScriptAssertion) -> bool {
+    assertion.oracle_kind == OracleKind::SmokeOnly
+}
+
+fn first_exact_value_matcher_index(body_text: &str) -> Option<usize> {
+    [".toEqual(", ".toStrictEqual(", ".toBe("]
+        .into_iter()
+        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+        .min()
+}
+
+fn first_snapshot_matcher_index(body_text: &str) -> Option<usize> {
+    [".toMatchSnapshot(", ".toMatchInlineSnapshot("]
+        .into_iter()
+        .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+        .min()
+}
+
+fn first_smoke_matcher_index(body_text: &str) -> Option<usize> {
+    [
+        ".toBeTruthy(",
+        ".toBeFalsy(",
+        ".toBeDefined(",
+        ".toBeUndefined(",
+        ".toBeNull(",
+        ".toBeNaN(",
+    ]
+    .into_iter()
+    .filter_map(|shape| first_unquoted_shape_index(body_text, shape))
+    .min()
+}
+
+fn bun_array_buffer_fact(
+    file: &Path,
+    body_text: &str,
+    start_line: usize,
+    idx: usize,
+    kind: TypeScriptBunArrayBufferFactKind,
+) -> TypeScriptBunArrayBufferFact {
+    TypeScriptBunArrayBufferFact {
+        kind,
+        file: file.to_path_buf(),
+        line: line_for_body_offset(body_text, start_line, idx),
+        text: source_line_at_offset(body_text, idx),
+    }
+}
+
+fn line_for_body_offset(body_text: &str, start_line: usize, idx: usize) -> usize {
+    start_line
+        + body_text[..idx]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+}
+
+fn source_line_at_offset(body_text: &str, idx: usize) -> String {
+    let line_start = body_text[..idx].rfind('\n').map_or(0, |offset| offset + 1);
+    let line_end = body_text[idx..]
+        .find('\n')
+        .map_or(body_text.len(), |offset| idx + offset);
+    let mut line = body_text[line_start..line_end].trim().to_string();
+    const MAX_FACT_TEXT: usize = 160;
+    if line.len() > MAX_FACT_TEXT {
+        line.truncate(MAX_FACT_TEXT);
+        line.push_str("...");
+    }
+    line
+}
+
+fn delimited_call_text_at<'a>(body_text: &'a str, idx: usize, shape: &str) -> Option<&'a str> {
+    let open_idx = idx + shape.len() - 1;
+    if body_text.as_bytes().get(open_idx).copied()? != b'(' {
+        return None;
+    }
+    let close_idx = matching_close_paren(body_text, open_idx)?;
+    body_text.get(idx..=close_idx)
+}
+
+fn matching_close_paren(body_text: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut escaped = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_template = false;
+    for (idx, ch) in body_text[open_idx..].char_indices() {
+        let absolute = open_idx + idx;
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '\'' && !in_double && !in_template {
+            in_single = !in_single;
+            continue;
+        }
+        if ch == '"' && !in_single && !in_template {
+            in_double = !in_double;
+            continue;
+        }
+        if ch == '`' && !in_single && !in_double {
+            in_template = !in_template;
+            continue;
+        }
+        if in_single || in_double || in_template || inside_block_comment(body_text, absolute) {
+            continue;
+        }
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return Some(absolute);
+            }
+        }
+    }
+    None
+}
+
+fn contains_unquoted_token(text: &str, token: &str) -> bool {
+    first_unquoted_token_index(text, token).is_some()
+}
+
+fn first_unquoted_token_index(text: &str, token: &str) -> Option<usize> {
+    unquoted_shape_indices(text, token)
+        .into_iter()
+        .find(|idx| has_token_boundary(text, *idx, token.len()))
+}
+
+fn first_unquoted_shape_index(text: &str, shape: &str) -> Option<usize> {
+    unquoted_shape_indices(text, shape).into_iter().next()
+}
+
+fn unquoted_shape_indices(text: &str, shape: &str) -> Vec<usize> {
+    text.match_indices(shape)
+        .filter_map(|(idx, _)| {
+            (!line_prefix_looks_like_comment_or_string(text, idx)
+                && !inside_block_comment(text, idx))
+            .then_some(idx)
+        })
+        .collect()
+}
+
+fn has_token_boundary(text: &str, idx: usize, len: usize) -> bool {
+    text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_javascript_identifier_char(ch))
+        && text
+            .get(idx + len..)
+            .and_then(|tail| tail.chars().next())
+            .is_none_or(|ch| !is_javascript_identifier_char(ch))
+}
+
+fn push_unique_bun_array_buffer_fact(
+    facts: &mut Vec<TypeScriptBunArrayBufferFact>,
+    fact: TypeScriptBunArrayBufferFact,
+) {
+    if !facts.iter().any(|existing| existing == &fact) {
+        facts.push(fact);
+    }
+}
+
+fn sort_bun_array_buffer_facts(facts: &mut [TypeScriptBunArrayBufferFact]) {
+    facts.sort_by(|left, right| {
+        normalized_path(&left.file)
+            .cmp(&normalized_path(&right.file))
+            .then(left.line.cmp(&right.line))
+            .then(left.kind.cmp(&right.kind))
+            .then(left.text.cmp(&right.text))
+    });
+}
+
+fn push_unique_bun_bridge_hint(
+    hints: &mut Vec<TypeScriptBunBridgeHint>,
+    hint: TypeScriptBunBridgeHint,
+) {
+    if !hints.iter().any(|existing| existing == &hint) {
+        hints.push(hint);
+    }
+}
+
+fn sort_bun_bridge_hints(hints: &mut [TypeScriptBunBridgeHint]) {
+    hints.sort_by(|left, right| {
+        normalized_path(&left.ts_test_file)
+            .cmp(&normalized_path(&right.ts_test_file))
+            .then(left.confidence.cmp(&right.confidence))
+            .then(left.verdict.cmp(&right.verdict))
+            .then(left.rust_file.cmp(right.rust_file))
+            .then(left.rust_owner.cmp(right.rust_owner))
+            .then(left.rust_boundary.cmp(right.rust_boundary))
+    });
+}
+
 fn related_mock_payload_oracle(related: &[RelatedTest]) -> Option<String> {
     related.iter().find_map(|test| {
         (test.oracle_kind == OracleKind::MockExpectation)
@@ -3035,6 +4207,8 @@ fn classify_change(
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
+    let bun_array_buffer_facts = collect_related_bun_array_buffer_facts(&related_candidates);
+    let bun_bridge_hints = collect_related_bun_bridge_hints(&bun_array_buffer_facts);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &mock_paths);
     let has_oracle_eligible_relation = related_candidates
@@ -3241,6 +4415,12 @@ fn classify_change(
     if let Some(oracle) = &mock_payload_oracle {
         evidence.push(format!("mock_payload_evidence: {oracle}"));
     }
+    for fact in &bun_array_buffer_facts {
+        evidence.push(fact.evidence_line());
+    }
+    for hint in &bun_bridge_hints {
+        evidence.extend(hint.evidence_lines());
+    }
     if let Some(limit) = &static_limit {
         evidence.extend(limit.evidence.iter().cloned());
     }
@@ -3295,6 +4475,727 @@ fn classify_change(
         owner_kind: Some(owner.owner_kind),
         static_limit_kind: static_limit.map(|limit| limit.kind),
     })
+}
+
+fn bun_cross_language_finding_for_changed_rust_line(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    all_tests: &[TypeScriptTest],
+) -> Option<Finding> {
+    BUN_RUST_CROSS_LANGUAGE_BRIDGE_PROFILES
+        .iter()
+        .find_map(|profile| {
+            bun_cross_language_finding_for_changed_rust_line_with_profile(
+                file, line, line_text, all_tests, *profile,
+            )
+        })
+}
+
+fn bun_cross_language_finding_for_changed_rust_line_with_profile(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    all_tests: &[TypeScriptTest],
+    profile: TypeScriptBunBridgeProfile,
+) -> Option<Finding> {
+    if normalized_path(file) != profile.rust_file || !profile.kind.line_text_matches(line_text) {
+        return None;
+    }
+
+    let facts = collect_profile_bun_array_buffer_facts(all_tests, profile);
+    let hint = bun_bridge_hint_for_profile(&facts, profile)?;
+    let class = hint.verdict.exposure_class();
+    let missing_discriminators = hint
+        .verdict
+        .missing_discriminators()
+        .iter()
+            .map(|missing| MissingDiscriminatorFact {
+                value: (*missing).to_string(),
+                reason: format!(
+                    "{} TypeScript preview evidence does not discriminate `{missing}` for Rust boundary `{}`.",
+                    profile.kind.display_name(),
+                    hint.rust_boundary
+                ),
+                flow_sink: None,
+            })
+        .collect::<Vec<_>>();
+    let related_tests = related_profile_bun_tests(all_tests, profile);
+    let id_path = normalized_path(file)
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+        .collect::<String>();
+    let probe = Probe {
+        id: ProbeId(format!(
+            "probe:{id_path}:{line}:typescript_bun_ub_cross_language_preview"
+        )),
+        location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
+        owner: Some(SymbolId(format!(
+            "rust:{}::{}",
+            profile.rust_file, profile.rust_owner
+        ))),
+        family: ProbeFamily::Predicate,
+        delta: DeltaKind::Control,
+        before: None,
+        after: Some(line_text.to_string()),
+        expression: profile.rust_boundary.to_string(),
+        expected_sinks: profile.kind.expected_sinks(),
+        required_oracles: profile.kind.required_oracles(),
+    };
+    let actionability = typescript_bun_cross_language_actionability(&hint);
+    let mut evidence = vec![
+        format!("owner: {}", profile.rust_owner),
+        format!(
+            "typescript_bun_ub_rust_seam: file={} line={} owner={} boundary=\"{}\"",
+            profile.rust_file, line, profile.rust_owner, profile.rust_boundary
+        ),
+    ];
+    for fact in &facts {
+        evidence.push(fact.evidence_line());
+    }
+    evidence.extend(hint.evidence_lines());
+    evidence.extend(typescript_bun_cross_language_actionability_evidence(
+        &actionability,
+        file,
+        line,
+        &facts,
+        &hint,
+        &probe.id.0,
+    ));
+
+    let mut missing = Vec::new();
+    if !missing_discriminators.is_empty() {
+        let missing_values = missing_discriminators
+            .iter()
+            .map(|missing| missing.value.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        missing.push(format!(
+            "{} TypeScript preview is missing cross-language discriminator(s): {missing_values}.",
+            profile.kind.display_name()
+        ));
+    }
+    missing.push(actionability.missing_summary());
+
+    let (reach_state, observe_state, discriminate_state) =
+        bun_cross_language_stage_states(hint.verdict);
+    Some(Finding {
+        id: probe.id.0.clone(),
+        canonical_gap: None,
+        probe,
+        class,
+        ripr: RiprEvidence {
+            reach: StageEvidence::new(
+                reach_state,
+                Confidence::Low,
+                format!(
+                    "Configured {} bridge maps Rust owner `{}` to TypeScript integration test `{}`.",
+                    hint.profile_kind.display_name(),
+                    hint.rust_owner,
+                    normalized_path(&hint.ts_test_file)
+                ),
+            ),
+            infect: StageEvidence::new(
+                StageState::Unknown,
+                Confidence::Low,
+                "TypeScript cross-language preview does not model Rust-side infection.",
+            ),
+            propagate: StageEvidence::new(
+                StageState::Unknown,
+                Confidence::Low,
+                "TypeScript cross-language preview does not prove FFI propagation.",
+            ),
+            reveal: RevealEvidence {
+                observe: StageEvidence::new(
+                    observe_state,
+                    Confidence::Low,
+                    bun_cross_language_observe_summary_for(hint.profile_kind, hint.verdict),
+                ),
+                discriminate: StageEvidence::new(
+                    discriminate_state,
+                    Confidence::Low,
+                    bun_cross_language_discriminate_summary_for(hint.profile_kind, hint.verdict),
+                ),
+            },
+        },
+        confidence: bun_cross_language_confidence(hint.verdict),
+        evidence,
+        missing,
+        flow_sinks: Vec::new(),
+        activation: ActivationEvidence {
+            observed_values: Vec::new(),
+            missing_discriminators,
+        },
+        stop_reasons: bun_cross_language_stop_reasons(hint.verdict),
+        related_tests,
+        recommended_next_step: Some(bun_cross_language_recommendation(&hint)),
+        language: Some(DomainLanguageId::TypeScript),
+        language_status: Some(LanguageStatus::Preview),
+        owner_kind: Some(OwnerKind::Function),
+        static_limit_kind: None,
+    })
+}
+
+fn line_text_matches_bun_copy_to_unshared_boundary(line_text: &str) -> bool {
+    if line_text.contains(BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_OWNER) {
+        return true;
+    }
+    let lower = line_text.to_ascii_lowercase();
+    (lower.contains("sharedarraybuffer") && lower.contains("resizable"))
+        || (lower.contains("shared") && lower.contains("resizable") && lower.contains("copy"))
+}
+
+fn typescript_bun_cross_language_actionability(
+    hint: &TypeScriptBunBridgeHint,
+) -> TypeScriptActionability {
+    match hint.verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => TypeScriptActionability {
+            gap_state: "already_observed",
+            category: "bun_ub_ts_discriminated",
+            why_not_actionable: format!(
+                "configured {} TypeScript preview evidence discriminates the profiled boundary; no repair packet should be emitted",
+                hint.profile_kind.display_name()
+            ),
+            repair_route: "no new test suggested; keep the cross-language witness advisory and verify manually against the Bun change".to_string(),
+            missing_fields: Vec::new(),
+            evidence_needed:
+                "none for a repair packet; retain the advisory TypeScript witness and manual Bun review boundary",
+        },
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => TypeScriptActionability {
+            gap_state: "static_limitation",
+            category: "cross_language_oracle_visibility_unresolved",
+            why_not_actionable: format!(
+                "configured {} TypeScript preview evidence is missing external discriminator(s): {}; placement can name the configured TypeScript test file, but RIPR cannot emit a public repair packet without verification, receipt, and edit-surface evidence",
+                hint.profile_kind.display_name(),
+                hint.verdict.missing_discriminators().join(", ")
+            ),
+            repair_route: "analysis/cross-language-oracle-visibility".to_string(),
+            missing_fields: vec![
+                "verify_command",
+                "receipt_command",
+                "must_not_change",
+                "allowed_edit_surface",
+            ],
+            evidence_needed:
+                "the missing TypeScript discriminator in the configured test file plus verify command, receipt command, and edit constraints before repair-packet projection",
+        },
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => TypeScriptActionability {
+            gap_state: "static_limitation",
+            category: "cross_language_oracle_visibility_unresolved",
+            why_not_actionable: format!(
+                "configured {} TypeScript preview facts include a partial external observer path, but the callsite or oracle edge is incomplete, so RIPR cannot safely credit the Rust seam or suggest a repair packet",
+                hint.profile_kind.display_name()
+            ),
+            repair_route: "analysis/cross-language-oracle-visibility".to_string(),
+            missing_fields: vec![
+                "external_oracle_path",
+                "verify_command",
+                "receipt_command",
+                "allowed_edit_surface",
+                "raw_evidence_refs",
+            ],
+            evidence_needed:
+                "external callsite, external oracle, binding or FFI route, verify command, receipt command, raw evidence refs, and edit constraints",
+        },
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver => TypeScriptActionability {
+            gap_state: "static_limitation",
+            category: "cross_language_oracle_visibility_unresolved",
+            why_not_actionable:
+                "maxByteLength or byte-token evidence appears without a Blob input and stable-byte observer, so it cannot be credited to the Rust seam"
+                    .to_string(),
+            repair_route: "analysis/cross-language-oracle-visibility".to_string(),
+            missing_fields: vec![
+                "external_oracle_path",
+                "verify_command",
+                "raw_evidence_refs",
+            ],
+            evidence_needed:
+                "Blob input, stable-byte observer, binding or FFI route, verify command, and raw evidence refs",
+        },
+        TypeScriptBunBridgeVerdict::BridgeUnknown => TypeScriptActionability {
+            gap_state: "static_limitation",
+            category: "cross_language_oracle_visibility_unresolved",
+            why_not_actionable:
+                "TypeScript discriminators are present, but the Rust bridge is unknown and must not be reported as no_static_path"
+                    .to_string(),
+            repair_route: "analysis/cross-language-oracle-visibility".to_string(),
+            missing_fields: vec!["bridge_hint", "raw_evidence_refs"],
+            evidence_needed: "configured bridge hint or generated bridge fact plus raw evidence refs",
+        },
+    }
+}
+
+fn bun_cross_language_stage_states(
+    verdict: TypeScriptBunBridgeVerdict,
+) -> (StageState, StageState, StageState) {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => {
+            (StageState::Yes, StageState::Yes, StageState::Yes)
+        }
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => {
+            (StageState::Yes, StageState::Unknown, StageState::Unknown)
+        }
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => (
+            StageState::Unknown,
+            StageState::Unknown,
+            StageState::Unknown,
+        ),
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        | TypeScriptBunBridgeVerdict::BridgeUnknown => (
+            StageState::Unknown,
+            StageState::Unknown,
+            StageState::Unknown,
+        ),
+    }
+}
+
+fn bun_cross_language_observe_summary_for(
+    profile_kind: TypeScriptBunBridgeProfileKind,
+    verdict: TypeScriptBunBridgeVerdict,
+) -> &'static str {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated
+        | TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => {
+            profile_kind.complete_observe_summary()
+        }
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver => {
+            "TypeScript evidence is a token mention, not a Blob stable-byte observer."
+        }
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => {
+            "TypeScript evidence has a partial Blob observer path, but the stable external oracle path is incomplete."
+        }
+        TypeScriptBunBridgeVerdict::BridgeUnknown => {
+            "TypeScript evidence has discriminators, but the Rust bridge is unknown."
+        }
+    }
+}
+
+fn bun_cross_language_discriminate_summary_for(
+    profile_kind: TypeScriptBunBridgeProfileKind,
+    verdict: TypeScriptBunBridgeVerdict,
+) -> &'static str {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => profile_kind.complete_discriminate_summary(),
+        TypeScriptBunBridgeVerdict::TsMissingResizable => profile_kind.missing_resizable_summary(),
+        TypeScriptBunBridgeVerdict::TsMissingShared => {
+            "TypeScript evidence is missing the SharedArrayBuffer discriminator for the configured Rust seam."
+        }
+        TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => {
+            "TypeScript evidence is missing both SharedArrayBuffer and resizable ArrayBuffer discriminators for the configured Rust seam."
+        }
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver => {
+            "TypeScript token mentions are not stable-byte discriminators."
+        }
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => {
+            "TypeScript evidence cannot be credited until both the Blob callsite and stable-byte oracle are visible."
+        }
+        TypeScriptBunBridgeVerdict::BridgeUnknown => {
+            "Bridge confidence is unknown, so TypeScript discriminators cannot yet be credited to the Rust seam."
+        }
+    }
+}
+
+fn bun_cross_language_confidence(verdict: TypeScriptBunBridgeVerdict) -> f32 {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => 0.6,
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => 0.45,
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => 0.35,
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        | TypeScriptBunBridgeVerdict::BridgeUnknown => 0.3,
+    }
+}
+
+fn bun_cross_language_stop_reasons(verdict: TypeScriptBunBridgeVerdict) -> Vec<StopReason> {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        | TypeScriptBunBridgeVerdict::BridgeUnknown
+        | TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable
+        | TypeScriptBunBridgeVerdict::TsMissingExternalOracle => {
+            vec![StopReason::StaticProbeUnknown]
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn bun_cross_language_recommendation(hint: &TypeScriptBunBridgeHint) -> String {
+    let placement_guidance = match hint.verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => " no new test suggested;",
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => {
+            " suggest the configured TypeScript observer file only as advisory placement;"
+        }
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle
+        | TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        | TypeScriptBunBridgeVerdict::BridgeUnknown => {
+            " route to `analysis/cross-language-oracle-visibility` before suggesting a test target;"
+        }
+    };
+    format!(
+        "TypeScript cross-language preview: state `{}` for Rust seam `{}` `{}`; action `{}`;{} suggested_test_file `{}`; authority preview/advisory only.",
+        hint.verdict.cross_language_state(),
+        hint.rust_owner,
+        hint.rust_boundary,
+        hint.verdict.expected_action(),
+        placement_guidance,
+        hint.suggested_test_file()
+    )
+}
+
+fn typescript_bun_cross_language_actionability_evidence(
+    actionability: &TypeScriptActionability,
+    file: &Path,
+    line: usize,
+    facts: &[TypeScriptBunArrayBufferFact],
+    hint: &TypeScriptBunBridgeHint,
+    source_id: &str,
+) -> Vec<String> {
+    let raw_refs =
+        typescript_bun_cross_language_raw_evidence_refs(file, line, facts, hint, source_id);
+    let first_ref = raw_refs.first().cloned().unwrap_or_else(|| {
+        typescript_bun_cross_language_raw_evidence_ref(
+            "rust_seam",
+            &normalized_path(file),
+            line,
+            "rust_boundary",
+            source_id,
+            Some(hint.rust_owner),
+            hint.rust_boundary,
+        )
+    });
+    let mut evidence = actionability.evidence(first_ref);
+    let missing_graph_legs =
+        bun_cross_language_missing_graph_legs(hint.verdict, facts, hint.profile_kind);
+    if !missing_graph_legs.is_empty() {
+        evidence.push(format!(
+            "missing_graph_legs: {}",
+            missing_graph_legs.join(", ")
+        ));
+    }
+    if let Some(unlock_condition) =
+        bun_cross_language_unlock_condition(hint.verdict, facts, hint.profile_kind)
+    {
+        evidence.push(format!("unlock_condition: {unlock_condition}"));
+    }
+    evidence.extend(raw_refs.into_iter().skip(1));
+    evidence
+}
+
+fn typescript_bun_cross_language_raw_evidence_refs(
+    file: &Path,
+    line: usize,
+    facts: &[TypeScriptBunArrayBufferFact],
+    hint: &TypeScriptBunBridgeHint,
+    source_id: &str,
+) -> Vec<String> {
+    let mut refs = vec![typescript_bun_cross_language_raw_evidence_ref(
+        "rust_seam",
+        &normalized_path(file),
+        line,
+        "rust_boundary",
+        source_id,
+        Some(hint.rust_owner),
+        hint.rust_boundary,
+    )];
+
+    if hint.confidence == TypeScriptBunBridgeConfidence::ConfiguredHint {
+        refs.push(typescript_bun_cross_language_raw_evidence_ref(
+            "binding_edge",
+            hint.rust_file,
+            line,
+            "configured_bridge",
+            source_id,
+            Some(hint.rust_owner),
+            &hint
+                .profile_kind
+                .configured_bridge_sample(&hint.ts_test_file),
+        ));
+    }
+
+    for kind in [
+        TypeScriptBunArrayBufferFactKind::SharedArrayBuffer,
+        TypeScriptBunArrayBufferFactKind::ResizableArrayBuffer,
+    ] {
+        if let Some(fact) = first_bun_array_buffer_fact(facts, kind) {
+            refs.push(typescript_bun_fact_raw_evidence_ref(
+                "boundary_discriminator",
+                fact,
+                source_id,
+                Some(hint.rust_owner),
+            ));
+        }
+    }
+
+    if let Some(fact) =
+        first_bun_array_buffer_fact(facts, TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput)
+    {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_callsite",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    } else if let Some(fact) = first_bun_array_buffer_fact(
+        facts,
+        TypeScriptBunArrayBufferFactKind::MarkdownExternalCallsite,
+    ) {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_callsite",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    } else if let Some(fact) = first_bun_array_buffer_fact(
+        facts,
+        TypeScriptBunArrayBufferFactKind::MaxByteLengthMentionOnly,
+    ) {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_mention",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    }
+
+    if let Some(fact) = first_bun_array_buffer_fact(
+        facts,
+        TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+    ) {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_oracle",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    } else if let Some(fact) = first_bun_array_buffer_fact(
+        facts,
+        TypeScriptBunArrayBufferFactKind::MarkdownStrongOracle,
+    ) {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_oracle",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    } else if let Some(fact) = first_bun_array_buffer_fact(
+        facts,
+        TypeScriptBunArrayBufferFactKind::ByteOracleMentionOnly,
+    ) {
+        refs.push(typescript_bun_fact_raw_evidence_ref(
+            "external_mention",
+            fact,
+            source_id,
+            Some(hint.rust_owner),
+        ));
+    }
+
+    refs
+}
+
+fn first_bun_array_buffer_fact(
+    facts: &[TypeScriptBunArrayBufferFact],
+    kind: TypeScriptBunArrayBufferFactKind,
+) -> Option<&TypeScriptBunArrayBufferFact> {
+    facts.iter().find(|fact| fact.kind == kind)
+}
+
+fn typescript_bun_fact_raw_evidence_ref(
+    leg: &str,
+    fact: &TypeScriptBunArrayBufferFact,
+    source_id: &str,
+    owner: Option<&str>,
+) -> String {
+    typescript_bun_cross_language_raw_evidence_ref(
+        leg,
+        &normalized_path(&fact.file),
+        fact.line,
+        fact.kind.as_str(),
+        source_id,
+        owner,
+        &fact.text,
+    )
+}
+
+fn typescript_bun_cross_language_raw_evidence_ref(
+    leg: &str,
+    file: &str,
+    line: usize,
+    kind: &str,
+    source_id: &str,
+    owner: Option<&str>,
+    sample: &str,
+) -> String {
+    let mut parts = vec![
+        format!("leg={}", raw_evidence_ref_value(leg)),
+        format!("file={}", raw_evidence_ref_value(file)),
+        format!("line={line}"),
+        format!("kind={}", raw_evidence_ref_value(kind)),
+        format!("source_id={}", raw_evidence_ref_value(source_id)),
+    ];
+    if let Some(owner) = owner {
+        parts.push(format!("owner={}", raw_evidence_ref_value(owner)));
+    }
+    parts.push(format!("sample={}", raw_evidence_ref_value(sample)));
+    format!("raw_evidence_ref: {}", parts.join(";"))
+}
+
+fn raw_evidence_ref_value(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\r' | '\n' | ';' => ' ',
+            _ => ch,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn bun_cross_language_missing_graph_legs(
+    verdict: TypeScriptBunBridgeVerdict,
+    facts: &[TypeScriptBunArrayBufferFact],
+    profile_kind: TypeScriptBunBridgeProfileKind,
+) -> Vec<&'static str> {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => Vec::new(),
+        TypeScriptBunBridgeVerdict::TsMissingResizable => {
+            vec!["boundary_discriminator:resizable_array_buffer"]
+        }
+        TypeScriptBunBridgeVerdict::TsMissingShared => {
+            vec!["boundary_discriminator:shared_array_buffer"]
+        }
+        TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => vec![
+            "boundary_discriminator:shared_array_buffer",
+            "boundary_discriminator:resizable_array_buffer",
+        ],
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver => vec![
+            "external_callsite:view_backed_blob_input",
+            "external_oracle:stable_byte_copy",
+        ],
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => {
+            if profile_kind == TypeScriptBunBridgeProfileKind::MarkdownResizableArrayBuffer {
+                let mut missing = Vec::new();
+                if first_bun_array_buffer_fact(
+                    facts,
+                    TypeScriptBunArrayBufferFactKind::MarkdownExternalCallsite,
+                )
+                .is_none()
+                {
+                    missing.push("external_callsite:bun_markdown_callsite");
+                }
+                if first_bun_array_buffer_fact(
+                    facts,
+                    TypeScriptBunArrayBufferFactKind::MarkdownStrongOracle,
+                )
+                .is_none()
+                {
+                    missing.push("external_oracle:markdown_strong_oracle");
+                }
+                if missing.is_empty() {
+                    missing.push("external_oracle_path");
+                }
+                return missing;
+            }
+            let mut missing = Vec::new();
+            if first_bun_array_buffer_fact(
+                facts,
+                TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+            )
+            .is_none()
+            {
+                missing.push("external_callsite:view_backed_blob_input");
+            }
+            if first_bun_array_buffer_fact(
+                facts,
+                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+            )
+            .is_none()
+            {
+                missing.push("external_oracle:stable_byte_copy");
+            }
+            if missing.is_empty() {
+                missing.push("external_oracle_path");
+            }
+            missing
+        }
+        TypeScriptBunBridgeVerdict::BridgeUnknown => vec!["binding_or_ffi_edge"],
+    }
+}
+
+fn bun_cross_language_unlock_condition(
+    verdict: TypeScriptBunBridgeVerdict,
+    facts: &[TypeScriptBunArrayBufferFact],
+    profile_kind: TypeScriptBunBridgeProfileKind,
+) -> Option<String> {
+    match verdict {
+        TypeScriptBunBridgeVerdict::TsDiscriminated => None,
+        TypeScriptBunBridgeVerdict::TsMissingResizable
+        | TypeScriptBunBridgeVerdict::TsMissingShared
+        | TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable => Some(
+            format!(
+                "add or inspect the missing external TypeScript discriminator(s) in {} and keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists",
+                profile_kind.ts_test_file()
+            ),
+        ),
+        TypeScriptBunBridgeVerdict::TsMentionNotObserver => Some(
+            "connect a Blob-backed external callsite and stable-byte oracle to the Rust seam before crediting token mentions".to_string(),
+        ),
+        TypeScriptBunBridgeVerdict::TsMissingExternalOracle => {
+            if profile_kind == TypeScriptBunBridgeProfileKind::MarkdownResizableArrayBuffer {
+                let missing_callsite = first_bun_array_buffer_fact(
+                    facts,
+                    TypeScriptBunArrayBufferFactKind::MarkdownExternalCallsite,
+                )
+                .is_none();
+                let missing_oracle = first_bun_array_buffer_fact(
+                    facts,
+                    TypeScriptBunArrayBufferFactKind::MarkdownStrongOracle,
+                )
+                .is_none();
+                let missing_edge = match (missing_callsite, missing_oracle) {
+                    (true, false) => "a Bun markdown external callsite",
+                    (false, true) => "a strong markdown output oracle",
+                    (true, true) => "a Bun markdown external callsite and strong output oracle",
+                    (false, false) => "the external oracle path",
+                };
+                return Some(format!(
+                    "Connect the partial Bun markdown evidence to {missing_edge} before crediting the Rust seam or suggesting placement."
+                ));
+            }
+            let missing_callsite = first_bun_array_buffer_fact(
+                facts,
+                TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+            )
+            .is_none();
+            let missing_oracle = first_bun_array_buffer_fact(
+                facts,
+                TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+            )
+            .is_none();
+            let missing_edge = match (missing_callsite, missing_oracle) {
+                (true, false) => "a Blob-backed external callsite",
+                (false, true) => "a stable byte oracle",
+                (true, true) => "a Blob-backed external callsite and stable byte oracle",
+                (false, false) => "the external oracle path",
+            };
+            Some(format!(
+                "Connect the partial Blob observer evidence to {missing_edge} before crediting the Rust seam or suggesting placement."
+            ))
+        }
+        TypeScriptBunBridgeVerdict::BridgeUnknown => Some(
+            "name the binding or FFI edge from the Rust seam to the external test before crediting external discriminators".to_string(),
+        ),
+    }
 }
 
 fn no_static_path_missing(owner: &TypeScriptOwner) -> String {
@@ -3528,6 +5429,16 @@ impl LanguageAdapter for TypeScriptAdapter {
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
         for changed in changed_files {
+            for added in &changed.added_lines {
+                if let Some(finding) = bun_cross_language_finding_for_changed_rust_line(
+                    &changed.path,
+                    added.line,
+                    &added.text,
+                    &all_tests,
+                ) {
+                    findings.push(finding);
+                }
+            }
             if !self.accepts_path(&changed.path) {
                 continue;
             }
@@ -3749,6 +5660,18 @@ mod tests {
             .collect()
     }
 
+    fn bun_fact_kinds_for_source(source: &str) -> Vec<&'static str> {
+        let tests = extract_tests(Path::new("test/js/web/fetch/blob.test.ts"), source);
+        let mut kinds = tests
+            .iter()
+            .flat_map(bun_array_buffer_facts_for_test)
+            .map(|fact| fact.kind.as_str())
+            .collect::<Vec<_>>();
+        kinds.sort();
+        kinds.dedup();
+        kinds
+    }
+
     fn assert_static_limit(finding: &Finding, kind: StaticLimitKind, expected_text: &str) {
         assert_eq!(finding.static_limit_kind, Some(kind));
         assert!(
@@ -3781,6 +5704,106 @@ mod tests {
         assert_evidence_contains(finding, "why_not_actionable: static limit");
     }
 
+    fn assert_bun_fact(source: &str, expected: TypeScriptBunArrayBufferFactKind) {
+        let kinds = bun_fact_kinds_for_source(source);
+        assert!(
+            kinds.contains(&expected.as_str()),
+            "expected Bun ArrayBuffer fact {:?}, got {:?}",
+            expected,
+            kinds
+        );
+    }
+
+    fn bun_bridge_hint_for_source_with_confidence(
+        source: &str,
+        confidence: TypeScriptBunBridgeConfidence,
+    ) -> Option<TypeScriptBunBridgeHint> {
+        let tests = extract_tests(Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE), source);
+        let facts = tests
+            .iter()
+            .flat_map(bun_array_buffer_facts_for_test)
+            .collect::<Vec<_>>();
+        let profile = TypeScriptBunBridgeProfile {
+            confidence,
+            ..BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE
+        };
+        bun_bridge_hint_for_profile(&facts, profile)
+    }
+
+    fn bun_bridge_hint_for_source(source: &str) -> Result<TypeScriptBunBridgeHint, String> {
+        bun_bridge_hint_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::ConfiguredHint,
+        )
+        .ok_or_else(|| "expected configured Bun bridge hint".to_string())
+    }
+
+    fn bun_cross_language_finding_for_source(source: &str) -> Result<Finding, String> {
+        bun_cross_language_finding_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::ConfiguredHint,
+        )
+    }
+
+    fn bun_cross_language_finding_for_source_with_confidence(
+        source: &str,
+        confidence: TypeScriptBunBridgeConfidence,
+    ) -> Result<Finding, String> {
+        bun_cross_language_finding_for_source_with_profile_and_confidence(
+            source,
+            BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE,
+            confidence,
+            3420,
+            "    if (array_buffer.shared || array_buffer.resizable) {",
+        )
+    }
+
+    fn bun_cross_language_finding_for_source_with_profile_and_confidence(
+        source: &str,
+        profile: TypeScriptBunBridgeProfile,
+        confidence: TypeScriptBunBridgeConfidence,
+        rust_line: usize,
+        line_text: &str,
+    ) -> Result<Finding, String> {
+        let tests = extract_tests(Path::new(profile.ts_test_file), source);
+        let profile = TypeScriptBunBridgeProfile {
+            confidence,
+            ..profile
+        };
+        bun_cross_language_finding_for_changed_rust_line_with_profile(
+            Path::new(profile.rust_file),
+            rust_line,
+            line_text,
+            &tests,
+            profile,
+        )
+        .ok_or_else(|| "expected Bun cross-language finding".to_string())
+    }
+
+    fn bun_markdown_bridge_hint_for_source(
+        source: &str,
+    ) -> Result<TypeScriptBunBridgeHint, String> {
+        let tests = extract_tests(Path::new(BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE), source);
+        let facts = tests
+            .iter()
+            .flat_map(bun_array_buffer_facts_for_test)
+            .collect::<Vec<_>>();
+        bun_bridge_hint_for_profile(&facts, BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE)
+            .ok_or_else(|| "expected Bun markdown bridge hint".to_string())
+    }
+
+    fn bun_markdown_cross_language_finding_for_source(source: &str) -> Result<Finding, String> {
+        let tests = extract_tests(Path::new(BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE), source);
+        bun_cross_language_finding_for_changed_rust_line_with_profile(
+            Path::new(BUN_MARKDOWN_RESIZABLE_RUST_FILE),
+            60,
+            "    if self.0.resizable && !self.0.shared {",
+            &tests,
+            BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE,
+        )
+        .ok_or_else(|| "expected Bun markdown cross-language finding".to_string())
+    }
+
     fn assert_evidence_contains(finding: &Finding, expected_text: &str) {
         assert!(
             finding
@@ -3790,6 +5813,968 @@ mod tests {
             "expected evidence containing {expected_text:?}, got {:?}",
             finding.evidence
         );
+    }
+
+    fn assert_evidence_lacks(finding: &Finding, unexpected_text: &str) {
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|line| !line.contains(unexpected_text)),
+            "unexpected evidence containing {unexpected_text:?}, got {:?}",
+            finding.evidence
+        );
+    }
+
+    #[test]
+    fn extract_tests_classifies_bun_blob_shared_and_resizable_discriminators() {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  growable.resize(6);
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0, 0, 0]);
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert_eq!(
+            kinds,
+            vec![
+                "array_buffer_resize",
+                "array_buffer_view",
+                "blob_array_buffer_observer",
+                "resizable_array_buffer",
+                "shared_array_buffer",
+                "stable_byte_copy_oracle",
+                "view_backed_blob_input",
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_tests_marks_max_byte_length_without_blob_observer_as_mention_only() {
+        let source = r#"
+test("records growable allocation shape", () => {
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  expect(growable.byteLength).toBe(4);
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"resizable_array_buffer"));
+        assert!(kinds.contains(&"max_byte_length_mention_only"));
+        assert!(!kinds.contains(&"view_backed_blob_input"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_does_not_credit_blob_without_parts_array_as_view_backed() {
+        let source = r#"
+test("unrelated view and scalar blob", () => {
+  const view = new Uint8Array(4);
+  const blob = new Blob("not a parts array");
+  expect(view.byteLength).toBe(4);
+  expect(blob).toBeDefined();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"array_buffer_view"));
+        assert!(!kinds.contains(&"view_backed_blob_input"));
+    }
+
+    #[test]
+    fn extract_tests_ignores_bun_array_buffer_comment_and_string_mentions() {
+        let source = r#"
+test("mentions new SharedArrayBuffer( in the title", () => {
+  // new ArrayBuffer(4, { maxByteLength: 8 })
+  const note = "new Blob([new Uint8Array(await blob.arrayBuffer())])";
+  expect(note).toBe("new Blob([new Uint8Array(await blob.arrayBuffer())])");
+});
+"#;
+
+        assert!(bun_fact_kinds_for_source(source).is_empty());
+    }
+
+    #[test]
+    fn extract_tests_recognizes_text_blob_stable_oracle() {
+        let source = r#"
+test("blob text is stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  expect(await blob.text()).toBe("\0\0\0\0");
+});
+"#;
+
+        assert_bun_fact(
+            source,
+            TypeScriptBunArrayBufferFactKind::StableByteCopyOracle,
+        );
+        assert_bun_fact(
+            source,
+            TypeScriptBunArrayBufferFactKind::ViewBackedBlobInput,
+        );
+        assert!(!bun_fact_kinds_for_source(source).contains(&"max_byte_length_mention_only"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_smoke_assertion_as_weak_oracle() {
+        let source = r#"
+test("blob byte smoke is not stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect(copied).toBeDefined();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"weak_byte_smoke_oracle"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_snapshot_assertion_as_weak_oracle() {
+        let source = r#"
+test("blob byte snapshot is not stable", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toMatchSnapshot();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"weak_byte_snapshot_oracle"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn extract_tests_marks_blob_byte_read_without_assertion_as_mention_only() {
+        let source = r#"
+test("blob byte read alone is not an oracle", async () => {
+  const view = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  const blob = new Blob([view]);
+  await blob.arrayBuffer();
+});
+"#;
+        let kinds = bun_fact_kinds_for_source(source);
+
+        assert!(kinds.contains(&"byte_oracle_mention_only"));
+        assert!(!kinds.contains(&"stable_byte_copy_oracle"));
+    }
+
+    #[test]
+    fn bun_bridge_hint_classifies_shared_and_resizable_blob_observer() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(
+            hint.confidence,
+            TypeScriptBunBridgeConfidence::ConfiguredHint
+        );
+        assert_eq!(hint.verdict, TypeScriptBunBridgeVerdict::TsDiscriminated);
+        assert_eq!(hint.verdict.missing_discriminators(), &[] as &[&str]);
+        assert_eq!(hint.rust_file, BUN_BLOB_ARRAY_BUFFER_RUST_FILE);
+        assert_eq!(hint.rust_owner, BUN_BLOB_ARRAY_BUFFER_RUST_OWNER);
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_names_missing_resizable_discriminator() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const blob = new Blob([new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(hint.verdict, TypeScriptBunBridgeVerdict::TsMissingResizable);
+        assert_eq!(
+            hint.verdict.missing_discriminators(),
+            &["resizable_array_buffer"]
+        );
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "route_cross_language_oracle_visibility_limitation"
+        );
+        assert_eq!(
+            hint.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.placement_reason().as_deref(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_names_missing_shared_discriminator() -> Result<(), String> {
+        let source = r#"
+test("blob copies resizable buffers", async () => {
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(hint.verdict, TypeScriptBunBridgeVerdict::TsMissingShared);
+        assert_eq!(
+            hint.verdict.missing_discriminators(),
+            &["shared_array_buffer"]
+        );
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "route_cross_language_oracle_visibility_limitation"
+        );
+        assert_eq!(
+            hint.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.placement_reason().as_deref(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is SharedArrayBuffer"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_names_both_missing_boundary_discriminators() -> Result<(), String> {
+        let source = r#"
+test("blob copies scalar view buffers", async () => {
+  const view = new Uint8Array(4);
+  const blob = new Blob([view]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(
+            hint.verdict,
+            TypeScriptBunBridgeVerdict::TsMissingSharedAndResizable
+        );
+        assert_eq!(
+            hint.verdict.missing_discriminators(),
+            &["shared_array_buffer", "resizable_array_buffer"]
+        );
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "route_cross_language_oracle_visibility_limitation"
+        );
+        assert_eq!(
+            hint.suggested_test_file(),
+            BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE
+        );
+        assert_eq!(
+            hint.placement_reason().as_deref(),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminators are SharedArrayBuffer and resizable ArrayBuffer"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_does_not_credit_max_byte_length_mention_without_blob_observer()
+    -> Result<(), String> {
+        let source = r#"
+test("records growable allocation shape", () => {
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  expect(growable.byteLength).toBe(4);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(
+            hint.verdict,
+            TypeScriptBunBridgeVerdict::TsMentionNotObserver
+        );
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "do_not_credit_token_mention"
+        );
+        assert_eq!(hint.suggested_test_file(), "not_applicable");
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_routes_partial_blob_observer_as_missing_external_oracle()
+    -> Result<(), String> {
+        let source = r#"
+test("blob records shared and growable inputs without byte oracle", () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  expect(blob.size).toBe(8);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source(source)?;
+
+        assert_eq!(
+            hint.verdict,
+            TypeScriptBunBridgeVerdict::TsMissingExternalOracle
+        );
+        assert_eq!(hint.verdict.missing_discriminators(), &[] as &[&str]);
+        assert_eq!(
+            hint.verdict.cross_language_state(),
+            "rust_ungripped_ts_missing_external_oracle"
+        );
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "route_cross_language_oracle_visibility_limitation"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bun_bridge_hint_can_report_unknown_bridge_confidence() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+
+        let hint = bun_bridge_hint_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::Unknown,
+        )
+        .ok_or_else(|| {
+            "complete TS discriminators should produce bridge_unknown with an unknown profile"
+                .to_string()
+        })?;
+
+        assert_eq!(hint.confidence, TypeScriptBunBridgeConfidence::Unknown);
+        assert_eq!(hint.verdict, TypeScriptBunBridgeVerdict::BridgeUnknown);
+        assert_eq!(
+            hint.verdict.expected_action(),
+            "report_bridge_unknown_not_no_static_path"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_projects_trusted_related_bun_array_buffer_facts_as_advisory_evidence()
+    -> Result<(), String> {
+        let owner = test_owner("hydrateBlob", "src/blob.ts");
+        let tests = extract_tests(
+            Path::new("test/js/web/fetch/blob.test.ts"),
+            r#"
+test("Blob copies ArrayBuffer-backed bytes", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const view = new Uint8Array(growable);
+  const blob = new Blob([view, new Uint8Array(shared)]);
+  hydrateBlob(blob);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        let finding = classify_change(
+            Path::new("src/blob.ts"),
+            2,
+            "  return blob;",
+            &[owner],
+            &tests,
+        )
+        .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
+
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: shared_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: resizable_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: view_backed_blob_input",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: stable_byte_copy_oracle",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint",
+        );
+        assert_evidence_contains(&finding, "rust_owner=Blob::from_js_without_defer_gc");
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_boundary: preview_advisory_only",
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.contains("max_byte_length_mention_only")),
+            "maxByteLength mention-only must not be emitted for a Blob stable-byte observer: {:?}",
+            finding.evidence
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_projects_ts_discriminated_cross_language_grip()
+    -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
+        assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
+        assert_eq!(
+            finding.probe.location.file,
+            PathBuf::from("src/jsc/Blob.rs")
+        );
+        assert_eq!(
+            finding.related_tests[0].file,
+            PathBuf::from(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE)
+        );
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_discriminated",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_graph_legs:")),
+            "complete TS witness must not report missing graph legs: {:?}",
+            finding.evidence
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("no new test suggested"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_markdown_boundary_projects_ts_discriminated_cross_language_grip()
+    -> Result<(), String> {
+        let source = r#"
+test("markdown accepts a resizable ArrayBuffer", () => {
+  const growable = new ArrayBuffer(16, { maxByteLength: 32 });
+  const html = Bun.markdown(growable);
+  expect(html).toBe("<p>hello</p>\n");
+});
+"#;
+        let hint = bun_markdown_bridge_hint_for_source(source)?;
+        assert_eq!(
+            hint.profile_kind,
+            TypeScriptBunBridgeProfileKind::MarkdownResizableArrayBuffer
+        );
+        assert_eq!(hint.verdict, TypeScriptBunBridgeVerdict::TsDiscriminated);
+        assert_eq!(hint.suggested_test_file(), "not_applicable");
+
+        let finding = bun_markdown_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
+        assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
+        assert_eq!(
+            finding.probe.location.file,
+            PathBuf::from(BUN_MARKDOWN_RESIZABLE_RUST_FILE)
+        );
+        assert_eq!(
+            finding.related_tests[0].file,
+            PathBuf::from(BUN_MARKDOWN_RESIZABLE_TS_TEST_FILE)
+        );
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: resizable_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: bun_markdown_callsite",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_advisory_fact: markdown_strong_oracle",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_discriminated",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert_evidence_contains(&finding, "gap_state: already_observed");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_graph_legs:")),
+            "complete Markdown TS witness must not report missing graph legs: {:?}",
+            finding.evidence
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("no new test suggested"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_markdown_cross_language_without_strong_oracle_stays_limitation()
+    -> Result<(), String> {
+        let source = r#"
+test("markdown smoke covers a resizable ArrayBuffer", () => {
+  const growable = new ArrayBuffer(16, { maxByteLength: 32 });
+  const html = Bun.markdown(growable);
+  expect(html).toBeDefined();
+});
+"#;
+        let finding = bun_markdown_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "actionability_category: cross_language_oracle_visibility_unresolved",
+        );
+        assert_evidence_contains(
+            &finding,
+            "repair_route: analysis/cross-language-oracle-visibility",
+        );
+        assert_evidence_contains(
+            &finding,
+            "missing_graph_legs: external_oracle:markdown_strong_oracle",
+        );
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: Connect the partial Bun markdown evidence to a strong markdown output oracle",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_missing_external_oracle missing_discriminators=none action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("before suggesting a test target"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_markdown_cross_language_without_resizable_stays_targetless()
+    -> Result<(), String> {
+        let source = r##"
+test("markdown string input has a strong oracle", () => {
+  const html = Bun.markdown("# hello");
+  expect(html).toBe("<h1>hello</h1>\n");
+});
+"##;
+        let finding = bun_markdown_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["resizable_array_buffer"]
+        );
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "missing_graph_legs: boundary_discriminator:resizable_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("typescript_bun_ub_test_placement:")),
+            "MarkdownObject missing-discriminator limitation must not infer a TypeScript placement: {:?}",
+            finding.evidence
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_projects_missing_resizable_cross_language_grip()
+    -> Result<(), String> {
+        let source = r#"
+test("blob copies shared buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const blob = new Blob([new Uint8Array(shared)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            vec!["resizable_array_buffer"]
+        );
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "actionability_category: cross_language_oracle_visibility_unresolved",
+        );
+        assert_evidence_contains(
+            &finding,
+            "repair_route: analysis/cross-language-oracle-visibility",
+        );
+        assert_evidence_contains(
+            &finding,
+            "missing_graph_legs: boundary_discriminator:resizable_array_buffer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: add or inspect the missing external TypeScript discriminator(s) in test/js/web/fetch/blob.test.ts",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\"",
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains(
+                    "suggest the configured TypeScript observer file only as advisory placement"
+                ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_with_unknown_bridge_stays_limitation() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source_with_confidence(
+            source,
+            TypeScriptBunBridgeConfidence::Unknown,
+        )?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "actionability_category: cross_language_oracle_visibility_unresolved",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_hint: confidence=unknown",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=bridge_unknown",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: bridge_unknown missing_discriminators=none action=report_bridge_unknown_not_no_static_path suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert_evidence_contains(&finding, "missing_graph_legs: binding_or_ffi_edge");
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: name the binding or FFI edge from the Rust seam to the external test",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert_evidence_lacks(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("analysis/cross-language-oracle-visibility"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_copy_to_unshared_projects_configured_bridge_evidence() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers through copy path", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source_with_profile_and_confidence(
+            source,
+            BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_BRIDGE_PROFILE,
+            TypeScriptBunBridgeConfidence::ConfiguredHint,
+            341,
+            "pub fn copy_to_unshared(buffer: JSValue) -> JSValue {",
+        )?;
+
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_eq!(
+            finding.probe.location.file,
+            PathBuf::from(BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_FILE)
+        );
+        assert_evidence_contains(&finding, "rust_owner=copy_to_unshared");
+        assert_evidence_contains(
+            &finding,
+            "rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_discriminated",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
+        );
+        assert_evidence_contains(
+            &finding,
+            "raw_evidence_ref: leg=binding_edge;file=src/jsc/array_buffer.rs;line=341;kind=configured_bridge;",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|entry| !entry.starts_with("missing_graph_legs:")),
+            "configured copy_to_unshared bridge must not report missing graph legs: {:?}",
+            finding.evidence
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("no new test suggested"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_copy_to_unshared_unknown_bridge_stays_limitation() -> Result<(), String> {
+        let source = r#"
+test("blob copies shared and resizable buffers through copy path", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source_with_profile_and_confidence(
+            source,
+            BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_BRIDGE_PROFILE,
+            TypeScriptBunBridgeConfidence::Unknown,
+            341,
+            "pub fn copy_to_unshared(buffer: JSValue) -> JSValue {",
+        )?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_hint: confidence=unknown rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=bridge_unknown",
+        );
+        assert_evidence_contains(&finding, "missing_graph_legs: binding_or_ffi_edge");
+        assert_evidence_lacks(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert_evidence_contains(&finding, "suggested_test_file=not_applicable");
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_keeps_max_byte_length_mention_out_of_grip() -> Result<(), String>
+    {
+        let source = r#"
+test("mentions growable buffers without Blob observer", () => {
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  expect(growable.byteLength).toBe(4);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=ts_mention_not_observer",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_mention_not_observer missing_discriminators=none action=do_not_credit_token_mention",
+        );
+        assert_evidence_contains(
+            &finding,
+            "missing_graph_legs: external_callsite:view_backed_blob_input, external_oracle:stable_byte_copy",
+        );
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: connect a Blob-backed external callsite and stable-byte oracle",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_blob_boundary_projects_partial_blob_observer_as_limitation()
+    -> Result<(), String> {
+        let source = r#"
+test("blob records shared and growable inputs without byte oracle", () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  expect(blob.size).toBe(8);
+});
+"#;
+        let finding = bun_cross_language_finding_for_source(source)?;
+
+        assert!(matches!(finding.class, ExposureClass::StaticUnknown));
+        assert_eq!(finding.stop_reasons, vec![StopReason::StaticProbeUnknown]);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert_evidence_contains(&finding, "gap_state: static_limitation");
+        assert_evidence_contains(
+            &finding,
+            "actionability_category: cross_language_oracle_visibility_unresolved",
+        );
+        assert_evidence_contains(
+            &finding,
+            "repair_route: analysis/cross-language-oracle-visibility",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_external_oracle",
+        );
+        assert_evidence_contains(
+            &finding,
+            "typescript_bun_ub_bridge_verdict: ts_missing_external_oracle missing_discriminators=none action=route_cross_language_oracle_visibility_limitation suggested_test_file=not_applicable repair_packet_ready=false",
+        );
+        assert_evidence_contains(
+            &finding,
+            "missing_graph_legs: external_oracle:stable_byte_copy",
+        );
+        assert_evidence_contains(
+            &finding,
+            "unlock_condition: Connect the partial Blob observer evidence to a stable byte oracle",
+        );
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=rust_seam;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=binding_edge;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=boundary_discriminator;");
+        assert_evidence_contains(&finding, "raw_evidence_ref: leg=external_callsite;");
+        assert_evidence_lacks(&finding, "raw_evidence_ref: leg=external_oracle;");
+        assert!(
+            !finding
+                .recommended_next_step
+                .as_deref()
+                .unwrap_or_default()
+                .contains("no new test suggested")
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("analysis/cross-language-oracle-visibility"))
+        );
+        Ok(())
     }
 
     #[test]

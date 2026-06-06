@@ -12,6 +12,7 @@
 - [EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) - VS Code handoff from receipt to first-pr start-here packet
 - [RIPR_SWARM_HUMAN_WORKFLOW.md](RIPR_SWARM_HUMAN_WORKFLOW.md) - human and external-agent workflow for one bounded actionable-gap repair attempt
 - [LANGUAGE_ADAPTER_PREVIEW.md](LANGUAGE_ADAPTER_PREVIEW.md) - opt-in TypeScript, JavaScript, and Python preview workflow
+- [BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md) - Bun stable-byte TypeScript preview loop for configured Rust/FFI seams
 - [STATIC_LIMITS.md](STATIC_LIMITS.md) - how to read preview static-limit labels
 - [VERIFICATION.md](VERIFICATION.md) — README badge meanings, generated endpoints, and PR evidence boundaries
 - [verification/README.md](verification/README.md) - portable verification contract for badges, PR evidence, artifacts, and annotations

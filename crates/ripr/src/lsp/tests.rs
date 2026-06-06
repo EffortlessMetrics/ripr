@@ -22,6 +22,7 @@ use super::{
     COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
     COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
+use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId, LanguageStatus,
@@ -1757,6 +1758,77 @@ fn gap_code_actions_suppress_python_agent_packet_without_actionable_python_gap_r
 }
 
 #[test]
+fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("gap-cross-language-target-unresolved")?;
+    let uri = file_uri_for_path(&root.path().join("src/jsc/Blob.rs"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["language"] = serde_json::json!("rust");
+    data["gap_state"] = serde_json::json!("static_limitation");
+    data["repairability"] = serde_json::json!("no_action");
+    data["static_limit_kind"] = serde_json::json!("cross_language_target_unresolved");
+    data["static_limit_detail"] = serde_json::json!("binding/FFI target placement is unresolved");
+    data["projection_exclusion_reasons"] = serde_json::json!(["cross_language_target_unresolved"]);
+    data["navigation_only_target"] = serde_json::json!({
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 41,
+        "test_name": "blob copies resizable buffers",
+        "language": "typescript",
+        "authority_boundary": "navigation_only_external_observer_context",
+        "repair_packet_ready": false,
+        "limitation_route": "analysis/cross-language-test-target-inference"
+    });
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect gap: copy static-limit note", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "target-unresolved gap diagnostics must not expose repair packets, verify, receipt, or edit actions"
+    );
+    assert!(
+        commands[0].2[0]["note"].as_str().is_some_and(|note| {
+            note.contains("cross_language_target_unresolved")
+                && note.contains("Navigation-only target: test/js/web/fetch/blob.test.ts:41")
+                && note.contains("External observer: blob copies resizable buffers")
+                && note.contains("Repair packet ready: false")
+        }),
+        "expected static-limit note, got {:?}",
+        commands[0].2[0]
+    );
+    assert_eq!(
+        commands[0].2[0]["navigation_only_target"]["file"],
+        "test/js/web/fetch/blob.test.ts"
+    );
+    assert_eq!(
+        commands[0].2[0]["navigation_only_target"]["repair_packet_ready"],
+        false
+    );
+    Ok(())
+}
+
+#[test]
 fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(), String> {
     let root = unique_lsp_test_root("gap-python-pytest-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
@@ -2104,12 +2176,15 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
     let mut snapshot = sample_analysis_snapshot(
         PathBuf::from("/workspace"),
-        uri,
+        uri.clone(),
         vec![diagnostic.clone()],
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam.clone()];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
 
     let commands = code_action_commands(&actions)?;
     assert_eq!(
@@ -2211,6 +2286,56 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         "file:///workspace/tests/pricing.rs"
     );
     assert_eq!(commands[8].2[0]["line"], 12);
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Result<(), String> {
+    let mut seam = sample_classified_seam();
+    seam.seam = RepoSeam::new(
+        "src/jsc/Blob.rs",
+        "Blob::from_js_without_defer_gc",
+        SeamKind::PredicateBoundary,
+        42,
+        88,
+        "array_buffer.shared || array_buffer.resizable",
+        RequiredDiscriminator::BoundaryValue {
+            description: "array_buffer.shared || array_buffer.resizable".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+    seam.evidence.seam_id = seam.seam.id().clone();
+    seam.evidence.related_tests[0].file = PathBuf::from("test/js/web/fetch/blob.test.ts");
+    seam.evidence.related_tests[0].test_name = "blob copies shared buffers".to_string();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/jsc/Blob.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect Test Gap - Copy Context", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "binding/FFI target-unresolved seams must not expose repair, handoff, verify, receipt, or edit actions"
+    );
+    assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[0].2[0]["uri"], "file:///workspace/src/jsc/Blob.rs");
     Ok(())
 }
 

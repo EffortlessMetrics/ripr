@@ -68,14 +68,26 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 
 [languages]
-# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters when the ripr binary was built with the
-# matching Cargo feature (`lang-typescript` or `lang-python`). When this file is
-# absent, Python project markers can enable Python preview analysis
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript`,
+# `python`, or `perl` to opt into preview adapters when the ripr binary was
+# built with the matching Cargo feature (`lang-typescript`, `lang-python`, or
+# `lang-perl`). When this file is absent, Python project markers can enable
+# Python preview analysis
 # automatically for the detected repository root; this explicit list remains
 # authoritative when present.
-# Valid values: rust, typescript, python.
+# Valid values: rust, typescript, python, perl.
 enabled = ["rust"]
+
+# Optional Bun stable-byte UB advisory profile. Leave this commented unless the
+# repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
+# JavaScript test files are covered by the `typescript` adapter.
+#
+# [profiles.bun_ub]
+# test_roots = [
+#   "test/js/**/*.test.ts",
+#   "test/js/**/*.test.js",
+# ]
+# bridge_hints = "ripr.bun.bridge.toml"
 "#;
 
 const PYTHON_PROJECT_MARKERS: &[&str] = &[
@@ -116,6 +128,7 @@ pub(crate) struct RiprConfig {
     reports: ReportsConfig,
     suppressions: SuppressionsConfig,
     languages: LanguagesConfig,
+    profiles: ProfilesConfig,
     source_path: Option<PathBuf>,
     source_text: Option<String>,
 }
@@ -147,6 +160,10 @@ impl RiprConfig {
 
     pub(crate) fn languages(&self) -> &LanguagesConfig {
         &self.languages
+    }
+
+    pub(crate) fn profiles(&self) -> &ProfilesConfig {
+        &self.profiles
     }
 
     pub(crate) fn source_text(&self) -> Option<&str> {
@@ -308,6 +325,33 @@ impl LanguagesConfig {
     #[cfg(test)]
     pub(crate) fn enabled_owned(&self) -> Vec<LanguageId> {
         self.enabled.clone()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ProfilesConfig {
+    bun_ub: Option<BunUbProfileConfig>,
+}
+
+impl ProfilesConfig {
+    pub(crate) fn bun_ub(&self) -> Option<&BunUbProfileConfig> {
+        self.bun_ub.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BunUbProfileConfig {
+    test_roots: Vec<String>,
+    bridge_hints: PathBuf,
+}
+
+impl BunUbProfileConfig {
+    pub(crate) fn test_roots(&self) -> &[String] {
+        &self.test_roots
+    }
+
+    pub(crate) fn display_bridge_hints(&self) -> String {
+        self.bridge_hints.to_string_lossy().replace('\\', "/")
     }
 }
 
@@ -624,6 +668,9 @@ impl RiprConfig {
         {
             config.languages.enabled = parse_languages_enabled(&enabled)?;
         }
+        if let Some(profiles) = raw.profiles {
+            config.profiles = parse_profiles(profiles)?;
+        }
         Ok(config)
     }
 }
@@ -635,9 +682,10 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             "rust" => LanguageId::Rust,
             "typescript" => LanguageId::TypeScript,
             "python" => LanguageId::Python,
+            "perl" => LanguageId::Perl,
             other => {
                 return Err(format!(
-                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python"
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl"
                 ));
             }
         };
@@ -657,6 +705,40 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
     Ok(parsed)
 }
 
+fn parse_profiles(raw: RawProfilesConfig) -> Result<ProfilesConfig, String> {
+    Ok(ProfilesConfig {
+        bun_ub: raw.bun_ub.map(parse_bun_ub_profile).transpose()?,
+    })
+}
+
+fn parse_bun_ub_profile(raw: RawBunUbProfileConfig) -> Result<BunUbProfileConfig, String> {
+    let test_roots = raw
+        .test_roots
+        .ok_or_else(|| "profiles.bun_ub.test_roots is required".to_string())?;
+    if test_roots.is_empty() {
+        return Err("profiles.bun_ub.test_roots must list at least one test root".to_string());
+    }
+    let mut parsed_roots = Vec::with_capacity(test_roots.len());
+    for root in test_roots {
+        let trimmed = root.trim();
+        parse_relative_path("profiles.bun_ub.test_roots", trimmed)?;
+        if parsed_roots.iter().any(|existing| existing == trimmed) {
+            return Err(format!(
+                "profiles.bun_ub.test_roots lists `{trimmed}` more than once; remove the duplicate"
+            ));
+        }
+        parsed_roots.push(trimmed.to_string());
+    }
+    let bridge_hints = raw
+        .bridge_hints
+        .ok_or_else(|| "profiles.bun_ub.bridge_hints is required".to_string())
+        .and_then(|path| parse_relative_path("profiles.bun_ub.bridge_hints", &path))?;
+    Ok(BunUbProfileConfig {
+        test_roots: parsed_roots,
+        bridge_hints,
+    })
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
@@ -667,12 +749,26 @@ struct RawConfig {
     reports: Option<RawReportsConfig>,
     suppressions: Option<RawSuppressionsConfig>,
     languages: Option<RawLanguagesConfig>,
+    profiles: Option<RawProfilesConfig>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawProfilesConfig {
+    bun_ub: Option<RawBunUbProfileConfig>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBunUbProfileConfig {
+    test_roots: Option<Vec<String>>,
+    bridge_hints: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1168,6 +1264,21 @@ enabled = ["rust", "typescript"]
         );
     }
 
+    #[cfg(not(feature = "lang-perl"))]
+    #[test]
+    fn languages_section_rejects_unavailable_perl_adapter() {
+        let result = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "perl"]
+"#,
+        );
+        assert!(
+            matches!(result, Err(ref message) if message.contains("lang-perl")),
+            "expected missing lang-perl error, got {result:?}"
+        );
+    }
+
     #[test]
     fn languages_section_allows_empty_enabled_list() -> Result<(), String> {
         let config = parse_config(
@@ -1213,6 +1324,128 @@ extra = true
         );
         assert!(
             matches!(result, Err(ref message) if message.contains("extra") || message.contains("unknown field"))
+        );
+    }
+
+    #[test]
+    fn bun_ub_profile_absent_by_default() -> Result<(), String> {
+        let config = parse_config("[languages]\nenabled = [\"rust\"]\n")?;
+        assert!(config.profiles().bun_ub().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn bun_ub_profile_parses_advisory_roots_and_bridge_hint_path() -> Result<(), String> {
+        let config = parse_config(
+            r#"
+[languages]
+enabled = ["rust"]
+
+[profiles.bun_ub]
+test_roots = [
+  "test/js/**/*.test.ts",
+  "test/js/**/*.test.js",
+]
+bridge_hints = "ripr.bun.bridge.toml"
+"#,
+        )?;
+
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        let profile = config
+            .profiles()
+            .bun_ub()
+            .ok_or_else(|| "expected Bun UB profile".to_string())?;
+        assert_eq!(
+            profile.test_roots(),
+            &[
+                "test/js/**/*.test.ts".to_string(),
+                "test/js/**/*.test.js".to_string()
+            ]
+        );
+        assert_eq!(profile.display_bridge_hints(), "ripr.bun.bridge.toml");
+        Ok(())
+    }
+
+    #[test]
+    fn bun_ub_profile_rejects_missing_required_fields() {
+        let missing_roots = parse_config(
+            r#"
+[profiles.bun_ub]
+bridge_hints = "ripr.bun.bridge.toml"
+"#,
+        );
+        assert!(
+            matches!(missing_roots, Err(ref message) if message.contains("test_roots is required"))
+        );
+
+        let missing_bridge = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = ["test/js/**/*.test.ts"]
+"#,
+        );
+        assert!(
+            matches!(missing_bridge, Err(ref message) if message.contains("bridge_hints is required"))
+        );
+    }
+
+    #[test]
+    fn bun_ub_profile_rejects_unsafe_or_ambiguous_paths() {
+        let empty_roots = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = []
+bridge_hints = "ripr.bun.bridge.toml"
+"#,
+        );
+        assert!(
+            matches!(empty_roots, Err(ref message) if message.contains("at least one test root"))
+        );
+
+        let duplicate_roots = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = ["test/js/**/*.test.ts", "test/js/**/*.test.ts"]
+bridge_hints = "ripr.bun.bridge.toml"
+"#,
+        );
+        assert!(matches!(duplicate_roots, Err(ref message) if message.contains("more than once")));
+
+        let unsafe_root = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = ["../bun/test/js/**/*.test.ts"]
+bridge_hints = "ripr.bun.bridge.toml"
+"#,
+        );
+        assert!(
+            matches!(unsafe_root, Err(ref message) if message.contains("must stay within the repository"))
+        );
+
+        let unsafe_bridge = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = ["test/js/**/*.test.ts"]
+bridge_hints = "scheme:ripr.bun.bridge.toml"
+"#,
+        );
+        assert!(
+            matches!(unsafe_bridge, Err(ref message) if message.contains("repository-relative"))
+        );
+    }
+
+    #[test]
+    fn bun_ub_profile_rejects_unknown_fields() {
+        let result = parse_config(
+            r#"
+[profiles.bun_ub]
+test_roots = ["test/js/**/*.test.ts"]
+bridge_hints = "ripr.bun.bridge.toml"
+runtime = "bun"
+"#,
+        );
+        assert!(
+            matches!(result, Err(ref message) if message.contains("runtime") || message.contains("unknown field"))
         );
     }
 
@@ -1372,6 +1605,7 @@ suppressed = "off"
             config.severity().for_seam(SeamGripClass::Suppressed),
             ConfigSeverity::Off
         );
+        assert!(config.profiles().bun_ub().is_none());
         Ok(())
     }
 
@@ -1428,6 +1662,7 @@ suppressed = "off"
             config.severity().for_seam(SeamGripClass::Suppressed),
             ConfigSeverity::Off
         );
+        assert!(config.profiles().bun_ub().is_none());
         Ok(())
     }
 
@@ -1454,6 +1689,7 @@ suppressed = "off"
         assert_eq!(builtin.lsp(), generated.lsp());
         assert_eq!(builtin.reports(), generated.reports());
         assert_eq!(builtin.suppressions(), generated.suppressions());
+        assert_eq!(builtin.profiles(), generated.profiles());
 
         for class in [
             ExposureClass::Exposed,

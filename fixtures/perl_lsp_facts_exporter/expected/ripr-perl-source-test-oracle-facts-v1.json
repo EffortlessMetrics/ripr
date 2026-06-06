@@ -1,0 +1,569 @@
+{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:repo:source-test-oracle-taxonomy",
+  "packet_status": "complete",
+  "packet_fingerprint": "sha256:source-test-oracle-taxonomy",
+  "producer": {
+    "name": "perl-lsp",
+    "version": "0.0.0-fixture",
+    "capabilities": [
+      "syntax",
+      "workspace",
+      "test_facts",
+      "oracle_facts",
+      "runner_detection"
+    ]
+  },
+  "root": {
+    "repo_relative": ".",
+    "vcs_head": "def456",
+    "path_style": "repo_relative"
+  },
+  "input": {
+    "base": "origin/main",
+    "head": "HEAD",
+    "diff_id": "sha256:source-test-oracle-diff",
+    "requested_fact_classes": [
+      "files",
+      "owners",
+      "changes",
+      "tests",
+      "oracles",
+      "relations",
+      "verify_commands",
+      "limitations",
+      "provenance"
+    ]
+  },
+  "files": [
+    {
+      "file_id": "file:lib/My/App.pm",
+      "path": "lib/My/App.pm",
+      "role": ["source"],
+      "digest": "sha256:source",
+      "package_names": ["My::App"],
+      "provenance_refs": ["prov:file-index:source"]
+    },
+    {
+      "file_id": "file:t/app.t",
+      "path": "t/app.t",
+      "role": ["test"],
+      "digest": "sha256:test-more",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test-more"]
+    },
+    {
+      "file_id": "file:t/app_test2.t",
+      "path": "t/app_test2.t",
+      "role": ["test"],
+      "digest": "sha256:test2-v0",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test2-v0"]
+    },
+    {
+      "file_id": "file:t/app_suite.t",
+      "path": "t/app_suite.t",
+      "role": ["test"],
+      "digest": "sha256:test2-suite",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test2-suite"]
+    },
+    {
+      "file_id": "file:t/app_exception.t",
+      "path": "t/app_exception.t",
+      "role": ["test"],
+      "digest": "sha256:test-exception",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test-exception"]
+    },
+    {
+      "file_id": "file:t/app_fatal.t",
+      "path": "t/app_fatal.t",
+      "role": ["test"],
+      "digest": "sha256:test-fatal",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test-fatal"]
+    },
+    {
+      "file_id": "file:t/app_helper.t",
+      "path": "t/app_helper.t",
+      "role": ["test", "helper"],
+      "digest": "sha256:test-helper",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test-helper"]
+    }
+  ],
+  "owners": [
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "discount",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 10, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:discount"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "eligible",
+      "range": {"start_line": 12, "start_column": 1, "end_line": 16, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:eligible"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::fail_fast",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "fail_fast",
+      "range": {"start_line": 18, "start_column": 1, "end_line": 21, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:fail-fast"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::profile",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "profile",
+      "range": {"start_line": 23, "start_column": 1, "end_line": 27, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:profile"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::emit_status",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "emit_status",
+      "range": {"start_line": 29, "start_column": 1, "end_line": 32, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:emit-status"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::warn_status",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "warn_status",
+      "range": {"start_line": 34, "start_column": 1, "end_line": 37, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:warn-status"]
+    },
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::log_status",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "log_status",
+      "range": {"start_line": 39, "start_column": 1, "end_line": 42, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:log-status"]
+    }
+  ],
+  "changes": [
+    {
+      "change_id": "change:lib/My/App.pm:8:return",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 8, "end_column": 14},
+      "behavior_hint": "return_value",
+      "changed_text_digest": "sha256:return",
+      "provenance_refs": ["prov:diff:return"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:14:predicate",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "range": {"start_line": 14, "start_column": 5, "end_line": 14, "end_column": 18},
+      "behavior_hint": "predicate_boundary",
+      "changed_text_digest": "sha256:predicate",
+      "provenance_refs": ["prov:diff:predicate"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:20:exception",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::fail_fast",
+      "range": {"start_line": 20, "start_column": 5, "end_line": 20, "end_column": 20},
+      "behavior_hint": "exception_path",
+      "changed_text_digest": "sha256:exception",
+      "provenance_refs": ["prov:diff:exception"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:25:field",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::profile",
+      "range": {"start_line": 25, "start_column": 12, "end_line": 25, "end_column": 26},
+      "behavior_hint": "hash_or_object_field",
+      "changed_text_digest": "sha256:field",
+      "provenance_refs": ["prov:diff:field"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:31:output",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::emit_status",
+      "range": {"start_line": 31, "start_column": 5, "end_line": 31, "end_column": 24},
+      "behavior_hint": "output_observer",
+      "changed_text_digest": "sha256:output",
+      "provenance_refs": ["prov:diff:output"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:36:warn",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::warn_status",
+      "range": {"start_line": 36, "start_column": 5, "end_line": 36, "end_column": 21},
+      "behavior_hint": "warn_observer",
+      "changed_text_digest": "sha256:warn",
+      "provenance_refs": ["prov:diff:warn"]
+    },
+    {
+      "change_id": "change:lib/My/App.pm:41:log",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::log_status",
+      "range": {"start_line": 41, "start_column": 5, "end_line": 41, "end_column": 20},
+      "behavior_hint": "log_observer",
+      "changed_text_digest": "sha256:log",
+      "provenance_refs": ["prov:diff:log"]
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "test:t/app.t:discount_smoke",
+      "file_id": "file:t/app.t",
+      "framework": "Test::More",
+      "name": "discount_smoke",
+      "range": {"start_line": 5, "start_column": 1, "end_line": 8, "end_column": 2},
+      "runner_hints": ["prove"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:more"]
+    },
+    {
+      "test_id": "test:t/app_test2.t:discount_profile",
+      "file_id": "file:t/app_test2.t",
+      "framework": "Test2::V0",
+      "name": "discount_profile",
+      "range": {"start_line": 5, "start_column": 1, "end_line": 14, "end_column": 2},
+      "runner_hints": ["yath"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:test2-v0"]
+    },
+    {
+      "test_id": "test:t/app_suite.t:status_observers",
+      "file_id": "file:t/app_suite.t",
+      "framework": "Test2::Suite",
+      "name": "status_observers",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 18, "end_column": 2},
+      "runner_hints": ["yath"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:test2-suite"]
+    },
+    {
+      "test_id": "test:t/app_exception.t:fail_fast_dies_only",
+      "file_id": "file:t/app_exception.t",
+      "framework": "Test::Exception",
+      "name": "fail_fast_dies_only",
+      "range": {"start_line": 5, "start_column": 1, "end_line": 10, "end_column": 2},
+      "runner_hints": ["carton"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:exception"]
+    },
+    {
+      "test_id": "test:t/app_fatal.t:fail_fast_exception_message",
+      "file_id": "file:t/app_fatal.t",
+      "framework": "Test::Fatal",
+      "name": "fail_fast_exception_message",
+      "range": {"start_line": 5, "start_column": 1, "end_line": 12, "end_column": 2},
+      "runner_hints": ["dzil"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:fatal"]
+    },
+    {
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "file_id": "file:t/app_helper.t",
+      "framework": "unknown",
+      "name": "helper_indirection",
+      "range": {"start_line": 5, "start_column": 1, "end_line": 16, "end_column": 2},
+      "runner_hints": ["unknown"],
+      "confidence": "low",
+      "provenance_refs": ["prov:test-discovery:helper"]
+    }
+  ],
+  "oracles": [
+    {
+      "oracle_id": "oracle:t/app.t:6:ok",
+      "test_id": "test:t/app.t:discount_smoke",
+      "kind": "smoke_ok",
+      "strength": "weak_smoke",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "ok(My::App::discount(100))",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 27},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:smoke-ok"]
+    },
+    {
+      "oracle_id": "oracle:t/app.t:7:is",
+      "test_id": "test:t/app.t:discount_smoke",
+      "kind": "exact_return_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "is(My::App::discount(100), 10, 'discount threshold')",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 56},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:exact-return"]
+    },
+    {
+      "oracle_id": "oracle:t/app_test2.t:8:predicate",
+      "test_id": "test:t/app_test2.t:discount_profile",
+      "kind": "predicate_boundary_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "expression": "is(My::App::eligible(100), T(), 'eligible at boundary')",
+      "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 59},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:predicate"]
+    },
+    {
+      "oracle_id": "oracle:t/app_test2.t:11:field",
+      "test_id": "test:t/app_test2.t:discount_profile",
+      "kind": "hash_or_object_field_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::profile",
+      "expression": "is($profile->{tier}, 'gold', 'profile tier')",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 46},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:field"]
+    },
+    {
+      "oracle_id": "oracle:t/app_suite.t:9:output",
+      "test_id": "test:t/app_suite.t:status_observers",
+      "kind": "output_observer",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::emit_status",
+      "expression": "like($stdout, qr/status=ok/, 'status output')",
+      "range": {"start_line": 9, "start_column": 1, "end_line": 9, "end_column": 48},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:output"]
+    },
+    {
+      "oracle_id": "oracle:t/app_suite.t:12:warn",
+      "test_id": "test:t/app_suite.t:status_observers",
+      "kind": "warn_observer",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::warn_status",
+      "expression": "like($warnings[0], qr/deprecated/, 'warning text')",
+      "range": {"start_line": 12, "start_column": 1, "end_line": 12, "end_column": 53},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:warn"]
+    },
+    {
+      "oracle_id": "oracle:t/app_suite.t:15:log",
+      "test_id": "test:t/app_suite.t:status_observers",
+      "kind": "log_observer",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::log_status",
+      "expression": "is($log[-1], 'status ok', 'log entry')",
+      "range": {"start_line": 15, "start_column": 1, "end_line": 15, "end_column": 42},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:log"]
+    },
+    {
+      "oracle_id": "oracle:t/app_exception.t:7:dies",
+      "test_id": "test:t/app_exception.t:fail_fast_dies_only",
+      "kind": "dies_only",
+      "strength": "weak_broad",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::fail_fast",
+      "expression": "dies_ok { My::App::fail_fast() } 'dies'",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 42},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:dies-only"]
+    },
+    {
+      "oracle_id": "oracle:t/app_fatal.t:8:exception",
+      "test_id": "test:t/app_fatal.t:fail_fast_exception_message",
+      "kind": "exception_observer",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::fail_fast",
+      "expression": "like(exception { My::App::fail_fast() }, qr/boom/, 'message')",
+      "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 64},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:exception"]
+    },
+    {
+      "oracle_id": "oracle:t/app_helper.t:7:mention",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "kind": "mention_only",
+      "strength": "mention_only",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "note('discount helper path')",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 29},
+      "confidence": "low",
+      "provenance_refs": ["prov:oracle:mention"]
+    },
+    {
+      "oracle_id": "oracle:t/app_helper.t:10:unknown-helper",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "kind": "unknown_helper",
+      "strength": "unknown",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "assert_discount_shape(My::App::discount(100))",
+      "range": {"start_line": 10, "start_column": 1, "end_line": 10, "end_column": 46},
+      "confidence": "low",
+      "provenance_refs": ["prov:oracle:unknown-helper"]
+    },
+    {
+      "oracle_id": "oracle:t/app_helper.t:13:dynamic-framework",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "kind": "dynamic_framework_indirection",
+      "strength": "unknown",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "expression": "$framework->assert_boundary('eligible')",
+      "range": {"start_line": 13, "start_column": 1, "end_line": 13, "end_column": 42},
+      "confidence": "low",
+      "provenance_refs": ["prov:oracle:dynamic-framework"]
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "relation:return:discount-smoke",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app.t:discount_smoke",
+      "oracle_id": "oracle:t/app.t:7:is",
+      "relation_kind": "direct_owner_call",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:return"]
+    },
+    {
+      "relation_id": "relation:predicate:test2",
+      "change_id": "change:lib/My/App.pm:14:predicate",
+      "owner_id": "perl:lib/My/App.pm::My::App::eligible",
+      "test_id": "test:t/app_test2.t:discount_profile",
+      "oracle_id": "oracle:t/app_test2.t:8:predicate",
+      "relation_kind": "direct_owner_call",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:predicate"]
+    },
+    {
+      "relation_id": "relation:exception:fatal",
+      "change_id": "change:lib/My/App.pm:20:exception",
+      "owner_id": "perl:lib/My/App.pm::My::App::fail_fast",
+      "test_id": "test:t/app_fatal.t:fail_fast_exception_message",
+      "oracle_id": "oracle:t/app_fatal.t:8:exception",
+      "relation_kind": "direct_owner_call",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:exception"]
+    }
+  ],
+  "dynamic_boundaries": [],
+  "verify_commands": [
+    {
+      "command_id": "verify:t/app.t:prove",
+      "runner": "prove",
+      "argv": ["prove", "t/app.t"],
+      "scope": "file",
+      "test_id": "test:t/app.t:discount_smoke",
+      "confidence": "medium",
+      "preconditions": ["prove_on_path"],
+      "provenance_refs": ["prov:runner:prove"]
+    },
+    {
+      "command_id": "verify:t/app_test2.t:yath",
+      "runner": "yath",
+      "argv": ["yath", "test", "t/app_test2.t"],
+      "scope": "file",
+      "test_id": "test:t/app_test2.t:discount_profile",
+      "confidence": "medium",
+      "preconditions": ["yath_on_path"],
+      "provenance_refs": ["prov:runner:yath"]
+    },
+    {
+      "command_id": "verify:t/app_exception.t:carton",
+      "runner": "carton",
+      "argv": ["carton", "exec", "prove", "t/app_exception.t"],
+      "scope": "file",
+      "test_id": "test:t/app_exception.t:fail_fast_dies_only",
+      "confidence": "medium",
+      "preconditions": ["carton_on_path"],
+      "provenance_refs": ["prov:runner:carton"]
+    },
+    {
+      "command_id": "verify:t/app_fatal.t:dzil",
+      "runner": "dzil",
+      "argv": ["dzil", "test", "--test", "t/app_fatal.t"],
+      "scope": "file",
+      "test_id": "test:t/app_fatal.t:fail_fast_exception_message",
+      "confidence": "medium",
+      "preconditions": ["dzil_on_path"],
+      "provenance_refs": ["prov:runner:dzil"]
+    }
+  ],
+  "limitations": [
+    {
+      "limitation_id": "limitation:unknown-helper:discount",
+      "kind": "unknown_helper",
+      "message": "unknown helper assertion cannot be promoted to strong Perl revealability",
+      "evidence_refs": ["oracle:t/app_helper.t:10:unknown-helper"]
+    },
+    {
+      "limitation_id": "limitation:framework-indirection:eligible",
+      "kind": "framework_indirection",
+      "message": "dynamic framework indirection blocks strict Perl actionability",
+      "evidence_refs": ["oracle:t/app_helper.t:13:dynamic-framework"]
+    }
+  ],
+  "provenance": [
+    {"provenance_id": "prov:file-index:source", "source": "workspace", "file_id": "file:lib/My/App.pm", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test-more", "source": "workspace", "file_id": "file:t/app.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test2-v0", "source": "workspace", "file_id": "file:t/app_test2.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test2-suite", "source": "workspace", "file_id": "file:t/app_suite.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test-exception", "source": "workspace", "file_id": "file:t/app_exception.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test-fatal", "source": "workspace", "file_id": "file:t/app_fatal.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:file-index:test-helper", "source": "workspace", "file_id": "file:t/app_helper.t", "range": null, "confidence": "high"},
+    {"provenance_id": "prov:syntax:discount", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 6, "start_column": 1, "end_line": 10, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:eligible", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 12, "start_column": 1, "end_line": 16, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:fail-fast", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 18, "start_column": 1, "end_line": 21, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:profile", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 23, "start_column": 1, "end_line": 27, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:emit-status", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 29, "start_column": 1, "end_line": 32, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:warn-status", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 34, "start_column": 1, "end_line": 37, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:syntax:log-status", "source": "syntax", "file_id": "file:lib/My/App.pm", "range": {"start_line": 39, "start_column": 1, "end_line": 42, "end_column": 2}, "confidence": "high"},
+    {"provenance_id": "prov:diff:return", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 8, "start_column": 5, "end_line": 8, "end_column": 14}, "confidence": "high"},
+    {"provenance_id": "prov:diff:predicate", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 14, "start_column": 5, "end_line": 14, "end_column": 18}, "confidence": "high"},
+    {"provenance_id": "prov:diff:exception", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 20, "start_column": 5, "end_line": 20, "end_column": 20}, "confidence": "high"},
+    {"provenance_id": "prov:diff:field", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 25, "start_column": 12, "end_line": 25, "end_column": 26}, "confidence": "high"},
+    {"provenance_id": "prov:diff:output", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 31, "start_column": 5, "end_line": 31, "end_column": 24}, "confidence": "high"},
+    {"provenance_id": "prov:diff:warn", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 36, "start_column": 5, "end_line": 36, "end_column": 21}, "confidence": "high"},
+    {"provenance_id": "prov:diff:log", "source": "diff", "file_id": "file:lib/My/App.pm", "range": {"start_line": 41, "start_column": 5, "end_line": 41, "end_column": 20}, "confidence": "high"},
+    {"provenance_id": "prov:test-discovery:more", "source": "test_discovery", "file_id": "file:t/app.t", "range": {"start_line": 5, "start_column": 1, "end_line": 8, "end_column": 2}, "confidence": "medium"},
+    {"provenance_id": "prov:test-discovery:test2-v0", "source": "test_discovery", "file_id": "file:t/app_test2.t", "range": {"start_line": 5, "start_column": 1, "end_line": 14, "end_column": 2}, "confidence": "medium"},
+    {"provenance_id": "prov:test-discovery:test2-suite", "source": "test_discovery", "file_id": "file:t/app_suite.t", "range": {"start_line": 6, "start_column": 1, "end_line": 18, "end_column": 2}, "confidence": "medium"},
+    {"provenance_id": "prov:test-discovery:exception", "source": "test_discovery", "file_id": "file:t/app_exception.t", "range": {"start_line": 5, "start_column": 1, "end_line": 10, "end_column": 2}, "confidence": "medium"},
+    {"provenance_id": "prov:test-discovery:fatal", "source": "test_discovery", "file_id": "file:t/app_fatal.t", "range": {"start_line": 5, "start_column": 1, "end_line": 12, "end_column": 2}, "confidence": "medium"},
+    {"provenance_id": "prov:test-discovery:helper", "source": "test_discovery", "file_id": "file:t/app_helper.t", "range": {"start_line": 5, "start_column": 1, "end_line": 16, "end_column": 2}, "confidence": "low"},
+    {"provenance_id": "prov:oracle:smoke-ok", "source": "oracle_extraction", "file_id": "file:t/app.t", "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 27}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:exact-return", "source": "oracle_extraction", "file_id": "file:t/app.t", "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 56}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:predicate", "source": "oracle_extraction", "file_id": "file:t/app_test2.t", "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 59}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:field", "source": "oracle_extraction", "file_id": "file:t/app_test2.t", "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 46}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:output", "source": "oracle_extraction", "file_id": "file:t/app_suite.t", "range": {"start_line": 9, "start_column": 1, "end_line": 9, "end_column": 48}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:warn", "source": "oracle_extraction", "file_id": "file:t/app_suite.t", "range": {"start_line": 12, "start_column": 1, "end_line": 12, "end_column": 53}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:log", "source": "oracle_extraction", "file_id": "file:t/app_suite.t", "range": {"start_line": 15, "start_column": 1, "end_line": 15, "end_column": 42}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:dies-only", "source": "oracle_extraction", "file_id": "file:t/app_exception.t", "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 42}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:exception", "source": "oracle_extraction", "file_id": "file:t/app_fatal.t", "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 64}, "confidence": "medium"},
+    {"provenance_id": "prov:oracle:mention", "source": "oracle_extraction", "file_id": "file:t/app_helper.t", "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 29}, "confidence": "low"},
+    {"provenance_id": "prov:oracle:unknown-helper", "source": "oracle_extraction", "file_id": "file:t/app_helper.t", "range": {"start_line": 10, "start_column": 1, "end_line": 10, "end_column": 46}, "confidence": "low"},
+    {"provenance_id": "prov:oracle:dynamic-framework", "source": "oracle_extraction", "file_id": "file:t/app_helper.t", "range": {"start_line": 13, "start_column": 1, "end_line": 13, "end_column": 42}, "confidence": "low"},
+    {"provenance_id": "prov:relation:return", "source": "semantic", "file_id": "file:t/app.t", "range": {"start_line": 7, "start_column": 1, "end_line": 7, "end_column": 56}, "confidence": "medium"},
+    {"provenance_id": "prov:relation:predicate", "source": "semantic", "file_id": "file:t/app_test2.t", "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 59}, "confidence": "medium"},
+    {"provenance_id": "prov:relation:exception", "source": "semantic", "file_id": "file:t/app_fatal.t", "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 64}, "confidence": "medium"},
+    {"provenance_id": "prov:runner:prove", "source": "runner_detection", "file_id": "file:t/app.t", "range": null, "confidence": "medium"},
+    {"provenance_id": "prov:runner:yath", "source": "runner_detection", "file_id": "file:t/app_test2.t", "range": null, "confidence": "medium"},
+    {"provenance_id": "prov:runner:carton", "source": "runner_detection", "file_id": "file:t/app_exception.t", "range": null, "confidence": "medium"},
+    {"provenance_id": "prov:runner:dzil", "source": "runner_detection", "file_id": "file:t/app_fatal.t", "range": null, "confidence": "medium"}
+  ]
+}

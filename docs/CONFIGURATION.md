@@ -48,7 +48,7 @@ need to run it.
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
 | Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
-| Cache | Compact repo seam cache stores up to `100000` seams by default; large repos can opt into a higher process-local limit. |
+| Cache | Full repo seam cache stores up to `20000` seams by default, compact repo seam cache stores up to `100000` seams by default, and large repos can opt into higher process-local limits. |
 | CI | Generated GitHub workflows upload advisory pilot/report/agent artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
 
@@ -142,15 +142,35 @@ that needs the tuning.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count that the compact repo seam cache may store. Raise this for large repos when the machine has enough disk and time budget for the initial cache write. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under `target/ripr/cache`. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under `target/ripr/cache`. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 
-The compact repo seam cache skip reason includes the active limit, for example
-`skipped_large_entry_seams_135812_limit_100000`. To opt into caching that repo on
-a machine with enough headroom:
+Repo seam cache entries larger than the active limit are stored as a manifest
+plus shard files, with cache-store trace status such as
+`sharded_ok_seams_135812_shards_7_limit_20000`. Warm loads stitch the shards
+only when the manifest and every shard match the current cache key; missing or
+corrupt shards are ignored as cache corruption and the run recomputes instead
+of using partial evidence. `cargo xtask cache report` summarizes sharded
+families, largest shard sets, and orphan or incomplete shard sets. The
+`cargo xtask cache gc --dry-run` command still sees sharded entries because
+every shard lives under `target/ripr/cache`.
+
+To reduce full-cache shard counts for a repo on a machine with enough headroom:
+
+```bash
+RIPR_REPO_SEAM_CACHE_LIMIT=150000 ripr check --root . --format repo-exposure-json
+```
+
+To reduce compact-cache shard counts for that repo:
 
 ```bash
 RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 ripr check --root . --format repo-badge-json
 ```
+
+Lane 1 audit reports may still emit limited run states when repo-exposure input
+is sampled, timed out, incomplete, stale, runner-failed, or skipped by a
+large-cache preflight. Sharding cache files does not turn those limited inputs
+into full repo truth.
 
 ### `ripr explain`
 
@@ -656,9 +676,43 @@ adapters the repo wants to inspect:
 enabled = ["rust", "typescript", "python"]
 ```
 
+### `[profiles.bun_ub]`
+
+The Bun UB profile is an opt-in advisory profile for Bun stable-byte review.
+It records where TypeScript-family integration tests and Bun bridge hints live
+so operators can run the calibrated Blob / ArrayBuffer cross-language preview
+without changing Rust defaults.
+
+```toml
+[languages]
+enabled = ["rust", "typescript"]
+
+[profiles.bun_ub]
+test_roots = [
+  "test/js/**/*.test.ts",
+  "test/js/**/*.test.js",
+]
+bridge_hints = "ripr.bun.bridge.toml"
+```
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `test_roots` | non-empty array of repo-relative glob strings | none; required when the profile is present | Names the TypeScript-family Bun integration tests to inspect. JavaScript test files are covered by the `typescript` adapter. |
+| `bridge_hints` | repo-relative path | none; required when the profile is present | Points to the opt-in Bun TS-to-Rust bridge-hint file. |
+
+This profile is read-only configuration. It does not enable TypeScript by
+itself, run `tsc`, start `tsserver`, execute Bun/Jest/Vitest, generate tests,
+edit source, contribute to gates, badges, baselines, or RIPR Zero, or promote
+TypeScript/JavaScript out of preview. `ripr doctor` reports whether the profile
+is configured and repeats that authority boundary.
+
 See [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for how to
 read preview labels, static limits, generated-CI grouping, editor projection,
-and rollback.
+and rollback. See the
+[Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md) for
+the calibrated stable-byte review loop and the exact advisory actions for
+missing discriminators, token-only evidence, unknown bridges, and unresolved
+FFI panic-boundary visibility.
 
 ### Worked example
 

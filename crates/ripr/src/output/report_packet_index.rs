@@ -498,6 +498,32 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
             next_command: None,
         },
         ArtifactSpec {
+            id: "bun_ub_calibration",
+            label: "Bun UB calibration",
+            group: "calibration",
+            kind: "markdown",
+            path: reports.join("bun-ub-calibration.md"),
+            json_path: Some(reports.join("bun-ub-calibration.json")),
+            required: false,
+            authority: false,
+            description: "Advisory TypeScript/Bun stable-byte calibration context.",
+            default_status: "available",
+            next_command: None,
+        },
+        ArtifactSpec {
+            id: "bun_ub_preview_summary",
+            label: "Bun UB preview summary",
+            group: "calibration",
+            kind: "markdown",
+            path: reports.join("bun-ub-preview-summary.md"),
+            json_path: Some(reports.join("bun-ub-preview-summary.json")),
+            required: false,
+            authority: false,
+            description: "Compact advisory TypeScript/Bun cross-language route and limitation summary.",
+            default_status: "available",
+            next_command: None,
+        },
+        ArtifactSpec {
             id: "coverage_grip_frontier",
             label: "Coverage/grip frontier",
             group: "calibration",
@@ -764,9 +790,11 @@ fn group_for_entry(id: &str) -> &'static str {
         "assistant_proof" | "assistant_loop_health" => "repair_agent_handoff",
         "pr_evidence_ledger" | "baseline_debt_delta" | "ripr_zero_status" => "evidence_movement",
         "gate_decision" => "policy_gates",
-        "recommendation_calibration" | "mutation_calibration" | "coverage_grip_frontier" => {
-            "calibration"
-        }
+        "recommendation_calibration"
+        | "mutation_calibration"
+        | "bun_ub_calibration"
+        | "bun_ub_preview_summary"
+        | "coverage_grip_frontier" => "calibration",
         "agent_receipt" | "pr_summary" | "check_pr" => "validation_receipts",
         "sarif" | "badge" => "sarif_badges",
         _ => "local_context",
@@ -902,9 +930,17 @@ mod tests {
 
     #[test]
     fn report_packet_index_groups_coverage_grip_as_calibration() -> Result<(), String> {
-        let root = temp_root("coverage-grip")?;
+        let root = temp_root("calibration-artifacts")?;
         write(
             &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "Status: pass\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/bun-ub-calibration.md"),
+            "Status: pass\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/bun-ub-preview-summary.md"),
             "Status: pass\n",
         )?;
         write(
@@ -918,19 +954,26 @@ mod tests {
             .get("groups")
             .and_then(Value::as_array)
             .ok_or_else(|| "groups missing".to_string())?;
-        let calibration = groups.iter().any(|group| {
-            group.get("group").and_then(Value::as_str) == Some("calibration")
-                && group
-                    .get("entries")
-                    .and_then(Value::as_array)
-                    .is_some_and(|entries| {
-                        entries.iter().any(|entry| {
-                            entry.get("id").and_then(Value::as_str)
-                                == Some("coverage_grip_frontier")
-                        })
-                    })
-        });
-        assert!(calibration);
+        let calibration = groups
+            .iter()
+            .find(|group| group.get("group").and_then(Value::as_str) == Some("calibration"));
+        let calibration = calibration.ok_or_else(|| "missing calibration group".to_string())?;
+        let entries = calibration
+            .get("entries")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "missing calibration entries".to_string())?;
+        for expected in [
+            "bun_ub_calibration",
+            "bun_ub_preview_summary",
+            "coverage_grip_frontier",
+        ] {
+            assert!(
+                entries
+                    .iter()
+                    .any(|entry| { entry.get("id").and_then(Value::as_str) == Some(expected) }),
+                "missing calibration entry {expected}"
+            );
+        }
         Ok(())
     }
 
@@ -1271,6 +1314,8 @@ mod tests {
             ("gate_decision", "policy_gates"),
             ("recommendation_calibration", "calibration"),
             ("mutation_calibration", "calibration"),
+            ("bun_ub_calibration", "calibration"),
+            ("bun_ub_preview_summary", "calibration"),
             ("coverage_grip_frontier", "calibration"),
             ("agent_receipt", "validation_receipts"),
             ("pr_summary", "validation_receipts"),

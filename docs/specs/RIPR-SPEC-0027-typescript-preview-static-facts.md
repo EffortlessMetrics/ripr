@@ -127,6 +127,36 @@ Assertions / oracles the adapter must recognise:
 - bare `expect(actual).toBeTruthy()` / `toBeFalsy()` /
   `toBeDefined()` → smoke oracle
 
+The 0.8.1 Bun UB advisory lane also permits internal, evidence-only
+TypeScript facts for the Blob / ArrayBuffer calibration route: syntactic
+`SharedArrayBuffer` construction, resizable `ArrayBuffer` construction through
+`maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views,
+view-backed `Blob(...)` input, `blob.arrayBuffer()` observers, stable byte/text
+assertions, weak byte/text smoke or snapshot oracles, byte/text read-only
+mentions without assertions, and `maxByteLength` mention-only controls. A
+bounded internal Bun Blob bridge profile may combine those facts into
+evidence-only `configured_hint` / `bridge_unknown` advisory lines for
+`Blob::from_js_without_defer_gc` and the
+`array_buffer.shared || array_buffer.resizable` Rust boundary. A bounded
+cross-language preview projection may surface those lines in the advisory
+TypeScript preview card as `rust_ungripped_ts_discriminated`,
+`rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, or
+`bridge_unknown` state for the configured Bun Blob route. Missing-discriminator
+Bun Blob bridge findings must fail closed as
+`cross_language_oracle_visibility_unresolved` until the binding route, external
+callsite, and external oracle are proven; their suggested test file remains
+`not_applicable` instead of selecting a TypeScript or Rust repair target. These
+facts, bridge hints, limitation routes, and card fields do not promote
+TypeScript preview evidence into repair packets, generated tests, source edits,
+gates, badges, baselines, RIPR Zero, or support-tier claims.
+Repositories may opt into a Bun stable-byte review profile with
+`[profiles.bun_ub]` in `ripr.toml`; that profile records TypeScript-family
+`test_roots` and a repo-relative `bridge_hints` file for advisory operator
+workflow only. The profile does not enable TypeScript by itself, does not add a
+separate `javascript` language key, and does not execute `tsc`, `tsserver`,
+Bun/Jest/Vitest, mutation, generated tests, source edits, gates, badges,
+baselines, RIPR Zero, or support-tier promotion.
+
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
 the syntax level. Direct owner-call matches must be token-aware: a top-level
@@ -270,7 +300,13 @@ Expected static evidence:
 
 Follow-up fixtures and tests cover the owner, test, assertion, related
 test, probe, and static-limit cases listed under Required Evidence, plus
-generated CI behavior and LSP smoke coverage.
+generated CI behavior and LSP smoke coverage. The Bun Blob / `ArrayBuffer`
+preview calibration corpus is also summarized by
+`xtask/src/main.rs::tests::bun_ub_calibration_report_summarizes_calibrated_states`
+and
+`xtask/src/main.rs::tests::bun_ub_calibration_command_writes_markdown_and_json`,
+which keep TS-discriminated, missing-discriminator, mention-only, and
+bridge-unknown cases advisory and non-repair-ready.
 
 ## Implementation Mapping
 
@@ -281,7 +317,10 @@ TypeScript preview completion lane and should use
 follow-up may change Rust behavior, preview advisory status, default gates,
 badges, baselines, RIPR Zero eligibility, provider behavior, generated tests,
 source-edit behavior, or runtime mutation execution unless a later accepted
-contract explicitly changes that boundary.
+contract explicitly changes that boundary. `cargo xtask bun-ub-calibration`
+is an xtask-only operator report over the existing Bun calibration corpus; it
+does not promote TypeScript/JavaScript preview evidence or run TypeScript,
+JavaScript, Bun, mutation, provider, generated-test, or source-edit workflows.
 
 ## Metrics
 
@@ -309,3 +348,7 @@ TypeScript adapter contributes:
 - `language_adapter_typescript_probe_mock_interaction`
 - `language_adapter_typescript_probe_ambiguous_suppressed`
 - `language_adapter_typescript_static_limit_mocked_module`
+- `language_adapter_typescript_bun_ub_array_buffer_facts`
+- `language_adapter_typescript_bun_ub_stable_byte_oracle_facts`
+- `language_adapter_typescript_bun_ub_bridge_hints`
+- `language_adapter_typescript_bun_ub_cross_language_grip_states`

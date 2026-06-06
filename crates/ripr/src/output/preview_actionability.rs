@@ -12,6 +12,8 @@ pub(crate) struct PreviewActionability {
     pub(crate) why_not_actionable: String,
     pub(crate) repair_route: String,
     pub(crate) missing_actionability_fields: Vec<String>,
+    pub(crate) missing_graph_legs: Vec<String>,
+    pub(crate) unlock_condition: Option<String>,
     pub(crate) evidence_needed_to_promote: String,
     pub(crate) raw_evidence_refs: Vec<PreviewRawEvidenceRef>,
 }
@@ -24,6 +26,8 @@ pub(crate) struct PreviewRawEvidenceRef {
     pub(crate) kind: Option<String>,
     pub(crate) source_id: Option<String>,
     pub(crate) owner: Option<String>,
+    pub(crate) leg: Option<String>,
+    pub(crate) sample: Option<String>,
 }
 
 pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActionability> {
@@ -43,6 +47,10 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
     let missing_actionability_fields = evidence_value(finding, "missing_actionability_fields: ")
         .map(split_csv)
         .unwrap_or_default();
+    let missing_graph_legs = evidence_value(finding, "missing_graph_legs: ")
+        .map(split_csv)
+        .unwrap_or_default();
+    let unlock_condition = evidence_value(finding, "unlock_condition: ").map(ToString::to_string);
     let raw_evidence_refs = finding
         .evidence
         .iter()
@@ -58,6 +66,8 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
         why_not_actionable: why_not_actionable.to_string(),
         repair_route: repair_route.to_string(),
         missing_actionability_fields,
+        missing_graph_legs,
+        unlock_condition,
         evidence_needed_to_promote: evidence_needed_to_promote.to_string(),
         raw_evidence_refs,
     })
@@ -72,6 +82,8 @@ pub(crate) fn preview_actionability_json_value(actionability: &PreviewActionabil
         "why_not_actionable": actionability.why_not_actionable,
         "repair_route": actionability.repair_route,
         "missing_actionability_fields": actionability.missing_actionability_fields,
+        "missing_graph_legs": actionability.missing_graph_legs,
+        "unlock_condition": actionability.unlock_condition.as_deref(),
         "evidence_needed_to_promote": actionability.evidence_needed_to_promote,
         "raw_evidence_refs": actionability.raw_evidence_refs.iter().map(raw_ref_json).collect::<Vec<_>>(),
     })
@@ -83,6 +95,8 @@ pub(crate) fn is_preview_actionability_evidence_line(line: &str) -> bool {
         || line.starts_with("why_not_actionable: ")
         || line.starts_with("repair_route: ")
         || line.starts_with("missing_actionability_fields: ")
+        || line.starts_with("missing_graph_legs: ")
+        || line.starts_with("unlock_condition: ")
         || line.starts_with("evidence_needed_to_promote: ")
         || line.starts_with("raw_evidence_ref: ")
 }
@@ -117,6 +131,8 @@ fn parse_raw_evidence_ref(value: &str) -> PreviewRawEvidenceRef {
         kind: None,
         source_id: None,
         owner: None,
+        leg: None,
+        sample: None,
     };
 
     for part in value.split(';') {
@@ -133,6 +149,8 @@ fn parse_raw_evidence_ref(value: &str) -> PreviewRawEvidenceRef {
             "kind" => parsed.kind = Some(raw_value.to_string()),
             "source_id" => parsed.source_id = Some(raw_value.to_string()),
             "owner" => parsed.owner = Some(raw_value.to_string()),
+            "leg" => parsed.leg = Some(raw_value.to_string()),
+            "sample" => parsed.sample = Some(raw_value.to_string()),
             _ => {}
         }
     }
@@ -148,6 +166,8 @@ fn raw_ref_json(raw_ref: &PreviewRawEvidenceRef) -> Value {
         "kind": raw_ref.kind,
         "source_id": raw_ref.source_id,
         "owner": raw_ref.owner,
+        "leg": raw_ref.leg,
+        "sample": raw_ref.sample,
     })
 }
 
@@ -181,6 +201,14 @@ mod tests {
             vec!["canonical_gap_id", "verify_command"]
         );
         assert_eq!(
+            actionability.missing_graph_legs,
+            vec!["verify_command", "receipt_command"]
+        );
+        assert_eq!(
+            actionability.unlock_condition.as_deref(),
+            Some("project complete repair packet fields before public projection")
+        );
+        assert_eq!(
             actionability.raw_evidence_refs[0].file.as_deref(),
             Some("src/lib.ts")
         );
@@ -189,10 +217,23 @@ mod tests {
             actionability.raw_evidence_refs[0].source_id.as_deref(),
             Some("probe:src_lib.ts:2:typescript_preview")
         );
+        assert_eq!(
+            actionability.raw_evidence_refs[0].leg.as_deref(),
+            Some("rust_seam")
+        );
+        assert_eq!(
+            actionability.raw_evidence_refs[0].sample.as_deref(),
+            Some("if amount >= threshold")
+        );
 
         let value = preview_actionability_json_value(&actionability);
         assert_eq!(value["repair_packet_ready"], false);
         assert_eq!(value["raw_evidence_refs"][0]["owner"], "applyDiscount");
+        assert_eq!(value["raw_evidence_refs"][0]["leg"], "rust_seam");
+        assert_eq!(
+            value["unlock_condition"],
+            "project complete repair packet fields before public projection"
+        );
         Ok(())
     }
 
@@ -204,6 +245,9 @@ mod tests {
         assert!(preview_actionability_for(&finding).is_none());
         assert!(is_preview_actionability_evidence_line(
             "gap_state: advisory"
+        ));
+        assert!(is_preview_actionability_evidence_line(
+            "unlock_condition: add graph legs"
         ));
         assert!(!is_preview_actionability_evidence_line(
             "owner: applyDiscount"
@@ -245,8 +289,11 @@ mod tests {
                     .to_string(),
                 "repair_route: project canonical TypeScript repair packet fields later".to_string(),
                 "missing_actionability_fields: canonical_gap_id, verify_command".to_string(),
+                "missing_graph_legs: verify_command, receipt_command".to_string(),
+                "unlock_condition: project complete repair packet fields before public projection"
+                    .to_string(),
                 "evidence_needed_to_promote: canonical gap identity and verify command".to_string(),
-                "raw_evidence_ref: file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=applyDiscount".to_string(),
+                "raw_evidence_ref: leg=rust_seam;file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=applyDiscount;sample=if amount >= threshold".to_string(),
             ],
             missing: Vec::new(),
             flow_sinks: Vec::new(),

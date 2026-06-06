@@ -51,11 +51,23 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 
 [languages]
-# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters when the ripr binary was built with the
-# matching Cargo feature (`lang-typescript` or `lang-python`). When this file is
-# absent, Python project markers can enable Python preview analysis
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript`,
+# `python`, or `perl` to opt into preview adapters when the ripr binary was
+# built with the matching Cargo feature (`lang-typescript`, `lang-python`, or
+# `lang-perl`). When this file is absent, Python project markers can enable
+# Python preview analysis
 # automatically for the detected repository root; this explicit list remains
 # authoritative when present.
-# Valid values: rust, typescript, python.
+# Valid values: rust, typescript, python, perl.
 enabled = ["rust"]
+
+# Optional Bun stable-byte UB advisory profile. Leave this commented unless the
+# repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
+# JavaScript test files are covered by the `typescript` adapter.
+#
+# [profiles.bun_ub]
+# test_roots = [
+#   "test/js/**/*.test.ts",
+#   "test/js/**/*.test.js",
+# ]
+# bridge_hints = "ripr.bun.bridge.toml"

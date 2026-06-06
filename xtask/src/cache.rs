@@ -3,12 +3,16 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 const DEFAULT_MAX_SIZE_GB: u64 = 20;
 const DEFAULT_TTL_DAYS: u64 = 14;
 const BYTES_PER_GB: u64 = 1_000_000_000;
 const SECONDS_PER_DAY: u64 = 86_400;
+const SHARDED_CACHE_FAMILY_SUFFIX: &str = "-sharded";
+const SHARD_MANIFEST_FILE: &str = "manifest.json";
+const SHARD_FILE_PREFIX: &str = "shard-";
+const MAX_REPORT_ROWS: usize = 20;
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let Some((subcommand, rest)) = args.split_first() else {
@@ -81,6 +85,7 @@ struct CacheReport {
     total_bytes: u64,
     families: Vec<CacheFamily>,
     largest_files: Vec<CacheFile>,
+    sharded_cache: CacheShardSummary,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,6 +102,69 @@ struct CacheFile {
     family: String,
     size_bytes: u64,
     modified: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct CacheShardSummary {
+    shard_sets: usize,
+    complete_sets: usize,
+    orphan_sets: usize,
+    incomplete_sets: usize,
+    manifest_files: usize,
+    shard_files: usize,
+    bytes: u64,
+    largest_sets: Vec<CacheShardSet>,
+    problem_sets: Vec<CacheShardSet>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CacheShardSet {
+    family: String,
+    relative_path: PathBuf,
+    status: ShardSetStatus,
+    bytes: u64,
+    manifest_path: Option<PathBuf>,
+    manifest_bytes: u64,
+    shard_files: usize,
+    shard_bytes: u64,
+    manifest_declared_shards: Option<usize>,
+    manifest_declared_seams: Option<usize>,
+    missing_shards: Vec<String>,
+    extra_shards: Vec<String>,
+    manifest_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ShardSetStatus {
+    Complete,
+    OrphanShards,
+    Incomplete,
+    ManifestUnreadable,
+}
+
+impl ShardSetStatus {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::OrphanShards => "orphan_shards",
+            Self::Incomplete => "incomplete",
+            Self::ManifestUnreadable => "manifest_unreadable",
+        }
+    }
+}
+
+#[derive(Default)]
+struct CacheShardSetBuilder {
+    family: String,
+    relative_path: PathBuf,
+    manifest: Option<CacheFile>,
+    shards: Vec<CacheFile>,
+}
+
+struct ShardManifestInfo {
+    declared_shards: Option<usize>,
+    declared_seams: Option<usize>,
+    shard_files: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -230,12 +298,217 @@ fn build_cache_report(root: &Path) -> Result<CacheReport, String> {
     });
     largest_files.truncate(20);
 
+    let sharded_cache = build_shard_summary(&files);
+
     Ok(CacheReport {
         cache_root,
         total_files: files.len(),
         total_bytes,
         families,
         largest_files,
+        sharded_cache,
+    })
+}
+
+fn build_shard_summary(files: &[CacheFile]) -> CacheShardSummary {
+    let mut builders = BTreeMap::<PathBuf, CacheShardSetBuilder>::new();
+    for file in files {
+        if !file.family.ends_with(SHARDED_CACHE_FAMILY_SUFFIX) {
+            continue;
+        }
+        let Some(file_name) = file
+            .relative_path
+            .file_name()
+            .map(|name| name.to_string_lossy())
+        else {
+            continue;
+        };
+        let is_manifest = file_name == SHARD_MANIFEST_FILE;
+        let is_shard = file_name.starts_with(SHARD_FILE_PREFIX) && file_name.ends_with(".json");
+        if !is_manifest && !is_shard {
+            continue;
+        }
+        let Some(set_path) = file.relative_path.parent().map(Path::to_path_buf) else {
+            continue;
+        };
+        let builder = builders
+            .entry(set_path.clone())
+            .or_insert_with(|| CacheShardSetBuilder {
+                family: file.family.clone(),
+                relative_path: set_path,
+                manifest: None,
+                shards: Vec::new(),
+            });
+        if is_manifest {
+            builder.manifest = Some(file.clone());
+        } else {
+            builder.shards.push(file.clone());
+        }
+    }
+
+    let mut sets = builders
+        .into_values()
+        .map(cache_shard_set_from_builder)
+        .collect::<Vec<_>>();
+    sets.sort_by(|left, right| {
+        left.family
+            .cmp(&right.family)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+
+    let mut summary = CacheShardSummary {
+        shard_sets: sets.len(),
+        complete_sets: sets
+            .iter()
+            .filter(|set| set.status == ShardSetStatus::Complete)
+            .count(),
+        orphan_sets: sets
+            .iter()
+            .filter(|set| set.status == ShardSetStatus::OrphanShards)
+            .count(),
+        incomplete_sets: sets
+            .iter()
+            .filter(|set| {
+                matches!(
+                    set.status,
+                    ShardSetStatus::Incomplete | ShardSetStatus::ManifestUnreadable
+                )
+            })
+            .count(),
+        manifest_files: sets
+            .iter()
+            .filter(|set| set.manifest_path.is_some())
+            .count(),
+        shard_files: sets.iter().map(|set| set.shard_files).sum(),
+        bytes: sets
+            .iter()
+            .fold(0u64, |sum, set| sum.saturating_add(set.bytes)),
+        largest_sets: sets.clone(),
+        problem_sets: sets
+            .iter()
+            .filter(|set| set.status != ShardSetStatus::Complete)
+            .cloned()
+            .collect(),
+    };
+    summary.largest_sets.sort_by(|left, right| {
+        right
+            .bytes
+            .cmp(&left.bytes)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    summary.largest_sets.truncate(MAX_REPORT_ROWS);
+    summary.problem_sets.sort_by(|left, right| {
+        left.status
+            .as_str()
+            .cmp(right.status.as_str())
+            .then_with(|| right.bytes.cmp(&left.bytes))
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    summary
+}
+
+fn cache_shard_set_from_builder(mut builder: CacheShardSetBuilder) -> CacheShardSet {
+    builder.shards.sort_by(|left, right| {
+        left.relative_path
+            .file_name()
+            .cmp(&right.relative_path.file_name())
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    let manifest_bytes = builder
+        .manifest
+        .as_ref()
+        .map_or(0, |manifest| manifest.size_bytes);
+    let shard_bytes = builder
+        .shards
+        .iter()
+        .fold(0u64, |sum, shard| sum.saturating_add(shard.size_bytes));
+    let actual_shards = builder
+        .shards
+        .iter()
+        .filter_map(|shard| shard.relative_path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect::<BTreeSet<_>>();
+
+    let mut manifest_declared_shards = None;
+    let mut manifest_declared_seams = None;
+    let mut missing_shards = Vec::new();
+    let mut extra_shards = Vec::new();
+    let mut manifest_error = None;
+
+    let status = match &builder.manifest {
+        None => {
+            extra_shards = actual_shards.iter().cloned().collect();
+            ShardSetStatus::OrphanShards
+        }
+        Some(manifest_file) => match read_shard_manifest(&manifest_file.path) {
+            Err(reason) => {
+                manifest_error = Some(reason);
+                ShardSetStatus::ManifestUnreadable
+            }
+            Ok(manifest) => {
+                manifest_declared_shards = manifest.declared_shards;
+                manifest_declared_seams = manifest.declared_seams;
+                let expected = manifest.shard_files.into_iter().collect::<BTreeSet<_>>();
+                missing_shards = expected.difference(&actual_shards).cloned().collect();
+                extra_shards = actual_shards.difference(&expected).cloned().collect();
+                let declared_count_mismatch = manifest_declared_shards.is_some_and(|declared| {
+                    declared != expected.len() || declared != actual_shards.len()
+                });
+                if missing_shards.is_empty() && extra_shards.is_empty() && !declared_count_mismatch
+                {
+                    ShardSetStatus::Complete
+                } else {
+                    ShardSetStatus::Incomplete
+                }
+            }
+        },
+    };
+
+    CacheShardSet {
+        family: builder.family,
+        relative_path: builder.relative_path,
+        status,
+        bytes: manifest_bytes.saturating_add(shard_bytes),
+        manifest_path: builder.manifest.map(|manifest| manifest.relative_path),
+        manifest_bytes,
+        shard_files: builder.shards.len(),
+        shard_bytes,
+        manifest_declared_shards,
+        manifest_declared_seams,
+        missing_shards,
+        extra_shards,
+        manifest_error,
+    }
+}
+
+fn read_shard_manifest(path: &Path) -> Result<ShardManifestInfo, String> {
+    let text = fs::read_to_string(path)
+        .map_err(|err| format!("read shard manifest {}: {err}", path.display()))?;
+    let value = serde_json::from_str::<Value>(&text)
+        .map_err(|err| format!("parse shard manifest {}: {err}", path.display()))?;
+    let declared_shards = value
+        .get("shard_count")
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok());
+    let declared_seams = value
+        .get("total_seams")
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok());
+    let shard_files = value
+        .get("shards")
+        .and_then(Value::as_array)
+        .map(|shards| {
+            shards
+                .iter()
+                .filter_map(|shard| shard.get("file").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(ShardManifestInfo {
+        declared_shards,
+        declared_seams,
+        shard_files,
     })
 }
 
@@ -436,7 +709,7 @@ fn cache_report_markdown(report: &CacheReport) -> String {
     }
     markdown.push_str("## Largest cache files\n\n");
     if report.largest_files.is_empty() {
-        markdown.push_str("No cache files found.\n");
+        markdown.push_str("No cache files found.\n\n");
     } else {
         markdown.push_str("| path | family | size |\n|---|---|---:|\n");
         for file in &report.largest_files {
@@ -446,6 +719,58 @@ fn cache_report_markdown(report: &CacheReport) -> String {
                 file.family,
                 human_bytes(file.size_bytes),
                 file.size_bytes
+            ));
+        }
+        markdown.push('\n');
+    }
+
+    markdown.push_str("\n## Sharded cache sets\n\n");
+    let shard_summary = &report.sharded_cache;
+    markdown.push_str(&format!(
+        "- shard sets: {} (complete {}, orphan {}, incomplete {})\n- manifests: {}\n- shard files: {}\n- sharded size: {} ({})\n\n",
+        shard_summary.shard_sets,
+        shard_summary.complete_sets,
+        shard_summary.orphan_sets,
+        shard_summary.incomplete_sets,
+        shard_summary.manifest_files,
+        shard_summary.shard_files,
+        human_bytes(shard_summary.bytes),
+        shard_summary.bytes
+    ));
+    markdown.push_str("### Largest shard sets\n\n");
+    if shard_summary.largest_sets.is_empty() {
+        markdown.push_str("No sharded cache sets found.\n\n");
+    } else {
+        markdown.push_str(
+            "| path | family | status | manifest shards | manifest seams | shard files | size |\n|---|---|---|---:|---:|---:|---:|\n",
+        );
+        for set in &shard_summary.largest_sets {
+            markdown.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {} | {} | {} | {} ({}) |\n",
+                set.relative_path.display(),
+                set.family,
+                set.status.as_str(),
+                optional_usize(set.manifest_declared_shards),
+                optional_usize(set.manifest_declared_seams),
+                set.shard_files,
+                human_bytes(set.bytes),
+                set.bytes
+            ));
+        }
+        markdown.push('\n');
+    }
+    markdown.push_str("### Orphan or incomplete shard sets\n\n");
+    if shard_summary.problem_sets.is_empty() {
+        markdown.push_str("No orphan or incomplete shard sets found.\n");
+    } else {
+        markdown.push_str("| path | family | status | issue |\n|---|---|---|---|\n");
+        for set in &shard_summary.problem_sets {
+            markdown.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {} |\n",
+                set.relative_path.display(),
+                set.family,
+                set.status.as_str(),
+                shard_set_issue(set)
             ));
         }
     }
@@ -500,7 +825,7 @@ fn cache_gc_markdown(plan: &GcPlan, options: &GcOptions) -> String {
 
 fn cache_report_json(report: &CacheReport) -> Result<String, String> {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "status": "pass",
         "scope": "target/ripr/cache",
         "cache_root": report.cache_root,
@@ -517,8 +842,37 @@ fn cache_report_json(report: &CacheReport) -> Result<String, String> {
             "bytes": file.size_bytes,
             "modified_unix_seconds": unix_seconds(file.modified),
         })).collect::<Vec<_>>(),
+        "sharded_cache": {
+            "shard_sets": report.sharded_cache.shard_sets,
+            "complete_sets": report.sharded_cache.complete_sets,
+            "orphan_sets": report.sharded_cache.orphan_sets,
+            "incomplete_sets": report.sharded_cache.incomplete_sets,
+            "manifest_files": report.sharded_cache.manifest_files,
+            "shard_files": report.sharded_cache.shard_files,
+            "bytes": report.sharded_cache.bytes,
+            "largest_sets": report.sharded_cache.largest_sets.iter().map(cache_shard_set_json).collect::<Vec<_>>(),
+            "problem_sets": report.sharded_cache.problem_sets.iter().map(cache_shard_set_json).collect::<Vec<_>>(),
+        },
     }))
     .map_err(|err| format!("serialize cache report: {err}"))
+}
+
+fn cache_shard_set_json(set: &CacheShardSet) -> Value {
+    json!({
+        "path": &set.relative_path,
+        "family": &set.family,
+        "status": set.status.as_str(),
+        "bytes": set.bytes,
+        "manifest_path": &set.manifest_path,
+        "manifest_bytes": set.manifest_bytes,
+        "shard_files": set.shard_files,
+        "shard_bytes": set.shard_bytes,
+        "manifest_declared_shards": set.manifest_declared_shards,
+        "manifest_declared_seams": set.manifest_declared_seams,
+        "missing_shards": &set.missing_shards,
+        "extra_shards": &set.extra_shards,
+        "manifest_error": &set.manifest_error,
+    })
 }
 
 fn cache_gc_json(plan: &GcPlan, options: &GcOptions) -> Result<String, String> {
@@ -550,6 +904,39 @@ fn unix_seconds(time: Option<SystemTime>) -> Option<u64> {
         .map(|duration| duration.as_secs())
 }
 
+fn optional_usize(value: Option<usize>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn shard_set_issue(set: &CacheShardSet) -> String {
+    let mut parts = Vec::new();
+    if let Some(error) = &set.manifest_error {
+        parts.push(format!("manifest_error: `{}`", markdown_escape_cell(error)));
+    }
+    if !set.missing_shards.is_empty() {
+        parts.push(format!(
+            "missing_shards: `{}`",
+            markdown_escape_cell(&set.missing_shards.join("`, `"))
+        ));
+    }
+    if !set.extra_shards.is_empty() {
+        parts.push(format!(
+            "extra_shards: `{}`",
+            markdown_escape_cell(&set.extra_shards.join("`, `"))
+        ));
+    }
+    if parts.is_empty() {
+        parts.push(set.status.as_str().to_string());
+    }
+    parts.join("; ")
+}
+
+fn markdown_escape_cell(text: &str) -> String {
+    text.replace('|', "\\|")
+}
+
 fn write_report(name: &str, contents: &str) -> Result<(), String> {
     let reports_dir = Path::new("target").join("ripr").join("reports");
     fs::create_dir_all(&reports_dir)
@@ -577,8 +964,8 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        GcOptions, build_cache_report, build_gc_plan, cache_gc_markdown, cache_report_markdown,
-        parse_gc_options,
+        GcOptions, ShardSetStatus, build_cache_report, build_gc_plan, cache_gc_markdown,
+        cache_report_json, cache_report_markdown, parse_gc_options,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -606,6 +993,113 @@ mod tests {
         let markdown = markdown.replace('\\', "/");
         assert!(markdown.contains("target/ripr/cache/repo-seam-facts/v1/a.json"));
         assert!(!markdown.contains("not-cache.json"));
+
+        cleanup(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn cache_report_summarizes_sharded_sets_and_problem_sets() -> Result<(), String> {
+        let root = temp_root("sharded-report")?;
+        let complete_dir =
+            root.join("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/complete-cache-key");
+        write_text(
+            &complete_dir.join("manifest.json"),
+            r#"{
+  "total_seams": 3,
+  "shard_count": 2,
+  "shards": [
+    { "index": 0, "file": "shard-00000.json", "seams": 2 },
+    { "index": 1, "file": "shard-00001.json", "seams": 1 }
+  ]
+}"#,
+        )?;
+        write_bytes(&complete_dir.join("shard-00000.json"), 11)?;
+        write_bytes(&complete_dir.join("shard-00001.json"), 13)?;
+
+        let orphan_dir =
+            root.join("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/orphan-cache-key");
+        write_bytes(&orphan_dir.join("shard-00000.json"), 17)?;
+
+        let incomplete_dir =
+            root.join("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/incomplete-cache-key");
+        write_text(
+            &incomplete_dir.join("manifest.json"),
+            r#"{
+  "total_seams": 4,
+  "shard_count": 2,
+  "shards": [
+    { "index": 0, "file": "shard-00000.json", "seams": 2 },
+    { "index": 1, "file": "shard-00001.json", "seams": 2 }
+  ]
+}"#,
+        )?;
+        write_bytes(&incomplete_dir.join("shard-00000.json"), 19)?;
+        write_bytes(
+            &root.join("target/ripr/reports/not-cache-shard-00000.json"),
+            23,
+        )?;
+
+        let report = build_cache_report(&root)?;
+        assert_eq!(report.sharded_cache.shard_sets, 3);
+        assert_eq!(report.sharded_cache.complete_sets, 1);
+        assert_eq!(report.sharded_cache.orphan_sets, 1);
+        assert_eq!(report.sharded_cache.incomplete_sets, 1);
+        assert_eq!(report.sharded_cache.manifest_files, 2);
+        assert_eq!(report.sharded_cache.shard_files, 4);
+        let complete = report
+            .sharded_cache
+            .largest_sets
+            .iter()
+            .find(|set| set.relative_path.ends_with("complete-cache-key"))
+            .ok_or_else(|| "complete shard set should be reported".to_string())?;
+        assert_eq!(complete.status, ShardSetStatus::Complete);
+        assert_eq!(complete.manifest_declared_shards, Some(2));
+        assert_eq!(complete.manifest_declared_seams, Some(3));
+        assert_eq!(complete.shard_files, 2);
+
+        let orphan = report
+            .sharded_cache
+            .problem_sets
+            .iter()
+            .find(|set| set.relative_path.ends_with("orphan-cache-key"))
+            .ok_or_else(|| "orphan shard set should be reported".to_string())?;
+        assert_eq!(orphan.status, ShardSetStatus::OrphanShards);
+        assert_eq!(orphan.extra_shards, vec!["shard-00000.json".to_string()]);
+        let incomplete = report
+            .sharded_cache
+            .problem_sets
+            .iter()
+            .find(|set| set.relative_path.ends_with("incomplete-cache-key"))
+            .ok_or_else(|| "incomplete shard set should be reported".to_string())?;
+        assert_eq!(incomplete.status, ShardSetStatus::Incomplete);
+        assert_eq!(
+            incomplete.missing_shards,
+            vec!["shard-00001.json".to_string()]
+        );
+
+        let markdown = cache_report_markdown(&report).replace('\\', "/");
+        assert!(markdown.contains("## Sharded cache sets"));
+        assert!(
+            markdown
+                .contains("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/complete-cache-key")
+        );
+        assert!(markdown.contains("missing_shards: `shard-00001.json`"));
+        assert!(markdown.contains("extra_shards: `shard-00000.json`"));
+        assert!(!markdown.contains("not-cache-shard-00000.json"));
+
+        let json = cache_report_json(&report)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("parse cache report json: {err}"))?;
+        assert_eq!(parsed["schema_version"], "0.2");
+        assert_eq!(parsed["sharded_cache"]["shard_sets"], 3);
+        assert_eq!(parsed["sharded_cache"]["manifest_files"], 2);
+        assert_eq!(
+            parsed["sharded_cache"]["problem_sets"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
 
         cleanup(root)?;
         Ok(())
@@ -717,6 +1211,14 @@ mod tests {
         };
         fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
         fs::write(path, vec![0u8; len]).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn write_text(path: &std::path::Path, text: &str) -> Result<(), String> {
+        let Some(parent) = path.parent() else {
+            return Err(format!("path has no parent: {}", path.display()));
+        };
+        fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
+        fs::write(path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
     fn rel(parts: &[&str]) -> PathBuf {

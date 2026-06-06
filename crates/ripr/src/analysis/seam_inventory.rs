@@ -22,9 +22,11 @@ use super::rust_index::{
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
 #[cfg(test)]
+use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
+#[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamFactCache, WorkspaceState,
+    CacheLoad, RepoSeamFactCache, WorkspaceState, classified_seam_cache_store_limit,
     compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
@@ -34,6 +36,7 @@ use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
 use crate::config::RiprConfig;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -105,6 +108,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         trace_latency_phase("total", "sampled_computed", total_started.elapsed());
         return Ok(classified);
     }
+    let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
     trace_latency_phase(
         "cache_load",
@@ -148,12 +152,13 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         &format!(
             "start_classified_{}_limit_{}",
             classified.len(),
-            CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+            store_limit
         ),
         Duration::ZERO,
     );
-    let store_status = match cache.store_classified_seams(&key, &classified) {
-        Ok(()) => "ok".to_string(),
+    let store_status = match cache.store_classified_seams_with_limit(&key, &classified, store_limit)
+    {
+        Ok(status) => status.label,
         Err(reason) => {
             eprintln!("ripr: repo seam cache store ignored ({reason})");
             cache_store_status_label(&reason)
@@ -317,7 +322,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     );
     let store_status =
         match cache.store_compact_classified_seams_with_limit(&key, &classified, store_limit) {
-            Ok(()) => "ok".to_string(),
+            Ok(status) => status.label,
             Err(reason) => {
                 eprintln!("ripr: compact repo seam cache store ignored ({reason})");
                 cache_store_status_label(&reason)
@@ -436,6 +441,152 @@ fn inventory_classified_seams_from_state_with_config(
     let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok(classified)
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ScopedClassifiedSeamInventory {
+    pub(crate) classified: Vec<ClassifiedSeam>,
+    pub(crate) total_rust_files: usize,
+    pub(crate) total_production_files: usize,
+    pub(crate) scoped_production_files: Vec<PathBuf>,
+    pub(crate) changed_production_files: Vec<PathBuf>,
+    pub(crate) immediate_caller_files: Vec<PathBuf>,
+}
+
+pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+    changed_files: &[PathBuf],
+    changed_owner_names: &[String],
+) -> Result<ScopedClassifiedSeamInventory, String> {
+    let state = collect_workspace_state(root, config)?;
+    let total_rust_files = state.files.len();
+    let production_files = production_files_from_state(&state);
+    let total_production_files = production_files.len();
+    let production_file_set = production_files
+        .iter()
+        .map(|path| normalized_inventory_path(path))
+        .collect::<BTreeSet<_>>();
+    let changed_file_set = changed_files
+        .iter()
+        .map(|path| normalized_inventory_path(path))
+        .filter(|path| production_file_set.contains(path))
+        .collect::<BTreeSet<_>>();
+
+    let build_started = Instant::now();
+    trace_latency_phase(
+        "file_fact_cache",
+        &format!(
+            "start_review_scope_files_{}_production_{}",
+            state.files.len(),
+            production_files.len()
+        ),
+        Duration::ZERO,
+    );
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    trace_latency_phase(
+        "file_fact_cache",
+        &cached.file_fact_cache.status_label(),
+        build_started.elapsed(),
+    );
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+
+    let caller_file_set = immediate_caller_file_set(
+        &cached.index,
+        &production_file_set,
+        &changed_file_set,
+        changed_owner_names,
+    );
+    let mut scoped_file_set = changed_file_set.clone();
+    scoped_file_set.extend(caller_file_set.iter().cloned());
+
+    let scoped_production_files = production_files
+        .iter()
+        .filter(|path| scoped_file_set.contains(&normalized_inventory_path(path)))
+        .cloned()
+        .collect::<Vec<_>>();
+    let changed_production_files = production_files
+        .iter()
+        .filter(|path| changed_file_set.contains(&normalized_inventory_path(path)))
+        .cloned()
+        .collect::<Vec<_>>();
+    let immediate_caller_files = production_files
+        .iter()
+        .filter(|path| caller_file_set.contains(&normalized_inventory_path(path)))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let seams_started = Instant::now();
+    let seams = inventory_seams_from_index(&scoped_production_files, &cached.index);
+    trace_latency_phase(
+        "inventory_seams",
+        "review_scope_ok",
+        seams_started.elapsed(),
+    );
+    let evidence_started = Instant::now();
+    trace_latency_phase(
+        "evidence_for_seams",
+        &format!("review_scope_start_seams_{}", seams.len()),
+        Duration::ZERO,
+    );
+    let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    trace_latency_phase(
+        "evidence_for_seams",
+        "review_scope_ok",
+        evidence_started.elapsed(),
+    );
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
+
+    Ok(ScopedClassifiedSeamInventory {
+        classified,
+        total_rust_files,
+        total_production_files,
+        scoped_production_files,
+        changed_production_files,
+        immediate_caller_files,
+    })
+}
+
+fn immediate_caller_file_set(
+    index: &RustIndex,
+    production_file_set: &BTreeSet<String>,
+    changed_file_set: &BTreeSet<String>,
+    changed_owner_names: &[String],
+) -> BTreeSet<String> {
+    let owner_call_names = changed_owner_names
+        .iter()
+        .filter_map(|owner| owner.rsplit("::").next())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if owner_call_names.is_empty() {
+        return BTreeSet::new();
+    }
+
+    index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test)
+        .filter_map(|function| {
+            let file = normalized_inventory_path(&function.file);
+            (production_file_set.contains(&file)
+                && !changed_file_set.contains(&file)
+                && function
+                    .calls
+                    .iter()
+                    .any(|call| owner_call_names.contains(&call.name)))
+            .then_some(file)
+        })
+        .collect()
+}
+
+fn normalized_inventory_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
 }
 
 fn repo_exposure_seam_limit() -> Option<usize> {

@@ -69,6 +69,9 @@ first-use compatibility, root, receipt, first-pr, and preview-adapter states.
 `expected/current-repair-packet.md`, `expected/repo-gap-map.md`, and
 `expected/receipt-status.json` to pin the local actionable repair queue,
 read-only repo orientation, receipt movement, and fail-closed queue states.
+`fixtures/bun-ub-cross-language-dogfood` is a manifest-only corpus that records
+advisory Bun Blob TypeScript witness receipts for the calibrated stable-byte
+cross-language route.
 
 Run:
 

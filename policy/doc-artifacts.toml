@@ -105,6 +105,29 @@ status = "accepted"
 owner = "language-adapter-swarm"
 
 [[artifact]]
+id = "RIPR-PROP-0018"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+
+[[artifact]]
+id = "RIPR-ADR-0018"
+kind = "adr"
+path = "docs/adr/0018-perl-lsp-fact-substrate.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+linked_proposal = "RIPR-PROP-0018"
+
+[[artifact]]
+id = "RIPR-SPEC-0064"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+linked_proposal = "RIPR-PROP-0018"
+
+[[artifact]]
 id = "RIPR-PLAN-0017"
 kind = "plan"
 path = "plans/python-repair-routing/implementation-plan.md"

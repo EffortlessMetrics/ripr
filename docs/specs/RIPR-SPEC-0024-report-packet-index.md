@@ -37,7 +37,8 @@ Lane 4 now has a rich PR-time artifact stack:
 - PR evidence ledger;
 - baseline debt delta and RIPR Zero status;
 - optional gate decisions;
-- recommendation, mutation, and coverage/grip calibration context;
+- recommendation, mutation, Bun UB TypeScript, and coverage/grip calibration
+  context;
 - review guidance comments, SARIF, badges, validation reports, and receipts.
 
 Those reports are useful, but the uploaded `ripr-reports` packet can still feel
@@ -175,6 +176,7 @@ The index should account for these artifacts when present:
 | Gate decision | `target/ripr/reports/gate-decision.md` | `policy_gates` | `RIPR_GATE_MODE` is configured |
 | Recommendation calibration | `target/ripr/reports/recommendation-calibration.md` | `calibration` | calibration inputs exist |
 | Mutation calibration | `target/ripr/reports/mutation-calibration.md` | `calibration` | imported runtime calibration exists |
+| Bun UB TypeScript calibration | `target/ripr/reports/bun-ub-calibration.md` | `calibration` | Bun UB calibration report exists |
 | Coverage/grip frontier | `target/ripr/reports/coverage-grip-frontier.md` | `calibration` | coverage or PR movement inputs exist |
 | Review comments | `target/ripr/review/comments.md` | `pr_review_story` | PR guidance was generated |
 | Agent receipt | `target/ripr/reports/agent-receipt.json` | `validation_receipts` | repair verification was attempted |
@@ -198,7 +200,7 @@ authority rules stable.
   reports;
 - `policy_gates`: gate decision, waiver, acknowledgement, suppression, and
   configured pass/fail context;
-- `calibration`: recommendation, mutation, and coverage/grip calibration
+- `calibration`: recommendation, mutation, Bun UB TypeScript, and coverage/grip calibration
   context;
 - `validation_receipts`: local validation, check, dogfood, and PR readiness
   receipts;
@@ -442,6 +444,8 @@ pass/fail authority.
   handoff gaps instead of being treated as clean success.
 - A coverage/grip frontier artifact is grouped under `calibration` and never
   presented as runtime confirmation.
+- A Bun UB TypeScript calibration artifact is grouped under `calibration` and
+  stays preview/advisory, not runtime Bun proof or public repair-packet input.
 - Validation receipts such as `check-pr.md`, `fixtures.md`, `goldens.md`, and
   dogfood reports are grouped under `validation_receipts`.
 - Repo-local Lane 1 evidence readiness appears as a separate
@@ -460,6 +464,7 @@ Follow-up tests and fixtures should cover:
 - missing assistant proof;
 - missing receipt;
 - coverage/grip-present packet;
+- Bun UB TypeScript calibration packet;
 - malformed or unreadable artifact;
 - stale or warning artifact;
 - missing optional artifact with regeneration command;

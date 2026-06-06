@@ -53,6 +53,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
+        XtaskCommand::BunUbCalibration(args) => super::reports::bun_ub_calibration(&args),
+        XtaskCommand::BunUbPreviewSummary(args) => super::reports::bun_ub_preview_summary(&args),
+        XtaskCommand::ConfiguredBridgeInventory(args) => {
+            super::reports::configured_bridge_inventory(&args)
+        }
         XtaskCommand::RecommendationCalibration(args) => {
             super::reports::recommendation_calibration(&args)
         }

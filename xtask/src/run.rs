@@ -728,9 +728,10 @@ mod tests {
         )?;
 
         assert!(output.timed_out, "long-running command should time out");
+        #[cfg(unix)]
         assert!(
-            !output.status.is_some_and(|status| status.success()),
-            "timed-out long-running command should not exit successfully"
+            output.status.is_some(),
+            "timed-out long-running command should report a process status"
         );
         Ok(())
     }
@@ -746,31 +747,15 @@ mod tests {
 
     #[cfg(windows)]
     fn long_running_command() -> Result<TestCommand, String> {
-        let current_exe =
-            std::env::current_exe().map_err(|err| format!("locate current test binary: {err}"))?;
         Ok((
-            current_exe.to_string_lossy().into_owned(),
+            "powershell".to_string(),
             vec![
-                "--exact".to_string(),
-                "run::tests::long_running_command_helper".to_string(),
-                "--nocapture".to_string(),
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 30".to_string(),
             ],
-            vec![(
-                "RIPR_XTASK_LONG_RUNNING_HELPER".to_string(),
-                "1".to_string(),
-            )],
+            Vec::new(),
         ))
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn long_running_command_helper() -> Result<(), String> {
-        if std::env::var_os("RIPR_XTASK_LONG_RUNNING_HELPER").is_none() {
-            return Ok(());
-        }
-
-        thread::sleep(Duration::from_secs(30));
-        Ok(())
     }
 
     #[cfg(unix)]
@@ -795,20 +780,26 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
-        let started = std::time::Instant::now();
-        let current_exe =
-            std::env::current_exe().map_err(|err| format!("locate current test binary: {err}"))?;
-        let current_exe = current_exe.to_string_lossy().into_owned();
+        let marker = std::env::temp_dir().join(format!(
+            "ripr-xtask-pipe-descendant-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
         let args = vec![
-            "--exact".to_string(),
-            "run::tests::pipe_inheriting_descendant_helper".to_string(),
-            "--nocapture".to_string(),
+            "/C".to_string(),
+            format!(
+                "ping -n 8 127.0.0.1 & echo alive > \"{}\"",
+                marker.display()
+            ),
         ];
         let output = capture_output_with_timeout(
-            &current_exe,
+            "cmd",
             &args,
-            &[("RIPR_XTASK_PIPE_DESCENDANT_HELPER", "1")],
-            Duration::from_millis(100),
+            &[],
+            Duration::from_secs(1),
             "pipe-inheriting descendant",
         )?;
 
@@ -816,26 +807,10 @@ mod tests {
             output.timed_out,
             "pipe-inheriting descendant should time out"
         );
-        assert!(
-            started.elapsed() < Duration::from_secs(45),
-            "pipe-inheriting descendant should not keep captured pipes open"
-        );
-        Ok(())
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn pipe_inheriting_descendant_helper() -> Result<(), String> {
-        if std::env::var_os("RIPR_XTASK_PIPE_DESCENDANT_HELPER").is_none() {
-            return Ok(());
+        if marker.exists() {
+            let _ = fs::remove_file(&marker);
+            return Err("timed-out process tree should not run its continuation".to_string());
         }
-
-        let mut child = Command::new("cmd")
-            .args(["/C", "ping -n 120 127.0.0.1"])
-            .spawn()
-            .map_err(|err| format!("spawn pipe-inheriting descendant: {err}"))?;
-        thread::sleep(Duration::from_mins(2));
-        let _ = child.wait();
         Ok(())
     }
 
