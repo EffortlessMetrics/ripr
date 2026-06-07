@@ -534,6 +534,21 @@ or advisory preview.
 RIPR-SPEC-0065 owns the canonical definition of done for this end state;
 this roadmap defers to it rather than restating the field contracts.
 
+### Phase P: proof-aware repo validation
+
+Before the release phase, the repo gains the same routing discipline the
+product ships: changed surfaces select proof packs; proof packs select
+local preflight commands and CI lanes; unknown surfaces route
+conservatively; release proof is never routed away. The operating model is
+[Proof routing](PROOF_ROUTING.md), and it lands in slices: operating model,
+`policy/proof-packs.toml` manifest, `cargo xtask proof route` report,
+`cargo xtask proof preflight`, PR summary integration, a CI dry-run
+artifact that demonstrates routing safety before any lane is skipped, then
+low-risk docs/spec routing, report/schema routing, and release-proof
+protection. CI stops being first discovery; measured 2026-06-07, docs-only
+PRs were paying full heavy-lane proof that their changed surfaces could
+not fail.
+
 ### Phase R: publish 0.9.0 from source
 
 | Order | Step | Acceptance |
