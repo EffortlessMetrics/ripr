@@ -8,7 +8,18 @@
 
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+
+mod markdown;
+mod path;
+mod render_json;
+mod review;
+
+use markdown::md_escape;
+pub(crate) use markdown::render_targeted_test_outcome_md;
+pub(crate) use path::display_path;
+use path::normalize_report_path;
+pub(crate) use render_json::{render_agent_verify_json, render_targeted_test_outcome_json};
+use review::review_attention_class;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.1";
@@ -141,134 +152,6 @@ pub(crate) fn targeted_test_outcome_report_from_json(
     let before = parse_repo_exposure_static_seams(before_json)?;
     let after = parse_repo_exposure_static_seams(after_json)?;
     build_targeted_test_outcome_report(&before, &after, before_path, after_path)
-}
-
-pub(crate) fn render_targeted_test_outcome_json(
-    report: &TargetedTestOutcomeReport,
-) -> Result<String, String> {
-    let value = serde_json::json!({
-        "schema_version": TARGETED_TEST_OUTCOME_SCHEMA_VERSION,
-        "tool": "ripr",
-        "status": "advisory",
-        "inputs": {
-            "before": report.before_path.as_str(),
-            "after": report.after_path.as_str()
-        },
-        "before": report.before_counts,
-        "after": report.after_counts,
-        "summary": {
-            "moved": report.moved.len(),
-            "unchanged": report.unchanged.len(),
-            "regressed": report.regressed.len(),
-            "new": report.new.len(),
-            "removed": report.removed.len(),
-            "gap_movement": targeted_test_outcome_gap_summary_json(report)
-        },
-        "moved": report.moved.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
-        "unchanged": report.unchanged.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
-        "regressed": report.regressed.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
-        "new": report.new.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>(),
-        "removed": report.removed.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>(),
-        "review_receipt": targeted_test_outcome_review_receipt_json(report)
-    });
-    super::json::render_pretty_with_newline(&value, "targeted-test outcome")
-}
-
-pub(crate) fn render_agent_verify_json(
-    report: &TargetedTestOutcomeReport,
-) -> Result<String, String> {
-    let improved = report
-        .moved
-        .iter()
-        .filter(|movement| movement.direction == "improved")
-        .count();
-    let changed = report
-        .moved
-        .iter()
-        .filter(|movement| movement.direction != "improved")
-        .count();
-    let changed_seams = report
-        .moved
-        .iter()
-        .chain(report.regressed.iter())
-        .map(agent_verify_movement_json)
-        .collect::<Vec<_>>();
-
-    let value = serde_json::json!({
-        "schema_version": AGENT_VERIFY_SCHEMA_VERSION,
-        "tool": "ripr",
-        "status": "advisory",
-        "inputs": {
-            "before": report.before_path.as_str(),
-            "after": report.after_path.as_str()
-        },
-        "summary": {
-            "improved": improved,
-            "changed": changed,
-            "regressed": report.regressed.len(),
-            "unchanged": report.unchanged.len(),
-            "new": report.new.len(),
-            "resolved": report.removed.len(),
-            "gap_movement": targeted_test_outcome_gap_summary_json(report)
-        },
-        "changed_seams": changed_seams,
-        "unchanged_seams": report.unchanged.iter().map(agent_verify_movement_json).collect::<Vec<_>>(),
-        "new_gaps": report.new.iter().map(|seam| agent_verify_seam_json(seam, "new")).collect::<Vec<_>>(),
-        "resolved_gaps": report.removed.iter().map(|seam| agent_verify_seam_json(seam, "resolved")).collect::<Vec<_>>()
-    });
-    super::json::render_pretty_with_newline(&value, "agent verify")
-}
-
-pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport) -> String {
-    let mut out = String::new();
-    out.push_str("# ripr targeted-test outcome report\n\n");
-    out.push_str("Status: advisory\n\n");
-    out.push_str("Inputs:\n");
-    out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
-    out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
-
-    out.push_str("## Summary\n\n");
-    out.push_str("| Bucket | Count |\n| --- | ---: |\n");
-    out.push_str(&format!("| moved | {} |\n", report.moved.len()));
-    out.push_str(&format!("| unchanged | {} |\n", report.unchanged.len()));
-    out.push_str(&format!("| regressed | {} |\n", report.regressed.len()));
-    out.push_str(&format!("| new | {} |\n", report.new.len()));
-    out.push_str(&format!("| removed | {} |\n", report.removed.len()));
-
-    push_targeted_outcome_gap_summary_md(&mut out, report);
-
-    out.push_str("\n## Grip Counts\n\n");
-    out.push_str("| Class | Before | After |\n| --- | ---: | ---: |\n");
-    for class in std::iter::once("seams_total").chain(SEAM_GRIP_CLASS_ORDER.iter().copied()) {
-        out.push_str(&format!(
-            "| {} | {} | {} |\n",
-            class,
-            count_for_class(&report.before_counts, class),
-            count_for_class(&report.after_counts, class)
-        ));
-    }
-
-    push_targeted_outcome_movements_md(&mut out, "Moved", &report.moved);
-    push_targeted_outcome_movements_md(&mut out, "Unchanged", &report.unchanged);
-    push_targeted_outcome_movements_md(&mut out, "Regressed", &report.regressed);
-    push_targeted_outcome_seams_md(&mut out, "New", &report.new);
-    push_targeted_outcome_seams_md(&mut out, "Removed", &report.removed);
-    push_targeted_outcome_review_receipt_md(&mut out, report);
-    out.push_str(
-        "\nThis report compares two static repo-exposure snapshots. It is advisory and does not run mutation testing.\n",
-    );
-    out
-}
-
-pub(crate) fn display_path(path: &Path) -> String {
-    normalize_report_path(&path.display().to_string())
-}
-
-fn count_for_class(counts: &BTreeMap<String, usize>, class: &str) -> usize {
-    match counts.get(class) {
-        Some(count) => *count,
-        None => 0,
-    }
 }
 
 fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
@@ -699,57 +582,6 @@ fn targeted_outcome_evidence_delta(
     deltas
 }
 
-fn targeted_test_outcome_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
-    serde_json::json!({
-        "seam_id": movement.seam_id.as_str(),
-        "seam_kind": movement.seam_kind.as_str(),
-        "file": movement.file.as_str(),
-        "line": movement.line,
-        "before": movement.before.as_str(),
-        "after": movement.after.as_str(),
-        "direction": movement.direction.as_str(),
-        "gap_movement": movement.gap_movement.as_str(),
-        "evidence_delta": movement.evidence_delta,
-        "evidence_source": movement.evidence_source.as_str(),
-        "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
-        "activate_delta": movement.activate_delta.as_ref().map(stage_delta_json),
-        "propagate_delta": movement.propagate_delta.as_ref().map(stage_delta_json),
-        "observe_delta": movement.observe_delta.as_ref().map(stage_delta_json),
-        "discriminate_delta": movement.discriminate_delta.as_ref().map(stage_delta_json),
-        "observed_values_added": movement.observed_values_added,
-        "observed_values_removed": movement.observed_values_removed,
-        "missing_discriminators_resolved": movement.missing_discriminators_resolved,
-        "missing_discriminators_reopened": movement.missing_discriminators_reopened,
-        "oracle_strength_delta": movement.oracle_strength_delta.as_deref(),
-        "related_test_delta": movement.related_test_delta,
-        "no_movement_reason": movement.no_movement_reason.as_deref()
-    })
-}
-
-fn targeted_test_outcome_seam_json(seam: &TargetedTestOutcomeSeam) -> Value {
-    serde_json::json!({
-        "seam_id": seam.seam_id.as_str(),
-        "seam_kind": seam.seam_kind.as_str(),
-        "file": seam.file.as_str(),
-        "line": seam.line,
-        "grip_class": seam.grip_class.as_str()
-    })
-}
-
-fn targeted_test_outcome_review_receipt_json(report: &TargetedTestOutcomeReport) -> Value {
-    serde_json::json!({
-        "gap_movement": targeted_test_outcome_gap_summary_json(report),
-        "what_changed": review_what_changed(report),
-        "ripr_flagged_before": review_ripr_flagged_before(report),
-        "focused_proof_added": review_focused_proof_added(report),
-        "movement_after_verification": review_movement_after_verification(report),
-        "remaining_weak_or_unknown": review_remaining_weak_or_unknown(report),
-        "reviewer_should_inspect": review_should_inspect(report),
-        "reviewer_may_believe": reviewer_may_believe(report),
-        "reviewer_should_not_believe": reviewer_should_not_believe()
-    })
-}
-
 fn targeted_test_outcome_gap_summary_json(report: &TargetedTestOutcomeReport) -> Value {
     let summary = targeted_test_outcome_gap_summary(report);
     serde_json::json!({
@@ -789,408 +621,6 @@ fn targeted_test_outcome_gap_summary(
         }
     }
     summary
-}
-
-fn agent_verify_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
-    serde_json::json!({
-        "seam_id": movement.seam_id.as_str(),
-        "seam_kind": movement.seam_kind.as_str(),
-        "file": movement.file.as_str(),
-        "line": movement.line,
-        "before": movement.before.as_str(),
-        "after": movement.after.as_str(),
-        "change": movement.direction.as_str(),
-        "gap_movement": movement.gap_movement.as_str(),
-        "evidence_delta": movement.evidence_delta,
-        "evidence_source": movement.evidence_source.as_str(),
-        "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
-        "activate_delta": movement.activate_delta.as_ref().map(stage_delta_json),
-        "propagate_delta": movement.propagate_delta.as_ref().map(stage_delta_json),
-        "observe_delta": movement.observe_delta.as_ref().map(stage_delta_json),
-        "discriminate_delta": movement.discriminate_delta.as_ref().map(stage_delta_json),
-        "observed_values_added": movement.observed_values_added,
-        "observed_values_removed": movement.observed_values_removed,
-        "missing_discriminators_resolved": movement.missing_discriminators_resolved,
-        "missing_discriminators_reopened": movement.missing_discriminators_reopened,
-        "oracle_strength_delta": movement.oracle_strength_delta.as_deref(),
-        "related_test_delta": movement.related_test_delta,
-        "no_movement_reason": movement.no_movement_reason.as_deref()
-    })
-}
-
-fn agent_verify_seam_json(seam: &TargetedTestOutcomeSeam, change: &str) -> Value {
-    serde_json::json!({
-        "seam_id": seam.seam_id.as_str(),
-        "seam_kind": seam.seam_kind.as_str(),
-        "file": seam.file.as_str(),
-        "line": seam.line,
-        "grip_class": seam.grip_class.as_str(),
-        "change": change
-    })
-}
-
-fn push_targeted_outcome_movements_md(
-    out: &mut String,
-    title: &str,
-    movements: &[TargetedTestOutcomeMovement],
-) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if movements.is_empty() {
-        out.push_str("None.\n");
-        return;
-    }
-    for movement in movements {
-        out.push_str(&format!(
-            "- `{}` {}:{} {} -> {} ({}; gap {})\n",
-            md_escape(&movement.seam_id),
-            md_escape(&movement.file),
-            movement.line,
-            movement.before,
-            movement.after,
-            movement.direction,
-            movement.gap_movement
-        ));
-        for delta in &movement.evidence_delta {
-            out.push_str(&format!("  - {}\n", md_escape(delta)));
-        }
-        if movement.evidence_delta.is_empty()
-            && let Some(reason) = &movement.no_movement_reason
-        {
-            out.push_str(&format!("  - no movement: {}\n", md_escape(reason)));
-        }
-    }
-}
-
-fn push_targeted_outcome_review_receipt_md(out: &mut String, report: &TargetedTestOutcomeReport) {
-    out.push_str("\n## Review Receipt\n\n");
-    let gap_summary = [targeted_test_outcome_gap_summary_sentence(report)];
-    push_review_receipt_list_md(out, "Gap movement summary", &gap_summary);
-    push_review_receipt_list_md(out, "What changed?", &review_what_changed(report));
-    push_review_receipt_list_md(
-        out,
-        "What RIPR flagged before?",
-        &review_ripr_flagged_before(report),
-    );
-    push_review_receipt_list_md(
-        out,
-        "What focused proof changed?",
-        &review_focused_proof_added(report),
-    );
-    push_review_receipt_list_md(
-        out,
-        "What moved after verification?",
-        &review_movement_after_verification(report),
-    );
-    push_review_receipt_list_md(
-        out,
-        "What remains weak or unknown?",
-        &review_remaining_weak_or_unknown(report),
-    );
-    push_review_receipt_list_md(
-        out,
-        "Reviewer should inspect",
-        &review_should_inspect(report),
-    );
-    push_review_receipt_list_md(out, "Reviewer may believe", &reviewer_may_believe(report));
-    push_review_receipt_list_md(
-        out,
-        "Reviewer should not believe",
-        &reviewer_should_not_believe(),
-    );
-}
-
-fn push_targeted_outcome_gap_summary_md(out: &mut String, report: &TargetedTestOutcomeReport) {
-    let summary = targeted_test_outcome_gap_summary(report);
-    out.push_str("\n## Gap Movement\n\n");
-    out.push_str("| Movement | Count |\n| --- | ---: |\n");
-    out.push_str(&format!("| closed | {} |\n", summary.closed));
-    out.push_str(&format!("| opened | {} |\n", summary.opened));
-    out.push_str(&format!("| strengthened | {} |\n", summary.strengthened));
-    out.push_str(&format!("| weakened | {} |\n", summary.weakened));
-    out.push_str(&format!("| unchanged | {} |\n", summary.unchanged));
-    out.push_str(&format!("| new | {} |\n", summary.new));
-    out.push_str(&format!("| removed | {} |\n", summary.removed));
-    out.push_str(&format!("| changed | {} |\n", summary.changed));
-}
-
-fn push_review_receipt_list_md(out: &mut String, title: &str, items: &[String]) {
-    out.push_str(&format!("### {title}\n\n"));
-    for item in items {
-        out.push_str(&format!("- {}\n", md_escape(item)));
-    }
-    out.push('\n');
-}
-
-fn push_targeted_outcome_seams_md(
-    out: &mut String,
-    title: &str,
-    seams: &[TargetedTestOutcomeSeam],
-) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if seams.is_empty() {
-        out.push_str("None.\n");
-        return;
-    }
-    for seam in seams {
-        out.push_str(&format!(
-            "- `{}` {}:{} {} ({})\n",
-            md_escape(&seam.seam_id),
-            md_escape(&seam.file),
-            seam.line,
-            seam.grip_class,
-            seam.seam_kind
-        ));
-    }
-}
-
-fn review_what_changed(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    vec![
-        format!(
-            "Compared before snapshot {} with after snapshot {}.",
-            report.before_path, report.after_path
-        ),
-        format!(
-            "Static seam movement: {} moved, {} unchanged, {} regressed, {} new, {} removed.",
-            report.moved.len(),
-            report.unchanged.len(),
-            report.regressed.len(),
-            report.new.len(),
-            report.removed.len()
-        ),
-    ]
-}
-
-fn review_ripr_flagged_before(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    let mut items = Vec::new();
-    for movement in report
-        .moved
-        .iter()
-        .chain(report.unchanged.iter())
-        .chain(report.regressed.iter())
-    {
-        if review_attention_class(&movement.before) {
-            items.push(format!(
-                "{} before {} at {}:{}.",
-                movement.before, movement.seam_kind, movement.file, movement.line
-            ));
-        }
-    }
-    for seam in &report.removed {
-        if review_attention_class(&seam.grip_class) {
-            items.push(format!(
-                "{} before {} at {}:{} later disappeared from the after snapshot.",
-                seam.grip_class, seam.seam_kind, seam.file, seam.line
-            ));
-        }
-    }
-    review_limit_or_default(
-        items,
-        "No before-snapshot weak or unknown seams were present in the compared artifacts.",
-    )
-}
-
-fn review_focused_proof_added(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    let mut items = Vec::new();
-    for movement in report
-        .moved
-        .iter()
-        .chain(report.unchanged.iter())
-        .chain(report.regressed.iter())
-    {
-        let proof_deltas = movement
-            .evidence_delta
-            .iter()
-            .filter(|delta| positive_proof_delta(delta))
-            .take(3)
-            .cloned()
-            .collect::<Vec<_>>();
-        if proof_deltas.is_empty() {
-            continue;
-        }
-        items.push(format!(
-            "{} at {}:{} shows static evidence movement for focused proof outside RIPR: {}.",
-            movement.seam_kind,
-            movement.file,
-            movement.line,
-            proof_deltas.join("; ")
-        ));
-    }
-    review_limit_or_default(
-        items,
-        "No focused proof signal from a test or output proof outside RIPR was visible in the rendered static snapshots.",
-    )
-}
-
-fn review_movement_after_verification(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    let mut items = Vec::new();
-    let improved = report
-        .moved
-        .iter()
-        .filter(|movement| movement.direction == "improved")
-        .count();
-    let changed = report
-        .moved
-        .iter()
-        .filter(|movement| movement.direction != "improved")
-        .count();
-    items.push(format!(
-        "{} improved, {} changed without ranking higher, {} regressed, {} unchanged.",
-        improved,
-        changed,
-        report.regressed.len(),
-        report.unchanged.len()
-    ));
-    items.push(targeted_test_outcome_gap_summary_sentence(report));
-    for movement in report.moved.iter().chain(report.regressed.iter()).take(4) {
-        items.push(format!(
-            "{} at {}:{} moved {} -> {} ({}).",
-            movement.seam_kind,
-            movement.file,
-            movement.line,
-            movement.before,
-            movement.after,
-            movement.direction
-        ));
-    }
-    let unchanged_with_delta = report
-        .unchanged
-        .iter()
-        .filter(|movement| !movement.evidence_delta.is_empty())
-        .take(3)
-        .map(|movement| {
-            format!(
-                "{} at {}:{} kept {} but evidence changed: {}.",
-                movement.seam_kind,
-                movement.file,
-                movement.line,
-                movement.after,
-                movement.evidence_delta.join("; ")
-            )
-        });
-    items.extend(unchanged_with_delta);
-    items
-}
-
-fn targeted_test_outcome_gap_summary_sentence(report: &TargetedTestOutcomeReport) -> String {
-    let summary = targeted_test_outcome_gap_summary(report);
-    format!(
-        "Gap movement: {} closed, {} opened, {} strengthened, {} weakened, {} unchanged, {} new, {} removed, {} changed.",
-        summary.closed,
-        summary.opened,
-        summary.strengthened,
-        summary.weakened,
-        summary.unchanged,
-        summary.new,
-        summary.removed,
-        summary.changed
-    )
-}
-
-fn review_remaining_weak_or_unknown(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    let mut items = Vec::new();
-    for movement in report
-        .moved
-        .iter()
-        .chain(report.unchanged.iter())
-        .chain(report.regressed.iter())
-    {
-        if review_attention_class(&movement.after) {
-            items.push(format!(
-                "{} remains {} at {}:{}.",
-                movement.seam_kind, movement.after, movement.file, movement.line
-            ));
-        }
-    }
-    for seam in &report.new {
-        if review_attention_class(&seam.grip_class) {
-            items.push(format!(
-                "New {} is {} at {}:{}.",
-                seam.seam_kind, seam.grip_class, seam.file, seam.line
-            ));
-        }
-    }
-    review_limit_or_default(
-        items,
-        "No weak or unknown after-snapshot seams were present in the compared artifacts.",
-    )
-}
-
-fn review_should_inspect(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    vec![
-        format!(
-            "Open the compared artifacts: {} and {}.",
-            report.before_path, report.after_path
-        ),
-        "Inspect the focused test or output proof corresponding to each listed evidence delta."
-            .to_string(),
-        "Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete."
-            .to_string(),
-    ]
-}
-
-fn reviewer_may_believe(report: &TargetedTestOutcomeReport) -> Vec<String> {
-    let mut items = vec![format!(
-        "RIPR compared only the listed static snapshots: {} and {}.",
-        report.before_path, report.after_path
-    )];
-    let has_focused_proof_signal = report
-        .moved
-        .iter()
-        .chain(report.unchanged.iter())
-        .chain(report.regressed.iter())
-        .any(|movement| {
-            movement
-                .evidence_delta
-                .iter()
-                .any(|delta| positive_proof_delta(delta))
-        });
-    if has_focused_proof_signal {
-        items.push(
-            "The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR."
-                .to_string(),
-        );
-    } else {
-        items.push(
-            "No focused-proof signal was visible; this receipt only records before/after static movement."
-                .to_string(),
-        );
-    }
-    items.push(
-        "The movement and remaining-weak sections define the static claim boundary for this receipt."
-            .to_string(),
-    );
-    items
-}
-
-fn reviewer_should_not_believe() -> Vec<String> {
-    vec![
-        "Runtime mutation result.".to_string(),
-        "Coverage adequacy.".to_string(),
-        "General correctness.".to_string(),
-        "Merge approval.".to_string(),
-        "That RIPR edited source or generated tests.".to_string(),
-    ]
-}
-
-fn review_attention_class(class: &str) -> bool {
-    !matches!(class, "strongly_gripped" | "intentional" | "suppressed")
-}
-
-fn positive_proof_delta(delta: &str) -> bool {
-    delta.contains("missing discriminator no longer reported")
-        || delta.contains("new observed value")
-        || delta.contains("stronger related oracle visible")
-        || delta.contains("related test count increased")
-        || delta.contains("evidence moved from missing to yes")
-        || delta.contains("evidence moved from weak to yes")
-}
-
-fn review_limit_or_default(mut items: Vec<String>, fallback: &str) -> Vec<String> {
-    if items.is_empty() {
-        return vec![fallback.to_string()];
-    }
-    items.truncate(5);
-    items
 }
 
 fn optional_json_string(value: Option<&Value>, key: &str) -> Option<String> {
@@ -1503,18 +933,6 @@ fn json_scalar_as_usize(value: &Value) -> Option<usize> {
         Value::String(text) => text.trim().parse::<usize>().ok(),
         _ => None,
     }
-}
-
-fn normalize_report_path(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
-    match normalized.strip_prefix("./") {
-        Some(stripped) => stripped.to_string(),
-        None => normalized,
-    }
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('`', "\\`").replace(['\r', '\n'], " ")
 }
 
 #[cfg(test)]
@@ -1884,13 +1302,13 @@ mod tests {
     fn targeted_test_outcome_python_preview_fixture_matches_expected_receipts() -> Result<(), String>
     {
         let weak = include_str!(
-            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json"
+            "../../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json"
         );
         let strong = include_str!(
-            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
+            "../../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json"
         );
         let no_path = include_str!(
-            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json"
+            "../../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json"
         );
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: weak,
@@ -1900,10 +1318,10 @@ mod tests {
             expected_gap_movement: "closed",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/closed.md"
             ),
         })?;
 
@@ -1915,10 +1333,10 @@ mod tests {
             expected_gap_movement: "unchanged",
             expected_bucket: "unchanged",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.json"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.md"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/unchanged.md"
             ),
         })?;
 
@@ -1930,10 +1348,10 @@ mod tests {
             expected_gap_movement: "opened",
             expected_bucket: "regressed",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.json"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/opened.md"
             ),
         })?;
 
@@ -1945,10 +1363,10 @@ mod tests {
             expected_gap_movement: "strengthened",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.json"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/strengthened.md"
             ),
         })?;
 
@@ -1960,10 +1378,10 @@ mod tests {
             expected_gap_movement: "weakened",
             expected_bucket: "regressed",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md"
+                "../../../../../fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md"
             ),
         })?;
         Ok(())
@@ -1974,20 +1392,20 @@ mod tests {
     -> Result<(), String> {
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: include_str!(
-                "../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json"
+                "../../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json"
             ),
             after: include_str!(
-                "../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json"
+                "../../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json"
             ),
             before_path: "fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json",
             after_path: "fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json",
             expected_gap_movement: "closed",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json"
+                "../../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md"
+                "../../../../../fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.md"
             ),
         })?;
         Ok(())
@@ -1998,20 +1416,20 @@ mod tests {
     -> Result<(), String> {
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: include_str!(
-                "../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json"
+                "../../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json"
             ),
             after: include_str!(
-                "../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json"
+                "../../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json"
             ),
             before_path: "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json",
             after_path: "fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json",
             expected_gap_movement: "closed",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.json"
+                "../../../../../fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.md"
+                "../../../../../fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.md"
             ),
         })?;
         Ok(())
@@ -2060,20 +1478,20 @@ mod tests {
     {
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: include_str!(
-                "../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json"
+                "../../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json"
             ),
             after: include_str!(
-                "../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/after-check.json"
+                "../../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/after-check.json"
             ),
             before_path: "fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json",
             after_path: "fixtures/first_successful_pr/python-field-gap/inputs/reports/after-check.json",
             expected_gap_movement: "closed",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.json"
+                "../../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.md"
+                "../../../../../fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.md"
             ),
         })?;
         Ok(())
@@ -2084,20 +1502,20 @@ mod tests {
     {
         assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
             before: include_str!(
-                "../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json"
+                "../../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json"
             ),
             after: include_str!(
-                "../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/after-check.json"
+                "../../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/after-check.json"
             ),
             before_path: "fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json",
             after_path: "fixtures/first_successful_pr/python-output-gap/inputs/reports/after-check.json",
             expected_gap_movement: "closed",
             expected_bucket: "moved",
             expected_json: include_str!(
-                "../../../../fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.json"
+                "../../../../../fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.json"
             ),
             expected_md: include_str!(
-                "../../../../fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.md"
+                "../../../../../fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.md"
             ),
         })?;
         Ok(())

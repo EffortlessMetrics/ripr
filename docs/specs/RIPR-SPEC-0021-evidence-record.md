@@ -472,7 +472,7 @@ count by itself and it does not claim mutation execution.
 | Evidence record projection | `crates/ripr/src/output/evidence_record.rs` |
 | Repo exposure JSON attachment | `crates/ripr/src/output/repo_exposure.rs` |
 | Agent seam packet projection | `crates/ripr/src/output/agent_seam_packets.rs` |
-| Targeted-test outcome movement | `crates/ripr/src/output/outcome.rs` |
+| Targeted-test outcome movement | `crates/ripr/src/output/outcome/mod.rs` |
 | RIPR Zero status repair route consumer | `crates/ripr/src/output/ripr_zero_status.rs` |
 | Test-oracle assistant proof consumer | `crates/ripr/src/output/test_oracle_assistant_proof.rs` |
 | Baseline ledger canonical identity consumer | `crates/ripr/src/output/baseline.rs`, `crates/ripr/src/output/baseline_delta.rs`, `crates/ripr/src/output/baseline_update.rs` |
