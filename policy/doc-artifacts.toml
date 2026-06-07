@@ -176,3 +176,17 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
 status = "proposed"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0070"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0071"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md"
+status = "proposed"
+owner = "product-swarm"
