@@ -141,3 +141,10 @@ kind = "plan"
 path = "plans/typescript-preview-completion/implementation-plan.md"
 status = "proposed"
 owner = "language-adapter-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0065"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
+status = "proposed"
+owner = "product-swarm"

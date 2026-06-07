@@ -75,3 +75,4 @@ observable behavior.
 | [RIPR-SPEC-0062](RIPR-SPEC-0062-cross-language-oracle-graph.md) | proposed | Cross-language oracle graph |
 | [RIPR-SPEC-0063](RIPR-SPEC-0063-cross-language-evidence-router-ux.md) | proposed | Cross-language evidence router UX |
 | [RIPR-SPEC-0064](RIPR-SPEC-0064-perl-fact-packet-contract.md) | proposed | Perl fact packet contract |
+| [RIPR-SPEC-0065](RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md) | proposed | Evidence-to-repair use-case roadmap |
