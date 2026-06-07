@@ -4986,3 +4986,80 @@ Non-claims:
 - no public repair packets from preview cross-language evidence;
 - no source release, publish, tag, signing, marketplace, or install-doc work
   without explicit release authorization.
+
+## Campaign 29: Use-Case Spec Spine
+
+Campaign ID: `use-case-spec-spine`
+
+Status: active
+
+RIPR has strong mechanism (reports, packets, runtime status, readiness,
+preview cards, limitation routes, receipts) and a weak product spine: no
+written map of who uses each surface, what good output looks like, what
+must never happen, and which specs make that true. The use-case spec
+spine fixes that before the next implementation wave.
+
+Objective:
+
+```text
+Land specs RIPR-SPEC-0065 through RIPR-SPEC-0073 plus the use-case
+implementation plan, then route all post-release implementation work
+through plans/use-case-specs/implementation-plan.md.
+```
+
+End state:
+
+- the roadmap (RIPR-SPEC-0065) and eight use-case specs are registered
+  and merged with adversarial-review fixes applied
+- plans/use-case-specs/implementation-plan.md sequences the eight
+  implementation slices with proof commands and claim boundaries
+- active goals point at the plan, not a parallel product board
+- implementation slices resume from the plan after the 0.9.0 release
+  ships and the source back-merge completes
+
+Work items:
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `docs/use-case-spec-spine` | done | Specs RIPR-SPEC-0065 through RIPR-SPEC-0073 merged via the stacked PR sequence with registry entries, adversarial-review fixes, and green spec gates. Docs-only; no analyzer behavior changes. |
+| `goals/route-through-use-case-plan` | done | Active goals route through [the use-case implementation plan](../plans/use-case-specs/implementation-plan.md); no implementation slice activates until a deliberate post-release decision. Was blocked by `docs/use-case-spec-spine`; both items completed in the spine merge wave. |
+
+Parallel-manifest boundary: `.ripr/goals/modularization.toml` and the lane
+tracker manifests remain beside `active.toml` as repo-operations queues
+(mechanical SRP refactors and lane bookkeeping), not product boards. The
+"no parallel product board" end state applies to product sequencing only:
+product implementation slices route exclusively through
+[the use-case implementation plan](../plans/use-case-specs/implementation-plan.md),
+while ops manifests keep feeding refactor-only PRs that change no behavior
+contract.
+
+Commands:
+
+```bash
+rtk cargo xtask check-goals
+rtk cargo xtask check-spec-format
+rtk cargo xtask check-spec-numbering
+rtk cargo xtask check-doc-artifacts
+rtk cargo xtask check-support-tiers
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk git diff --check
+```
+
+Blocking conditions:
+
+- analyzer behavior changes inside the spec batch;
+- forcing actionability or treating raw findings as product truth;
+- activating an implementation slice before the post-release decision;
+- public repair packets from preview or limitation evidence;
+- badge, gate, baseline, or CI semantic switches ahead of their
+  spec-backed implementation PRs.
+
+Non-claims:
+
+- no full TypeScript or JavaScript support claim;
+- no Bun UB proof or full binding graph;
+- no generated tests, provider integration, or autonomous edits;
+- no runtime adequacy-style claims from static evidence;
+- no support-tier promotion from the spec batch.
