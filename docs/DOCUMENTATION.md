@@ -193,6 +193,7 @@ Current reference docs:
 - [CI LEM budgeting](ci/lem-budgeting.md)
 - [CI labels](ci/labels.md)
 - [CI cost and verification policy](ci/cost-and-verification-policy.md)
+- [ripr PR lane](ci/ripr.md)
 - [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
 - [Rust 1.95 compatibility audit](ci/msrv-1.95-audit.md)
 - [Rust 1.95 / 0.6.0 release shaping](ci/rust-1.95-quality-rollout.md)
