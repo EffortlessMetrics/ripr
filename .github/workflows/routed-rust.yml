@@ -98,7 +98,7 @@ jobs:
       - name: Prepare scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
-          ci-disk-guard /mnt/ci-scratch 90
+          ci-disk-guard /mnt/ci-scratch 80
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
