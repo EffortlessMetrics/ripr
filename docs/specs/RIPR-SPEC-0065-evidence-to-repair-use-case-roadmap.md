@@ -84,14 +84,14 @@ roadmap is the start-here index and the cut line.
 
 | Use case | User question | Spec |
 | --- | --- | --- |
-| UC1 repo badge | Is this repo clean, actionable, limited, or stale? | RIPR-SPEC-0066 (planned) |
-| UC2 PR gate | Did this PR add evidence debt or regress repair evidence? | RIPR-SPEC-0067 (planned) |
-| UC3 PR review cards | Where is the issue and what do I do next? | RIPR-SPEC-0068 (planned) |
-| UC4 LSP / agent feedback | What is the first safe bounded action here? | RIPR-SPEC-0069 (planned) |
-| UC5 downstream consumers | Can unsafe-review / ub-review consume ripr evidence without reinterpreting raw findings? | RIPR-SPEC-0070 (planned) |
-| UC6 TypeScript/Bun preview | Can TS/Bun evidence be visible without fake cross-language certainty? | RIPR-SPEC-0071 (planned) |
-| UC7 large repo / diff-first | Can a large repo get useful output without waiting for full-repo analysis? | RIPR-SPEC-0072 (planned) |
-| UC8 receipts and outcomes | Did the attempted repair actually improve evidence? | RIPR-SPEC-0073 (planned) |
+| UC1 repo badge | Is this repo clean, actionable, limited, or stale? | RIPR-SPEC-0066 (registered) |
+| UC2 PR gate | Did this PR add evidence debt or regress repair evidence? | RIPR-SPEC-0067 (registered) |
+| UC3 PR review cards | Where is the issue and what do I do next? | RIPR-SPEC-0068 (registered) |
+| UC4 LSP / agent feedback | What is the first safe bounded action here? | RIPR-SPEC-0069 (registered) |
+| UC5 downstream consumers | Can unsafe-review / ub-review consume ripr evidence without reinterpreting raw findings? | RIPR-SPEC-0070 (registered) |
+| UC6 TypeScript/Bun preview | Can TS/Bun evidence be visible without fake cross-language certainty? | RIPR-SPEC-0071 (registered) |
+| UC7 large repo / diff-first | Can a large repo get useful output without waiting for full-repo analysis? | RIPR-SPEC-0072 (registered) |
+| UC8 receipts and outcomes | Did the attempted repair actually improve evidence? | RIPR-SPEC-0073 (registered) |
 
 The "(planned)" markers are point-in-time. When a child spec registers
 in `docs/specs/README.md` and `policy/doc-artifacts.toml`, the same PR

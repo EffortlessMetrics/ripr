@@ -82,3 +82,5 @@ observable behavior.
 | [RIPR-SPEC-0069](RIPR-SPEC-0069-lsp-agent-feedback-use-case.md) | proposed | LSP agent feedback use case |
 | [RIPR-SPEC-0070](RIPR-SPEC-0070-downstream-review-consumer-use-case.md) | proposed | Downstream review consumer use case |
 | [RIPR-SPEC-0071](RIPR-SPEC-0071-typescript-bun-evidence-use-case.md) | proposed | TypeScript/Bun evidence use case |
+| [RIPR-SPEC-0072](RIPR-SPEC-0072-large-repo-diff-first-use-case.md) | proposed | Large-repo diff-first use case |
+| [RIPR-SPEC-0073](RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md) | proposed | Receipts, outcomes, and route quality use case |

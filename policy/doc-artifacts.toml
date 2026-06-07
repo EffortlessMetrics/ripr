@@ -190,3 +190,17 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md"
 status = "proposed"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0072"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0073"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md"
+status = "proposed"
+owner = "product-swarm"

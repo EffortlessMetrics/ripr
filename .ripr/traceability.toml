@@ -4838,3 +4838,31 @@ outputs = [
 metrics = [
   "typescript_bun_evidence_use_case_status_proposed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0072"
+name = "Large-repo diff-first use case"
+spec = "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md",
+]
+metrics = [
+  "large_repo_diff_first_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0073"
+name = "Receipts, outcomes, and route quality use case"
+spec = "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md",
+]
+metrics = [
+  "receipts_outcomes_route_quality_use_case_status_proposed",
+]
