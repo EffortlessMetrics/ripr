@@ -76,3 +76,5 @@ observable behavior.
 | [RIPR-SPEC-0063](RIPR-SPEC-0063-cross-language-evidence-router-ux.md) | proposed | Cross-language evidence router UX |
 | [RIPR-SPEC-0064](RIPR-SPEC-0064-perl-fact-packet-contract.md) | proposed | Perl fact packet contract |
 | [RIPR-SPEC-0065](RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md) | proposed | Evidence-to-repair use-case roadmap |
+| [RIPR-SPEC-0066](RIPR-SPEC-0066-repo-badge-use-case.md) | proposed | Repo badge use case |
+| [RIPR-SPEC-0067](RIPR-SPEC-0067-pr-gate-use-case.md) | proposed | PR gate use case |

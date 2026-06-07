@@ -148,3 +148,17 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
 status = "proposed"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0066"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0067"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
+status = "proposed"
+owner = "product-swarm"
