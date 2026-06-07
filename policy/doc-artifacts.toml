@@ -143,6 +143,13 @@ status = "proposed"
 owner = "language-adapter-swarm"
 
 [[artifact]]
+id = "RIPR-PLAN-0061"
+kind = "plan"
+path = "plans/use-case-specs/implementation-plan.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
 id = "RIPR-SPEC-0065"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"

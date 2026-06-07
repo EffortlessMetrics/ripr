@@ -236,6 +236,7 @@ Current explanation docs:
 - [Python repair routing usable-alpha closeout](handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md)
 - [TypeScript preview completion plan](../plans/typescript-preview-completion/implementation-plan.md)
 - [Cross-language evidence router UX plan](../plans/cross-language-evidence-router-ux/implementation-plan.md)
+- [Use-case spec layer plan](../plans/use-case-specs/implementation-plan.md)
 - [TypeScript enablement lane](lanes/TYPESCRIPT_ENABLEMENT.md)
 - [TypeScript preview completion closeout](handoffs/2026-05-30-typescript-preview-completion-closeout.md)
 - [Bun UB TypeScript preview closeout](handoffs/2026-06-03-bun-ub-typescript-preview-closeout.md)
