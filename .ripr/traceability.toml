@@ -839,8 +839,8 @@ tests = [
   "crates/ripr/src/cli/agent.rs::tests::agent_packet_requires_one_identity_source",
   "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts",
   "crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
   "crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates",
   "crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates",
   "crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory",
@@ -3443,8 +3443,8 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_queue_marks_receipt_closed_python_packets_stale",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_packet_rejects_ineligible_no_action_records",
   "crates/ripr/src/cli/agent.rs::tests::agent_packet_parses_gap_ledger_request",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_carries_shared_repair_payload",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_requires_projection_eligibility_and_anchor",
   "crates/ripr/src/lsp/backend.rs::gap_record_context_tests::collect_context_packet_for_gap_id_reads_explicit_ledger",
@@ -4739,4 +4739,102 @@ outputs = [
 metrics = [
   "perl_fact_packet_contract_preview_advisory",
   "perl_fact_packet_public_repair_packet_exclusions",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0065"
+name = "Evidence-to-repair use-case roadmap"
+spec = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
+]
+metrics = [
+  "use_case_roadmap_specs_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0066"
+name = "Repo badge use case"
+spec = "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md",
+]
+metrics = [
+  "repo_badge_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0067"
+name = "PR gate use case"
+spec = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",
+]
+metrics = [
+  "pr_gate_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0068"
+name = "PR review-card use case"
+spec = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md",
+]
+metrics = [
+  "pr_review_card_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0069"
+name = "LSP / agent feedback use case"
+spec = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md",
+]
+metrics = [
+  "lsp_agent_feedback_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0070"
+name = "Downstream review consumer use case"
+spec = "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md",
+]
+metrics = [
+  "downstream_review_consumer_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0071"
+name = "TypeScript/Bun evidence use case"
+spec = "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md",
+]
+metrics = [
+  "typescript_bun_evidence_use_case_status_proposed",
 ]
