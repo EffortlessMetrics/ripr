@@ -78,3 +78,5 @@ observable behavior.
 | [RIPR-SPEC-0065](RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md) | proposed | Evidence-to-repair use-case roadmap |
 | [RIPR-SPEC-0066](RIPR-SPEC-0066-repo-badge-use-case.md) | proposed | Repo badge use case |
 | [RIPR-SPEC-0067](RIPR-SPEC-0067-pr-gate-use-case.md) | proposed | PR gate use case |
+| [RIPR-SPEC-0068](RIPR-SPEC-0068-pr-review-card-use-case.md) | proposed | PR review-card use case |
+| [RIPR-SPEC-0069](RIPR-SPEC-0069-lsp-agent-feedback-use-case.md) | proposed | LSP agent feedback use case |
