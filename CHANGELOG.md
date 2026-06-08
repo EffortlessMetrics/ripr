@@ -9,6 +9,22 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- The routed Rust lane (`.github/workflows/routed-rust.yml`) now emits the proof
+  route as an advisory CI dry-run artifact on every pull request (proof-routing
+  operating model, slice 6). On the PR-evidence path of each self-hosted job
+  (cx43/cpx42/cx53) and the GitHub-hosted fallback, a new "Proof route dry-run
+  (advisory)" step runs `cargo xtask proof route --base "$BASE_SHA" --head
+  "$HEAD_SHA" || true` (reusing the BASE_SHA/HEAD_SHA already defined for
+  `ripr-pr`) and appends `proof-route.md` to the run's `GITHUB_STEP_SUMMARY`,
+  both `|| true` so a route-computation failure never fails the lane. The
+  resulting `proof-route.{json,md}` land under `target/ripr/reports/` and are
+  picked up by the existing "Upload ripr reports" artifact step. This is the
+  evidence-collection slice: all lanes still run exactly as before, nothing is
+  skipped or gated, and routing stays `advisory-report-only` — the artifact only
+  records what routing *would* select so divergence is reviewable before any
+  real routing. The `check-workflows` contract (`routed_rust_workflow_contract`)
+  now asserts the advisory proof-route step appears on all four PR-evidence
+  paths so the artifact cannot silently regress.
 - `cargo xtask pr-summary` now appends an advisory "Proof Route" section
   (proof-routing operating model, slice 5). The section is rendered from the
   same routing core as `cargo xtask proof route` over the proof-route default

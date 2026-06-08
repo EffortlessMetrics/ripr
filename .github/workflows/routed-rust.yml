@@ -156,6 +156,14 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Proof route dry-run (advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+          { echo "### Proof Route (dry-run, advisory)"; echo ""; cat target/ripr/reports/proof-route.md; } >> "$GITHUB_STEP_SUMMARY" || true
       - name: Remove RIPR analysis cache before artifact upload
         if: always()
         run: rm -rf target/ripr/cache
@@ -262,6 +270,14 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Proof route dry-run (advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+          { echo "### Proof Route (dry-run, advisory)"; echo ""; cat target/ripr/reports/proof-route.md; } >> "$GITHUB_STEP_SUMMARY" || true
       - name: Remove RIPR analysis cache before artifact upload
         if: always()
         run: rm -rf target/ripr/cache
@@ -367,6 +383,14 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Proof route dry-run (advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+          { echo "### Proof Route (dry-run, advisory)"; echo ""; cat target/ripr/reports/proof-route.md; } >> "$GITHUB_STEP_SUMMARY" || true
       - name: Remove RIPR analysis cache before artifact upload
         if: always()
         run: rm -rf target/ripr/cache
@@ -454,6 +478,14 @@ jobs:
           cargo xtask ripr-pr-summary --check
           cargo xtask ripr-annotations
           cargo xtask ripr-annotations --check
+      - name: Proof route dry-run (advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+          { echo "### Proof Route (dry-run, advisory)"; echo ""; cat target/ripr/reports/proof-route.md; } >> "$GITHUB_STEP_SUMMARY" || true
       - name: Remove RIPR analysis cache before artifact upload
         if: always()
         run: rm -rf target/ripr/cache

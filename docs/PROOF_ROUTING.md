@@ -104,6 +104,19 @@ Nothing skips a real CI lane before step 6 produces comparison evidence,
 and step 9's protection is in place before routing touches anything near
 the release path.
 
+Slices 1–6 have landed. Slice 6 wires the route into CI as a pure
+evidence artifact: on every pull request, each routed-Rust implementation
+job (the three self-hosted runners and the GitHub-hosted fallback) runs
+`cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true` on
+its PR-evidence path, appends `proof-route.md` to the run's step summary,
+and uploads `proof-route.{json,md}` with the existing ripr reports. The
+step is advisory (`|| true`) and adds no `if:` path filter, lane skip, or
+gate — every lane that ran before still runs. The artifact records only
+what routing *would* select, so divergence between routed proof and the
+proof CI actually ran is reviewable before any real routing (slices 7–9).
+The `check-workflows` contract asserts the advisory step is present on all
+four PR-evidence paths so the artifact cannot silently regress.
+
 ## Initial proof-pack shape
 
 The first manifest should cover these packs. Paths and commands are pinned
