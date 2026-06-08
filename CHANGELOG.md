@@ -9,6 +9,18 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `cargo xtask proof route`, the read-only proof-route report from the
+  proof-routing operating model (slice 3). It maps the files changed between
+  a base and head revision (default `origin/main...HEAD`) onto the proof
+  packs in `policy/proof-packs.toml` and writes
+  `target/ripr/reports/proof-route.{json,md}` naming matched packs and the
+  required, advisory, skipped (`no_matched_surface`), and never-routed CI
+  lanes with a static per-lane cost estimate and a top-level
+  `release_proof_required` flag. Routing state is
+  `advisory-report-only`: the command executes no proof commands and changes
+  no CI behavior. Unknown surfaces route to the full proof
+  (`unknown_surface_full_proof`) and the `release-package` pack's lane is
+  never listed as skipped.
 - Added `policy/proof-packs.toml`, the proof-pack manifest from the
   proof-routing operating model (docs/PROOF_ROUTING.md). State is
   `manifest-only`: the manifest names packs, paths, required and advisory

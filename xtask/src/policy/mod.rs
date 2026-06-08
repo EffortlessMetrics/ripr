@@ -10,7 +10,7 @@ mod no_panic;
 mod positioning_language;
 mod process;
 mod product_copy;
-mod proof_packs;
+pub(crate) mod proof_packs;
 mod static_language;
 mod workflows;
 
