@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.9.0 freeze re-pin](2026-06-08-0.9.0-freeze-repin.md)
 - [0.9.0 swarm freeze](2026-06-05-0.9.0-swarm-freeze.md)
 - [Post-0.8.1 TypeScript/Bun Support Decision](2026-06-05-post-081-typescript-bun-support-decision.md)
 - [0.8.1 TypeScript/Bun Preview Patch Proof](2026-06-05-0.8.1-typescript-bun-preview-patch-proof.md)
