@@ -622,9 +622,12 @@ mod tests {
         assert_eq!(
             plan_commands(&plan),
             vec![
+                "cargo test --workspace",
+                "cargo clippy --workspace --all-targets -- -D warnings",
                 "cargo xtask check-pr",
                 "cargo package -p ripr --list",
                 "cargo publish -p ripr --dry-run",
+                "cargo xtask release-readiness",
             ]
         );
         Ok(())

@@ -93,12 +93,22 @@ ci_lane = "vscode-e2e"
 proves = "The VS Code extension compiles and its editor-loop tests pass against the LSP sidecar surface."
 does_not_prove = "It does not demonstrate analyzer classification correctness or release readiness."
 
+# The release-package pack is the guardrail of the whole model: it is pinned
+# `never_routed = true` so release proof is never routed away, and its `paths`
+# and `required_commands` are asserted by `cargo xtask check-proof-packs`
+# (docs/PROOF_ROUTING.md, release-proof protection slice). The asserted path
+# set must cover every release surface (version files, changelog, release
+# workflows) so any release-surface change trips `release_proof_required`, and
+# the asserted command set must name the full release proof (workspace tests,
+# clippy, check-pr, package, publish dry-run, release-readiness). A future
+# routing slice cannot weaken release validation by dropping a surface or a
+# gate from this pack without failing the check.
 [[pack]]
 id = "release-package"
-paths = ["Cargo.toml", "Cargo.lock", "CHANGELOG.md", "crates/ripr/Cargo.toml", "editors/vscode/package.json", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml"]
-required_commands = ["cargo xtask check-pr", "cargo package -p ripr --list", "cargo publish -p ripr --dry-run"]
-advisory_commands = ["cargo xtask release-readiness"]
+paths = ["Cargo.toml", "Cargo.lock", "CHANGELOG.md", "crates/ripr/Cargo.toml", "editors/vscode/package.json", "editors/vscode/package-lock.json", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml"]
+required_commands = ["cargo test --workspace", "cargo clippy --workspace --all-targets -- -D warnings", "cargo xtask check-pr", "cargo package -p ripr --list", "cargo publish -p ripr --dry-run", "cargo xtask release-readiness"]
+advisory_commands = []
 ci_lane = "release-readiness-proof"
-proves = "Release-bearing surfaces always pay the full release proof, including package contents and publish dry-run."
+proves = "Release-bearing surfaces always pay the full release proof: workspace tests, clippy, check-pr, package contents, publish dry-run, and release-readiness (release-notes and known-limits docs)."
 does_not_prove = "It does not demonstrate marketplace publish success, which stays a release-workflow concern."
 never_routed = true

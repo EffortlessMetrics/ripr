@@ -845,8 +845,13 @@ fn proof_route_section_markdown(summary: &Result<ProofRouteSummary, String>) -> 
          read-only evidence and CI lanes are unchanged by it.\n"
     ));
     body.push_str(&format!(
-        "Release proof required: {}\n\n",
-        summary.route.release_proof_required
+        "Release proof required: {}{}\n\n",
+        summary.route.release_proof_required,
+        if summary.route.release_proof_required {
+            " — full release proof required (release-package pack is never routed away)"
+        } else {
+            ""
+        }
     ));
 
     body.push_str(&format!(
@@ -1308,6 +1313,29 @@ mod tests {
         assert!(section.contains("Full proof: 1 unmatched file(s)"));
         assert!(section.contains(UNKNOWN_SURFACE_REASON));
         assert!(section.contains("Release proof required: true"));
+        // When release proof is required the section states it explicitly.
+        assert!(section.contains("full release proof required"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_summary_section_states_full_release_proof_for_release_surface() -> Result<(), String> {
+        // A release-surface change (Cargo.toml version bump) routes the
+        // release-package pack, requires the release lane, is never skipped,
+        // and the section states full release proof explicitly.
+        let route = route_for(&["Cargo.toml"])?;
+        assert!(route.release_proof_required);
+        assert!(
+            route
+                .required_lanes
+                .iter()
+                .any(|lane| lane.id == "release-readiness-proof")
+        );
+        assert!(!skipped_lane_ids(&route).contains(&"release-readiness-proof"));
+        let summary = summary_for(&["Cargo.toml"], PreflightReceiptStatus::Missing)?;
+        let section = proof_route_section_markdown(&Ok(summary));
+        assert!(section.contains("Release proof required: true"));
+        assert!(section.contains("full release proof required"));
         Ok(())
     }
 
