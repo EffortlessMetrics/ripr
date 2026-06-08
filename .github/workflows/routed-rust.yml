@@ -84,6 +84,7 @@ jobs:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
       SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -98,7 +99,10 @@ jobs:
       - name: Prepare scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
-          ci-disk-guard /mnt/ci-scratch 80
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
+          df -h / /mnt/ci-scratch 2>/dev/null || true
+          ci-disk-guard /mnt/ci-scratch 35
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
@@ -185,6 +189,7 @@ jobs:
       CARGO_BUILD_JOBS: "8"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
       SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -199,7 +204,10 @@ jobs:
       - name: Prepare CPX42 scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
-          ci-disk-guard /mnt/ci-scratch 80
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
+          df -h / /mnt/ci-scratch 2>/dev/null || true
+          ci-disk-guard /mnt/ci-scratch 35
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
@@ -287,6 +295,7 @@ jobs:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
       SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -301,7 +310,10 @@ jobs:
       - name: Prepare scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
-          ci-disk-guard /mnt/ci-scratch 100
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
+          df -h / /mnt/ci-scratch 2>/dev/null || true
+          ci-disk-guard /mnt/ci-scratch 50
           ci-disk-guard /mnt/ci-cache 20
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
