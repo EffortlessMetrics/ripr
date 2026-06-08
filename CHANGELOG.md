@@ -9,6 +9,18 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `policy/proof-packs.toml`, the proof-pack manifest from the
+  proof-routing operating model (docs/PROOF_ROUTING.md). State is
+  `manifest-only`: the manifest names packs, paths, required and advisory
+  commands, CI lanes, and claim boundaries, but nothing routes on it yet and
+  no CI lane is skipped or narrowed. The `release-package` pack is pinned
+  with `never_routed = true`, and unknown surfaces route to full proof.
+- Added `cargo xtask check-proof-packs`, a structural validity gate for the
+  proof-pack manifest: it must parse, pack ids must be unique kebab-case,
+  every pack needs at least one path and one required command, commands must
+  be known repo commands, and `ci_lane` must be declared in
+  `policy/ci-lane-whitelist.toml`.
+
 ## 0.8.0 - Evidence-to-repair foundation
 
 Release date: 2026-06-02.
