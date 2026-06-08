@@ -137,6 +137,11 @@ policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-triage-report` writes an advisory open-PR board hygiene report.
 `cargo xtask gh-pr-status --pr <number>` writes a read-only merge-readiness
 packet for one PR after it exists.
+`cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>]`
+writes an advisory CI budget and merge-queue hygiene report that separates
+disk-guard infrastructure tempfails (issue #1058) from product failures; it
+reads recent routed-workflow runs through `gh` (or a supplied `--input` JSON
+file) and changes no CI behavior.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
 `cargo xtask worktree doctor` reports dirty main, branches behind main,

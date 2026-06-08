@@ -25,6 +25,25 @@ are scoped or reviewed.
   real routing. The `check-workflows` contract (`routed_rust_workflow_contract`)
   now asserts the advisory proof-route step appears on all four PR-evidence
   paths so the artifact cannot silently regress.
+- Added `cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>]`,
+  the advisory CI budget and merge-queue hygiene report from the proof-routing
+  operating model (docs/PROOF_ROUTING.md, slice 19). It reads recent runs of the
+  routed Rust workflow (default "Routed Rust Small", last ~40) through
+  `gh run list` / `gh run view` — the same `gh`-via-`crate::run` surface as
+  `pr-triage-report` and `gh-pr-status` — or from a caller-supplied `--input`
+  JSON file for offline use, and writes
+  `target/ripr/reports/ci-budget.{json,md}` (schema version `0.1`). The report
+  breaks runs down by conclusion and by routed lane (CX43/CPX42/CX53/GitHub,
+  parsed from job names), classifies failures to separate infra disk-guard
+  tempfails (a "disk guard" message or exit 75) from real product
+  (test/gate/build) failures, estimates the tempfail-retry tax from
+  fail-then-succeeded sequences and extra attempts, reports per-lane job
+  duration (min/median/max), surfaces a scratch/cache warnings section with the
+  GB-free figure when present, and reports created-to-started queue waits. It
+  quantifies the issue #1058 disk-guard tempfail tax (a poisoned CX43 host whose
+  scratch disk is consumed by another swarm's work dir forces routed lanes to
+  fail-fast and retry). The report is `advisory-report-only`: it never fails CI,
+  never reruns or mutates any run, and changes no CI behavior.
 - `cargo xtask pr-summary` now appends an advisory "Proof Route" section
   (proof-routing operating model, slice 5). The section is rendered from the
   same routing core as `cargo xtask proof route` over the proof-route default

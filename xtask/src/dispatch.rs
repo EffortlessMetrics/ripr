@@ -12,6 +12,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Cockpit => super::cockpit(),
         XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
+        XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => super::precommit(),
         XtaskCommand::CheckPr => super::check_pr(),
