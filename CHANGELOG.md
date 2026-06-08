@@ -9,6 +9,21 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask pr-summary` now appends an advisory "Proof Route" section
+  (proof-routing operating model, slice 5). The section is rendered from the
+  same routing core as `cargo xtask proof route` over the proof-route default
+  range `origin/main...HEAD` (matching the committed range pr-summary diffs)
+  and carries the changed-surface pack table (pack, matched file count, CI
+  lane), required and advisory lanes, the skipped-lane count with a one-line
+  reason summary (the full lane table stays with `cargo xtask proof route`),
+  the `release_proof_required` line, and the local reproduction commands. If
+  a preflight receipt at `target/ripr/reports/proof-preflight.json` matches
+  the current head SHA, its overall status and per-command pass/fail counts
+  are included; a missing or stale receipt is reported as "no fresh preflight
+  receipt" and never presented as current. Routing stays
+  `advisory-report-only` and CI lanes are unchanged. Route-computation
+  failures degrade to an in-section "proof route unavailable" note;
+  `pr-summary` itself still succeeds.
 - Added `cargo xtask proof preflight`, the local proof-preflight executor from
   the proof-routing operating model (slice 4). It computes the proof route via
   the same routing core as `proof route` (default `origin/main...HEAD`), then

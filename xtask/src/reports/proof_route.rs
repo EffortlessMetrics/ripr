@@ -12,6 +12,7 @@ use crate::policy::proof_packs::{ProofPack, load_proof_packs};
 use crate::run::run_output_owned;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 const DEFAULT_BASE: &str = "origin/main";
 const DEFAULT_HEAD: &str = "HEAD";
@@ -618,6 +619,304 @@ fn proof_route_markdown(
     body
 }
 
+// --- pr-summary integration -------------------------------------------------
+//
+// `cargo xtask pr-summary` appends an advisory "Proof Route" section rendered
+// from the same `route_proof` core as `cargo xtask proof route`. The section
+// is failure-isolated: when route computation fails (bad git range, broken
+// manifest), pr-summary still succeeds and the section degrades to a one-line
+// "unavailable" note.
+
+/// Where the pr-summary section looks for a local preflight receipt.
+const PROOF_PREFLIGHT_RECEIPT_PATH: &str = "target/ripr/reports/proof-preflight.json";
+
+/// Freshness verdict for the local preflight receipt relative to the current
+/// head commit. A stale receipt is never presented as current.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PreflightReceiptStatus {
+    /// Receipt head SHA matches the current head: safe to surface.
+    Fresh {
+        overall_status: String,
+        passed: usize,
+        failed: usize,
+        not_run: usize,
+    },
+    /// Receipt exists but was produced for a different head commit.
+    Stale {
+        receipt_head_sha: String,
+        head_sha: String,
+    },
+    /// No receipt file on disk.
+    Missing,
+    /// Receipt file exists but cannot be read or parsed.
+    Unreadable(String),
+}
+
+/// Everything the pr-summary section renders, computed once.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProofRouteSummary {
+    base: String,
+    head: String,
+    changed_file_count: usize,
+    route: ProofRoute,
+    receipt: PreflightReceiptStatus,
+}
+
+/// The "Proof Route" section appended to `cargo xtask pr-summary`. Never
+/// fails: a route-computation error renders as an "unavailable" note so
+/// pr-summary's existing consumers keep working.
+pub(crate) fn pr_summary_proof_route_section() -> String {
+    proof_route_section_markdown(&compute_pr_summary_route())
+}
+
+/// Compute the route with the `proof route` defaults (`origin/main...HEAD`),
+/// routing only the committed range; pr-summary itself also lists
+/// uncommitted, staged, and untracked changes, which are not routed.
+fn compute_pr_summary_route() -> Result<ProofRouteSummary, String> {
+    let options = ProofRouteOptions::default();
+    let packs = load_proof_packs()?;
+    let lanes = load_ci_lanes()?;
+    let head_sha = resolve_commit_sha(&options.head)?;
+    let changed = changed_files(&options.base, &options.head)?;
+    let route = route_proof(&packs, &lanes, &changed);
+    let receipt = preflight_receipt_status(Path::new(PROOF_PREFLIGHT_RECEIPT_PATH), &head_sha);
+    Ok(ProofRouteSummary {
+        base: options.base,
+        head: options.head,
+        changed_file_count: changed.len(),
+        route,
+        receipt,
+    })
+}
+
+fn preflight_receipt_status(path: &Path, head_sha: &str) -> PreflightReceiptStatus {
+    if !path.exists() {
+        return PreflightReceiptStatus::Missing;
+    }
+    match std::fs::read_to_string(path) {
+        Ok(text) => parse_preflight_receipt(&text, head_sha),
+        Err(err) => {
+            PreflightReceiptStatus::Unreadable(format!("failed to read {}: {err}", path.display()))
+        }
+    }
+}
+
+/// Classify a preflight receipt against the current head SHA. Pure so the
+/// SHA-freshness contract is unit-testable without touching the filesystem.
+fn parse_preflight_receipt(text: &str, head_sha: &str) -> PreflightReceiptStatus {
+    let value: Value = match serde_json::from_str(text) {
+        Ok(value) => value,
+        Err(err) => {
+            return PreflightReceiptStatus::Unreadable(format!(
+                "malformed preflight receipt JSON: {err}"
+            ));
+        }
+    };
+    let Some(receipt_head_sha) = value
+        .get("head")
+        .and_then(|head| head.get("sha"))
+        .and_then(Value::as_str)
+    else {
+        return PreflightReceiptStatus::Unreadable(
+            "preflight receipt carries no head.sha".to_string(),
+        );
+    };
+    if receipt_head_sha != head_sha {
+        return PreflightReceiptStatus::Stale {
+            receipt_head_sha: receipt_head_sha.to_string(),
+            head_sha: head_sha.to_string(),
+        };
+    }
+    let overall_status = value
+        .get("overall_status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let empty = Vec::new();
+    let commands = value
+        .get("commands")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    let count = |status: &str| {
+        commands
+            .iter()
+            .filter(|command| command.get("status").and_then(Value::as_str) == Some(status))
+            .count()
+    };
+    PreflightReceiptStatus::Fresh {
+        overall_status,
+        passed: count("pass"),
+        failed: count("fail"),
+        not_run: count("not_run"),
+    }
+}
+
+/// First line of a (possibly multi-line) error, marked when truncated.
+fn error_one_liner(err: &str) -> String {
+    let mut lines = err.lines();
+    let first = lines.next().unwrap_or("").trim().to_string();
+    if lines.next().is_some() {
+        format!("{first} (truncated; see `cargo xtask proof route` for the full error)")
+    } else {
+        first
+    }
+}
+
+fn lane_summary_inline(lanes: &[LaneRoute]) -> String {
+    if lanes.is_empty() {
+        return "(none)".to_string();
+    }
+    lanes
+        .iter()
+        .map(|lane| format!("`{}` ({})", lane.id, lane.estimated_cost))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn skipped_reason_summary(lanes: &[SkippedLane]) -> String {
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for lane in lanes {
+        *counts.entry(lane.reason).or_insert(0) += 1;
+    }
+    counts
+        .iter()
+        .map(|(reason, count)| format!("{count}x `{reason}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn preflight_receipt_line(receipt: &PreflightReceiptStatus) -> String {
+    match receipt {
+        PreflightReceiptStatus::Fresh {
+            overall_status,
+            passed,
+            failed,
+            not_run,
+        } => format!(
+            "Preflight receipt: fresh for current head — overall status `{overall_status}`; \
+             commands run: {passed} pass, {failed} fail ({not_run} not run).\n"
+        ),
+        PreflightReceiptStatus::Stale {
+            receipt_head_sha,
+            head_sha,
+        } => format!(
+            "Preflight receipt: no fresh preflight receipt (receipt head `{receipt_head_sha}` \
+             does not match current head `{head_sha}`).\n"
+        ),
+        PreflightReceiptStatus::Missing => format!(
+            "Preflight receipt: no fresh preflight receipt (none at `{PROOF_PREFLIGHT_RECEIPT_PATH}`).\n"
+        ),
+        PreflightReceiptStatus::Unreadable(err) => format!(
+            "Preflight receipt: no fresh preflight receipt ({}).\n",
+            error_one_liner(err)
+        ),
+    }
+}
+
+/// Render the pr-summary section from a route outcome. Pure so the section
+/// contract (advisory line, skipped-count summary, receipt freshness,
+/// failure fallback) is unit-testable.
+fn proof_route_section_markdown(summary: &Result<ProofRouteSummary, String>) -> String {
+    let mut body = String::from("\n## Proof Route\n\n");
+    let summary = match summary {
+        Ok(summary) => summary,
+        Err(err) => {
+            body.push_str(&format!(
+                "Proof route unavailable: {}\n\n",
+                error_one_liner(err)
+            ));
+            body.push_str(&format!(
+                "Routing state is `{PROOF_ROUTE_ROUTING_STATE}`: this section is advisory, \
+                 read-only evidence and CI lanes are unchanged by it.\n"
+            ));
+            push_reproduce_commands(&mut body, DEFAULT_BASE, DEFAULT_HEAD);
+            return body;
+        }
+    };
+
+    body.push_str(&format!(
+        "Range: `{}...{}` — the proof-route defaults: only the committed range is \
+         routed. pr-summary itself also lists uncommitted, staged, and untracked \
+         changes; those are not part of this route until committed.\n",
+        summary.base, summary.head
+    ));
+    body.push_str(&format!(
+        "Routing state is `{PROOF_ROUTE_ROUTING_STATE}`: this section is advisory, \
+         read-only evidence and CI lanes are unchanged by it.\n"
+    ));
+    body.push_str(&format!(
+        "Release proof required: {}\n\n",
+        summary.route.release_proof_required
+    ));
+
+    body.push_str(&format!(
+        "Changed-surface packs ({} changed file(s)):\n\n",
+        summary.changed_file_count
+    ));
+    if summary.route.matched_packs.is_empty() {
+        body.push_str("No proof pack matched the changed files between base and head.\n\n");
+    } else {
+        body.push_str("| Pack | Matched files | CI lane |\n");
+        body.push_str("| --- | --- | --- |\n");
+        for pack in &summary.route.matched_packs {
+            body.push_str(&format!(
+                "| {} | {} | {} |\n",
+                pack.id,
+                pack.matched_files.len(),
+                pack.ci_lane.as_deref().unwrap_or("(missing)")
+            ));
+        }
+        body.push('\n');
+    }
+    if summary.route.full_proof {
+        body.push_str(&format!(
+            "Full proof: {} unmatched file(s) routed this change to the full proof \
+             (`{UNKNOWN_SURFACE_REASON}`); every pack's lane is required.\n\n",
+            summary.route.unmatched_files.len()
+        ));
+    }
+
+    body.push_str("Lanes:\n\n");
+    body.push_str(&format!(
+        "- Required: {}\n",
+        lane_summary_inline(&summary.route.required_lanes)
+    ));
+    body.push_str(&format!(
+        "- Advisory: {}\n",
+        lane_summary_inline(&summary.route.advisory_lanes)
+    ));
+    if summary.route.skipped_lanes.is_empty() {
+        body.push_str("- Skipped: 0\n");
+    } else {
+        body.push_str(&format!(
+            "- Skipped: {} ({}) — full lane table: `cargo xtask proof route`\n",
+            summary.route.skipped_lanes.len(),
+            skipped_reason_summary(&summary.route.skipped_lanes)
+        ));
+    }
+    if !summary.route.never_routed_lanes.is_empty() {
+        body.push_str(&format!(
+            "- Never-routed: {} — release proof is never routed away\n",
+            lane_summary_inline(&summary.route.never_routed_lanes)
+        ));
+    }
+    body.push('\n');
+
+    body.push_str(&preflight_receipt_line(&summary.receipt));
+    push_reproduce_commands(&mut body, &summary.base, &summary.head);
+    body
+}
+
+fn push_reproduce_commands(body: &mut String, base: &str, head: &str) {
+    body.push_str("\nReproduce locally:\n\n");
+    body.push_str(&format!(
+        "- `cargo xtask proof route --base {base} --head {head}`\n"
+    ));
+    body.push_str(&format!(
+        "- `cargo xtask proof preflight --base {base} --head {head}`\n"
+    ));
+}
+
 /// In-repo manifest and lane-whitelist fixtures shared by the `proof route`
 /// and `proof preflight` test modules.
 #[cfg(test)]
@@ -957,6 +1256,144 @@ mod tests {
         assert!(markdown.contains("| docs | required |"));
         assert!(markdown.contains("never-routed"));
         Ok(())
+    }
+
+    fn summary_for(
+        files: &[&str],
+        receipt: PreflightReceiptStatus,
+    ) -> Result<ProofRouteSummary, String> {
+        Ok(ProofRouteSummary {
+            base: DEFAULT_BASE.to_string(),
+            head: DEFAULT_HEAD.to_string(),
+            changed_file_count: files.len(),
+            route: route_for(files)?,
+            receipt,
+        })
+    }
+
+    #[test]
+    fn pr_summary_section_renders_route_without_receipt() -> Result<(), String> {
+        let summary = summary_for(
+            &["xtask/src/reports/proof_route.rs"],
+            PreflightReceiptStatus::Missing,
+        )?;
+        let section = proof_route_section_markdown(&Ok(summary));
+        assert!(section.contains("## Proof Route"));
+        assert!(section.contains("Range: `origin/main...HEAD`"));
+        assert!(section.contains("advisory-report-only"));
+        assert!(section.contains("CI lanes are unchanged"));
+        assert!(section.contains("| Pack | Matched files | CI lane |"));
+        assert!(section.contains("| xtask-report | 1 | routed-rust-small |"));
+        assert!(section.contains("- Required: `routed-rust-small`"));
+        assert!(section.contains("Release proof required: false"));
+        // Skipped lanes appear as a count with a reason summary, never as a
+        // full per-lane table; the full report stays with `proof route`.
+        assert!(section.contains("- Skipped: "));
+        assert!(section.contains("`no_matched_surface`"));
+        assert!(section.contains("full lane table: `cargo xtask proof route`"));
+        assert!(!section.contains("| skipped |"));
+        assert!(section.contains("no fresh preflight receipt"));
+        assert!(section.contains("- `cargo xtask proof route --base origin/main --head HEAD`"));
+        assert!(section.contains("- `cargo xtask proof preflight --base origin/main --head HEAD`"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_summary_section_reports_full_proof_for_unknown_surfaces() -> Result<(), String> {
+        let summary = summary_for(
+            &["scripts/unknown-surface.bin"],
+            PreflightReceiptStatus::Missing,
+        )?;
+        let section = proof_route_section_markdown(&Ok(summary));
+        assert!(section.contains("Full proof: 1 unmatched file(s)"));
+        assert!(section.contains(UNKNOWN_SURFACE_REASON));
+        assert!(section.contains("Release proof required: true"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_summary_section_includes_fresh_receipt_status() -> Result<(), String> {
+        let receipt_json = json!({
+            "head": {"rev": "HEAD", "sha": "head-sha"},
+            "overall_status": "fail",
+            "commands": [
+                {"command": "a", "status": "pass"},
+                {"command": "b", "status": "pass"},
+                {"command": "c", "status": "fail"},
+                {"command": "d", "status": "not_run"},
+            ],
+        });
+        let text = serde_json::to_string(&receipt_json)
+            .map_err(|err| format!("serialize receipt fixture: {err}"))?;
+        let receipt = parse_preflight_receipt(&text, "head-sha");
+        assert_eq!(
+            receipt,
+            PreflightReceiptStatus::Fresh {
+                overall_status: "fail".to_string(),
+                passed: 2,
+                failed: 1,
+                not_run: 1,
+            }
+        );
+        let summary = summary_for(&["docs/specs/SPEC-0001-example.md"], receipt)?;
+        let section = proof_route_section_markdown(&Ok(summary));
+        assert!(
+            section.contains("Preflight receipt: fresh for current head — overall status `fail`")
+        );
+        assert!(section.contains("commands run: 2 pass, 1 fail (1 not run)"));
+        assert!(!section.contains("no fresh preflight receipt"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_summary_section_never_presents_a_stale_receipt() -> Result<(), String> {
+        let text = r#"{"head": {"sha": "old-sha"}, "overall_status": "pass", "commands": []}"#;
+        let receipt = parse_preflight_receipt(text, "new-sha");
+        assert_eq!(
+            receipt,
+            PreflightReceiptStatus::Stale {
+                receipt_head_sha: "old-sha".to_string(),
+                head_sha: "new-sha".to_string(),
+            }
+        );
+        let summary = summary_for(&["docs/specs/SPEC-0001-example.md"], receipt)?;
+        let section = proof_route_section_markdown(&Ok(summary));
+        assert!(section.contains("no fresh preflight receipt"));
+        assert!(section.contains("receipt head `old-sha`"));
+        assert!(section.contains("current head `new-sha`"));
+        // A stale receipt's results are never surfaced as current.
+        assert!(!section.contains("overall status"));
+        assert!(!section.contains("commands run:"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_summary_section_degrades_when_route_computation_fails() {
+        let error = "bad proof route revision \"origin/main\": git exited 128\nextra detail line";
+        let section = proof_route_section_markdown(&Err(error.to_string()));
+        assert!(section.contains("## Proof Route"));
+        assert!(
+            section.contains("Proof route unavailable: bad proof route revision \"origin/main\"")
+        );
+        // Multi-line errors collapse to a marked one-liner.
+        assert!(!section.contains("extra detail line"));
+        assert!(section.contains("truncated"));
+        // The advisory contract and reproduction commands survive the failure.
+        assert!(section.contains("advisory-report-only"));
+        assert!(section.contains("- `cargo xtask proof route --base origin/main --head HEAD`"));
+        assert!(section.contains("- `cargo xtask proof preflight --base origin/main --head HEAD`"));
+    }
+
+    #[test]
+    fn malformed_or_headless_receipts_are_unreadable_not_fresh() {
+        assert!(matches!(
+            parse_preflight_receipt("not json", "sha"),
+            PreflightReceiptStatus::Unreadable(_)
+        ));
+        assert!(matches!(
+            parse_preflight_receipt("{}", "sha"),
+            PreflightReceiptStatus::Unreadable(_)
+        ));
     }
 
     #[test]

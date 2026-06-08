@@ -42,7 +42,7 @@ pub(crate) use operator::operator_cockpit_report;
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;
-pub(crate) use proof_route::proof;
+pub(crate) use proof_route::{pr_summary_proof_route_section, proof};
 pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;
