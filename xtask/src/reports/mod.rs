@@ -13,6 +13,7 @@ mod operator;
 mod pr;
 mod pr_evidence;
 mod pr_evidence_summary;
+mod proof_preflight;
 mod proof_route;
 mod receipts;
 mod recommendation;

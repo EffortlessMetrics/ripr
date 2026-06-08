@@ -291,6 +291,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "commands",
         "pr-summary",
         "proof route [--base <rev>] [--head <rev>]",
+        "proof preflight [--base <rev>] [--head <rev>]",
         "pr-ready",
         "cockpit",
         "pr-triage-report",
@@ -467,6 +468,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/proof-route.{json,md}",
             false,
             "Maps changed files onto proof packs and reports required, advisory, skipped, and never-routed CI lanes; read-only and advisory, it executes no proof commands and changes no CI behavior.",
+        ),
+        command_entry(
+            "proof preflight [--base <rev>] [--head <rev>]",
+            "report_only",
+            "target/ripr/reports/proof-preflight.{json,md} plus the generated evidence the executed proof commands write under target/",
+            false,
+            "Executes the routed proof packs' required commands locally (deduplicated, fail-fast; advisory commands are listed but never run) and writes a local, advisory preflight receipt; it does not replace CI and changes no CI behavior.",
         ),
         command_entry(
             "pr-ready",

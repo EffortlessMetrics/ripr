@@ -9,6 +9,20 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `cargo xtask proof preflight`, the local proof-preflight executor from
+  the proof-routing operating model (slice 4). It computes the proof route via
+  the same routing core as `proof route` (default `origin/main...HEAD`), then
+  executes each routed pack's required commands in manifest order,
+  deduplicated across packs (one execution per distinct command string), and
+  fails fast on the first failing command. Advisory commands are never
+  executed; they are listed in the receipt as `advisory_not_run`. Because only
+  routed packs execute, release-package commands run only when the release
+  pack is routed (matched or full proof). The receipt at
+  `target/ripr/reports/proof-preflight.{json,md}` (schema version `0.1`)
+  records base/head, routed pack ids, `release_proof_required`, per-command
+  status (`pass`/`fail`/`not_run`) with duration, and on failure the pack ids,
+  command, exit code, and the last ~40 output lines. The receipt is a local,
+  advisory preflight; it does not replace CI and changes no CI behavior.
 - Added `cargo xtask proof route`, the read-only proof-route report from the
   proof-routing operating model (slice 3). It maps the files changed between
   a base and head revision (default `origin/main...HEAD`) onto the proof

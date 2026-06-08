@@ -22,7 +22,8 @@ const NO_MATCHED_SURFACE_REASON: &str = "no_matched_surface";
 const NEVER_ROUTED_REASON: &str = "never_routed";
 const PROOF_ROUTE_JSON: &str = "proof-route.json";
 const PROOF_ROUTE_MD: &str = "proof-route.md";
-const PROOF_USAGE: &str = "usage: cargo xtask proof route [--base <rev>] [--head <rev>]";
+const PROOF_USAGE: &str =
+    "usage: cargo xtask proof <route|preflight> [--base <rev>] [--head <rev>]";
 
 /// Static lane-cost markers. A lane is `heavy` when any of its commands needs
 /// a workspace build or full test run, `medium` when it drives the Node or
@@ -46,14 +47,15 @@ pub(crate) fn proof(args: &[String]) -> Result<(), String> {
     };
     match subcommand.as_str() {
         "route" => proof_route(rest),
+        "preflight" => super::proof_preflight::proof_preflight(rest),
         other => Err(format!("unknown proof subcommand `{other}`; {PROOF_USAGE}")),
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ProofRouteOptions {
-    base: String,
-    head: String,
+pub(super) struct ProofRouteOptions {
+    pub(super) base: String,
+    pub(super) head: String,
 }
 
 impl Default for ProofRouteOptions {
@@ -65,7 +67,7 @@ impl Default for ProofRouteOptions {
     }
 }
 
-fn parse_route_options(args: &[String]) -> Result<ProofRouteOptions, String> {
+pub(super) fn parse_route_options(args: &[String]) -> Result<ProofRouteOptions, String> {
     let mut options = ProofRouteOptions::default();
     let mut index = 0usize;
     while index < args.len() {
@@ -79,9 +81,7 @@ fn parse_route_options(args: &[String]) -> Result<ProofRouteOptions, String> {
                 options.head = non_empty_arg(args, index, "--head")?.to_string();
             }
             other => {
-                return Err(format!(
-                    "unknown proof route argument `{other}`; {PROOF_USAGE}"
-                ));
+                return Err(format!("unknown proof argument `{other}`; {PROOF_USAGE}"));
             }
         }
         index += 1;
@@ -94,7 +94,7 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
         return Err(format!("missing value for {flag}; {PROOF_USAGE}"));
     };
     if value.trim().is_empty() {
-        return Err(format!("proof route {flag} requires a non-empty value"));
+        return Err(format!("proof {flag} requires a non-empty value"));
     }
     Ok(value)
 }
@@ -126,14 +126,14 @@ fn git_output(args: &[&str]) -> Result<String, String> {
     run_output_owned("git", &owned)
 }
 
-fn resolve_commit_sha(rev: &str) -> Result<String, String> {
+pub(super) fn resolve_commit_sha(rev: &str) -> Result<String, String> {
     let spec = format!("{rev}^{{commit}}");
     git_output(&["rev-parse", "--verify", spec.as_str()])
         .map(|output| output.trim().to_string())
         .map_err(|err| format!("bad proof route revision {rev:?}: {err}"))
 }
 
-fn changed_files(base: &str, head: &str) -> Result<Vec<String>, String> {
+pub(super) fn changed_files(base: &str, head: &str) -> Result<Vec<String>, String> {
     let range = format!("{base}...{head}");
     let output = git_output(&["diff", "--name-only", range.as_str()])?;
     Ok(output
@@ -147,12 +147,12 @@ fn changed_files(base: &str, head: &str) -> Result<Vec<String>, String> {
 /// One `[[lane]]` entry from `policy/ci-lane-whitelist.toml`, reduced to the
 /// fields proof routing needs.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct CiLane {
+pub(super) struct CiLane {
     id: String,
     commands: Vec<String>,
 }
 
-fn load_ci_lanes() -> Result<Vec<CiLane>, String> {
+pub(super) fn load_ci_lanes() -> Result<Vec<CiLane>, String> {
     let mut violations = Vec::new();
     let document =
         crate::read_ci_ledger_document(crate::PROOF_PACK_LANE_WHITELIST_PATH, &mut violations);
@@ -228,12 +228,24 @@ struct SkippedLane {
     reason: &'static str,
 }
 
+/// One pack the change must pay proof for, carried with its command lists so
+/// downstream consumers (the preflight executor) never re-derive routing.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ProofRoute {
+pub(super) struct RoutedPack {
+    pub(super) id: String,
+    pub(super) required_commands: Vec<String>,
+    pub(super) advisory_commands: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ProofRoute {
     matched_packs: Vec<MatchedPack>,
     unmatched_files: Vec<String>,
-    full_proof: bool,
-    release_proof_required: bool,
+    pub(super) full_proof: bool,
+    pub(super) release_proof_required: bool,
+    /// Manifest-ordered packs whose proof this change must pay: the matched
+    /// packs, or every pack when an unknown surface routes to the full proof.
+    pub(super) routed_packs: Vec<RoutedPack>,
     required_lanes: Vec<LaneRoute>,
     advisory_lanes: Vec<LaneRoute>,
     skipped_lanes: Vec<SkippedLane>,
@@ -248,7 +260,11 @@ struct ProofRoute {
 /// - The lane of a `never_routed` pack (release proof) is required whenever
 ///   the pack matches or the full proof triggers, and is otherwise reported
 ///   as never routed — it is never listed as skipped.
-fn route_proof(packs: &[ProofPack], lanes: &[CiLane], changed_files: &[String]) -> ProofRoute {
+pub(super) fn route_proof(
+    packs: &[ProofPack],
+    lanes: &[CiLane],
+    changed_files: &[String],
+) -> ProofRoute {
     let mut matched_files_by_pack: Vec<Vec<String>> = vec![Vec::new(); packs.len()];
     let mut unmatched_files = Vec::new();
     for file in changed_files {
@@ -384,11 +400,21 @@ fn route_proof(packs: &[ProofPack], lanes: &[CiLane], changed_files: &[String]) 
         }
     }
 
+    let routed_packs = routed_packs
+        .iter()
+        .map(|pack| RoutedPack {
+            id: pack.id.clone(),
+            required_commands: pack.required_commands.clone(),
+            advisory_commands: pack.advisory_commands.clone(),
+        })
+        .collect();
+
     ProofRoute {
         matched_packs,
         unmatched_files,
         full_proof,
         release_proof_required,
+        routed_packs,
         required_lanes,
         advisory_lanes,
         skipped_lanes,
@@ -592,10 +618,12 @@ fn proof_route_markdown(
     body
 }
 
+/// In-repo manifest and lane-whitelist fixtures shared by the `proof route`
+/// and `proof preflight` test modules.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::policy::proof_packs::parse_proof_packs;
+pub(super) mod test_support {
+    use super::{CiLane, ProofRoute, parse_ci_lanes, route_proof};
+    use crate::policy::proof_packs::{ProofPack, parse_proof_packs};
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> Result<PathBuf, String> {
@@ -614,7 +642,7 @@ mod tests {
             .map_err(|err| format!("failed to read {}: {err}", path.display()))
     }
 
-    fn manifest_packs() -> Result<Vec<ProofPack>, String> {
+    pub(in super::super) fn manifest_packs() -> Result<Vec<ProofPack>, String> {
         let text = read_repo_file("policy/proof-packs.toml")?;
         let (document, mut violations) =
             crate::parse_ci_ledger_document(crate::PROOF_PACK_MANIFEST_PATH, &text);
@@ -628,7 +656,7 @@ mod tests {
         }
     }
 
-    fn whitelist_lanes() -> Result<Vec<CiLane>, String> {
+    pub(in super::super) fn whitelist_lanes() -> Result<Vec<CiLane>, String> {
         let text = read_repo_file("policy/ci-lane-whitelist.toml")?;
         let (document, mut violations) =
             crate::parse_ci_ledger_document(crate::PROOF_PACK_LANE_WHITELIST_PATH, &text);
@@ -642,12 +670,18 @@ mod tests {
         }
     }
 
-    fn route_for(files: &[&str]) -> Result<ProofRoute, String> {
+    pub(in super::super) fn route_for(files: &[&str]) -> Result<ProofRoute, String> {
         let packs = manifest_packs()?;
         let lanes = whitelist_lanes()?;
         let changed: Vec<String> = files.iter().map(|file| (*file).to_string()).collect();
         Ok(route_proof(&packs, &lanes, &changed))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::route_for;
+    use super::*;
 
     fn matched_pack_ids(route: &ProofRoute) -> Vec<&str> {
         route
