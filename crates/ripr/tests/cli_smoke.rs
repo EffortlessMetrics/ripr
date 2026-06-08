@@ -127,6 +127,10 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
             "generated_at".to_string(),
             serde_json::Value::String("<generated_at>".to_string()),
         );
+        provenance.insert(
+            "ripr_version".to_string(),
+            serde_json::Value::String("<ripr_version>".to_string()),
+        );
         for artifact in ["before_artifact", "after_artifact", "verify_artifact"] {
             if let Some(artifact) = provenance
                 .get_mut(artifact)
@@ -1359,7 +1363,10 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert!(text.contains(r#""schema_version": "0.3""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
-    assert!(text.contains(r#""ripr_version": "0.7.0""#));
+    assert!(text.contains(&format!(
+        r#""ripr_version": "{}""#,
+        env!("CARGO_PKG_VERSION")
+    )));
     assert!(text.contains(r#""repo_root": "#));
     assert!(text.contains(r#""config_fingerprint": "fnv1a64:"#));
     assert!(text.contains(r#""generated_at": "unix_ms:"#));
