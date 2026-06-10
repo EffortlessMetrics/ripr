@@ -93,7 +93,7 @@ jobs:
             changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || true)"
             if [ -n "$changed" ]; then
               non_docs="$(printf '%s\n' "$changed" | grep -Ev '(^docs/specs/|^docs/handoffs/|\.md$)' || true)"
-              release_surface="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG\.md|Cargo\.toml|Cargo\.lock|crates/ripr/Cargo\.toml)$' || true)"
+              release_surface="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG\.md|Cargo\.toml|Cargo\.lock|crates/ripr/Cargo\.toml|docs/OUTPUT_SCHEMA\.md)$' || true)"
               if [ -z "$non_docs" ] && [ -z "$release_surface" ]; then
                 docs_only=true
               fi
@@ -159,6 +159,12 @@ jobs:
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
+          cargo xtask check-command-catalog
+          cargo xtask check-output-contracts
+          cargo xtask goldens check
+          cargo xtask fixtures
+          cargo xtask check-traceability
+          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
@@ -273,6 +279,12 @@ jobs:
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
+          cargo xtask check-command-catalog
+          cargo xtask check-output-contracts
+          cargo xtask goldens check
+          cargo xtask fixtures
+          cargo xtask check-traceability
+          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
@@ -386,6 +398,12 @@ jobs:
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
+          cargo xtask check-command-catalog
+          cargo xtask check-output-contracts
+          cargo xtask goldens check
+          cargo xtask fixtures
+          cargo xtask check-traceability
+          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
@@ -481,6 +499,12 @@ jobs:
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
+          cargo xtask check-command-catalog
+          cargo xtask check-output-contracts
+          cargo xtask goldens check
+          cargo xtask fixtures
+          cargo xtask check-traceability
+          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
