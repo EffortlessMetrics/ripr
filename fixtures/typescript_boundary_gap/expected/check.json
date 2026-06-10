@@ -72,6 +72,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -118,18 +119,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/discount.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "applyDiscount",
             "raw": "file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount",
+            "sample": null,
             "source_id": "probe:src_discount.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],

@@ -65,6 +65,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "return_value changed at src/rounding.ts:2: `return Math.round(amount * 100) / 100;`",
         "language": "typescript",
@@ -111,18 +112,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/rounding.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "roundCents",
             "raw": "file=src/rounding.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_rounding.ts:2:typescript_preview;owner=roundCents",
+            "sample": null,
             "source_id": "probe:src_rounding.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],

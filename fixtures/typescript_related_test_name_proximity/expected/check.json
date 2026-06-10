@@ -70,6 +70,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -113,18 +114,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/pricing.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "applyDiscount",
             "raw": "file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount",
+            "sample": null,
             "source_id": "probe:src_pricing.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "unlock_condition": null,
         "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
       },
       "stop_reasons": [],
