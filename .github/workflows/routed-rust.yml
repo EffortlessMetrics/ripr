@@ -73,10 +73,39 @@ jobs:
           { echo "router_target=$target"; echo "router_reason=$reason"; repo=$REPOSITORY workflow=routed-rust run_id=$RUN_ID; for name in repo workflow run_id runner_query runner_total cx43_online cx43_idle_ready cpx42_online cpx42_idle_ready cx53_online cx53_idle_ready; do echo "$name=${!name}"; done; } >> "$GITHUB_OUTPUT"
           { echo "### Ripr Rust Small Router"; echo ""; echo "- repo: \`$REPOSITORY\`"; echo "- workflow: \`routed-rust\`"; echo "- run: \`$RUN_ID\`"; echo "- target: \`$target\`"; echo "- reason: \`$reason\`"; for row in "runner query:$runner_query" "visible runners:$runner_total" "cx43 online:$cx43_online" "cx43 idle ready:$cx43_idle_ready" "cpx42 online:$cpx42_online" "cpx42 idle ready:$cpx42_idle_ready" "cx53 online:$cx53_online" "cx53 idle ready:$cx53_idle_ready"; do echo "- ${row%%:*}: \`${row#*:}\`"; done; } >> "$GITHUB_STEP_SUMMARY"
 
+  detect-docs-only:
+    name: Detect Docs-Only Surface
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.check.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check whether every changed file is docs/spec/markdown
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          docs_only=false
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ]; then
+            changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || true)"
+            if [ -n "$changed" ]; then
+              non_docs="$(printf '%s\n' "$changed" | grep -Ev '(^docs/specs/|^docs/handoffs/|\.md$)' || true)"
+              release_surface="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG\.md|Cargo\.toml|Cargo\.lock|crates/ripr/Cargo\.toml)$' || true)"
+              if [ -z "$non_docs" ] && [ -z "$release_surface" ]; then
+                docs_only=true
+              fi
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          { echo "### Docs-Only Surface Detection"; echo ""; echo "- docs_only: \`$docs_only\`"; } >> "$GITHUB_STEP_SUMMARY"
+
   rust-cx43:
     name: Ripr Rust Small on CX43
-    needs: route
-    if: needs.route.outputs.router_target == 'cx43'
+    needs: [route, detect-docs-only]
+    if: needs.route.outputs.router_target == 'cx43' && needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
@@ -188,8 +217,8 @@ jobs:
 
   rust-cpx42:
     name: Ripr Rust Small on CPX42
-    needs: route
-    if: needs.route.outputs.router_target == 'cpx42'
+    needs: [route, detect-docs-only]
+    if: needs.route.outputs.router_target == 'cpx42' && needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
@@ -302,8 +331,8 @@ jobs:
 
   rust-cx53:
     name: Ripr Rust Small on CX53
-    needs: route
-    if: needs.route.outputs.router_target == 'cx53'
+    needs: [route, detect-docs-only]
+    if: needs.route.outputs.router_target == 'cx53' && needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
@@ -415,8 +444,8 @@ jobs:
 
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
-    needs: route
-    if: needs.route.outputs.router_target == 'github'
+    needs: [route, detect-docs-only]
+    if: needs.route.outputs.router_target == 'github' && needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -502,9 +531,39 @@ jobs:
             target/xtask/impacted-evidence/
           if-no-files-found: ignore
 
+  docs-gate:
+    name: Ripr Docs Gate
+    needs: [detect-docs-only]
+    if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-docs-gate
+      - name: Doc/spec gates (docs-spec pack required commands)
+        run: |
+          cargo xtask check-static-language
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-doc-index
+          cargo xtask check-local-context
+      - name: Upload docs-gate reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-docs-gate
+          path: target/ripr/reports/
+          if-no-files-found: ignore
+
   result:
     name: Ripr Rust Small Result
-    needs: [route, rust-cx43, rust-cpx42, rust-cx53, rust-github]
+    needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53, rust-github, docs-gate]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -525,10 +584,20 @@ jobs:
           CPX42_IDLE_READY: ${{ needs.route.outputs.cpx42_idle_ready }}
           CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
           CX53_IDLE_READY: ${{ needs.route.outputs.cx53_idle_ready }}
+          EVENT_NAME: ${{ github.event_name }}
+          DOCS_ONLY: ${{ needs.detect-docs-only.outputs.docs_only }}
+          DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}
         run: |
           status=pass
           message="selected implementation job succeeded"
-          if [ "$ROUTE_RESULT" != "success" ]; then
+          if [ "$DOCS_ONLY" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$DOCS_GATE_RESULT" = "success" ]; then
+              message="docs-only surface; heavy lanes skipped; docs-gate passed"
+            else
+              status=fail
+              message="docs-gate result was $DOCS_GATE_RESULT on a docs-only PR"
+            fi
+          elif [ "$ROUTE_RESULT" != "success" ]; then
             status=fail
             message="route job result was $ROUTE_RESULT"
           else
@@ -542,7 +611,7 @@ jobs:
           fi
           echo "### Ripr Rust Small Result" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          for row in "target:$TARGET" "reason:$REASON" "status:$status" "message:$message" "route:$ROUTE_RESULT" "cx43:$CX43_RESULT" "cpx42:$CPX42_RESULT" "cx53:$CX53_RESULT" "github:$GITHUB_RESULT" "runner query:$RUNNER_QUERY" "visible runners:$RUNNER_TOTAL" "cx43 online:$CX43_ONLINE" "cx43 idle ready:$CX43_IDLE_READY" "cpx42 online:$CPX42_ONLINE" "cpx42 idle ready:$CPX42_IDLE_READY" "cx53 online:$CX53_ONLINE" "cx53 idle ready:$CX53_IDLE_READY"; do
+          for row in "target:$TARGET" "reason:$REASON" "docs_only:$DOCS_ONLY" "docs_gate:$DOCS_GATE_RESULT" "status:$status" "message:$message" "route:$ROUTE_RESULT" "cx43:$CX43_RESULT" "cpx42:$CPX42_RESULT" "cx53:$CX53_RESULT" "github:$GITHUB_RESULT" "runner query:$RUNNER_QUERY" "visible runners:$RUNNER_TOTAL" "cx43 online:$CX43_ONLINE" "cx43 idle ready:$CX43_IDLE_READY" "cpx42 online:$CPX42_ONLINE" "cpx42 idle ready:$CPX42_IDLE_READY" "cx53 online:$CX53_ONLINE" "cx53 idle ready:$CX53_IDLE_READY"; do
             echo "- ${row%%:*}: \`${row#*:}\`" >> "$GITHUB_STEP_SUMMARY"
           done
           [ "$status" = "pass" ]
