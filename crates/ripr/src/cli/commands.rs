@@ -3776,6 +3776,7 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     }
 
     report_config_status(&root, &mut ok);
+    report_cache_status(&root);
 
     for (tool, args) in [
         ("git", vec!["--version"]),
@@ -3816,6 +3817,58 @@ fn print_doctor_start_here_guidance(root: &Path) {
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
+}
+
+fn report_cache_status(root: &Path) {
+    let cache_dir = analysis::seam_cache::cache_base_dir(root);
+    let relocated =
+        std::env::var(analysis::seam_cache::CACHE_DIR_ENV).is_ok_and(|v| !v.trim().is_empty());
+    let size_bytes = dir_size_bytes(&cache_dir);
+    let size_display = format_bytes(size_bytes);
+    if relocated {
+        println!(
+            "- Cache location: {} (RIPR_CACHE_DIR active)",
+            cache_dir.display()
+        );
+    } else {
+        println!("- Cache location: {}", cache_dir.display());
+    }
+    println!("- Cache size: {size_display}");
+}
+
+/// Recursively sum file sizes under `dir`. Returns 0 when the directory
+/// does not exist or cannot be read — cache absence is not a problem.
+fn dir_size_bytes(dir: &Path) -> u64 {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return 0,
+    };
+    let mut total: u64 = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&path));
+        } else if let Ok(meta) = std::fs::metadata(&path) {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    total
+}
+
+/// Format a byte count in human-readable form (B, KB, MB, GB).
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1_024;
+    const MB: u64 = 1_024 * KB;
+    const GB: u64 = 1_024 * MB;
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn report_config_status(root: &Path, ok: &mut bool) {

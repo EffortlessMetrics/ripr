@@ -142,8 +142,9 @@ that needs the tuning.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under `target/ripr/cache`. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
-| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under `target/ripr/cache`. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_CACHE_DIR` | (none) | Relocate the entire cache base directory. When set to a non-empty path, all cache reads and writes use that path instead of `{workspace_root}/target/ripr/cache`. Useful for read-only or immutable source checkouts and for redirecting the cache to a faster or larger volume. When unset or empty, default behaviour is unchanged. `ripr doctor` reports whether `RIPR_CACHE_DIR` is active and shows the resolved location and total size. |
+| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under the cache base directory. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under the cache base directory. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 
 Repo seam cache entries larger than the active limit are stored as a manifest
 plus shard files, with cache-store trace status such as
@@ -153,7 +154,14 @@ corrupt shards are ignored as cache corruption and the run recomputes instead
 of using partial evidence. `cargo xtask cache report` summarizes sharded
 families, largest shard sets, and orphan or incomplete shard sets. The
 `cargo xtask cache gc --dry-run` command still sees sharded entries because
-every shard lives under `target/ripr/cache`.
+every shard lives under the cache base directory.
+
+To relocate the cache to a different directory (e.g., for a read-only
+source checkout):
+
+```bash
+RIPR_CACHE_DIR=/var/cache/ripr ripr check --root . --format repo-exposure-json
+```
 
 To reduce full-cache shard counts for a repo on a machine with enough headroom:
 

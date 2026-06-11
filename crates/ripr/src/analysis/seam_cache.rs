@@ -28,6 +28,10 @@
 //! {workspace_root}/target/ripr/cache/repo-seam-facts/{schema_version}/{key_hash}.json
 //! ```
 //!
+//! When `RIPR_CACHE_DIR` is set (non-empty), all cache writes and reads
+//! use `{RIPR_CACHE_DIR}/...` as the cache base instead. When unset,
+//! behaviour is unchanged — default `{workspace_root}/target/ripr/cache`.
+//!
 //! `{key_hash}` is the FNV-1a 64-bit hash of the canonical key fields,
 //! so different keys land in different files and a v1 cache hit on a
 //! v0.5 entry is impossible.
@@ -76,6 +80,47 @@ pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str = "RIPR_REPO_SEAM_C
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str =
     "RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS";
+
+/// Environment variable that relocates the cache base directory. When set
+/// to a non-empty path, all cache reads and writes use that path as the
+/// root instead of `{workspace_root}/target/ripr/cache`. When unset or
+/// empty the default `{workspace_root}/target/ripr/cache` is used.
+///
+/// This is useful for read-only or immutable source checkouts where
+/// writing into `target/` is not permitted, and for redirecting the
+/// cache to a faster or larger volume.
+///
+/// # Example
+///
+/// ```text
+/// RIPR_CACHE_DIR=/var/cache/ripr ripr check --diff path/to/file.diff
+/// ```
+pub(crate) const CACHE_DIR_ENV: &str = "RIPR_CACHE_DIR";
+
+/// Resolve the cache base directory.
+///
+/// When `RIPR_CACHE_DIR` is set to a non-empty value that base is used
+/// directly (no sub-path is appended). When unset or empty the default
+/// `{workspace_root}/target/ripr/cache` is returned, which is
+/// byte-identical to the pre-relocation behaviour.
+///
+/// Takes the env-var value as a parameter rather than calling
+/// `std::env::var` internally so tests can exercise both branches
+/// without mutating process state.
+pub(crate) fn cache_base_dir_from_env(
+    workspace_root: &std::path::Path,
+    env_value: Result<String, std::env::VarError>,
+) -> PathBuf {
+    match env_value {
+        Ok(value) if !value.trim().is_empty() => PathBuf::from(value.trim()),
+        _ => workspace_root.join("target").join("ripr").join("cache"),
+    }
+}
+
+/// Resolve the cache base directory using the live process environment.
+pub(crate) fn cache_base_dir(workspace_root: &std::path::Path) -> PathBuf {
+    cache_base_dir_from_env(workspace_root, std::env::var(CACHE_DIR_ENV))
+}
 
 pub(crate) fn classified_seam_cache_store_limit() -> Result<usize, String> {
     classified_seam_cache_store_limit_from_env(std::env::var(CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV))
@@ -296,7 +341,7 @@ impl RepoSeamFactCache {
     }
 
     fn at_named(workspace_root: &Path, cache_name: &str, schema_version: &str) -> Self {
-        let cache_root = workspace_root.join("target").join("ripr").join("cache");
+        let cache_root = cache_base_dir(workspace_root);
         Self {
             dir: cache_root.join(cache_name).join(schema_version),
             sharded_dir: cache_root
@@ -569,10 +614,7 @@ pub(crate) struct RepoFileFactCache {
 impl RepoFileFactCache {
     pub(crate) fn at(workspace_root: &Path) -> Self {
         Self {
-            dir: workspace_root
-                .join("target")
-                .join("ripr")
-                .join("cache")
+            dir: cache_base_dir(workspace_root)
                 .join("repo-file-facts")
                 .join(FILE_FACT_CACHE_SCHEMA_VERSION),
         }
@@ -634,13 +676,10 @@ pub(crate) struct RepoSeamCountCache {
 #[cfg(test)]
 impl RepoSeamCountCache {
     /// Construct a count cache rooted at the workspace's
-    /// `target/ripr/cache/...`.
+    /// `target/ripr/cache/...` (or `RIPR_CACHE_DIR` when set).
     pub(crate) fn at(workspace_root: &Path) -> Self {
         Self {
-            dir: workspace_root
-                .join("target")
-                .join("ripr")
-                .join("cache")
+            dir: cache_base_dir(workspace_root)
                 .join("repo-seam-counts")
                 .join(COUNT_CACHE_SCHEMA_VERSION),
         }
@@ -1664,6 +1703,51 @@ mod tests {
         assert_eq!(
             stats.status_label(),
             "hits_2_misses_3_corrupt_1_store_errors_0"
+        );
+    }
+
+    #[test]
+    fn cache_base_dir_returns_default_when_env_is_unset() {
+        let root = PathBuf::from("/some/workspace");
+        let result = cache_base_dir_from_env(&root, Err(std::env::VarError::NotPresent));
+        assert_eq!(
+            result,
+            root.join("target").join("ripr").join("cache"),
+            "unset env must return default cache base"
+        );
+    }
+
+    #[test]
+    fn cache_base_dir_returns_default_when_env_is_empty() {
+        let root = PathBuf::from("/some/workspace");
+        let result = cache_base_dir_from_env(&root, Ok(String::new()));
+        assert_eq!(
+            result,
+            root.join("target").join("ripr").join("cache"),
+            "empty RIPR_CACHE_DIR must return default cache base"
+        );
+    }
+
+    #[test]
+    fn cache_base_dir_returns_env_value_when_set() {
+        let root = PathBuf::from("/some/workspace");
+        let override_dir = "/tmp/my-ripr-cache";
+        let result = cache_base_dir_from_env(&root, Ok(override_dir.to_string()));
+        assert_eq!(
+            result,
+            PathBuf::from(override_dir),
+            "non-empty RIPR_CACHE_DIR must override the default cache base"
+        );
+    }
+
+    #[test]
+    fn cache_base_dir_trims_whitespace_from_env_value() {
+        let root = PathBuf::from("/some/workspace");
+        let result = cache_base_dir_from_env(&root, Ok("  /tmp/trimmed-cache  ".to_string()));
+        assert_eq!(
+            result,
+            PathBuf::from("/tmp/trimmed-cache"),
+            "RIPR_CACHE_DIR value must be trimmed before use"
         );
     }
 
