@@ -32,6 +32,9 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if should_ignore_changed_line(text) {
             continue;
         }
+        if changed_line_owned_by_test(index, &changed.path, added.line) {
+            continue;
+        }
         let families = classify_changed_syntax(index, &changed.path, added.line, text)
             .unwrap_or_else(|| classify_changed_line(text));
         for family in families {
@@ -50,6 +53,9 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if should_ignore_changed_line(text) {
             continue;
         }
+        if changed_line_owned_by_test(index, &changed.path, removed.line) {
+            continue;
+        }
         for family in classify_changed_line(text) {
             if has_matching_added_line(removed, &family, changed) {
                 continue;
@@ -65,6 +71,13 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
     }
 
     probes
+}
+
+/// Tests are the instrument, not the surface under test: a probe on a line
+/// inside a `#[test]` function (e.g. the error path of a `?` in the test body)
+/// is unactionable, because the test failing *is* the discrimination (#1055).
+fn changed_line_owned_by_test(index: &RustIndex, path: &Path, line: usize) -> bool {
+    find_owner_function(index, path, line).is_some_and(|function| function.is_test)
 }
 
 struct ProbeBuildContext<'a> {
@@ -230,6 +243,57 @@ mod tests {
                 .expected_sinks
                 .iter()
                 .any(|sink| sink == "branch result")
+        );
+    }
+
+    #[test]
+    fn probes_for_file_skips_lines_owned_by_test_functions() {
+        let path = PathBuf::from("src/config.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 3,
+                text: "let config = toml::from_str(text)?;".to_string(),
+            }],
+            removed_lines: vec![],
+        };
+        let index_with = |is_test: bool| RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    functions: vec![FunctionFact {
+                        id: SymbolId("config::tests::parses".to_string()),
+                        name: "parses".to_string(),
+                        file: path.clone(),
+                        start_line: 1,
+                        end_line: 5,
+                        body: "fn parses() { let config = toml::from_str(text)?; }".to_string(),
+                        calls: vec![],
+                        returns: vec![],
+                        literals: vec![],
+                        is_test,
+                        attrs: vec![],
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        // Control: a production owner still probes the error path.
+        let production = probes_for_file(Path::new("workspace"), &changed, &index_with(false));
+        assert!(
+            !production.is_empty(),
+            "a non-test error path should still generate a probe"
+        );
+
+        // #1055: the same line owned by a `#[test]` function generates nothing —
+        // the test is the instrument, not the surface under test.
+        let in_test = probes_for_file(Path::new("workspace"), &changed, &index_with(true));
+        assert!(
+            in_test.is_empty(),
+            "a line owned by a test function must not generate probes, got {in_test:?}"
         );
     }
 
