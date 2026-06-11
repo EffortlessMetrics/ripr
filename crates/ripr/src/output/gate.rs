@@ -37,7 +37,17 @@ pub(crate) fn build_gate_decision_report(
         Some(path) => {
             let pr_guidance_path = resolve_root_path(&input.root, path);
             match read_json_value_with_display(&pr_guidance_path, path) {
-                Ok(value) => value,
+                Ok(value) => {
+                    if let Some(defect) = pr_guidance_document_defect(&value) {
+                        config_errors.push(format!(
+                            "pr-guidance {} is not a recognized review-comments guidance document: {defect}",
+                            display_path(path)
+                        ));
+                        Value::Null
+                    } else {
+                        value
+                    }
+                }
                 Err(error) => {
                     config_errors.push(format!(
                         "required PR guidance input {} is invalid: {error}",
@@ -766,6 +776,33 @@ fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
     string_field(value.get("canonical_gap_id"))
         .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
         .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
+}
+
+/// Returns `Some(defect_description)` if `value` is not a recognized
+/// `ripr review-comments` guidance document, or `None` if it is valid.
+///
+/// A valid guidance document must have:
+/// - `schema_version`: a non-empty string (the ripr schema marker)
+/// - `comments`: a JSON array (the primary findings list consumed by the gate)
+///
+/// A valid document with an empty `comments` array is accepted — that is a
+/// legitimate "zero findings" result and must still produce `status=advisory`.
+fn pr_guidance_document_defect(value: &Value) -> Option<String> {
+    let has_schema_version = value
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty());
+    let has_comments_array = value.get("comments").is_some_and(|v| v.is_array());
+    match (has_schema_version, has_comments_array) {
+        (false, false) => {
+            Some("missing required fields `schema_version` and `comments`".to_string())
+        }
+        (false, true) => Some("missing required field `schema_version`".to_string()),
+        (true, false) => {
+            Some("missing required field `comments` (expected a JSON array)".to_string())
+        }
+        (true, true) => None,
+    }
 }
 
 fn resolve_root_path(root: &Path, path: &Path) -> PathBuf {
@@ -2361,6 +2398,118 @@ mod tests {
         assert!(
             error.starts_with("read not-a-file.json failed:") && !error.contains("not found"),
             "expected non-not-found read error, got {error}",
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- #1037 regression: structurally-invalid pr-guidance must be config_error --
+
+    #[test]
+    fn given_non_guidance_json_object_when_gate_evaluated_then_config_error_not_advisory()
+    -> Result<(), String> {
+        let dir = temp_dir("gate-invalid-guidance-schema")?;
+        let bad = write_temp_json(&dir, "bad.json", r#"{"not":"guidance"}"#)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                bad.strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(
+            report.status, "config_error",
+            "a non-guidance JSON object must produce config_error, not advisory; got {:?}",
+            report.status,
+        );
+        assert!(
+            gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be true for config_error",
+        );
+        assert!(
+            report.config_errors.iter().any(|error| {
+                error.contains("bad.json")
+                    && error.contains("not a recognized review-comments guidance document")
+            }),
+            "config_errors must name the defect and the file path, got {:?}",
+            report.config_errors,
+        );
+        assert!(
+            report.decisions.is_empty(),
+            "no decisions must be emitted for a config_error guidance doc",
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory_not_config_error()
+    -> Result<(), String> {
+        let dir = temp_dir("gate-empty-guidance")?;
+        let guidance = write_temp_json(
+            &dir,
+            "comments.json",
+            r#"{
+              "schema_version": "0.1",
+              "summary": {"unchanged_tests": true},
+              "comments": [],
+              "summary_only": [],
+              "suppressed": []
+            }"#,
+        )?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                guidance
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert!(
+            report.config_errors.is_empty(),
+            "a valid empty guidance doc must produce no config_errors, got {:?}",
+            report.config_errors,
+        );
+        assert!(
+            report.status == "pass" || report.status == "advisory",
+            "a valid empty guidance doc must yield pass or advisory, got {:?}",
+            report.status,
+        );
+        assert!(
+            !gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be false for a genuinely clean guidance doc",
         );
         let _ = fs::remove_dir_all(dir);
         Ok(())
