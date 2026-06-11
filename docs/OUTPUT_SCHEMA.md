@@ -658,6 +658,7 @@ The evidence-first fields are additive in schema `0.2`:
 - `property_based_test`
 - `unresolved_pytest_fixture`
 - `unsupported_syntax`
+- `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
 
 Reserved `flow_sink` values:
 

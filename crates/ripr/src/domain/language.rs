@@ -125,6 +125,11 @@ pub enum StaticLimitKind {
     PropertyBasedTest,
     UnresolvedPytestFixture,
     UnsupportedSyntax,
+    /// The changed Rust seam owner is FFI/binding-exposed; whether an
+    /// external-language (e.g. TypeScript) test oracle discriminates this
+    /// behavior is not statically known — verify the external oracle rather
+    /// than adding a Rust test.
+    CrossLanguageOracleVisibilityUnresolved,
 }
 
 impl StaticLimitKind {
@@ -141,6 +146,9 @@ impl StaticLimitKind {
             StaticLimitKind::PropertyBasedTest => "property_based_test",
             StaticLimitKind::UnresolvedPytestFixture => "unresolved_pytest_fixture",
             StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved => {
+                "cross_language_oracle_visibility_unresolved"
+            }
         }
     }
 }
@@ -226,6 +234,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::UnresolvedPytestFixture.as_str(),
             "unresolved_pytest_fixture"
+        );
+        assert_eq!(
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved.as_str(),
+            "cross_language_oracle_visibility_unresolved"
         );
     }
 }

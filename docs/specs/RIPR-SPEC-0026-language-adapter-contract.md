@@ -88,7 +88,8 @@ Additive optional fields:
   be classified (`dynamic_dispatch`, `metaprogramming`,
   `missing_import_graph`, `decorator_indirection`, `mocked_module`,
   `opaque_custom_assertion_helper`, `property_based_test`,
-  `unresolved_pytest_fixture`, `unsupported_syntax`).
+  `unresolved_pytest_fixture`, `unsupported_syntax`,
+  `cross_language_oracle_visibility_unresolved`).
 
 Reports gaining these fields:
 
