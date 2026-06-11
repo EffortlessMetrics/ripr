@@ -3367,10 +3367,9 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
     if let Some(gap_ledger) = gap_ledger.as_ref() {
-        print!(
-            "{}",
-            render_check_gap_ledger_badge(gap_ledger, &format, &config)?
-        );
+        write_stdout_chunked(&render_check_gap_ledger_badge(
+            gap_ledger, &format, &config,
+        )?)?;
         return Ok(());
     }
     if matches!(format, OutputFormat::RepoExposureJson) {
@@ -3392,10 +3391,30 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     } else {
         app::check_workspace_with_config(input, &config)?
     };
-    print!(
-        "{}",
-        app::render_check_with_config(&output, &format, &config)?
-    );
+    write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
+    Ok(())
+}
+
+/// Write `text` to stdout in bounded chunks.
+///
+/// A single large write to a Windows console or pipe can fail with
+/// `os error 87` ("the parameter is incorrect"); chunking keeps every
+/// underlying write small enough to avoid that limit. Write errors are
+/// returned as `Err` rather than panicking, so a failed write surfaces as
+/// a normal CLI error instead of aborting the process.
+fn write_stdout_chunked(text: &str) -> Result<(), String> {
+    use std::io::Write;
+    const CHUNK: usize = 16 * 1024;
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    for chunk in text.as_bytes().chunks(CHUNK) {
+        handle
+            .write_all(chunk)
+            .map_err(|err| format!("write to stdout failed: {err}"))?;
+    }
+    handle
+        .flush()
+        .map_err(|err| format!("flush stdout failed: {err}"))?;
     Ok(())
 }
 
