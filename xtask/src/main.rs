@@ -67285,6 +67285,8 @@ fn tracked_files() -> Result<Vec<String>, String> {
 fn should_skip_path(path: &str) -> bool {
     path == ".git"
         || path.starts_with(".git/")
+        || path == ".claude"
+        || path.starts_with(".claude/")
         || path == "target"
         || path.starts_with("target/")
         || path == ".ripr/release"
@@ -75883,6 +75885,24 @@ fn has_unwrap_in_name() -> bool {
         assert!(should_skip_path("editors/vscode/out/src/extension.js"));
         assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
         assert!(!should_skip_path("editors/vscode/src/config.ts"));
+    }
+
+    #[test]
+    fn should_skip_path_ignores_agent_worktree_state() {
+        // Nested agent worktrees under `.claude/worktrees/` contain full repo
+        // copies; FS-walking checks must not descend into them and double-count
+        // or false-fail policy gates (#1030). `.claude/` is gitignored, so
+        // `git ls-files`-based checks are already safe; this guards the
+        // `collect_files()` filesystem walkers.
+        assert!(should_skip_path(".claude"));
+        assert!(should_skip_path(".claude/settings.local.json"));
+        assert!(should_skip_path(
+            ".claude/worktrees/agent-1/crates/ripr/src/lib.rs"
+        ));
+        // A real source path that merely contains the substring elsewhere must
+        // still be scanned.
+        assert!(!should_skip_path("crates/ripr/src/lib.rs"));
+        assert!(!should_skip_path("docs/claude-notes.md"));
     }
 
     #[test]
