@@ -1,0 +1,34 @@
+name: Scratch GC
+
+# Scheduled reclamation of self-hosted CI scratch disk so recovery does not
+# depend on PR traffic (#1028). Mirrors the existing inline "Prepare scratch" step
+# in routed-rust.yml, but on a timer: idle build runners (exactly the ones that
+# would otherwise never get a PR-triggered cleanup) get swept regularly.
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: scratch-gc-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scratch-gc:
+    name: Reclaim CI scratch disk
+    if: github.repository == 'EffortlessMetrics/ripr-swarm'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+    timeout-minutes: 15
+    steps:
+      - name: Reclaim scratch and report disk
+        run: |
+          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          { echo '```'; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          ci-disk-guard /mnt/ci-scratch 35 || echo "::warning::/mnt/ci-scratch below 35G free after scheduled GC"
