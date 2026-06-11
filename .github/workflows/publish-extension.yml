@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   package:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: editors/vscode
@@ -57,7 +57,7 @@ jobs:
           path: editors/vscode/dist/*.vsix
 
   server-assets-ready:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
     steps:
@@ -80,7 +80,7 @@ jobs:
   publish-vs-marketplace:
     needs: [package, server-assets-ready]
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_vs_marketplace != 'false' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -119,7 +119,7 @@ jobs:
   publish-open-vsx:
     needs: [package, server-assets-ready]
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_open_vsx != 'false' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
@@ -148,7 +148,7 @@ jobs:
   attach-release-asset:
     needs: package
     if: ${{ github.ref_type == 'tag' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
         with:
