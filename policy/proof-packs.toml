@@ -1,0 +1,114 @@
+# Proof-pack manifest.
+#
+# This file is the routing unit for proof-aware validation as defined by the
+# proof-routing operating model (docs/PROOF_ROUTING.md, landing via the
+# docs/proof-routing-model slice). Each pack names the paths it covers, the
+# commands that are required proof for those paths, the advisory commands
+# that stay visible without blocking, the CI lane that runs the proof today,
+# what a passing pack demonstrates, and what it does not demonstrate.
+#
+# `state = "manifest-only"`: nothing routes on this manifest yet. No CI lane
+# is skipped, narrowed, or reordered because of this file. Later slices add
+# `proof route`, `proof preflight`, PR summary integration, and a CI dry-run
+# artifact before any routing takes effect.
+#
+# `unknown_surface_policy = "full-proof"`: a changed file that matches no
+# pack routes to the full proof, never to the cheapest lane. Routing can only
+# narrow proof for surfaces it explicitly understands.
+#
+# A surface in more than one pack runs the union of the matched packs.
+# The `release-package` pack is pinned with `never_routed = true`; release
+# proof is never routed away.
+#
+# Structural validity is enforced by `cargo xtask check-proof-packs`:
+# the manifest must parse, pack ids must be unique kebab-case, every pack
+# needs at least one path and one required command, every command must be a
+# known repo command, and `ci_lane` must be a lane id declared in
+# `policy/ci-lane-whitelist.toml`.
+
+version = "0.1"
+state = "manifest-only"
+unknown_surface_policy = "full-proof"
+
+[[pack]]
+id = "docs-spec"
+paths = ["docs/specs/**", "docs/handoffs/**", "**/*.md"]
+required_commands = ["cargo xtask check-spec-format", "cargo xtask check-spec-numbering", "cargo xtask check-doc-index", "cargo xtask check-static-language", "cargo xtask check-local-context"]
+advisory_commands = ["cargo xtask markdown-links", "cargo xtask check-doc-roles"]
+ci_lane = "docs"
+proves = "Spec, handoff, and markdown-only surfaces keep the required format, numbering, doc-index coverage, conservative static language, and local-context rules."
+does_not_prove = "It does not demonstrate anything about compiled analyzer behavior, output schemas, or runtime evidence."
+
+[[pack]]
+id = "static-language"
+paths = ["crates/ripr/src/output/**", "crates/ripr/src/cli/**"]
+required_commands = ["cargo xtask check-static-language", "cargo xtask check-output-contracts"]
+advisory_commands = ["cargo xtask check-product-copy", "cargo xtask check-positioning-language"]
+ci_lane = "static-language"
+proves = "User-facing renderer and CLI strings stay inside the conservative static-language vocabulary and the registered output-contract values."
+does_not_prove = "It does not demonstrate that the classification logic behind those strings is correct."
+
+[[pack]]
+id = "output-contracts"
+paths = ["crates/ripr/src/output/**", "docs/OUTPUT_SCHEMA.md", "policy/output_contracts.txt", "fixtures/**/expected/**"]
+required_commands = ["cargo xtask check-output-contracts", "cargo xtask goldens check", "cargo xtask fixtures"]
+advisory_commands = ["cargo xtask golden-drift"]
+ci_lane = "output-contracts"
+proves = "Rendered output still matches the versioned JSON shape, golden expectations, and fixture contracts."
+does_not_prove = "It does not demonstrate that the analysis findings feeding the renderers are correct."
+
+[[pack]]
+id = "traceability-capabilities"
+paths = [".ripr/traceability.toml", "docs/CAPABILITY_MATRIX.md", "metrics/capabilities.toml"]
+required_commands = ["cargo xtask check-traceability", "cargo xtask check-capabilities"]
+advisory_commands = ["cargo xtask metrics"]
+ci_lane = "traceability"
+proves = "The spec-to-test-to-code map and the capability claims stay structurally consistent with the repository."
+does_not_prove = "It does not demonstrate that the mapped tests discriminate the behaviors they reference."
+
+[[pack]]
+id = "xtask-report"
+paths = ["xtask/src/**"]
+required_commands = ["cargo test -p xtask", "cargo xtask check-command-catalog"]
+advisory_commands = ["cargo xtask receipts check", "cargo xtask reports index"]
+ci_lane = "routed-rust-small"
+proves = "Repo automation commands stay cataloged and their focused xtask tests and report checks pass."
+does_not_prove = "It does not demonstrate product analyzer behavior outside the xtask automation surface."
+
+[[pack]]
+id = "analysis-fixture"
+paths = ["crates/ripr/src/analysis/**", "fixtures/**"]
+required_commands = ["cargo test --workspace", "cargo xtask fixtures", "cargo xtask goldens check", "cargo xtask check-fixture-contracts"]
+advisory_commands = ["cargo xtask dogfood", "cargo xtask golden-drift"]
+ci_lane = "routed-rust-small"
+proves = "Workspace tests, fixture runs, and golden comparisons still pass for the analyzer behavior covered by the fixture corpus."
+does_not_prove = "It does not demonstrate release packaging health or editor integration behavior."
+
+[[pack]]
+id = "editor-lsp"
+paths = ["editors/vscode/**", "crates/ripr/src/lsp/**", "crates/ripr/src/lsp.rs"]
+required_commands = ["cargo xtask vscode-compile", "cargo xtask vscode-test"]
+advisory_commands = ["cargo xtask vscode-test-e2e", "cargo xtask vscode-package"]
+ci_lane = "vscode-e2e"
+proves = "The VS Code extension compiles and its editor-loop tests pass against the LSP sidecar surface."
+does_not_prove = "It does not demonstrate analyzer classification correctness or release readiness."
+
+# The release-package pack is the guardrail of the whole model: it is pinned
+# `never_routed = true` so release proof is never routed away, and its `paths`
+# and `required_commands` are asserted by `cargo xtask check-proof-packs`
+# (docs/PROOF_ROUTING.md, release-proof protection slice). The asserted path
+# set must cover every release surface (version files, changelog, release
+# workflows) so any release-surface change trips `release_proof_required`, and
+# the asserted command set must name the full release proof (workspace tests,
+# clippy, check-pr, package, publish dry-run, release-readiness). A future
+# routing slice cannot weaken release validation by dropping a surface or a
+# gate from this pack without failing the check.
+[[pack]]
+id = "release-package"
+paths = ["Cargo.toml", "Cargo.lock", "CHANGELOG.md", "crates/ripr/Cargo.toml", "editors/vscode/package.json", "editors/vscode/package-lock.json", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml"]
+required_commands = ["cargo test --workspace", "cargo clippy --workspace --all-targets -- -D warnings", "cargo xtask check-pr", "cargo package -p ripr --list", "cargo publish -p ripr --dry-run", "cargo xtask release-readiness"]
+advisory_commands = []
+ci_lane = "release-readiness-proof"
+proves = "Release-bearing surfaces always pay the full release proof: workspace tests, clippy, check-pr, package contents, publish dry-run, and release-readiness (release-notes and known-limits docs)."
+does_not_prove = "It does not demonstrate marketplace publish success, which stays a release-workflow concern."
+never_routed = true

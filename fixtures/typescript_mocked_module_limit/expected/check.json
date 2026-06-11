@@ -54,6 +54,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -92,18 +93,22 @@
         "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
         "gap_state": "static_limitation",
         "missing_actionability_fields": [],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/discount.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "applyDiscount",
             "raw": "file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount",
+            "sample": null,
             "source_id": "probe:src_discount.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "unlock_condition": null,
         "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
       },
       "stop_reasons": [],

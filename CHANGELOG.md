@@ -11,7 +11,7 @@ are scoped or reviewed.
 
 ## 0.9.0 - Multi-language evidence-to-repair preview
 
-Release date: 2026-06-06.
+Release date: 2026-06-10.
 
 RIPR 0.9.0 extends the Lane 1 evidence-to-repair foundation beyond Rust-only
 assumptions. The headline is not that RIPR understands TypeScript; it is that
@@ -20,9 +20,14 @@ Cross-language uncertainty fails closed into named limitations instead of
 becoming fake repair guidance.
 
 This release syncs release-intended `ripr-swarm` work back into source `ripr`
-with a history-preserving merge commit (swarm freeze candidate `1cce26df`,
-delta `74b1fab0..1cce26df`, 100 commits). Source `ripr` remains the release,
-publishing, signing, marketplace, badge, and distribution authority.
+with a history-preserving merge commit (swarm sync candidate `ff902885`,
+delta `74b1fab0..ff902885`, 145 commits). The post-freeze delta over the
+original `1cce26df` candidate is behavior-preserving repository infrastructure
+(advisory proof-routing CI, the first docs-only lane-skip, contract/xtask proof
+wiring, golden re-bless, and `ripr-plus` timeout hardening); `crates/ripr`
+runtime behavior is unchanged and the release Claim and Non-Claims are
+unchanged. Source `ripr` remains the release, publishing, signing, marketplace,
+badge, and distribution authority.
 
 ### Release themes
 

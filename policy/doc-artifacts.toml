@@ -141,3 +141,73 @@ kind = "plan"
 path = "plans/typescript-preview-completion/implementation-plan.md"
 status = "proposed"
 owner = "language-adapter-swarm"
+
+[[artifact]]
+id = "RIPR-PLAN-0061"
+kind = "plan"
+path = "plans/use-case-specs/implementation-plan.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0065"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0066"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0067"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0068"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0069"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0070"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0071"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0072"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0073"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md"
+status = "proposed"
+owner = "product-swarm"

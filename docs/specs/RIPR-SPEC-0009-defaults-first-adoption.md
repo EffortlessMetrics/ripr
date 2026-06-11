@@ -442,11 +442,11 @@ Current tests and reports that support the contract:
 - `crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff`
 - `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
 - `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
-- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
-- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
-- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`
-- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_prefers_evidence_record_movement`
-- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason`
+- `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
+- `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
+- `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`
+- `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_prefers_evidence_record_movement`
+- `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_records_no_movement_reason`
 - `crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default`
 - `crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested`
 - `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
@@ -483,7 +483,7 @@ Current implementation pieces:
   orders.
 - `crates/ripr/src/output/pilot/ranking.rs` ranks actionable seams and
   `crates/ripr/src/output/pilot/render.rs` renders the pilot summary files.
-- `crates/ripr/src/output/outcome.rs` compares before/after repo-exposure
+- `crates/ripr/src/output/outcome/mod.rs` compares before/after repo-exposure
   snapshots and renders the public targeted-test outcome receipt.
 - `crates/ripr/src/output/mutation_calibration.rs` imports supplied
   cargo-mutants JSON, joins it to repo-exposure snapshots, and renders the

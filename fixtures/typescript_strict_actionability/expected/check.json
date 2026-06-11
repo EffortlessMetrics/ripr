@@ -46,6 +46,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/context.ts:2: `if (amount >= 100) {`",
         "language": "typescript",
@@ -86,18 +87,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/context.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "thresholdLabel",
             "raw": "file=src/context.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_context.ts:2:typescript_preview;owner=thresholdLabel",
+            "sample": null,
             "source_id": "probe:src_context.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+        "unlock_condition": null,
         "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
       },
       "stop_reasons": [],
@@ -158,6 +163,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "return_value changed at src/observed.ts:2: `return count + 1;`",
         "language": "typescript",
@@ -194,18 +200,22 @@
         "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
         "gap_state": "already_observed",
         "missing_actionability_fields": [],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/observed.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "normalizeCount",
             "raw": "file=src/observed.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_observed.ts:2:typescript_preview;owner=normalizeCount",
+            "sample": null,
             "source_id": "probe:src_observed.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "unlock_condition": null,
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },
       "stop_reasons": [],
@@ -275,6 +285,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -321,18 +332,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/pricing.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "discountedTotal",
             "raw": "file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=discountedTotal",
+            "sample": null,
             "source_id": "probe:src_pricing.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],

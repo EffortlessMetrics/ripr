@@ -766,7 +766,7 @@ evidence = [
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
   "crates/ripr/src/output/agent_seam_packets.rs includes packets[].evidence_record while preserving existing packet work-order fields",
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
-  "crates/ripr/src/output/outcome.rs prefers evidence_record before/after movement fields for ripr outcome and agent verify while preserving legacy repo-exposure fallback",
+  "crates/ripr/src/output/outcome/mod.rs prefers evidence_record before/after movement fields for ripr outcome and agent verify while preserving legacy repo-exposure fallback",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs prefers evidence_record selected-seam, recommendation, static-limit, and movement fields while preserving legacy proof fallbacks",
   "crates/ripr/src/output/baseline.rs, baseline_delta.rs, and baseline_update.rs carry canonical_gap_id when supplied directly, through identity.canonical_gap_id, or through evidence_record.canonical_gap_id, and match it before seam/source/id/dedupe/fallback selectors",
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
@@ -1321,8 +1321,8 @@ status = "alpha"
 spec = "RIPR-SPEC-0009"
 evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr outcome",
-  "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id, preferring seams[].evidence_record stage/value/discriminator/oracle/related-test movement when present and falling back to legacy fields",
-  "crates/ripr/src/output/outcome.rs compares check-output JSON findings by canonical gap ID, keeps strengthened-but-still-weak rows visible in remaining weak/unknown receipt output, fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview closed, unchanged, opened, strengthened, and weakened receipts, fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.{json,md} pins non-boundary return-value closure, fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.{json,md} pins exception-path closure, fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.{json,md} pins field/object closure, and fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.{json,md} pins output/log closure",
+  "crates/ripr/src/output/outcome/mod.rs compares before/after repo-exposure JSON by seam_id, preferring seams[].evidence_record stage/value/discriminator/oracle/related-test movement when present and falling back to legacy fields",
+  "crates/ripr/src/output/outcome/mod.rs compares check-output JSON findings by canonical gap ID, keeps strengthened-but-still-weak rows visible in remaining weak/unknown receipt output, fixtures/first_successful_pr/python-preview-gap/expected/outcome/{closed,unchanged,opened,strengthened,weakened}.{json,md} pin Python preview closed, unchanged, opened, strengthened, and weakened receipts, fixtures/first_successful_pr/python-return-gap/expected/outcome/closed.{json,md} pins non-boundary return-value closure, fixtures/first_successful_pr/python-exception-gap/expected/outcome/closed.{json,md} pins exception-path closure, fixtures/first_successful_pr/python-field-gap/expected/outcome/closed.{json,md} pins field/object closure, and fixtures/first_successful_pr/python-output-gap/expected/outcome/closed.{json,md} pins output/log closure",
   "ripr outcome prints Markdown by default and supports --format json plus --out",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",

@@ -125,6 +125,7 @@ cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
+cargo xtask check-proof-packs
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
@@ -136,6 +137,11 @@ policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-triage-report` writes an advisory open-PR board hygiene report.
 `cargo xtask gh-pr-status --pr <number>` writes a read-only merge-readiness
 packet for one PR after it exists.
+`cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>]`
+writes an advisory CI budget and merge-queue hygiene report that separates
+disk-guard infrastructure tempfails (issue #1058) from product failures; it
+reads recent routed-workflow runs through `gh` (or a supplied `--input` JSON
+file) and changes no CI behavior.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
 `cargo xtask worktree doctor` reports dirty main, branches behind main,
@@ -273,6 +279,65 @@ When reviewing or repairing code, read these files first:
 - `docs/agent-context/repo-map.md`
 - `docs/agent-context/review-invariants.md`
 - `docs/agent-context/validation.md`
+
+## Orchestration Operating Model
+
+Orchestrated work is a staged pipeline, not one monolithic session:
+
+```text
+cheap discovery
+-> cheap independent verification
+-> written issue/spec/plan
+-> focused implementation
+-> targeted proof
+-> stronger review only where needed
+-> cleanup
+```
+
+The main session does synthesis and judgment. File searches, CI logs, PR
+diffs, and failed hypotheses belong in subagents that return structured
+summaries, not in the main context.
+
+Route work by cost:
+
+- Use cheap read-only scout agents (Haiku-class, Explore-style) for repo
+  inventory, PR review sweeps, diffstat and changed-surface mapping,
+  spec/schema surface mapping, validation-log summaries, claim checks, and
+  cleanup audits. Scouts return structured tables (item, files touched,
+  claim made, evidence found, missing proof, risk, next action), not prose.
+- Before expensive or risky action (closing a PR, editing release claims,
+  re-pinning a freeze candidate), run a second cheap adversarial pass:
+  assume the first report is wrong, return only concrete discrepancies
+  with file or PR references.
+- Use implementation-grade agents (Sonnet-class) for code changes, test
+  and fixture updates, conflict resolution, schema/doc alignment, and
+  turning scout inventories into coherent PRs, with a bounded plan and a
+  small working set.
+- Escalate to top-tier judgment (Opus-class) only for high-risk release,
+  security, or architecture decisions, or after two failed correction
+  cycles. Using top-tier capacity to discover which files changed is an
+  orchestration failure.
+- Use broad parallel workflows (Ultracode-style fanouts) only for
+  queue-scale uncertainty: open-PR reconciliation audits, release-claim
+  audits across changelog/specs/schema, spec-surface inventories, CI
+  failure taxonomies, cross-repo contract reviews. Never for one narrow
+  edit.
+
+Shift verification left so mistakes stay cheap:
+
+```text
+before implementation: scout inventory + adversarial check + filed issue/plan
+before push:           focused proof + local preflight + cleanup audit
+before release:        release-claim audit + package dry-run + non-claim review
+before closing a PR:   supersession verified against the diff, not a summary
+```
+
+File or update the ripr-swarm issue or repo spec before implementation.
+Repo specs are durable truth; issues track execution state; chat history is
+not the plan. Use worktrees for risky or parallel branches. Every pass ends
+with cleanup: worktrees, branches, stashes, `target/ripr` cache growth,
+temp files, generated artifacts, cargo/npm churn, rescue leftovers, and
+local-only files.
 
 ## Long-Context Agent Workflow
 

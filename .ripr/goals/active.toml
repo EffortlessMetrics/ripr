@@ -1,253 +1,67 @@
-# Selected on 2026-06-05 after live queue inspection closed the current
-# dangling analysis PR (#982) and `cargo xtask goals next` reported
-# `no_current_goal = true`.
-id = "cross-language-evidence-router-ux"
-title = "Cross-Language Evidence Router UX"
-status = "closed"
+# Selected on 2026-06-06 during the queue reconciliation: the use-case
+# spec spine (RIPR-SPEC-0065 through RIPR-SPEC-0073) and its
+# implementation plan (RIPR-PLAN-0061) route all post-release
+# implementation work. Maintainer decision 2026-06-06: the goal points
+# at the plan; no implementation slice activates until after the 0.9.0
+# release ships and the source back-merge completes.
+id = "use-case-spec-spine"
+title = "Evidence-to-Repair Use-Case Spec Spine"
+status = "active"
 lane = "lane1"
-issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/908"
-no_current_goal = true
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/1040"
+no_current_goal = false
 
 objective = """
-Turn the calibrated TypeScript/Bun graph path into a repeatable mixed
-TypeScript plus Rust operating loop for Bun operators and external coding
-agents, while preserving preview/advisory authority and preventing unresolved
-cross-language evidence from becoming public repair packets.
+Land the use-case spec spine that makes ripr's surfaces usable,
+connected, and non-misleading, then drive implementation PR by PR from
+plans/use-case-specs/implementation-plan.md. ripr's product is
+evidence-to-repair routing, not raw findings: every surface projects
+canonical actionability plus runtime completeness, fails closed into
+named limitations, and states its non-claims next to its claims.
 """
 
 end_state = [
-  "Bun operators can read compact cross-language preview state without inspecting raw preview-card JSON",
-  "configured advisory packets bound agent work and stop when bridge or placement evidence is missing",
-  "proof-mode projection keeps static witnesses distinct from runtime, mutation, Miri, or model proof",
-  "manifest-only stable-byte profiles make future bridge debt visible before analyzer behavior changes",
-  "bridge inventory and dogfood receipts expose calibrated, missing, mention-only, bridge-unknown, and named limitation states",
-  "the campaign closes with TypeScript/Bun support still preview/advisory unless a separate accepted promotion contract changes that boundary",
-]
-
-hard_rules = [
-  "do not force actionability from cross-language preview evidence",
-  "do not create public repair packets from preview or limitation evidence",
-  "do not suggest Rust or external-language test targets without explicit bridge, observer, and typed placement evidence",
-  "do not add or require a ripr check --profile flag",
-  "do not run tsc, tsserver, Bun, Jest, Vitest, Miri, mutation engines, providers, or generated tests",
-  "do not change gates, badges, baselines, RIPR Zero, support tiers, source release, publishing, signing, marketplace, or install-doc behavior",
-  "source ripr remains release, signing, publishing, and distribution authority",
-]
-
-non_goals = [
-  "no stable TypeScript or JavaScript support claim",
-  "no full Bun binding graph",
-  "no generic cross-language support for every mixed-language repository",
-  "no runtime execution or UB proof claim",
-  "no generated tests",
-  "no provider integration",
-  "no autonomous edits",
-  "no public repair packets from preview cross-language evidence",
-  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
+  "specs RIPR-SPEC-0065 through RIPR-SPEC-0073 registered and merged",
+  "plans/use-case-specs/implementation-plan.md merged and indexed",
+  "active goals route through the plan, not a parallel product board",
+  "implementation slices resume from the plan after the 0.9.0 release",
 ]
 
 [[work_item]]
-id = "goals/cross-language-evidence-router-ux-activation"
+id = "docs/use-case-spec-spine"
 status = "done"
-branch = "goals-cross-language-evidence-router-ux"
-stackable = false
-acceptance = "Select RIPR-SPEC-0063 and RIPR-PLAN-0063 as the active Lane 1 successor after `no_current_goal = true`, without changing analyzer behavior, report output, repair-packet authority, release claims, gates, badges, support tiers, or source distribution authority."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
+branch = "docs/spec-use-case-roadmap"
+stackable = true
+acceptance = "Specs RIPR-SPEC-0065 (roadmap) through RIPR-SPEC-0073 (receipts/outcomes/route quality) merge via the stacked PR sequence with registry entries in docs/specs/README.md and policy/doc-artifacts.toml, adversarial-review fixes applied, and all spec gates green. Docs-only; no analyzer behavior changes."
+specs = [
+  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
+]
+plan = "plans/use-case-specs/implementation-plan.md"
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-spec-numbering",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-doc-artifacts",
+  "cargo xtask check-support-tiers",
+  "cargo xtask check-static-language",
+  "cargo xtask markdown-links",
+]
+
+[[work_item]]
+id = "goals/route-through-use-case-plan"
+status = "done"
+branch = "goals/route-use-case-plan"
+stackable = true
+blocked_by = [
+  "docs/use-case-spec-spine",
+]
+acceptance = "Active goals point at plans/use-case-specs/implementation-plan.md as the single sequencing artifact for post-release implementation. No implementation slice activates in this PR; slice 1 (review file:line hardening, RIPR-SPEC-0068) activates as a deliberate post-release decision after the 0.9.0 publish and source back-merge complete."
+specs = [
+  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
+]
+plan = "plans/use-case-specs/implementation-plan.md"
 commands = [
   "cargo xtask check-goals",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-doc-roles",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "release/typescript-bun-preview-patch-proof"
-status = "done"
-branch = "release-ts-bun-preview-patch-proof"
-stackable = false
-acceptance = "Add a documentation or report artifact that records the current Bun Blob / ArrayBuffer calibrated states, `copy_to_unshared`, MarkdownObject, and FFI panic-boundary follow-up status from existing receipts, preview/advisory authority, `repair_packet_ready = false` for cross-language preview rows, and validation results as pass, fail, or not run, without performing a release."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
-  "cargo test -p xtask typescript_bun_ub_calibration -- --test-threads=1",
-  "cargo test -p xtask bun_ub_calibration -- --test-threads=1",
-  "cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1",
-  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
-  "cargo xtask bun-ub-calibration",
-  "cargo xtask dogfood",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "output/bun-ub-preview-summary"
-status = "done"
-branch = "output-bun-ub-preview-summary"
-stackable = false
-acceptance = "Add a compact Bun UB preview summary built from existing graph, calibration, and dogfood data that lists calibrated routes and counts for `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`, `bridge_unknown`, `ts_mention_not_observer`, and named static limitations, includes `authority = preview_advisory_only`, confirms `repair_packet_ready = false`, and does not change analyzer behavior, public repair-packet authority, generated tests, gates, badges, or support tiers."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask bun_ub_preview_summary -- --test-threads=1",
-  "cargo xtask bun-ub-calibration",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "agent/bun-cross-language-advisory-packet"
-status = "done"
-branch = "agent-bun-cross-language-advisory-packet"
-stackable = false
-acceptance = "Add JSON and human output for configured Bun cross-language advisory packets with state, Rust seam, eligible TypeScript file, missing discriminators, suggested shape, bridge confidence, missing graph legs, authority boundary, must-not-change list, stop condition, raw evidence refs, and repair_packet_ready=false; bridge_unknown must emit an inspect-bridge packet, not a test-edit packet, and placement must appear only when placement evidence exists."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p ripr bun_cross_language_agent_packet -- --test-threads=1",
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "output/stable-byte-proof-mode"
-status = "done"
-branch = "output-stable-byte-proof-mode"
-stackable = false
-acceptance = "Add advisory proof_mode projection for configured Bun cross-language preview rows with one mode and a short reason, including observable_red_green, mutation_plus_miri, helper_gated, bridge_unknown, and static_limitation; bridge_unknown must be used when the binding or FFI leg is missing, named static limitations must not become test-edit tasks, proof mode must appear in JSON and human output, and no runtime, mutation, Miri, UB-proof, gate, badge, support-tier, generated-test, or source-edit claim is introduced."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p ripr stable_byte_proof_mode -- --test-threads=1",
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "fixtures/bun-node-fs-scalar-write-profile"
-status = "done"
-branch = "fixtures-bun-node-fs-scalar-write-profile"
-stackable = false
-acceptance = "Add a manifest-only node:fs scalar write stable-byte profile with typed witness placement at test/js/node/fs/fs.test.ts only when placement evidence exists, proof_mode=observable_red_green, missing bridge/oracle graph legs preserved as a named_static_limitation, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "fixtures/bun-write-helper-gated-profile"
-status = "done"
-branch = "fixtures-bun-write-helper-gated-profile"
-stackable = false
-acceptance = "Add a manifest-only Bun.write helper-gated stable-byte profile with proof_mode=helper_gated, explicit bun_write_fixture_helper unblock condition, missing bridge/helper/oracle graph legs preserved as a named_static_limitation, suggested_test_file=not_applicable, repair_packet_ready=false, and no analyzer behavior, runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "analysis/configured-bridge-inventory"
-status = "done"
-branch = "analysis-configured-bridge-inventory"
-stackable = false
-acceptance = "Add a report-only configured bridge inventory that lists credited configured bridges, manifest-only surfaces, bridge-unknown rows, and future surfaces from corpus-backed metadata; Blob ArrayBuffer, copy_to_unshared, and MarkdownObject configured profiles are visible; node:fs scalar write and Bun.write missing or future surfaces are visible without emitting S3 or other unbacked placeholders; all rows remain preview/advisory with repair_packet_ready=false, public_projection_eligible=false, repair_target=not_applicable, no verify/receipt command, and no allowed edit surface."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask configured_bridge_inventory -- --test-threads=1",
-  "cargo xtask configured-bridge-inventory",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "dogfood/live-bun-stable-byte-receipts"
-status = "done"
-branch = "dogfood-live-bun-stable-byte-receipts"
-stackable = false
-acceptance = "Add live or live-shaped Bun stable-byte dogfood receipts for configured copy_to_unshared and MarkdownObject witnesses, stripped resizable missing discriminator placement, mention-only rejection, bridge_unknown inspection, node:fs scalar write manifest-only limitation, Bun.write helper-gated limitation, and the FFI panic-boundary limitation; every receipt records manual verdict, review work saved or avoided, proof mode, preview_advisory_only authority, repair_packet_ready=false, and no runtime Bun execution, generated tests, source edits, public repair packet, gate, badge, or support-tier promotion."
-specs = [
-  "docs/specs/RIPR-SPEC-0062-cross-language-oracle-graph.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo test -p xtask live_bun_stable_byte_dogfood -- --test-threads=1",
-  "cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1",
-  "cargo xtask dogfood",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/bun-ub-first-run-polish"
-status = "done"
-branch = "docs-bun-ub-first-run-polish"
-stackable = false
-blocked_by = ["dogfood/live-bun-stable-byte-receipts"]
-acceptance = "Update the Bun UB TypeScript preview runbook and docs index for the actual command surface, report artifacts, failure modes, and next actions. The runbook starts from ripr.toml, ripr doctor, and ripr check; names next actions for missing config, missing discriminator, mention-only, bridge_unknown, and named static limitation states; links compact summary, agent packet, proof mode, bridge inventory, and dogfood receipts when they exist; and keeps known limits explicit without adding flags, analyzer behavior, generated tests, runtime execution, public repair packets, gates, badges, or support-tier promotion."
-spec = "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md"
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/post-081-support-decision"
-status = "done"
-branch = "docs-post-081-support-decision"
-stackable = false
-blocked_by = [
-  "dogfood/live-bun-stable-byte-receipts",
-  "docs/bun-ub-first-run-polish",
-]
-acceptance = "Add a support-decision note or closeout that lists evidence, gaps, non-claims, and the next required proof for any stronger TypeScript/Bun claim. The current claim stays TypeScript/JavaScript opt-in preview, and calibrated Bun stable-byte cases remain advisory cross-language evidence that distinguishes TS-discriminated, missing-discriminator, mention-only, bridge-unknown, and named-limitation states. The note rejects TypeScript stable support, Bun UB proof, runtime execution, generated tests, default gates, public repair packets, and full Bun binding graph coverage; any promotion proposal lists missing proof and requires a separate PR."
-specs = [
-  "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
-  "docs/specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md",
-]
-plan = "plans/cross-language-evidence-router-ux/implementation-plan.md"
-closeout = "docs/handoffs/2026-06-05-post-081-typescript-bun-support-decision.md"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr",
+  "cargo xtask check-doc-artifacts",
+  "cargo xtask check-traceability",
 ]

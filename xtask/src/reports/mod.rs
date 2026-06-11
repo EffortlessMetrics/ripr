@@ -1,6 +1,7 @@
 mod annotations;
 mod badges;
 mod bun;
+mod ci_budget;
 mod dogfood;
 mod first_pr;
 mod fixtures;
@@ -13,6 +14,8 @@ mod operator;
 mod pr;
 mod pr_evidence;
 mod pr_evidence_summary;
+mod proof_preflight;
+mod proof_route;
 mod receipts;
 mod recommendation;
 mod release;
@@ -28,6 +31,7 @@ pub(crate) use badges::{
     update_badge_endpoints,
 };
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
+pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
 pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
@@ -40,6 +44,7 @@ pub(crate) use operator::operator_cockpit_report;
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;
+pub(crate) use proof_route::{pr_summary_proof_route_section, proof};
 pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;

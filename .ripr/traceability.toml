@@ -631,11 +631,11 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff",
   "crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag",
   "crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_prefers_evidence_record_movement",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_report_buckets_seam_movement",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_prefers_evidence_record_movement",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_records_no_movement_reason",
   "crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default",
   "crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested",
   "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
@@ -689,7 +689,7 @@ code = [
   "crates/ripr/src/output/pilot/ranking.rs",
   "crates/ripr/src/output/pilot/render.rs",
   "crates/ripr/src/output/pilot/render/complete.rs",
-  "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/outcome/mod.rs",
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/src/lsp",
   ".github/workflows/publish-extension.yml",
@@ -839,8 +839,8 @@ tests = [
   "crates/ripr/src/cli/agent.rs::tests::agent_packet_requires_one_identity_source",
   "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts",
   "crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
   "crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates",
   "crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates",
   "crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory",
@@ -1556,8 +1556,8 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_carries_shared_evidence_record_projection",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_prefers_evidence_record_repair_context",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_prefers_evidence_record_movement",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_prefers_evidence_record_movement",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_records_no_movement_reason",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_agent_packet_evidence_record",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_canonical_gap_identity_when_supplied",
@@ -1589,7 +1589,7 @@ code = [
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
   "crates/ripr/src/output/ripr_zero_status.rs",
-  "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/outcome/mod.rs",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs",
   "crates/ripr/src/output/baseline.rs",
   "crates/ripr/src/output/baseline_delta.rs",
@@ -2213,11 +2213,11 @@ tests = [
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_python_repair_card_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_packet_carries_shared_repair_route_and_stop_conditions",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_queue_marks_receipt_closed_python_packets_stale",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_field_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_output_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_python_check_json_matches_canonical_gap_ids",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_field_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_output_fixture_matches_expected_receipts",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "crates/ripr/src/output/first_pr.rs::tests::python_check_output_materializes_gap_ledger_for_start_here",
   "crates/ripr/src/output/github.rs::tests::render_includes_python_repair_card_guidance",
@@ -2303,7 +2303,7 @@ code = [
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/gap_decision_ledger.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
-  "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/outcome/mod.rs",
   "crates/ripr/src/output/first_pr.rs",
 ]
 outputs = [
@@ -3443,8 +3443,8 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_queue_marks_receipt_closed_python_packets_stale",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::gap_record_packet_rejects_ineligible_no_action_records",
   "crates/ripr/src/cli/agent.rs::tests::agent_packet_parses_gap_ledger_request",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
-  "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
+  "crates/ripr/src/cli/commands/agent_gap_packet.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_carries_shared_repair_payload",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_requires_projection_eligibility_and_anchor",
   "crates/ripr/src/lsp/backend.rs::gap_record_context_tests::collect_context_packet_for_gap_id_reads_explicit_ledger",
@@ -3749,7 +3749,7 @@ tests = [
   "xtask/src/reports/release.rs",
   "xtask/src/main.rs",
   "xtask/src/main.rs::tests::dogfood_first_pr_scenarios_have_checked_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
   "xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
 ]
 fixtures = [
@@ -3759,7 +3759,7 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/output/first_pr.rs",
-  "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/outcome/mod.rs",
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",
@@ -4170,11 +4170,11 @@ tests = [
   "xtask::tests::dogfood_real_repair_attempt_rejects_movement_contradictions",
   "xtask::tests::dogfood_python_real_repo_eval_receipts_are_checked",
   "xtask::tests::first_successful_pr_corpus_reports_outcome_receipt_drift",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_return_value_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_field_fixture_matches_expected_receipts",
-  "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_python_output_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_preview_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_return_value_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_exception_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_field_fixture_matches_expected_receipts",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_output_fixture_matches_expected_receipts",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",
@@ -4739,4 +4739,130 @@ outputs = [
 metrics = [
   "perl_fact_packet_contract_preview_advisory",
   "perl_fact_packet_public_repair_packet_exclusions",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0065"
+name = "Evidence-to-repair use-case roadmap"
+spec = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
+]
+metrics = [
+  "use_case_roadmap_specs_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0066"
+name = "Repo badge use case"
+spec = "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md",
+]
+metrics = [
+  "repo_badge_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0067"
+name = "PR gate use case"
+spec = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",
+]
+metrics = [
+  "pr_gate_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0068"
+name = "PR review-card use case"
+spec = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md",
+]
+metrics = [
+  "pr_review_card_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0069"
+name = "LSP / agent feedback use case"
+spec = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md",
+]
+metrics = [
+  "lsp_agent_feedback_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0070"
+name = "Downstream review consumer use case"
+spec = "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md",
+]
+metrics = [
+  "downstream_review_consumer_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0071"
+name = "TypeScript/Bun evidence use case"
+spec = "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0071-typescript-bun-evidence-use-case.md",
+]
+metrics = [
+  "typescript_bun_evidence_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0072"
+name = "Large-repo diff-first use case"
+spec = "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0072-large-repo-diff-first-use-case.md",
+]
+metrics = [
+  "large_repo_diff_first_use_case_status_proposed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0073"
+name = "Receipts, outcomes, and route quality use case"
+spec = "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md",
+]
+metrics = [
+  "receipts_outcomes_route_quality_use_case_status_proposed",
 ]

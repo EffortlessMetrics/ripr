@@ -10,6 +10,7 @@ mod no_panic;
 mod positioning_language;
 mod process;
 mod product_copy;
+pub(crate) mod proof_packs;
 mod static_language;
 mod workflows;
 
@@ -25,5 +26,6 @@ pub(crate) use no_panic::check_no_panic_family;
 pub(crate) use positioning_language::check_positioning_language;
 pub(crate) use process::check_process_policy;
 pub(crate) use product_copy::check_product_copy;
+pub(crate) use proof_packs::check_proof_packs;
 pub(crate) use static_language::check_static_language;
 pub(crate) use workflows::check_workflows;

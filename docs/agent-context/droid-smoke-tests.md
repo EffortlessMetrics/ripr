@@ -12,7 +12,7 @@ Before relying on live smoke tests, run `cargo xtask check-droid-review-config` 
 
 1. Open a same-repo draft PR.
 2. Confirm Droid Auto Review starts.
-3. Confirm the run initializes with `custom:MiniMax-M2.7-0` (quoted in YAML as `"custom:MiniMax-M2.7-0"`).
+3. Confirm the run initializes with `custom:MiniMax-M3-0` (quoted in YAML as `"custom:MiniMax-M3-0"`).
 4. Confirm output is not naked LGTM.
 5. Confirm clean review includes:
    - inspected surfaces;
@@ -58,7 +58,7 @@ Triggers:
 - weekly Monday 08:00 UTC schedule
 
 Expected:
-- scan uses `custom:MiniMax-M2.7-0`;
+- scan uses `custom:MiniMax-M3-0`;
 - scan window is 7 days;
 - severity threshold is `medium`;
 - critical findings block (`security_block_on_critical: true`);
@@ -81,7 +81,7 @@ confirm:
   the artifact name is `droid-review-debug-sanitized-*`;
 - sanitized debug artifacts do not contain expanded provider keys, GitHub
   tokens, authorization headers, or raw prompt files;
-- generated Factory settings (`~/.factory/settings.local.json`) keep
+- generated Factory settings (`~/.factory/settings.json`) keep
   `${MINIMAX_API_KEY}` unexpanded in the heredoc;
 - `show_full_output: false` is in effect for all Droid action steps;
 - `upload_debug_artifacts: false` is in effect for normal secrets-backed runs.
@@ -91,5 +91,5 @@ confirm:
 When enabling Droid in a new repository, follow the rollout checklist first.
 After merge, use one same-repo PR to confirm automatic review, `@droid review`,
 `@droid security`, and manual Droid Security Scan all run with
-`custom:MiniMax-M2.7-0`. Inspect artifact behavior before expanding beyond the
+`custom:MiniMax-M3-0`. Inspect artifact behavior before expanding beyond the
 pilot batch; normal runs should not upload raw debug artifacts.

@@ -60,12 +60,12 @@ approved EffortlessMetrics/droid-action-safe SHA
 GitHub CLI available on PATH before Droid action starts
 no direct Factory-AI/droid-action use for BYOK workflows
 no raw $HOME/.factory/** or droid-prompts/** artifact upload
-quoted heredoc for settings.local.json
-literal ${MINIMAX_API_KEY} inside settings.local.json
-no ANTHROPIC_AUTH_TOKEN
-no ANTHROPIC_BASE_URL
+quoted heredoc for settings.json
+literal ${MINIMAX_API_KEY} inside settings.json
+empty ANTHROPIC_AUTH_TOKEN step env override
+empty ANTHROPIC_BASE_URL step env override
 no reasoning_effort
-custom:MiniMax-M2.7-0
+custom:MiniMax-M3-0
 review_depth: shallow
 action refs pinned to immutable SHAs
 per-PR concurrency for automatic review

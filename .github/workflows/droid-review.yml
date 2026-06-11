@@ -40,20 +40,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$HOME/.factory"
-          cat > "$HOME/.factory/settings.local.json" <<'JSON'
+          cat > "$HOME/.factory/settings.json" <<'JSON'
           {
             "customModels": [
               {
-                "displayName": "MiniMax-M2.7",
-                "model": "MiniMax-M2.7",
+                "displayName": "MiniMax-M3",
+                "model": "MiniMax-M3",
                 "baseUrl": "https://api.minimax.io/anthropic",
                 "apiKey": "${MINIMAX_API_KEY}",
                 "provider": "anthropic",
-                "maxOutputTokens": 64000,
-                "noImageSupport": true,
-                "extraArgs": {
-                  "temperature": 1
-                }
+                "maxOutputTokens": 64000
               }
             ]
           }
@@ -79,8 +75,11 @@ jobs:
           echo "$gh_root/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
           "$gh_root/gh_2.82.1_linux_amd64/bin/gh" --version
 
-      - name: Run Droid Auto Review with MiniMax M2.7 BYOK
+      - name: Run Droid Auto Review with MiniMax M3 BYOK
         uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
+        env:
+          ANTHROPIC_AUTH_TOKEN: ""
+          ANTHROPIC_BASE_URL: ""
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           upload_debug_artifacts: false
@@ -89,8 +88,8 @@ jobs:
           automatic_security_review: true
 
           review_depth: shallow
-          review_model: "custom:MiniMax-M2.7-0"
-          security_model: "custom:MiniMax-M2.7-0"
+          review_model: "custom:MiniMax-M3-0"
+          security_model: "custom:MiniMax-M3-0"
 
           security_severity_threshold: high
           security_block_on_critical: true
