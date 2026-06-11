@@ -345,7 +345,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.7.0` is the current public release line for the Rust crate, GitHub Release server assets, VS Code/Open VSX extension metadata, generated CI workflow artifacts, and the Rust 1.95 MSRV. `ripr-swarm` remains the development trunk; source `ripr` remains the release/distribution authority. | Promotion and release-maintenance proof. |
+| Distribution | `0.8.0` is the current public release line for the Rust crate, GitHub Release server assets, VS Code/Open VSX extension metadata, generated CI workflow artifacts, and the Rust 1.95 MSRV. `ripr-swarm` remains the development trunk; source `ripr` remains the release/distribution authority. | Promotion and release-maintenance proof. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -396,7 +396,7 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
-`v0.7.0` public release line includes the server manifest, per-target server
+`v0.8.0` public release line includes the server manifest, per-target server
 archives, checksums, and VSIX needed for this default path. Future public
 release claims must refresh the same asset family during release execution.
 

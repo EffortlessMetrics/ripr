@@ -16,29 +16,29 @@ permissions:
 jobs:
   build:
     name: build ${{ matrix.target }}
-    runs-on: ${{ fromJson(matrix.runs_on) }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-pc-windows-msvc
-            runs_on: '["self-hosted","Windows","X64"]'
+            os: windows-latest
             executable: ripr.exe
             archive: zip
           - target: x86_64-unknown-linux-gnu
-            runs_on: '["self-hosted","Linux","X64"]'
+            os: ubuntu-latest
             executable: ripr
             archive: tar.gz
           - target: aarch64-unknown-linux-gnu
-            runs_on: '["self-hosted","Linux","ARM64"]'
+            os: ubuntu-24.04-arm
             executable: ripr
             archive: tar.gz
           - target: x86_64-apple-darwin
-            runs_on: '["self-hosted","macOS","X64"]'
+            os: macos-15-intel
             executable: ripr
             archive: tar.gz
           - target: aarch64-apple-darwin
-            runs_on: '["self-hosted","macOS","ARM64"]'
+            os: macos-15
             executable: ripr
             archive: tar.gz
 
@@ -63,7 +63,7 @@ jobs:
 
   manifest:
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 

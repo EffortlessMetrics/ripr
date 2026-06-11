@@ -2,7 +2,7 @@ name: Droid Auto Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, synchronize, ready_for_review, reopened, labeled, unlabeled]
 
 concurrency:
   group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
@@ -12,7 +12,8 @@ jobs:
   droid-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !contains(github.event.pull_request.title, '[skip-review]')
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      !contains(github.event.pull_request.labels.*.name, 'release-check')
 
     runs-on:
       group: em-ci-review

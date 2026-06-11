@@ -1478,7 +1478,7 @@ function setupRepairBlocker(context: RiprStatusContext): string | undefined {
 
 function extensionVersion(context: vscode.ExtensionContext): string {
   const version = context.extension?.packageJSON?.version;
-  return typeof version === 'string' && version.trim() !== '' ? version.replace(/^v/, '') : '0.7.0';
+  return typeof version === 'string' && version.trim() !== '' ? version.replace(/^v/, '') : '0.8.0';
 }
 
 function workspaceTrustState(context: RiprStatusContext): RiprSetupState {
