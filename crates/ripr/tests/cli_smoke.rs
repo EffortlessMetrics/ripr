@@ -1563,6 +1563,68 @@ fn doctor_reports_malformed_config_error() -> Result<(), String> {
 }
 
 #[test]
+fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
+    // A workspace with only Rust markers (Cargo.toml + src/lib.rs).
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Section 1: Detected languages — rust present with (stable) tier.
+    assert!(
+        stdout.contains("Detected languages:"),
+        "expected 'Detected languages:' in stdout:\n{stdout}"
+    );
+    // The line that contains "Detected languages:" must also contain "rust"
+    // and "(stable)".
+    let detected_line = stdout
+        .lines()
+        .find(|l| l.contains("Detected languages:"))
+        .unwrap_or("");
+    assert!(
+        detected_line.contains("rust"),
+        "expected 'rust' on the Detected languages line:\n{detected_line}"
+    );
+    assert!(
+        detected_line.contains("(stable)"),
+        "expected '(stable)' on the Detected languages line:\n{detected_line}"
+    );
+
+    // Anti-overclaim: a Rust-only workspace must NOT list typescript as detected.
+    assert!(
+        !detected_line.contains("typescript"),
+        "must not list typescript when no TS markers are present:\n{detected_line}"
+    );
+
+    // Section 3: Known limitations.
+    assert!(
+        stdout.contains("Known limitations:"),
+        "expected 'Known limitations:' in stdout:\n{stdout}"
+    );
+    // TypeScript preview line.
+    assert!(
+        stdout.contains("TypeScript/JavaScript/Bun analysis is preview"),
+        "expected TypeScript/JavaScript/Bun preview line in stdout:\n{stdout}"
+    );
+    // Cross-language fail-closed line.
+    assert!(
+        stdout.contains("cross_language_oracle_visibility_unresolved"),
+        "expected cross_language_oracle_visibility_unresolved in stdout:\n{stdout}"
+    );
+
+    // Section 4: Recommended first command.
+    assert!(
+        stdout.contains("Recommended first command: ripr check --base origin/main"),
+        "expected 'Recommended first command: ripr check --base origin/main' in stdout:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn init_writes_conservative_config_and_doctor_loads_it() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     let root = workspace.display().to_string();

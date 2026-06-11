@@ -140,6 +140,19 @@ Checks:
   - ripr.toml load status and effective defaults are visible
   - git, cargo, and rustc are available
 
+First-run diagnosis (printed automatically):
+  - Detected languages: shallow file-marker scan; each language shows its
+    canonical tier (stable or preview) and [adapter not compiled] when the
+    feature is absent. Only languages with concrete markers are listed —
+    no overclaiming.
+  - Detected test surfaces: per detected language, the first recognizable
+    framework marker (cargo test, pytest, jest, vitest, bun). Prints
+    "test framework not detected" rather than guessing.
+  - Known limitations: static notes on preview coverage, cross-language
+    oracle visibility (fail-closed), large-repo scan bounds, and advisory
+    nature of preview-language evidence.
+  - Recommended first command: ripr check --base origin/main
+
 Start-here next step:
   - after setup is valid, run `ripr first-pr --root . --base origin/main --head HEAD`
     or `ripr start-here --root . --base origin/main --head HEAD`

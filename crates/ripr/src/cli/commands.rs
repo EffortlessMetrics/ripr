@@ -15,6 +15,7 @@ use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig,
     apply_to_check_input, load_for_root,
 };
+use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -3777,6 +3778,9 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
 
     report_config_status(&root, &mut ok);
     report_cache_status(&root);
+    report_detected_languages(&root);
+    report_detected_test_surfaces(&root);
+    report_known_limitations();
 
     for (tool, args) in [
         ("git", vec!["--version"]),
@@ -3816,6 +3820,223 @@ fn print_doctor_start_here_guidance(root: &Path) {
     );
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
+    );
+    println!("- Recommended first command: ripr check --base origin/main");
+}
+
+/// Language-to-status mapping used by the doctor first-run diagnosis.
+///
+/// Only Rust is `Stable`. All preview surfaces (TypeScript, JavaScript,
+/// Python, Perl) carry `Preview` per `LanguageStatus::as_str()` and
+/// RIPR-SPEC-0026.
+fn language_status(id: LanguageId) -> LanguageStatus {
+    match id {
+        LanguageId::Rust => LanguageStatus::Stable,
+        LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Python | LanguageId::Perl => {
+            LanguageStatus::Preview
+        }
+    }
+}
+
+/// Shallow marker scan: look for files/dirs that indicate a language is
+/// present. Only inspects `root`, `root/src/`, and immediate child dirs of
+/// `root` — no recursion, no AST parsing, no workspace pipeline.
+///
+/// Returns `false` (no marker found) when any `read_dir` call fails; doctor
+/// must never panic or OOM on a scan error.
+fn shallow_has_extension(root: &Path, extension: &str) -> bool {
+    let dirs_to_scan: [&Path; 2] = [root, &root.join("src")];
+    for dir in dirs_to_scan {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some(extension) {
+                    return true;
+                }
+            }
+        }
+    }
+    // Also scan one level of child dirs of root.
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                let sub_entries = std::fs::read_dir(&child).into_iter().flatten().flatten();
+                for sub in sub_entries {
+                    let path = sub.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some(extension) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn shallow_has_file(root: &Path, name: &str) -> bool {
+    root.join(name).exists() || root.join("src").join(name).exists()
+}
+
+/// Detect which languages have concrete file markers in this workspace.
+/// Returns detected `LanguageId`s in a stable order (Rust first, then
+/// TypeScript, JavaScript, Python, Perl).
+fn detect_languages(root: &Path) -> Vec<LanguageId> {
+    let mut found = Vec::new();
+
+    // Rust: Cargo.toml at root OR .rs files in root/src
+    if root.join("Cargo.toml").exists() || shallow_has_extension(root, "rs") {
+        found.push(LanguageId::Rust);
+    }
+
+    // TypeScript: package.json, tsconfig.json, .ts or .tsx files
+    if shallow_has_file(root, "package.json")
+        || shallow_has_file(root, "tsconfig.json")
+        || shallow_has_extension(root, "ts")
+        || shallow_has_extension(root, "tsx")
+    {
+        found.push(LanguageId::TypeScript);
+    }
+
+    // JavaScript: .js or .jsx files (only when no TS markers already found)
+    if !found.contains(&LanguageId::TypeScript)
+        && (shallow_has_extension(root, "js") || shallow_has_extension(root, "jsx"))
+    {
+        found.push(LanguageId::JavaScript);
+    }
+
+    // Python: pyproject.toml, setup.py, setup.cfg, pytest.ini, or .py files
+    if shallow_has_file(root, "pyproject.toml")
+        || shallow_has_file(root, "setup.py")
+        || shallow_has_file(root, "setup.cfg")
+        || shallow_has_file(root, "pytest.ini")
+        || shallow_has_extension(root, "py")
+    {
+        found.push(LanguageId::Python);
+    }
+
+    // Perl: .pl or .pm files
+    if shallow_has_extension(root, "pl") || shallow_has_extension(root, "pm") {
+        found.push(LanguageId::Perl);
+    }
+
+    found
+}
+
+/// Print `- Detected languages: rust (stable), typescript (preview), …`
+///
+/// Each entry shows its canonical `LanguageStatus` tier in parentheses.
+/// Appends `[adapter not compiled]` when `LanguageId::is_available()` is
+/// false for the detected language. If no markers are found, prints
+/// `none detected` rather than claiming any language.
+fn report_detected_languages(root: &Path) {
+    let detected = detect_languages(root);
+    if detected.is_empty() {
+        println!("- Detected languages: none detected");
+        return;
+    }
+    let entries: Vec<String> = detected
+        .iter()
+        .map(|id| {
+            let tier = language_status(*id).as_str().to_string();
+            let available = id.is_available();
+            if available {
+                format!("{} ({})", id.as_str(), tier)
+            } else {
+                format!("{} ({}) [adapter not compiled]", id.as_str(), tier)
+            }
+        })
+        .collect();
+    println!("- Detected languages: {}", entries.join(", "));
+}
+
+/// Detect test-framework markers per detected language.
+///
+/// Reports `<lang>: test framework not detected` rather than guessing when
+/// no clear marker is found — the function never claims a framework it cannot
+/// confirm.
+fn report_detected_test_surfaces(root: &Path) {
+    let detected = detect_languages(root);
+    if detected.is_empty() {
+        return;
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for id in &detected {
+        match id {
+            LanguageId::Rust => {
+                // Cargo.toml presence is the Rust test surface marker
+                // (`cargo test` and `#[cfg(test)]` are available in any
+                // Cargo workspace).
+                if root.join("Cargo.toml").exists() {
+                    lines.push("rust: cargo test (#[cfg(test)])".to_string());
+                } else {
+                    lines.push("rust: test framework not detected".to_string());
+                }
+            }
+            LanguageId::Python => {
+                if root.join("pytest.ini").exists() || root.join("pyproject.toml").exists() {
+                    lines.push("python: pytest".to_string());
+                } else {
+                    lines.push("python: test framework not detected".to_string());
+                }
+            }
+            LanguageId::TypeScript | LanguageId::JavaScript => {
+                // Only report a framework when a clear config marker exists.
+                let lang = id.as_str();
+                if root.join("jest.config.js").exists()
+                    || root.join("jest.config.ts").exists()
+                    || root.join("jest.config.mjs").exists()
+                    || root.join("jest.config.cjs").exists()
+                {
+                    lines.push(format!("{lang}: jest"));
+                } else if root.join("vitest.config.ts").exists()
+                    || root.join("vitest.config.js").exists()
+                    || root.join("vitest.config.mjs").exists()
+                {
+                    lines.push(format!("{lang}: vitest"));
+                } else if root.join("bun.lockb").exists() {
+                    lines.push(format!("{lang}: bun"));
+                } else {
+                    lines.push(format!("{lang}: test framework not detected"));
+                }
+            }
+            LanguageId::Perl => {
+                lines.push("perl: test framework not detected".to_string());
+            }
+        }
+    }
+    if !lines.is_empty() {
+        println!("- Detected test surfaces: {}", lines.join("; "));
+    }
+}
+
+/// Print static limitation notes for the doctor first-run diagnosis.
+///
+/// Every statement is conservative: no claim is made beyond what the static
+/// analysis layer can actually determine. Wording sources:
+///   - `language.rs` doc comment: TypeScript/JavaScript/Python/Perl are
+///     preview surfaces.
+///   - `StaticLimitKind::CrossLanguageOracleVisibilityUnresolved` wire string
+///     and its doc comment.
+///   - 0.9.0 CHANGELOG non-claims.
+fn report_known_limitations() {
+    println!("- Known limitations:");
+    println!(
+        "  TypeScript/JavaScript/Bun analysis is preview (advisory only); \
+        not stable support — findings are additive, not gating"
+    );
+    println!(
+        "  Cross-language oracle visibility is fail-closed: an FFI/binding seam tested \
+        from another language reads as cross_language_oracle_visibility_unresolved, \
+        not a Rust gap — verify the external oracle directly"
+    );
+    println!(
+        "  Large-repo runs are diff-first; full-repo analysis may be limited \
+        by workspace size"
+    );
+    println!(
+        "  Preview-language evidence does not emit public repair packets and \
+        does not block by default"
     );
 }
 
