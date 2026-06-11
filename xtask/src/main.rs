@@ -6478,7 +6478,8 @@ fn check_static_language_impl() -> Result<(), String> {
         fix_kind: FixKind::ReviewerDecisionRequired,
         recommended_fixes: &[
             "Rewrite static product output to use the approved exposure vocabulary.",
-            "If this is explanatory documentation, add a reasoned `[[allow]]` entry to the static-language allowlist.",
+            "For an innocent word in a comment, append `ripr-allow: static-language: <reason>` to that single line.",
+            "If a whole file is explanatory documentation, add a reasoned `[[allow]]` entry to the static-language allowlist.",
         ],
         rerun_command: "cargo xtask check-static-language",
         exception_template: Some(
@@ -6501,6 +6502,12 @@ fn check_static_language_impl() -> Result<(), String> {
         let text = read_text_lossy(&path)?;
         for (line_number, line) in text.lines().enumerate() {
             let lower = line.to_ascii_lowercase();
+            // A reasoned inline allow suppresses this line's forbidden terms.
+            // It is finer-grained than a whole-file allowlist entry (smaller
+            // bypass surface, reviewable in the diff) and must carry a reason.
+            if line_has_static_language_inline_allow(&lower) {
+                continue;
+            }
             for term in &forbidden {
                 if contains_word(&lower, term) {
                     violations.push(static_language_violation_message(
@@ -68388,6 +68395,25 @@ fn forbidden_static_terms() -> Vec<String> {
         .collect()
 }
 
+/// Inline marker that suppresses static-language violations for a single line —
+/// finer-grained than a whole-file allowlist entry. It MUST be followed by a
+/// reason so the suppression is reviewable and not a silent drive-by:
+///   `<comment-prefix> ripr-allow: static-language: <reason>`
+const STATIC_LANGUAGE_INLINE_ALLOW_MARKER: &str = "ripr-allow: static-language:";
+
+/// True when the (already-lowercased) line carries the inline-allow marker
+/// followed by a non-empty reason. A bare marker with no reason does NOT
+/// suppress, so an intentional allow always records why.
+fn line_has_static_language_inline_allow(lower_line: &str) -> bool {
+    match lower_line.find(STATIC_LANGUAGE_INLINE_ALLOW_MARKER) {
+        Some(index) => {
+            let after = &lower_line[index + STATIC_LANGUAGE_INLINE_ALLOW_MARKER.len()..];
+            !after.trim().is_empty()
+        }
+        None => false,
+    }
+}
+
 /// A plain-English synonym hint for a prohibited static-language term, used to
 /// speed fixes when the term appears in prose/comments rather than analyzer
 /// output. The gate scans all tracked prose, not only output strings, so a hit
@@ -68428,7 +68454,8 @@ fn static_language_violation_message(
 — this gate scans all tracked prose, not just analyzer output. In output, use the \
 approved exposure vocabulary (exposed/weakly_exposed/reachable_unrevealed/no_static_path/\
 infection_unknown/propagation_unknown/static_unknown). In comments or docs, use a plain \
-synonym (e.g. {hint})."
+synonym (e.g. {hint}). To intentionally allow this line, append \
+`{STATIC_LANGUAGE_INLINE_ALLOW_MARKER} <reason>`."
     )
 }
 
@@ -70792,21 +70819,22 @@ mod tests {
         lane1_evidence_audit_report_from_complete_repo_exposure,
         lane1_evidence_audit_timeout_error, lane1_readiness_packet_specs,
         limited_badge_artifacts_json, limited_badge_artifacts_markdown,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, next_spec_id_from_ids, no_panic_toml_string,
-        non_rust_programming_retention_reason, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, normalize_path,
-        panic_family_from_pattern, parse_actionable_gap_outcomes_args, parse_campaign_manifest,
-        parse_doc_artifact_ledger_text, parse_file_policy_allowlist, parse_gh_pr_status_args,
-        parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
-        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
-        parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
-        parse_repo_badge_artifact_options, parse_repo_exposure_static_seams,
-        parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
-        parse_ripr_swarm_plan_args, parse_sarif_policy_args, parse_sarif_policy_results,
-        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        line_has_static_language_inline_allow, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        normalize_path, panic_family_from_pattern, parse_actionable_gap_outcomes_args,
+        parse_campaign_manifest, parse_doc_artifact_ledger_text, parse_file_policy_allowlist,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
+        parse_pr_triage_pull_requests, parse_reason, parse_repo_badge_artifact_options,
+        parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
+        parse_required_status_contexts, parse_ripr_swarm_args, parse_ripr_swarm_plan_args,
+        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
+        parse_string_value, parse_targeted_test_outcome_args,
         pr_actionable_delta_front_panel_from_inputs, pr_body_validation_warning, pr_checks_summary,
         pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
         pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
@@ -75879,6 +75907,39 @@ fn has_unwrap_in_name() -> bool {
             &allowlist,
             "docs/generated/output.json"
         ));
+    }
+
+    #[test]
+    fn line_has_static_language_inline_allow_requires_a_reason() {
+        // Marker with a reason suppresses (input is lowercased by the caller).
+        assert!(line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language: established ci wording"
+        ));
+        // Bare marker with no reason does NOT suppress — an allow must say why.
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language:"
+        ));
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language:   "
+        ));
+        // No marker at all.
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach"
+        ));
+    }
+
+    #[test]
+    fn static_language_violation_message_advertises_inline_allow() {
+        let message = static_language_violation_message(
+            "policy/x.txt",
+            3,
+            "adequate",
+            "# this set is adequate",
+        );
+        assert!(
+            message.contains("ripr-allow: static-language:"),
+            "message must advertise the inline-allow escape, got: {message}"
+        );
     }
 
     #[test]
