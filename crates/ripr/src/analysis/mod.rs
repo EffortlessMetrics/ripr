@@ -25,7 +25,8 @@ pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
 pub(crate) use seam_inventory::{
-    ScopedClassifiedSeamInventory, SeamLimitInfo, inventory_classified_seams_at_with_config,
+    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
+    SeamLimitSource, inventory_classified_seams_at_with_config,
     inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config, inventory_seams_at,
 };

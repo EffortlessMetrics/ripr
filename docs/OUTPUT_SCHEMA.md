@@ -1664,10 +1664,17 @@ Field contract:
   - `category` — `"repo_seam_limit_applied"`.
   - `seams_analyzed` — number of seams that were classified.
   - `seams_total` — total seams before truncation.
+  - `limit_source` — `"default"` when the cap came from the built-in
+    default (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`);
+    `"configured"` when `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly
+    set in the environment. Added as an additive field within schema
+    version `0.3` per RIPR-SPEC-0074 Slice B.
   - `control` — the env var that triggered the limit:
     `"RIPR_REPO_EXPOSURE_SEAM_LIMIT"`.
-  - `repair_route` — human-readable instructions for removing or
-    raising the limit.
+  - `repair_route` — human-readable instructions. When `limit_source`
+    is `"default"`: set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` to analyze
+    all seams. When `limit_source` is `"configured"`: remove or raise
+    the env var.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
   zero so consumers can plot stable bar charts.

@@ -3626,3 +3626,106 @@ fn check_repo_exposure_json_run_status_seam_limit_applied_and_complete() -> Resu
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
 }
+
+#[test]
+fn check_repo_exposure_json_limit_source_configured_when_env_set() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    let limited = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !limited.status.success() {
+        return Err(format!(
+            "limited run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&limited.stdout),
+            String::from_utf8_lossy(&limited.stderr)
+        ));
+    }
+    let limited_stdout = String::from_utf8_lossy(&limited.stdout);
+    let limited_json: serde_json::Value = serde_json::from_str(&limited_stdout)
+        .map_err(|e| format!("parse limited run JSON: {e}\n{limited_stdout}"))?;
+
+    let limit_source = limited_json
+        .pointer("/limitations/0/limit_source")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].limit_source in:\n{limited_stdout}"))?;
+    if limit_source != "configured" {
+        return Err(format!(
+            "expected limit_source=configured when env is set, got: {limit_source}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    // First run (cold) — warms the cache.
+    let first = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !first.status.success() {
+        return Err(format!(
+            "first (cold) run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&first.stdout),
+            String::from_utf8_lossy(&first.stderr)
+        ));
+    }
+    let first_stdout = String::from_utf8_lossy(&first.stdout);
+    let first_json: serde_json::Value = serde_json::from_str(&first_stdout)
+        .map_err(|e| format!("parse first run JSON: {e}\n{first_stdout}"))?;
+
+    if first_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "first (cold) run must report seam_limit_applied, got: {:?}\n{first_stdout}",
+            first_json.pointer("/run_status")
+        ));
+    }
+
+    // Second run (warm — cache hit) — MUST also report seam_limit_applied.
+    let second = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !second.status.success() {
+        return Err(format!(
+            "second (warm) run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&second.stdout),
+            String::from_utf8_lossy(&second.stderr)
+        ));
+    }
+    let second_stdout = String::from_utf8_lossy(&second.stdout);
+    let second_json: serde_json::Value = serde_json::from_str(&second_stdout)
+        .map_err(|e| format!("parse second run JSON: {e}\n{second_stdout}"))?;
+
+    if second_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "second (warm/cache-hit) run must also report seam_limit_applied (NOT complete); \
+             a cache hit must NOT erase the seam-limit status.\n\
+             Got: {:?}\n{second_stdout}",
+            second_json.pointer("/run_status")
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}

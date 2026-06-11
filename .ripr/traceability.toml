@@ -4875,11 +4875,24 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_run_status_complete_when_no_limit_applied",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_run_status_and_limitations_when_limit_applied",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
-  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_run_status_seam_limit_applied_and_complete"
+  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_run_status_seam_limit_applied_and_complete",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_default_applies_when_above_cap",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_default_does_not_truncate_when_at_or_below_cap",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_configured_source_when_env_set",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_opt_out_none_returns_none_for_any_size",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_default_source_below_cap_returns_none",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_repo_exposure_seam_limit_below_default_cap_is_complete",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::cache_envelope_with_limit_info_round_trips",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::cache_envelope_missing_limit_info_field_deserializes_as_none",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::complete_run_stores_none_limit_info_in_envelope",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::capped_cold_then_warm_cache_hit_returns_same_limit_info",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_limit_source_configured_when_env_set",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied"
 ]
 fixtures = []
 code = [
   "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/render.rs",

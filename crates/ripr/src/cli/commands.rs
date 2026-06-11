@@ -4040,8 +4040,9 @@ fn report_known_limitations() {
         not a Rust gap — verify the external oracle directly"
     );
     println!(
-        "  Large-repo runs are diff-first; full-repo analysis may be limited \
-        by workspace size"
+        "  Full-repo repo-exposure analysis applies a default cap of {} seams; \
+        set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams.",
+        analysis::DEFAULT_REPO_EXPOSURE_SEAM_LIMIT
     );
     println!(
         "  Preview-language evidence does not emit public repair packets and \

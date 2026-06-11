@@ -40,7 +40,19 @@ use super::facts::FileFacts;
 use super::seam_classification::ClassifiedSeam;
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
+use super::seam_inventory::{SeamLimitSource, repo_exposure_seam_limit};
 use std::path::{Path, PathBuf};
+
+/// On-disk representation of seam-limit metadata embedded in the cache envelope.
+/// Mirrors `SeamLimitInfo` but lives in the cache module to avoid a circular dep.
+/// `#[serde(default)]` ensures old cache entries without this field deserialize
+/// as `None` (= complete run; correct, since pre-Slice-B caches were full runs).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CachedSeamLimitInfo {
+    pub(crate) analyzed: usize,
+    pub(crate) total: usize,
+    pub(crate) source: SeamLimitSource,
+}
 
 /// Cache schema version. Bump when the on-disk file shape changes; old
 /// directories can be deleted on `cargo clean` or manually.
@@ -187,6 +199,12 @@ pub(crate) struct RepoSeamCacheKey {
     pub(crate) config_hash: String,
     pub(crate) test_intent_hash: String,
     pub(crate) suppressions_hash: String,
+    /// Encodes the effective seam limit: `"unlimited"` when the operator
+    /// set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` (unbounded opt-out), or
+    /// `"limit_N"` for any positive limit (default or configured).
+    /// Different limits produce different filenames, so a capped cache
+    /// entry is never served for an unbounded run and vice-versa.
+    pub(crate) seam_limit_key: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -230,8 +248,10 @@ impl RepoSeamCacheKey {
     /// Filename component derived from the canonical key fields. The
     /// FNV-1a 64-bit hash is stable across releases (unlike
     /// `DefaultHasher`) and produces a 16-char lowercase hex string.
+    /// `seam_limit_key` is included so capped runs and unbounded runs
+    /// never share a cache file.
     pub(crate) fn filename(&self) -> String {
-        let parts: [&str; 8] = [
+        let parts: [&str; 9] = [
             &self.schema_version,
             &self.analyzer_version,
             &self.workspace_root_hash,
@@ -240,6 +260,7 @@ impl RepoSeamCacheKey {
             &self.config_hash,
             &self.test_intent_hash,
             &self.suppressions_hash,
+            &self.seam_limit_key,
         ];
         let mut buf = String::new();
         for (i, p) in parts.iter().enumerate() {
@@ -298,6 +319,13 @@ impl<'a> WorkspaceState<'a> {
         }
         let files_content_hash = hash_str(&files_buf);
 
+        // Encode the effective seam limit into the key so capped runs and
+        // unbounded runs never share a cache file.
+        let seam_limit_key = match repo_exposure_seam_limit() {
+            None => "unlimited".to_string(),
+            Some((n, _)) => format!("limit_{n}"),
+        };
+
         RepoSeamCacheKey {
             schema_version: CACHE_SCHEMA_VERSION.to_string(),
             analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -307,6 +335,7 @@ impl<'a> WorkspaceState<'a> {
             config_hash: hash_str(self.config_text.unwrap_or("")),
             test_intent_hash: hash_str(self.test_intent_text.unwrap_or("")),
             suppressions_hash: hash_str(self.suppressions_text.unwrap_or("")),
+            seam_limit_key,
         }
     }
 }
@@ -361,13 +390,14 @@ impl RepoSeamFactCache {
         }
     }
 
-    /// Look up classified seams by key. `Miss` is returned for both
-    /// "no file" and "different key", so callers do not have to
-    /// distinguish in v1. `CorruptIgnored` carries a reason for logs.
+    /// Look up classified seams by key. Returns the seams AND the cached
+    /// `SeamLimitInfo` so the caller can surface correct `run_status` on
+    /// a cache hit. `Miss` is returned for both "no file" and "different
+    /// key"; `CorruptIgnored` carries a reason for logs.
     pub(crate) fn load_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
-    ) -> CacheLoad<Vec<ClassifiedSeam>> {
+    ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
         match self.load_single_classified_seams(key) {
             CacheLoad::Miss => self.load_sharded_classified_seams(key),
             other => other,
@@ -377,7 +407,7 @@ impl RepoSeamFactCache {
     fn load_single_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
-    ) -> CacheLoad<Vec<ClassifiedSeam>> {
+    ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
         let path = self.entry_path(key);
         let bytes = match std::fs::read(&path) {
             Ok(b) => b,
@@ -391,10 +421,10 @@ impl RepoSeamFactCache {
         match codec::decode(&bytes) {
             Ok(envelope) => {
                 if envelope.matches_key(key) {
-                    CacheLoad::Hit(envelope.classified_seams)
+                    CacheLoad::Hit((envelope.classified_seams, envelope.seam_limit_info))
                 } else {
                     // Key collision is unlikely (16-char FNV file
-                    // names + 8 fields hashed in), but possible. Treat
+                    // names + 9 fields hashed in), but possible. Treat
                     // as miss without failing analysis.
                     CacheLoad::Miss
                 }
@@ -409,24 +439,35 @@ impl RepoSeamFactCache {
         seams: &[ClassifiedSeam],
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
-        self.store_classified_seams_with_limit(key, seams, store_limit)
+        self.store_classified_seams_with_limit(key, seams, None, store_limit)
     }
 
+    /// Store classified seams with the given cache-store limit.
+    ///
+    /// `limit_info` is `Some(...)` when this is a truncated run (seam limit
+    /// was applied); `None` for a complete run. The value is persisted in the
+    /// cache envelope so a warm-path load can return the correct `run_status`.
     pub(crate) fn store_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
+        limit_info: Option<&CachedSeamLimitInfo>,
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
         if store_limit == 0 {
             return Err("classified seam cache store limit must be positive".to_string());
         }
         if seams.len() > store_limit {
-            return self.store_sharded_classified_seams_with_limit(key, seams, store_limit);
+            return self.store_sharded_classified_seams_with_limit(
+                key,
+                seams,
+                limit_info,
+                store_limit,
+            );
         }
         std::fs::create_dir_all(&self.dir)
             .map_err(|err| format!("create cache dir failed: {err}"))?;
-        let envelope = CacheEnvelope::new(key.clone(), seams.to_vec());
+        let envelope = CacheEnvelope::new(key.clone(), seams.to_vec(), limit_info.cloned());
         let bytes = codec::encode(&envelope)?;
         let path = self.entry_path(key);
         std::fs::write(&path, &bytes).map_err(|err| format!("write cache failed: {err}"))?;
@@ -442,7 +483,7 @@ impl RepoSeamFactCache {
     fn load_sharded_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
-    ) -> CacheLoad<Vec<ClassifiedSeam>> {
+    ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
         let manifest_path = self.sharded_manifest_path(key);
         let bytes = match std::fs::read(&manifest_path) {
             Ok(bytes) => bytes,
@@ -537,13 +578,14 @@ impl RepoSeamFactCache {
                 ),
             };
         }
-        CacheLoad::Hit(seams)
+        CacheLoad::Hit((seams, manifest.seam_limit_info))
     }
 
     fn store_sharded_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
+        limit_info: Option<&CachedSeamLimitInfo>,
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
         std::fs::create_dir_all(self.sharded_entry_dir(key))
@@ -564,7 +606,13 @@ impl RepoSeamFactCache {
                 seams: chunk.len(),
             });
         }
-        let manifest = ShardedCacheManifest::new(key.clone(), seams.len(), shard_count, shard_refs);
+        let manifest = ShardedCacheManifest::new(
+            key.clone(),
+            seams.len(),
+            shard_count,
+            shard_refs,
+            limit_info.cloned(),
+        );
         let bytes = codec::encode_sharded_manifest(&manifest)?;
         let manifest_path = self.sharded_manifest_path(key);
         std::fs::write(&manifest_path, bytes)
@@ -740,6 +788,13 @@ struct CacheEnvelope {
     test_intent_hash: String,
     suppressions_hash: String,
     classified_seams: Vec<ClassifiedSeam>,
+    /// `None` means this is a complete run (all seams were analyzed).
+    /// `Some(...)` means the run was capped; the renderer uses this to
+    /// emit `run_status: "seam_limit_applied"` on a cache hit.
+    /// `#[serde(default)]` ensures old cache entries without this field
+    /// deserialize as `None` (correct: pre-Slice-B caches were full runs).
+    #[serde(default)]
+    seam_limit_info: Option<CachedSeamLimitInfo>,
 }
 
 #[cfg(test)]
@@ -816,7 +871,11 @@ impl CountCacheEnvelope {
 }
 
 impl CacheEnvelope {
-    fn new(key: RepoSeamCacheKey, classified_seams: Vec<ClassifiedSeam>) -> Self {
+    fn new(
+        key: RepoSeamCacheKey,
+        classified_seams: Vec<ClassifiedSeam>,
+        seam_limit_info: Option<CachedSeamLimitInfo>,
+    ) -> Self {
         Self {
             schema_version: key.schema_version,
             analyzer_version: key.analyzer_version,
@@ -827,6 +886,7 @@ impl CacheEnvelope {
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
             classified_seams,
+            seam_limit_info,
         }
     }
 
@@ -856,6 +916,10 @@ struct ShardedCacheManifest {
     total_seams: usize,
     shard_count: usize,
     shards: Vec<ShardedCacheShardRef>,
+    /// See `CacheEnvelope::seam_limit_info`. `#[serde(default)]` provides
+    /// backward-compat with pre-Slice-B manifests.
+    #[serde(default)]
+    seam_limit_info: Option<CachedSeamLimitInfo>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -887,6 +951,7 @@ impl ShardedCacheManifest {
         total_seams: usize,
         shard_count: usize,
         shards: Vec<ShardedCacheShardRef>,
+        seam_limit_info: Option<CachedSeamLimitInfo>,
     ) -> Self {
         Self {
             sharded_cache_schema_version: SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION.to_string(),
@@ -901,6 +966,7 @@ impl ShardedCacheManifest {
             total_seams,
             shard_count,
             shards,
+            seam_limit_info,
         }
     }
 
@@ -1109,10 +1175,15 @@ mod tests {
         let key = empty_state().cache_key();
         let seams = vec![sample_classified()];
         cache
-            .store_classified_seams_with_limit(&key, &seams, CLASSIFIED_SEAM_CACHE_STORE_LIMIT)
+            .store_classified_seams_with_limit(
+                &key,
+                &seams,
+                None,
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
             .map_err(|err| format!("store should succeed: {err}"))?;
         let result = match cache.load_classified_seams(&key) {
-            CacheLoad::Hit(loaded) => {
+            CacheLoad::Hit((loaded, limit_info)) => {
                 if loaded.len() != seams.len() {
                     Err(format!(
                         "warm path should return stored seams, got {} vs {}",
@@ -1129,6 +1200,10 @@ mod tests {
                     Err(format!(
                         "round-trip should preserve class, got {:?} vs {:?}",
                         loaded[0].class, seams[0].class
+                    ))
+                } else if limit_info.is_some() {
+                    Err(format!(
+                        "complete run should store None limit_info, got {limit_info:?}"
                     ))
                 } else {
                     Ok(())
@@ -1149,7 +1224,7 @@ mod tests {
         let key = empty_state().cache_key();
         let seams = vec![sample_classified(); 2];
         let status = cache
-            .store_classified_seams_with_limit(&key, &seams, 1)
+            .store_classified_seams_with_limit(&key, &seams, None, 1)
             .map_err(|err| format!("large classified seam cache should shard: {err}"))?;
 
         assert_eq!(status.label, "sharded_ok_seams_2_shards_2_limit_1");
@@ -1177,7 +1252,7 @@ mod tests {
         );
 
         match cache.load_classified_seams(&key) {
-            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            CacheLoad::Hit((loaded, _)) if loaded.len() == 2 => {}
             other => return Err(format!("expected sharded cache hit, got {other:?}")),
         }
 
@@ -1191,15 +1266,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let cache = RepoSeamFactCache::at_dir(dir.clone());
         let key = empty_state().cache_key();
-        let err = match cache.store_classified_seams_with_limit(&key, &[sample_classified()], 0) {
-            Ok(status) => {
-                return Err(format!(
-                    "zero direct cache limit should fail, got {}",
-                    status.label
-                ));
-            }
-            Err(err) => err,
-        };
+        let err =
+            match cache.store_classified_seams_with_limit(&key, &[sample_classified()], None, 0) {
+                Ok(status) => {
+                    return Err(format!(
+                        "zero direct cache limit should fail, got {}",
+                        status.label
+                    ));
+                }
+                Err(err) => err,
+            };
 
         assert!(
             err.contains("positive"),
@@ -1259,11 +1335,11 @@ mod tests {
         let seams = vec![sample_classified(); 2];
 
         cache
-            .store_classified_seams_with_limit(&key, &seams, 2)
+            .store_classified_seams_with_limit(&key, &seams, None, 2)
             .map_err(|err| format!("raised classified cache limit should allow store: {err}"))?;
 
         match cache.load_classified_seams(&key) {
-            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            CacheLoad::Hit((loaded, _)) if loaded.len() == 2 => {}
             other => {
                 return Err(format!(
                     "expected classified cache hit after raised limit: {other:?}"
@@ -1336,7 +1412,7 @@ mod tests {
             "sharded compact cache store should not write a monolithic entry"
         );
         match cache.load_classified_seams(&key) {
-            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            CacheLoad::Hit((loaded, _)) if loaded.len() == 2 => {}
             other => return Err(format!("expected compact sharded cache hit: {other:?}")),
         }
 
@@ -1354,7 +1430,7 @@ mod tests {
         let seams = vec![sample_classified(); 2];
 
         cache
-            .store_classified_seams_with_limit(&key, &seams, 1)
+            .store_classified_seams_with_limit(&key, &seams, None, 1)
             .map_err(|err| format!("large classified seam cache should shard: {err}"))?;
         std::fs::remove_file(cache.sharded_entry_dir(&key).join("shard-00001.json"))
             .map_err(|err| format!("remove shard fixture: {err}"))?;
@@ -1390,7 +1466,7 @@ mod tests {
             .map_err(|err| format!("raised compact cache limit should allow store: {err}"))?;
 
         match cache.load_classified_seams(&key) {
-            CacheLoad::Hit(loaded) if loaded.len() == 2 => {}
+            CacheLoad::Hit((loaded, _)) if loaded.len() == 2 => {}
             other => {
                 return Err(format!(
                     "expected compact cache hit after raised limit: {other:?}"
@@ -1423,6 +1499,7 @@ mod tests {
             .store_classified_seams_with_limit(
                 &original_key,
                 &[sample_classified()],
+                None,
                 CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
             )
             .map_err(|err| format!("store original: {err}"))?;
@@ -1610,12 +1687,13 @@ mod tests {
             .store_classified_seams_with_limit(
                 &key_a,
                 &[sample_classified()],
+                None,
                 CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
             )
             .map_err(|err| format!("store under key_a: {err}"))?;
         // Write key_a's envelope under key_b's filename — simulates a
         // hash collision or stale entry.
-        let envelope = CacheEnvelope::new(key_a.clone(), vec![sample_classified()]);
+        let envelope = CacheEnvelope::new(key_a.clone(), vec![sample_classified()], None);
         std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir: {err}"))?;
         let bytes = codec::encode(&envelope)?;
         std::fs::write(cache.entry_path(&key_b), bytes)
@@ -1761,5 +1839,146 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         format!("{}-{:x}", std::process::id(), nanos)
+    }
+
+    // ---- cache envelope + limit_info round-trip tests (Slice B) -----------
+
+    #[test]
+    fn cache_envelope_with_limit_info_round_trips() -> Result<(), String> {
+        let dir = isolated_dir("envelope-limit-info");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified()];
+        let limit_info = CachedSeamLimitInfo {
+            analyzed: 1,
+            total: 5,
+            source: SeamLimitSource::Configured,
+        };
+        cache
+            .store_classified_seams_with_limit(
+                &key,
+                &seams,
+                Some(&limit_info),
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store with limit_info should succeed: {err}"))?;
+
+        let result = match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((loaded, loaded_limit)) => {
+                if loaded.len() != seams.len() {
+                    Err(format!(
+                        "seam count mismatch: {} vs {}",
+                        loaded.len(),
+                        seams.len()
+                    ))
+                } else {
+                    match loaded_limit {
+                        None => Err("expected Some(limit_info) on hit, got None".to_string()),
+                        Some(li) => {
+                            if li.analyzed != limit_info.analyzed {
+                                Err(format!(
+                                    "analyzed mismatch: {} vs {}",
+                                    li.analyzed, limit_info.analyzed
+                                ))
+                            } else if li.total != limit_info.total {
+                                Err(format!(
+                                    "total mismatch: {} vs {}",
+                                    li.total, limit_info.total
+                                ))
+                            } else if li.source.as_str() != limit_info.source.as_str() {
+                                Err(format!(
+                                    "source mismatch: {} vs {}",
+                                    li.source.as_str(),
+                                    limit_info.source.as_str()
+                                ))
+                            } else {
+                                Ok(())
+                            }
+                        }
+                    }
+                }
+            }
+            other => Err(format!("expected Hit with limit_info, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn cache_envelope_missing_limit_info_field_deserializes_as_none() -> Result<(), String> {
+        // Simulate a pre-Slice-B cache file (no `seam_limit_info` field):
+        // it should deserialize cleanly with seam_limit_info = None.
+        let dir = isolated_dir("envelope-compat");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified()];
+
+        // Store normally (no limit_info → None).
+        cache
+            .store_classified_seams_with_limit(
+                &key,
+                &seams,
+                None,
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store: {err}"))?;
+
+        // Load the raw JSON and strip out the seam_limit_info key to simulate
+        // an old cache entry that never had the field.
+        let entry_path = cache.entry_path(&key);
+        let raw = std::fs::read(&entry_path).map_err(|err| format!("read entry: {err}"))?;
+        let mut json_val: serde_json::Value =
+            serde_json::from_slice(&raw).map_err(|err| format!("parse entry: {err}"))?;
+        json_val
+            .as_object_mut()
+            .map(|m| m.remove("seam_limit_info"));
+        let rewritten = serde_json::to_vec(&json_val).map_err(|err| format!("re-encode: {err}"))?;
+        std::fs::write(&entry_path, rewritten).map_err(|err| format!("rewrite: {err}"))?;
+
+        let result = match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((_, limit_info)) => {
+                if limit_info.is_some() {
+                    Err(format!(
+                        "old cache entry without seam_limit_info should deserialize as None, got {limit_info:?}"
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            other => Err(format!("expected Hit on compat cache entry, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn complete_run_stores_none_limit_info_in_envelope() -> Result<(), String> {
+        let dir = isolated_dir("envelope-complete");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified()];
+
+        cache
+            .store_classified_seams_with_limit(
+                &key,
+                &seams,
+                None,
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store complete: {err}"))?;
+
+        let result = match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((_, None)) => Ok(()),
+            CacheLoad::Hit((_, Some(info))) => Err(format!(
+                "complete run should return None limit_info, got analyzed={} total={}",
+                info.analyzed, info.total
+            )),
+            other => Err(format!("expected Hit on complete cache, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
     }
 }

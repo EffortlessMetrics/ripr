@@ -26,8 +26,8 @@ use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CacheLoad, RepoSeamFactCache, WorkspaceState, classified_seam_cache_store_limit,
-    compact_classified_seam_cache_store_limit,
+    CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache, WorkspaceState,
+    classified_seam_cache_store_limit, compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
@@ -41,6 +41,11 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
+
+/// Default cap on the number of seams analyzed in a single full-repo
+/// `repo-exposure-json` run. This prevents pathological 41-minute runs
+/// on giant workspaces. Operators can opt out via `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0`.
+pub(crate) const DEFAULT_REPO_EXPOSURE_SEAM_LIMIT: usize = 10_000;
 
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 
@@ -62,6 +67,25 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     Ok(inventory_seams_from_index(&production_files, &index))
 }
 
+/// Whether a seam limit was the built-in default or explicitly configured
+/// via the environment variable.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum SeamLimitSource {
+    /// The limit came from `DEFAULT_REPO_EXPOSURE_SEAM_LIMIT` (env var unset).
+    Default,
+    /// The limit came from an explicit `RIPR_REPO_EXPOSURE_SEAM_LIMIT` setting.
+    Configured,
+}
+
+impl SeamLimitSource {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Configured => "configured",
+        }
+    }
+}
+
 /// Carries information about a seam-limit truncation so the output
 /// layer can self-declare when a run analyzed fewer seams than were
 /// available.
@@ -69,6 +93,27 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
 pub(crate) struct SeamLimitInfo {
     pub(crate) analyzed: usize,
     pub(crate) total: usize,
+    pub(crate) source: SeamLimitSource,
+}
+
+impl From<CachedSeamLimitInfo> for SeamLimitInfo {
+    fn from(cached: CachedSeamLimitInfo) -> Self {
+        Self {
+            analyzed: cached.analyzed,
+            total: cached.total,
+            source: cached.source,
+        }
+    }
+}
+
+impl From<&SeamLimitInfo> for CachedSeamLimitInfo {
+    fn from(info: &SeamLimitInfo) -> Self {
+        Self {
+            analyzed: info.analyzed,
+            total: info.total,
+            source: info.source.clone(),
+        }
+    }
 }
 
 /// Walk production Rust files at `root` and emit per-seam evidence and
@@ -112,13 +157,8 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     };
     let key = state.cache_key();
-    if repo_exposure_seam_limit().is_some() {
-        trace_latency_phase("cache_load", "skipped_due_seam_limit", Duration::ZERO);
-        let (classified, limit_info) =
-            inventory_classified_seams_from_state_with_config(&state, config)?;
-        trace_latency_phase("total", "sampled_computed", total_started.elapsed());
-        return Ok((classified, limit_info));
-    }
+    // NOTE: the seam-limit key is baked into `key.filename()`, so a capped run
+    // and an unbounded run never share a cache file — no fast-path bypass needed.
     let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
     trace_latency_phase(
@@ -127,12 +167,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         Duration::ZERO,
     );
     match cache.load_classified_seams(&key) {
-        CacheLoad::Hit(cached) => {
+        CacheLoad::Hit((cached, cached_limit_info)) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "cache_hit", total_started.elapsed());
-            // Cache is only consulted when no seam limit is set (guard above),
-            // so a cache hit always represents a complete run.
-            return Ok((cached, None));
+            // Preserve the run_status from the original run: a capped run stored
+            // its SeamLimitInfo in the envelope; a complete run stored None.
+            return Ok((cached, cached_limit_info.map(SeamLimitInfo::from)));
         }
         CacheLoad::Miss => {
             trace_latency_phase("cache_load", "miss", cache_started.elapsed());
@@ -160,6 +200,8 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         };
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
+    // Persist the limit_info so a warm-path load returns the correct run_status.
+    let cached_limit_info: Option<CachedSeamLimitInfo> = limit_info.as_ref().map(Into::into);
     let store_started = Instant::now();
     trace_latency_phase(
         "cache_store",
@@ -170,8 +212,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         ),
         Duration::ZERO,
     );
-    let store_status = match cache.store_classified_seams_with_limit(&key, &classified, store_limit)
-    {
+    let store_status = match cache.store_classified_seams_with_limit(
+        &key,
+        &classified,
+        cached_limit_info.as_ref(),
+        store_limit,
+    ) {
         Ok(status) => status.label,
         Err(reason) => {
             eprintln!("ripr: repo seam cache store ignored ({reason})");
@@ -305,7 +351,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     let key = state.cache_key();
     let cache_started = Instant::now();
     match cache.load_classified_seams(&key) {
-        CacheLoad::Hit(cached) => {
+        CacheLoad::Hit((cached, _limit_info)) => {
             trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
             return Ok(cached);
@@ -603,10 +649,22 @@ fn normalized_inventory_path(path: &Path) -> String {
         .to_string()
 }
 
-fn repo_exposure_seam_limit() -> Option<usize> {
-    std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV)
-        .ok()
-        .and_then(|value| parse_repo_exposure_seam_limit(&value))
+/// Return the effective seam limit and its source.
+///
+/// - Env var unset → `Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, Default))` — always-on cap.
+/// - Env var = "0" (or parses to 0) → `None` — operator opt-out: unbounded.
+/// - Env var = N > 0 → `Some((N, Configured))`.
+pub(crate) fn repo_exposure_seam_limit() -> Option<(usize, SeamLimitSource)> {
+    match std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV) {
+        Ok(value) => {
+            // Explicit env: "0" means opt-out (unbounded); N>0 means configured.
+            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
+        }
+        Err(_) => {
+            // Env var not set → apply the default cap.
+            Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, SeamLimitSource::Default))
+        }
+    }
 }
 
 fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
@@ -617,8 +675,16 @@ fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
         .filter(|limit| *limit > 0)
 }
 
-fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimitInfo> {
-    let limit = repo_exposure_seam_limit()?;
+pub(crate) fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimitInfo> {
+    let (limit, source) = repo_exposure_seam_limit()?;
+    apply_repo_exposure_seam_limit_inner(seams, limit, source)
+}
+
+fn apply_repo_exposure_seam_limit_inner(
+    seams: &mut Vec<RepoSeam>,
+    limit: usize,
+    source: SeamLimitSource,
+) -> Option<SeamLimitInfo> {
     let total = seams.len();
     if total <= limit {
         return None;
@@ -632,7 +698,17 @@ fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimit
     Some(SeamLimitInfo {
         analyzed: seams.len(),
         total,
+        source,
     })
+}
+
+#[cfg(test)]
+fn apply_repo_exposure_seam_limit_for_test(
+    seams: &mut Vec<RepoSeam>,
+    limit_and_source: Option<(usize, SeamLimitSource)>,
+) -> Option<SeamLimitInfo> {
+    let (limit, source) = limit_and_source?;
+    apply_repo_exposure_seam_limit_inner(seams, limit, source)
 }
 
 #[cfg(test)]
@@ -1930,6 +2006,204 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         }
 
         let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    // ---- seam_limit cache-roundtrip integration test (Slice B) ------------
+    //
+    // Anti-regression test: a capped cold run stores limit_info; a second run
+    // (cache hit, same workspace + same limit) must STILL return
+    // seam_limit_applied, NOT complete. This is the entire point of Slice B.
+
+    // The cache-roundtrip integration test is covered by the cli_smoke test
+    // `check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied`
+    // which exercises the full binary pipeline with RIPR_REPO_EXPOSURE_SEAM_LIMIT=1.
+    // Here we test the internal store/load round-trip at the cache module level
+    // without touching process env (to stay within unsafe_code=forbid).
+    #[test]
+    fn capped_cold_run_stores_limit_info_and_warm_run_returns_seam_limit_applied()
+    -> Result<(), String> {
+        use super::super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
+        use super::super::seam_cache::{CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache};
+        let root = make_tempdir("cache-roundtrip-seam-limit")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn check_a(x: i32) -> bool { x > 0 }\n\
+             pub fn check_b(x: i32) -> bool { x < 0 }\n",
+        )?;
+        // Collect the workspace state so we can derive the key.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache_dir = cache_dir_under(&root);
+        let cache = RepoSeamFactCache::at_dir(cache_dir.clone());
+        // Simulate what a capped cold run would store: 1 seam analyzed, 2 total.
+        let cold_limit = CachedSeamLimitInfo {
+            analyzed: 1,
+            total: 2,
+            source: SeamLimitSource::Configured,
+        };
+        // We'll store an empty seam list with the limit_info to keep the test
+        // lightweight (we're testing the store/load round-trip, not classification).
+        cache
+            .store_classified_seams_with_limit(
+                &key,
+                &[],
+                Some(&cold_limit),
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store capped cold run: {err}"))?;
+
+        // Warm load (same key) must return the limit_info, NOT None.
+        let result = match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((_, warm_limit)) => match warm_limit {
+                None => Err(
+                    "warm cache hit after capped cold run must return Some(limit_info), \
+                         not None — a None would incorrectly signal run_status=complete"
+                        .to_string(),
+                ),
+                Some(li) => {
+                    if li.analyzed != cold_limit.analyzed {
+                        Err(format!(
+                            "warm limit_info.analyzed ({}) must match cold ({})",
+                            li.analyzed, cold_limit.analyzed
+                        ))
+                    } else if li.total != cold_limit.total {
+                        Err(format!(
+                            "warm limit_info.total ({}) must match cold ({})",
+                            li.total, cold_limit.total
+                        ))
+                    } else if li.source.as_str() != cold_limit.source.as_str() {
+                        Err(format!(
+                            "warm limit_info.source ({}) must match cold ({})",
+                            li.source.as_str(),
+                            cold_limit.source.as_str()
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+            other => Err(format!("expected Hit on warm cache, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    // ---- seam_limit_source unit tests (Slice B) ----------------------------
+
+    #[test]
+    fn seam_limit_source_as_str_returns_correct_strings() {
+        assert_eq!(SeamLimitSource::Default.as_str(), "default");
+        assert_eq!(SeamLimitSource::Configured.as_str(), "configured");
+    }
+
+    #[test]
+    fn parse_repo_exposure_seam_limit_zero_returns_none() {
+        // "0" is the opt-out value: unbounded.
+        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+    }
+
+    #[test]
+    fn parse_repo_exposure_seam_limit_positive_returns_some() {
+        assert_eq!(parse_repo_exposure_seam_limit("7500"), Some(7500));
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_below_cap_returns_none() -> Result<(), String> {
+        // Build a tiny seam vec; limit >> vec size → no truncation.
+        let path = PathBuf::from("src/a.rs");
+        let source = "pub fn check(x: i32) -> bool { x > 0 }\n";
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((999_999, SeamLimitSource::Configured)),
+        );
+        if result.is_some() {
+            return Err(format!(
+                "below-cap inventory should produce None limit_info, got {result:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_above_cap_returns_some_with_configured_source()
+    -> Result<(), String> {
+        // Two seams; cap at 1 → truncation.
+        let path = PathBuf::from("src/b.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        if seams.len() < 2 {
+            return Ok(()); // can't test truncation without at least 2 seams
+        }
+        let total_before = seams.len();
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((1, SeamLimitSource::Configured)),
+        );
+        let info = result.ok_or("expected Some(SeamLimitInfo) for above-cap run")?;
+        assert_eq!(info.analyzed, 1, "analyzed should be 1");
+        assert_eq!(
+            info.total, total_before,
+            "total should be pre-truncation count"
+        );
+        assert_eq!(
+            info.source,
+            SeamLimitSource::Configured,
+            "env-set limit should be Configured"
+        );
+        assert_eq!(seams.len(), 1, "seams should be truncated to 1");
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_above_cap_returns_some_with_default_source()
+    -> Result<(), String> {
+        // Same truncation test, but with Default source (env var unset).
+        let path = PathBuf::from("src/b2.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        if seams.len() < 2 {
+            return Ok(());
+        }
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((1, SeamLimitSource::Default)),
+        );
+        let info = result.ok_or("expected Some(SeamLimitInfo) for default-cap run")?;
+        assert_eq!(
+            info.source,
+            SeamLimitSource::Default,
+            "default limit should be Default"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_opt_out_none_returns_none_for_any_size() -> Result<(), String>
+    {
+        // None limit → unbounded opt-out: no truncation.
+        let path = PathBuf::from("src/c.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        let result = apply_repo_exposure_seam_limit_for_test(&mut seams, None);
+        assert!(
+            result.is_none(),
+            "None limit (opt-out) should return None (unbounded), got {result:?}"
+        );
         Ok(())
     }
 }

@@ -8,6 +8,7 @@
 
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
+use crate::analysis::SeamLimitSource;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
@@ -73,16 +74,26 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
             writeln!(out, "  \"run_status\": \"complete\",")?;
         }
         Some(info) => {
+            let repair_route = match info.source {
+                SeamLimitSource::Default => {
+                    "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or use `ripr check --diff` to scope the run."
+                }
+                SeamLimitSource::Configured => {
+                    "Remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or use `ripr check --diff`."
+                }
+            };
             writeln!(out, "  \"run_status\": \"seam_limit_applied\",")?;
             writeln!(out, "  \"limitations\": [")?;
             writeln!(out, "    {{")?;
             writeln!(out, "      \"category\": \"repo_seam_limit_applied\",")?;
             writeln!(out, "      \"seams_analyzed\": {},", info.analyzed)?;
             writeln!(out, "      \"seams_total\": {},", info.total)?;
+            writeln!(out, "      \"limit_source\": \"{}\",", info.source.as_str())?;
             writeln!(out, "      \"control\": \"RIPR_REPO_EXPOSURE_SEAM_LIMIT\",")?;
             writeln!(
                 out,
-                "      \"repair_route\": \"Remove RIPR_REPO_EXPOSURE_SEAM_LIMIT or increase it to analyze all seams. For bounded analysis, use `ripr check --diff` to scope the run to changed files.\""
+                "      \"repair_route\": \"{}\"",
+                json_escape(repair_route)
             )?;
             writeln!(out, "    }}")?;
             writeln!(out, "  ],")?;
@@ -772,10 +783,11 @@ mod tests {
 
     #[test]
     fn json_carries_run_status_and_limitations_when_limit_applied() {
-        use crate::analysis::SeamLimitInfo;
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
         let info = SeamLimitInfo {
             analyzed: 1,
             total: 10,
+            source: SeamLimitSource::Configured,
         };
         let json = render_repo_exposure_json(&[weakly_gripped_classified()], Some(&info));
         assert!(
