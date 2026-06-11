@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::{
     DEFAULT_AGENT_PACKET, DEFAULT_BASE, DEFAULT_FIRST_ACTION, DEFAULT_GAP_LEDGER,
     DEFAULT_GATE_DECISION, DEFAULT_HEAD, DEFAULT_OUT_DIR, DEFAULT_RECEIPTS_DIR,
@@ -19,6 +21,8 @@ pub(super) struct FirstPrOptions {
     pub(super) out_dir: String,
     pub(super) check: bool,
     pub(super) preflight: bool,
+    /// Test-only ceiling for `GIT_CEILING_DIRECTORIES`; `None` in production.
+    pub(crate) git_ceiling: Option<PathBuf>,
 }
 
 impl Default for FirstPrOptions {
@@ -37,6 +41,7 @@ impl Default for FirstPrOptions {
             out_dir: DEFAULT_OUT_DIR.to_string(),
             check: false,
             preflight: false,
+            git_ceiling: None,
         }
     }
 }

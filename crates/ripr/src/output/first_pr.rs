@@ -876,7 +876,7 @@ fn root_preflight_recovery(root: &Path, options: &FirstPrOptions) -> Option<Sele
 }
 
 fn git_preflight_recovery(root: &Path, options: &FirstPrOptions) -> Option<Selection> {
-    match git_worktree_available(root) {
+    match git_worktree_available_with_ceiling(root, options.git_ceiling.as_deref()) {
         Ok(true) => {}
         Ok(false) => {
             return Some(Selection::blocked(
@@ -1848,8 +1848,11 @@ fn regenerate_repo_exposure_command(root: &str) -> String {
     check_repo_exposure_command(root, "instant", DEFAULT_REPO_EXPOSURE)
 }
 
-fn git_worktree_available(root: &Path) -> Result<bool, String> {
-    git_success(root, &["rev-parse", "--is-inside-work-tree"])
+fn git_worktree_available_with_ceiling(
+    root: &Path,
+    ceiling: Option<&Path>,
+) -> Result<bool, String> {
+    git_success_with_ceiling(root, &["rev-parse", "--is-inside-work-tree"], ceiling)
 }
 
 fn git_rev_exists(root: &Path, rev: &str) -> Result<bool, String> {
@@ -1879,9 +1882,20 @@ fn git_diff_range_valid(root: &Path, base: &str, head: &str) -> Result<(), Strin
 }
 
 fn git_success(root: &Path, args: &[&str]) -> Result<bool, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(root)
+    git_success_with_ceiling(root, args, None)
+}
+
+fn git_success_with_ceiling(
+    root: &Path,
+    args: &[&str],
+    ceiling: Option<&Path>,
+) -> Result<bool, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(root);
+    if let Some(c) = ceiling {
+        cmd.env("GIT_CEILING_DIRECTORIES", c);
+    }
+    let output = cmd
         .output()
         .map_err(|err| format!("failed to run git: {err}"))?;
     Ok(output.status.success())
@@ -2521,7 +2535,11 @@ mod tests {
     fn non_git_root_writes_recovery_packet() -> Result<(), String> {
         let repo = temp_cargo_root_outside_repo("first-pr-not-git")?;
         write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
-        let options = FirstPrOptions::default();
+        let ceiling = repo.parent().map(Path::to_path_buf);
+        let options = FirstPrOptions {
+            git_ceiling: ceiling,
+            ..FirstPrOptions::default()
+        };
         write_first_pr(&repo, &options)?;
         let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
         assert_eq!(packet["status"], "blocked");
