@@ -599,3 +599,62 @@ Practical sequencing rule:
 1. ship bounded repair-attempt evidence movement;
 2. then tighten proposal/spec/ADR/closeout templates and validators as a
    separate infra lane.
+
+## 2026-06-11: Verification Discipline And Gate/Cache Gotchas
+
+Hard-won during a multi-PR autonomous campaign. Each item cost a real CI failure
+or a near-miss.
+
+### Verify with the policy-checker facade, not a hand-picked gate subset
+
+Running a few `cargo xtask check-*` gates by hand before pushing missed two
+required gates twice in a row (`check-generated`, then `check-static-language`).
+The required CX43 "Required Rust gates" step runs the whole set. Mirror it
+locally with one command:
+
+```bash
+cargo test -p xtask policy_checker_facade_runs_current_repo_checks
+```
+
+It runs the same gate set CI runs (~70s) and catches what a subset misses.
+Pair it with a behavioral repro of the actual change — gate-pass is necessary,
+not sufficient.
+
+### Subagent builders emit stale diagnostics; `cargo check` is ground truth
+
+Long builder runs leave the IDE diagnostic snapshot mid-edit, so rust-analyzer
+reports E0425/E0308 that are already fixed. Do not trust them and do not trust
+the builder's "all green" self-report. Run `cargo check -p ripr --all-targets`
+(0 errors = clean) and a behavioral repro every time.
+
+### The static-language gate scans all tracked prose, not just output
+
+`check-static-language` walks every tracked `.md/.rs/.txt/.json/.toml/.yml/.yaml`
+file (minus the `docs/*.md` glob exemption and path allowlist) and bans
+`killed/survived/untested/proven/adequate` anywhere — including YAML comments and
+policy-file reasons, where those are innocent English. In output, use the
+exposure vocabulary; in prose, a plain synonym. `xtask/src/main.rs` is
+self-exempt (it must name the forbidden terms).
+
+### Default caps and the cache: a truncated hit must not read as complete
+
+When a full-repo run is bounded by default (`repo-exposure` 10k seam cap), the
+seam-cache key must include the effective limit (`seam_limit_key`) and the cache
+envelope must persist the limit metadata. Otherwise a capped run and an
+unbounded run share a cache file, or a cache hit serves a truncated result as
+`run_status: "complete"` — silently reintroducing the dishonesty the bound was
+meant to fix. `#[serde(default)]` on the new envelope field keeps old (full-run)
+caches readable as "complete".
+
+### Any hash over a path must normalize separators
+
+Content-addressed ids hash a filesystem-walked path; `\` on Windows vs `/` on
+Linux produced different ids and failed Linux CI on Windows-blessed goldens.
+Normalize `\` -> `/` before hashing.
+
+### Strict "up to date branch" serializes merges
+
+Under branch protection requiring up-to-date branches, every merge forces all
+other open PRs behind, each needing `update-branch` + a full re-run on the slow
+self-hosted lane. Merge the higher-cost lane's PR first; a merge queue would
+remove the thrash but is a deliberate settings change.
