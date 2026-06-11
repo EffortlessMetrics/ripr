@@ -95,6 +95,10 @@ badge, and distribution authority.
   there is no full Bun binding graph.
 - Bun stable-byte evidence is advisory and calibrated to currently modeled
   routes.
+- `ripr check --format json` can produce very large JSON for some diffs and can
+  fail when writing large output to stdout on Windows; prefer redirecting JSON
+  to a report file rather than piping it through stdout. Output-size bounds and
+  a stdout-write fallback are planned for a 0.9.x follow-up.
 
 ### Non-claims
 
