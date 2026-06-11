@@ -42,6 +42,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let analysis_config = config.clone();
     let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
         analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
+            .map(|(classified, _)| classified)
     })?;
     let PilotAnalysisResult::Complete(classified) = analysis_result else {
         let context = output::pilot::PilotSummaryContext {
@@ -90,7 +91,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
 
     std::fs::write(
         &artifacts.repo_exposure_json,
-        output::repo_exposure::render_repo_exposure_json(&classified),
+        output::repo_exposure::render_repo_exposure_json(&classified, None),
     )
     .map_err(|err| {
         format!(

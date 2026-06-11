@@ -382,3 +382,4 @@ receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\")) .parent() .and_t
 [allow.last_seen]
 line = 10
 column = 5
+

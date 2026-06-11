@@ -13,3 +13,4 @@ editors/vscode/out/
 editors/vscode/dist/
 editors/vscode/.vscode-test/
 .claude/
+crates/ripr/examples/**/target/

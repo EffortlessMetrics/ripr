@@ -1653,6 +1653,21 @@ Field contract:
   additive string enum within `0.3`; `helper_owner_call` extends the
   existing relation taxonomy without changing the field shape.
 - `scope` — always `"repo"`.
+- `run_status` — always present; one of `"complete"` or
+  `"seam_limit_applied"`. `"complete"` means the run analyzed all
+  seams. `"seam_limit_applied"` means `RIPR_REPO_EXPOSURE_SEAM_LIMIT`
+  truncated the inventory. Consumers must read `run_status` before
+  treating counts as complete-repo totals. Added as an additive field
+  within schema version `0.3` per RIPR-SPEC-0074.
+- `limitations[]` — present only when `run_status` is
+  `"seam_limit_applied"`. Each entry carries:
+  - `category` — `"repo_seam_limit_applied"`.
+  - `seams_analyzed` — number of seams that were classified.
+  - `seams_total` — total seams before truncation.
+  - `control` — the env var that triggered the limit:
+    `"RIPR_REPO_EXPOSURE_SEAM_LIMIT"`.
+  - `repair_route` — human-readable instructions for removing or
+    raising the limit.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
   zero so consumers can plot stable bar charts.

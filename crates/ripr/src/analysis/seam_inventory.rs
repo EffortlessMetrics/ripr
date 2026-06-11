@@ -62,6 +62,15 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     Ok(inventory_seams_from_index(&production_files, &index))
 }
 
+/// Carries information about a seam-limit truncation so the output
+/// layer can self-declare when a run analyzed fewer seams than were
+/// available.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SeamLimitInfo {
+    pub(crate) analyzed: usize,
+    pub(crate) total: usize,
+}
+
 /// Walk production Rust files at `root` and emit per-seam evidence and
 /// classification. This is the input to `output/repo-exposure-report-v1`.
 /// The discard hook in `inventory_seams_at` from #237 is replaced by
@@ -77,12 +86,13 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
 #[cfg(test)]
 pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<ClassifiedSeam>, String> {
     inventory_classified_seams_at_with_config(root, &RiprConfig::default())
+        .map(|(classified, _)| classified)
 }
 
 pub(crate) fn inventory_classified_seams_at_with_config(
     root: &Path,
     config: &RiprConfig,
-) -> Result<Vec<ClassifiedSeam>, String> {
+) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
     let total_started = Instant::now();
     let cache = RepoSeamFactCache::at(root);
     let collect_started = Instant::now();
@@ -104,9 +114,10 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     let key = state.cache_key();
     if repo_exposure_seam_limit().is_some() {
         trace_latency_phase("cache_load", "skipped_due_seam_limit", Duration::ZERO);
-        let classified = inventory_classified_seams_from_state_with_config(&state, config)?;
+        let (classified, limit_info) =
+            inventory_classified_seams_from_state_with_config(&state, config)?;
         trace_latency_phase("total", "sampled_computed", total_started.elapsed());
-        return Ok(classified);
+        return Ok((classified, limit_info));
     }
     let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
@@ -119,7 +130,9 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         CacheLoad::Hit(cached) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "cache_hit", total_started.elapsed());
-            return Ok(cached);
+            // Cache is only consulted when no seam limit is set (guard above),
+            // so a cache hit always represents a complete run.
+            return Ok((cached, None));
         }
         CacheLoad::Miss => {
             trace_latency_phase("cache_load", "miss", cache_started.elapsed());
@@ -133,17 +146,18 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     }
     let compute_started = Instant::now();
     trace_latency_phase("cold_compute", "start", Duration::ZERO);
-    let classified = match inventory_classified_seams_from_state_with_config(&state, config) {
-        Ok(classified) => {
-            trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
-            classified
-        }
-        Err(err) => {
-            trace_latency_phase("cold_compute", "error", compute_started.elapsed());
-            trace_latency_phase("total", "error", total_started.elapsed());
-            return Err(err);
-        }
-    };
+    let (classified, limit_info) =
+        match inventory_classified_seams_from_state_with_config(&state, config) {
+            Ok(pair) => {
+                trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
+                pair
+            }
+            Err(err) => {
+                trace_latency_phase("cold_compute", "error", compute_started.elapsed());
+                trace_latency_phase("total", "error", total_started.elapsed());
+                return Err(err);
+            }
+        };
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
     let store_started = Instant::now();
@@ -166,7 +180,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     };
     trace_latency_phase("cache_store", &store_status, store_started.elapsed());
     trace_latency_phase("total", "computed", total_started.elapsed());
-    Ok(classified)
+    Ok((classified, limit_info))
 }
 
 fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
@@ -403,7 +417,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
 fn inventory_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
-) -> Result<Vec<ClassifiedSeam>, String> {
+) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
     trace_latency_phase(
@@ -428,7 +442,7 @@ fn inventory_classified_seams_from_state_with_config(
     let seams_started = Instant::now();
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
-    apply_repo_exposure_seam_limit(&mut seams);
+    let limit_info = apply_repo_exposure_seam_limit(&mut seams);
     let evidence_started = Instant::now();
     trace_latency_phase(
         "evidence_for_seams",
@@ -440,7 +454,7 @@ fn inventory_classified_seams_from_state_with_config(
     let classify_started = Instant::now();
     let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
-    Ok(classified)
+    Ok((classified, limit_info))
 }
 
 #[derive(Clone, Debug)]
@@ -603,13 +617,11 @@ fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
         .filter(|limit| *limit > 0)
 }
 
-fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) {
-    let Some(limit) = repo_exposure_seam_limit() else {
-        return;
-    };
+fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimitInfo> {
+    let limit = repo_exposure_seam_limit()?;
     let total = seams.len();
     if total <= limit {
-        return;
+        return None;
     }
     seams.truncate(limit);
     trace_latency_phase(
@@ -617,6 +629,10 @@ fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) {
         &format!("limit_{}_of_{total}", seams.len()),
         Duration::ZERO,
     );
+    Some(SeamLimitInfo {
+        analyzed: seams.len(),
+        total,
+    })
 }
 
 #[cfg(test)]

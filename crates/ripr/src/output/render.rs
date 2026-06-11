@@ -57,9 +57,12 @@ pub(crate) fn render_check_with_config(
             Ok(repo_seams::render_repo_seams_md(&seams))
         }
         OutputFormat::RepoExposureJson => {
-            let classified =
+            let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(repo_exposure::render_repo_exposure_json(&classified))
+            Ok(repo_exposure::render_repo_exposure_json(
+                &classified,
+                limit_info.as_ref(),
+            ))
         }
         OutputFormat::RepoExposureSummaryJson => {
             let classified =
@@ -72,17 +75,17 @@ pub(crate) fn render_check_with_config(
             ))
         }
         OutputFormat::RepoExposureMd => {
-            let classified =
+            let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(repo_exposure::render_repo_exposure_md(&classified))
         }
         OutputFormat::RepoSarif => {
-            let classified =
+            let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(sarif::render_repo_seams_sarif(&classified, config))
         }
         OutputFormat::AgentSeamPacketsJson => {
-            let classified =
+            let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(agent_seam_packets::render_agent_seam_packets_json(
                 &classified,

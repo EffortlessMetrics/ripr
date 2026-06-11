@@ -3853,7 +3853,7 @@ fn first_seam_diagnostic(
 
 fn boundary_gap_lsp_fixture_outputs() -> Result<(serde_json::Value, serde_json::Value), String> {
     let fixture_root = boundary_gap_fixture_root();
-    let mut seams = crate::analysis::inventory_classified_seams_at_with_config(
+    let (mut seams, _) = crate::analysis::inventory_classified_seams_at_with_config(
         &fixture_root,
         &crate::config::RiprConfig::default(),
     )?;

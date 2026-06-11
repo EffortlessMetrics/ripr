@@ -566,3 +566,21 @@ kind = "method_call"
 container = "parse_no_panic_allowlist_toml_parses_valid_entries"
 callee = "unwrap"
 receiver_fingerprint = "result"
+
+[[allow]]
+id = "panic-0036"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper for running CLI tests with extra env vars; same pattern as run_ripr"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "run_ripr_with_env"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 3504
+column = 5

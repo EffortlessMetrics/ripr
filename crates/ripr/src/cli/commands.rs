@@ -85,7 +85,8 @@ fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
     let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
     let selection = select_agent_brief_seams(
         &classified,
         &working_set,
@@ -142,7 +143,8 @@ fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
     let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
     let selection = select_agent_brief_seams(
         &classified,
         &working_set,
@@ -173,7 +175,8 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
         "agent packet requires --seam-id or --gap-ledger with --gap-id".to_string()
     })?;
     let config = load_for_root(&options.root)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let entry = classified
         .iter()
         .find(|entry| entry.seam.id().as_str() == seam_id)
@@ -386,7 +389,8 @@ pub(super) fn evidence_health(args: &[String]) -> Result<(), String> {
     }
 
     let config = load_for_root(&options.root)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let calibration = match &options.mutation_calibration {
         Some(path) => {
             let contents = std::fs::read_to_string(path).map_err(|err| {
@@ -3374,11 +3378,16 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     if matches!(format, OutputFormat::RepoExposureJson) {
-        let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let (classified, limit_info) =
+            analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
-        output::repo_exposure::write_repo_exposure_json(&classified, &mut handle)
-            .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        output::repo_exposure::write_repo_exposure_json(
+            &classified,
+            limit_info.as_ref(),
+            &mut handle,
+        )
+        .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
     let output = if format.is_repo_seam_inventory() {

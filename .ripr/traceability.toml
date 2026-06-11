@@ -4866,3 +4866,32 @@ outputs = [
 metrics = [
   "receipts_outcomes_route_quality_use_case_status_proposed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0074"
+name = "repo exposure run status"
+spec = "docs/specs/RIPR-SPEC-0074-repo-exposure-run-status.md"
+tests = [
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_run_status_complete_when_no_limit_applied",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_run_status_and_limitations_when_limit_applied",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_run_status_seam_limit_applied_and_complete"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/render.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/commands/pilot.rs",
+  "crates/ripr/src/lsp/diagnostics.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0074-repo-exposure-run-status.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "run_status_always_present_in_repo_exposure_json",
+  "unit_test_pass_rate"
+]

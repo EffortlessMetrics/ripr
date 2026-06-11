@@ -121,7 +121,7 @@ pub(super) fn workspace_diagnostics_with_config(
             .contains(&LanguageId::Rust)
     {
         match inventory_classified_seams_at_with_config(&root, config.repo_config()) {
-            Ok(seams) => {
+            Ok((seams, _)) => {
                 seams
                     .into_iter()
                     .filter(|entry| {

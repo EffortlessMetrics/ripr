@@ -3492,3 +3492,137 @@ fn check_repo_badge_plus_does_not_count_unlifted_repo_wide_test_efficiency() -> 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
 }
+
+/// Helper: run the ripr binary with extra env vars set.
+fn run_ripr_with_env(args: &[&str], env: &[(&str, &str)]) -> std::process::Output {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let mut cmd = std::process::Command::new(bin);
+    cmd.args(args);
+    for (key, val) in env {
+        cmd.env(key, val);
+    }
+    cmd.output().unwrap()
+}
+
+/// Create a temp workspace with exactly two production functions so that
+/// `RIPR_REPO_EXPOSURE_SEAM_LIMIT=1` produces real truncation (analyzed < total).
+fn make_two_seam_workspace() -> Result<PathBuf, String> {
+    let dir = unique_temp_workspace("seam-limit-smoke");
+    std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname=\"ripr-seam-limit-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+    )
+    .map_err(|e| format!("write Cargo.toml: {e}"))?;
+    // Two predicate-boundary functions -> at least 2 seams.
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        "pub fn above_min(value: i32, min: i32) -> bool {\n    value >= min\n}\n\npub fn below_max(value: i32, max: i32) -> bool {\n    value <= max\n}\n",
+    )
+    .map_err(|e| format!("write src/lib.rs: {e}"))?;
+    Ok(dir)
+}
+
+#[test]
+fn check_repo_exposure_json_run_status_seam_limit_applied_and_complete() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    // --- Limited run (RIPR_REPO_EXPOSURE_SEAM_LIMIT=1) ---
+    let limited = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !limited.status.success() {
+        return Err(format!(
+            "limited run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&limited.stdout),
+            String::from_utf8_lossy(&limited.stderr)
+        ));
+    }
+    let limited_stdout = String::from_utf8_lossy(&limited.stdout);
+    let limited_json: serde_json::Value = serde_json::from_str(&limited_stdout)
+        .map_err(|e| format!("parse limited run JSON: {e}\n{limited_stdout}"))?;
+
+    if limited_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "expected run_status=seam_limit_applied, got: {:?}\n{limited_stdout}",
+            limited_json.pointer("/run_status")
+        ));
+    }
+    let category = limited_json
+        .pointer("/limitations/0/category")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].category in:\n{limited_stdout}"))?;
+    if category != "repo_seam_limit_applied" {
+        return Err(format!(
+            "expected category=repo_seam_limit_applied, got: {category}"
+        ));
+    }
+    let seams_analyzed = limited_json
+        .pointer("/limitations/0/seams_analyzed")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("expected limitations[0].seams_analyzed in:\n{limited_stdout}"))?;
+    if seams_analyzed != 1 {
+        return Err(format!("expected seams_analyzed=1, got: {seams_analyzed}"));
+    }
+    let seams_total = limited_json
+        .pointer("/limitations/0/seams_total")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("expected limitations[0].seams_total in:\n{limited_stdout}"))?;
+    if seams_total < 2 {
+        return Err(format!(
+            "expected seams_total>=2 for truncation to be real, got: {seams_total}"
+        ));
+    }
+    let control = limited_json
+        .pointer("/limitations/0/control")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].control in:\n{limited_stdout}"))?;
+    if control != "RIPR_REPO_EXPOSURE_SEAM_LIMIT" {
+        return Err(format!(
+            "expected control=RIPR_REPO_EXPOSURE_SEAM_LIMIT, got: {control}"
+        ));
+    }
+
+    // --- Complete run (env var absent) ---
+    let complete = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[],
+    );
+    if !complete.status.success() {
+        return Err(format!(
+            "complete run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&complete.stdout),
+            String::from_utf8_lossy(&complete.stderr)
+        ));
+    }
+    let complete_stdout = String::from_utf8_lossy(&complete.stdout);
+    let complete_json: serde_json::Value = serde_json::from_str(&complete_stdout)
+        .map_err(|e| format!("parse complete run JSON: {e}\n{complete_stdout}"))?;
+
+    if complete_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("complete")
+    {
+        return Err(format!(
+            "expected run_status=complete, got: {:?}\n{complete_stdout}",
+            complete_json.pointer("/run_status")
+        ));
+    }
+    if complete_json.pointer("/limitations").is_some() {
+        return Err(format!(
+            "expected no limitations key on complete run:\n{complete_stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}

@@ -7,6 +7,7 @@
 //! doc and any downstream consumers in lockstep.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::SeamLimitInfo;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
@@ -30,9 +31,12 @@ const MAX_RELATED_TESTS_PER_SEAM_JSON: usize = 8;
 const MAX_TOP_FILES_SUMMARY_JSON: usize = 25;
 
 /// Render the repo exposure JSON.
-pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String {
+pub(crate) fn render_repo_exposure_json(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+) -> String {
     let mut bytes = Vec::new();
-    if write_repo_exposure_json(classified, &mut bytes).is_err() {
+    if write_repo_exposure_json(classified, limit_info, &mut bytes).is_err() {
         return String::new();
     }
     match String::from_utf8(bytes) {
@@ -49,6 +53,7 @@ pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String
 /// record rather than the full artifact.
 pub(crate) fn write_repo_exposure_json<W: io::Write>(
     classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
     out: &mut W,
 ) -> io::Result<()> {
     let metrics = ExposureMetrics::from(classified);
@@ -61,6 +66,28 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
         REPO_EXPOSURE_SCHEMA_VERSION
     )?;
     writeln!(out, "  \"scope\": \"repo\",")?;
+
+    // run_status is always present; limitations[] only when limited.
+    match limit_info {
+        None => {
+            writeln!(out, "  \"run_status\": \"complete\",")?;
+        }
+        Some(info) => {
+            writeln!(out, "  \"run_status\": \"seam_limit_applied\",")?;
+            writeln!(out, "  \"limitations\": [")?;
+            writeln!(out, "    {{")?;
+            writeln!(out, "      \"category\": \"repo_seam_limit_applied\",")?;
+            writeln!(out, "      \"seams_analyzed\": {},", info.analyzed)?;
+            writeln!(out, "      \"seams_total\": {},", info.total)?;
+            writeln!(out, "      \"control\": \"RIPR_REPO_EXPOSURE_SEAM_LIMIT\",")?;
+            writeln!(
+                out,
+                "      \"repair_route\": \"Remove RIPR_REPO_EXPOSURE_SEAM_LIMIT or increase it to analyze all seams. For bounded analysis, use `ripr check --diff` to scope the run to changed files.\""
+            )?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "  ],")?;
+        }
+    }
 
     writeln!(out, "  \"metrics\": {{")?;
     writeln!(out, "    \"seams_total\": {},", metrics.seams_total)?;
@@ -712,10 +739,11 @@ mod tests {
 
     #[test]
     fn json_carries_schema_version_scope_and_metrics() {
-        let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()], None);
         for needle in [
             "\"schema_version\": \"0.3\"",
             "\"scope\": \"repo\"",
+            "\"run_status\": \"complete\"",
             "\"seams_total\": 1",
             "\"headline_eligible\": 1",
             "\"weakly_gripped\": 1",
@@ -723,11 +751,62 @@ mod tests {
         ] {
             assert!(json.contains(needle), "missing {needle:?} in json:\n{json}");
         }
+        assert!(
+            !json.contains("\"limitations\""),
+            "limitations must be absent on complete run:\n{json}"
+        );
+    }
+
+    #[test]
+    fn json_carries_run_status_complete_when_no_limit_applied() {
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()], None);
+        assert!(
+            json.contains("\"run_status\": \"complete\""),
+            "run_status complete missing in:\n{json}"
+        );
+        assert!(
+            !json.contains("\"limitations\""),
+            "limitations must be absent when no limit applied:\n{json}"
+        );
+    }
+
+    #[test]
+    fn json_carries_run_status_and_limitations_when_limit_applied() {
+        use crate::analysis::SeamLimitInfo;
+        let info = SeamLimitInfo {
+            analyzed: 1,
+            total: 10,
+        };
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()], Some(&info));
+        assert!(
+            json.contains("\"run_status\": \"seam_limit_applied\""),
+            "run_status seam_limit_applied missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"limitations\""),
+            "limitations block missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"category\": \"repo_seam_limit_applied\""),
+            "category missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"seams_analyzed\": 1"),
+            "seams_analyzed missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"seams_total\": 10"),
+            "seams_total missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"control\": \"RIPR_REPO_EXPOSURE_SEAM_LIMIT\""),
+            "control missing in:\n{json}"
+        );
     }
 
     #[test]
     fn json_carries_full_classified_record() {
-        let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()], None);
         for needle in [
             "\"seam_id\":",
             "\"kind\": \"predicate_boundary\"",
@@ -757,7 +836,7 @@ mod tests {
 
     #[test]
     fn json_emits_empty_seams_array_when_inventory_is_empty() {
-        let json = render_repo_exposure_json(&[]);
+        let json = render_repo_exposure_json(&[], None);
         assert!(json.contains("\"seams\": []"));
         assert!(json.contains("\"seams_total\": 0"));
     }
@@ -886,7 +965,7 @@ mod tests {
         // Both JSON and Markdown emit the relation_reason +
         // relation_confidence fields per related test. Pinned by
         // schema bump 0.1 → 0.2.
-        let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()], None);
         assert!(
             json.contains("\"relation_reason\": \"direct_owner_call\""),
             "JSON missing relation_reason: {json}"
@@ -910,7 +989,7 @@ mod tests {
         classified.evidence.related_tests[0].relation_reason =
             crate::analysis::test_grip_evidence::RelationReason::HelperOwnerCall;
 
-        let json = render_repo_exposure_json(&[classified.clone()]);
+        let json = render_repo_exposure_json(&[classified.clone()], None);
         assert!(
             json.contains("\"relation_reason\": \"helper_owner_call\""),
             "JSON missing helper_owner_call relation_reason: {json}"
