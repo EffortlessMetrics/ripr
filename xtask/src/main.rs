@@ -6503,9 +6503,11 @@ fn check_static_language_impl() -> Result<(), String> {
             let lower = line.to_ascii_lowercase();
             for term in &forbidden {
                 if contains_word(&lower, term) {
-                    violations.push(format!(
-                        "{normalized}:{} contains prohibited static-language term `{term}`",
-                        line_number + 1
+                    violations.push(static_language_violation_message(
+                        &normalized,
+                        line_number + 1,
+                        term,
+                        line,
                     ));
                 }
             }
@@ -68386,6 +68388,50 @@ fn forbidden_static_terms() -> Vec<String> {
         .collect()
 }
 
+/// A plain-English synonym hint for a prohibited static-language term, used to
+/// speed fixes when the term appears in prose/comments rather than analyzer
+/// output. The gate scans all tracked prose, not only output strings, so a hit
+/// is often an innocent English word that just needs a neutral synonym.
+fn static_language_synonym_hint(term: &str) -> &'static str {
+    match term {
+        "killed" => "removed/terminated",
+        "survived" => "persisted/remained",
+        "untested" => "unexercised/uncovered",
+        "proven" => "demonstrated/established",
+        "adequate" => "sufficient/enough",
+        _ => "a neutral synonym",
+    }
+}
+
+/// Build an actionable static-language violation: `path:line`, the offending
+/// snippet, and a fix hint. The hint names the common confusion — the gate
+/// scans all tracked prose, not just analyzer output — so a hit in a comment or
+/// doc is fixed with a plain synonym, while a hit in real output must use the
+/// approved exposure vocabulary.
+fn static_language_violation_message(
+    path: &str,
+    line_number: usize,
+    term: &str,
+    line: &str,
+) -> String {
+    let trimmed = line.trim();
+    let snippet = if trimmed.chars().count() > 80 {
+        let mut shortened: String = trimmed.chars().take(77).collect();
+        shortened.push_str("...");
+        shortened
+    } else {
+        trimmed.to_string()
+    };
+    let hint = static_language_synonym_hint(term);
+    format!(
+        "{path}:{line_number} prohibited static-language term `{term}` in `{snippet}` \
+— this gate scans all tracked prose, not just analyzer output. In output, use the \
+approved exposure vocabulary (exposed/weakly_exposed/reachable_unrevealed/no_static_path/\
+infection_unknown/propagation_unknown/static_unknown). In comments or docs, use a plain \
+synonym (e.g. {hint})."
+    )
+}
+
 fn forbidden_panic_patterns() -> Vec<String> {
     [
         concat!("unwrap", "("),
@@ -70799,12 +70845,13 @@ mod tests {
         should_skip_path, sorted_allowlist_content, sorted_capability_blocks_content,
         sorted_command_catalog_content, sorted_markdown_index_table_content,
         sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
-        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
-        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, user_surface_projection_required_run_status_violations,
+        spec_numbering_violations, specs, static_language_allowlist_covers,
+        static_language_violation_message, status_for_report, suggested_fixes_patch,
+        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message,
+        user_surface_projection_required_run_status_violations,
         validate_actionable_gap_outcomes_fixture_case,
         validate_actionable_gap_outcomes_fixture_corpus, validate_local_context_allowlist,
         validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
@@ -75832,6 +75879,57 @@ fn has_unwrap_in_name() -> bool {
             &allowlist,
             "docs/generated/output.json"
         ));
+    }
+
+    #[test]
+    fn static_language_violation_message_is_actionable() {
+        let message = static_language_violation_message(
+            ".github/workflows/scratch-gc.yml",
+            4,
+            "proven",
+            "# Mirrors the proven inline \"Prepare scratch\" step",
+        );
+        // file:line and the term.
+        assert!(
+            message.starts_with(".github/workflows/scratch-gc.yml:4"),
+            "message must lead with path:line, got: {message}"
+        );
+        assert!(
+            message.contains("`proven`"),
+            "message must name the term, got: {message}"
+        );
+        // The offending snippet, so the author sees the context inline.
+        assert!(
+            message.contains("Mirrors the proven inline"),
+            "message must quote the offending line, got: {message}"
+        );
+        // The key fix hint: the gate scans prose, not just output.
+        assert!(
+            message.contains("scans all tracked prose"),
+            "message must explain the prose-vs-output scope, got: {message}"
+        );
+        // A plain synonym for the prose case.
+        assert!(
+            message.contains("demonstrated/established"),
+            "message must suggest a synonym, got: {message}"
+        );
+    }
+
+    #[test]
+    fn static_language_violation_message_truncates_long_lines() {
+        let long = "x".repeat(200);
+        let line = format!("// {long} adequate");
+        let message = static_language_violation_message("docs/notes.md", 7, "adequate", &line);
+        // Snippet is bounded so the report stays scannable.
+        assert!(
+            message.contains("..."),
+            "long snippet must be truncated, got len {}",
+            message.len()
+        );
+        assert!(
+            message.contains("sufficient/enough"),
+            "message must suggest a synonym for `adequate`, got: {message}"
+        );
     }
 
     #[test]
