@@ -104,6 +104,24 @@ Examples:
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
 "#;
+pub(super) const DIFF_HELP: &str = r#"Analyze the changed surface first and report full-repo context as an explicit bounded state.
+
+Usage: ripr diff [--root PATH] [--base REV] [--head REV] [--mode MODE] [--format human|json] [--json]
+
+Options:
+  --root PATH              Workspace root. Defaults to current directory.
+  --base REV               Base revision for git diff. Defaults to origin/main.
+  --head REV               Head revision for git diff. Defaults to HEAD.
+  --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
+  --format FORMAT          human, text, md, markdown, or json. Defaults to human.
+  --json                   Shortcut for --format json.
+  --no-unchanged-tests     Limit the index to changed Rust files.
+
+The diff report emits changed files, changed seams, static evidence for those
+seams, a diff-complete runtime status, an explicit full-repo-limited context
+status, and a receipt path hint. It does not run mutation testing, edit files,
+or turn the full-repo limitation into a success state.
+"#;
 pub(super) const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
 
 Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>

@@ -9,6 +9,10 @@ use crate::app::agent_brief::{
 };
 use crate::config::RiprConfig;
 use crate::output::agent_seam_packets;
+use crate::output::evidence_record::{
+    CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
+    cross_language_test_target_unresolved,
+};
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
@@ -19,6 +23,14 @@ pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
 
+pub(crate) struct ReviewCommentsRenderContext<'a> {
+    pub(crate) root: &'a Path,
+    pub(crate) base: &'a str,
+    pub(crate) head: &'a str,
+    pub(crate) mode: &'a Mode,
+    pub(crate) config: &'a RiprConfig,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ReviewPlacement {
     path: String,
@@ -26,6 +38,78 @@ struct ReviewPlacement {
     mode: &'static str,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ReviewCommentsAnalysisScope {
+    pub(crate) scope: &'static str,
+    pub(crate) run_status: &'static str,
+    pub(crate) basis: &'static str,
+    pub(crate) changed_files: Vec<String>,
+    pub(crate) changed_lines: usize,
+    pub(crate) changed_owner_functions: usize,
+    pub(crate) changed_production_files: Vec<String>,
+    pub(crate) immediate_caller_files: Vec<String>,
+    pub(crate) scoped_production_files: Vec<String>,
+    pub(crate) total_rust_files: Option<usize>,
+    pub(crate) total_production_files: Option<usize>,
+    pub(crate) production_files_considered: usize,
+    pub(crate) classified_seams_considered: usize,
+    pub(crate) downstream_consumable: bool,
+    pub(crate) limitation: &'static str,
+    pub(crate) repair_route: &'static str,
+}
+
+impl ReviewCommentsAnalysisScope {
+    pub(crate) fn limited_diff_scope(
+        working_set: &AgentBriefResolvedWorkingSet,
+        inventory: &crate::analysis::ScopedClassifiedSeamInventory,
+    ) -> Self {
+        Self {
+            scope: "diff_scoped_changed_files",
+            run_status: "limited_diff_scope",
+            basis: "changed_production_files_plus_immediate_callers",
+            changed_files: display_paths(&working_set.files),
+            changed_lines: working_set.changed_lines.len(),
+            changed_owner_functions: working_set.changed_owners.len(),
+            changed_production_files: display_paths(&inventory.changed_production_files),
+            immediate_caller_files: display_paths(&inventory.immediate_caller_files),
+            scoped_production_files: display_paths(&inventory.scoped_production_files),
+            total_rust_files: Some(inventory.total_rust_files),
+            total_production_files: Some(inventory.total_production_files),
+            production_files_considered: inventory.scoped_production_files.len(),
+            classified_seams_considered: inventory.classified.len(),
+            downstream_consumable: true,
+            limitation: "review_comments_diff_scope_only",
+            repair_route: "analysis/diff-scoped-large-repo-review-fast-path",
+        }
+    }
+
+    #[cfg(test)]
+    fn from_working_set(
+        working_set: &AgentBriefResolvedWorkingSet,
+        classified_seams_considered: usize,
+    ) -> Self {
+        Self {
+            scope: "working_set",
+            run_status: "scoped",
+            basis: working_set.source.as_str(),
+            changed_files: display_paths(&working_set.files),
+            changed_lines: working_set.changed_lines.len(),
+            changed_owner_functions: working_set.changed_owners.len(),
+            changed_production_files: Vec::new(),
+            immediate_caller_files: Vec::new(),
+            scoped_production_files: display_paths(&working_set.files),
+            total_rust_files: None,
+            total_production_files: None,
+            production_files_considered: working_set.files.len(),
+            classified_seams_considered,
+            downstream_consumable: true,
+            limitation: "review_comments_working_set_scope_only",
+            repair_route: "analysis/review-comments-working-set",
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn render_review_comments_json(
     root: &Path,
     base: &str,
@@ -34,6 +118,24 @@ pub(crate) fn render_review_comments_json(
     config: &RiprConfig,
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
+) -> Result<String, String> {
+    let analysis_scope =
+        ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+    let context = ReviewCommentsRenderContext {
+        root,
+        base,
+        head,
+        mode,
+        config,
+    };
+    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope)
+}
+
+pub(crate) fn render_review_comments_json_with_scope(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    selection: &AgentBriefSelection<'_>,
+    analysis_scope: &ReviewCommentsAnalysisScope,
 ) -> Result<String, String> {
     let mut comments = Vec::new();
     let mut summary_only = Vec::new();
@@ -65,7 +167,17 @@ pub(crate) fn render_review_comments_json(
     }
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
-        let recommendation = review_recommendation_json(root, mode, config, selected);
+        let recommendation =
+            review_recommendation_json(context.root, context.mode, context.config, selected);
+        if cross_language_test_target_unresolved(selected.seam) {
+            let mut item = recommendation;
+            item["placement"] = Value::Null;
+            item["summary_reason"] = json!(
+                "navigation-only cross-language target limitation; no PR repair comment emitted"
+            );
+            summary_only.push(item);
+            continue;
+        }
         let recommended_test = agent_seam_packets::recommended_test_for(selected.seam);
         if changed_test_paths
             .iter()
@@ -115,10 +227,11 @@ pub(crate) fn render_review_comments_json(
         "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
         "tool": "ripr",
         "status": "advisory",
-        "root": display_path(root),
-        "base": base,
-        "head": head,
-        "mode": mode.as_str(),
+        "root": display_path(context.root),
+        "base": context.base,
+        "head": context.head,
+        "mode": context.mode.as_str(),
+        "analysis_scope": analysis_scope_json(analysis_scope),
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -203,6 +316,7 @@ pub(crate) fn render_gap_record_review_comments_json(
     super::json::render_pretty(&value, "gap-ledger review comments")
 }
 
+#[cfg(test)]
 pub(crate) fn render_review_comments_markdown(
     root: &Path,
     base: &str,
@@ -212,8 +326,26 @@ pub(crate) fn render_review_comments_markdown(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
 ) -> String {
+    let analysis_scope =
+        ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+    let context = ReviewCommentsRenderContext {
+        root,
+        base,
+        head,
+        mode,
+        config,
+    };
+    render_review_comments_markdown_with_scope(&context, working_set, selection, &analysis_scope)
+}
+
+pub(crate) fn render_review_comments_markdown_with_scope(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    selection: &AgentBriefSelection<'_>,
+    analysis_scope: &ReviewCommentsAnalysisScope,
+) -> String {
     let Ok(rendered) =
-        render_review_comments_json(root, base, head, mode, config, working_set, selection)
+        render_review_comments_json_with_scope(context, working_set, selection, analysis_scope)
     else {
         return "# RIPR PR Guidance\n\nUnable to render PR guidance.\n".to_string();
     };
@@ -221,7 +353,13 @@ pub(crate) fn render_review_comments_markdown(
         return "# RIPR PR Guidance\n\nUnable to parse rendered PR guidance.\n".to_string();
     };
 
-    render_review_comments_markdown_value(root, base, head, mode, &value)
+    render_review_comments_markdown_value(
+        context.root,
+        context.base,
+        context.head,
+        context.mode,
+        &value,
+    )
 }
 
 pub(crate) fn render_gap_record_review_comments_markdown(
@@ -275,10 +413,11 @@ fn render_review_comments_markdown_value(
         format!("- line annotations: {comments}"),
         format!("- summary-only recommendations: {summary_only}"),
         format!("- suppressed recommendations: {suppressed}"),
-        String::new(),
-        "Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string(),
-        String::new(),
     ];
+    push_analysis_scope_summary(&mut lines, value.get("analysis_scope"));
+    lines.push(String::new());
+    lines.push("Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string());
+    lines.push(String::new());
 
     push_markdown_items(&mut lines, "Line Annotations", value.get("comments"));
     push_markdown_items(
@@ -399,6 +538,7 @@ fn gap_record_comment_json(
     let repair_text = repair_text(repair_route);
     let why = repair_why(record, repair_route);
     let verify_command = record.verification_commands[0].clone();
+    let source_location = source_location_json(file, Some(line as usize));
 
     Ok(json!({
         "id": format!("ripr-review-{gap_id}"),
@@ -408,8 +548,12 @@ fn gap_record_comment_json(
         "gap_kind": record.kind.as_str(),
         "language": record.language.as_str(),
         "language_status": record.language_status.as_str(),
+        "gap_state": record.gap_state.as_str(),
+        "policy_state": record.policy_state.as_str(),
+        "repairability": record.repairability.as_str(),
         "seam_id": gap_id.as_str(),
         "dedupe_key": dedupe,
+        "source_location": source_location,
         "placement": {
             "path": file,
             "line": line,
@@ -542,32 +686,20 @@ fn review_recommendation_json(
     let seam_id = seam.id().as_str();
     let root_display = display_path(root);
     let missing_value = missing.first().map(|record| record.value.clone());
-
-    json!({
-        "id": format!("ripr-review-{seam_id}"),
-        "seam_id": seam_id,
-        "dedupe_key": format!("ripr:{seam_id}:{}:{}", display_path(seam.file()), seam.display_line()),
-        "kind": seam.kind().as_str(),
-        "grip_class": entry.class.as_str(),
-        "severity": config.severity().for_seam(entry.class).as_str(),
-        "owner": seam.owner(),
-        "seam": {
-            "file": display_path(seam.file()),
-            "line": seam.display_line(),
-            "expression": seam.expression(),
-        },
-        "reason": reason_for(selected, missing_value.as_deref()),
-        "missing_discriminator": missing_value,
-        "suggested_test": {
-            "intent": suggested_test_intent(assertion_shape.kind),
-            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
-            "assertion_shape": assertion_shape.example,
-            "assertion_kind": assertion_shape.kind,
-            "recommended_file": recommended.file,
-            "recommended_name": recommended.name,
-            "near_test": nearest.map(|test| test.test_name.clone()),
-        },
-        "llm_guidance": {
+    let seam_file = display_path(seam.file());
+    let seam_line = seam.display_line();
+    let target_unresolved = cross_language_test_target_unresolved(entry);
+    let navigation_target = agent_seam_packets::navigation_only_external_target_for(entry);
+    let navigation_target_json = navigation_target
+        .as_ref()
+        .map(agent_seam_packets::navigation_only_external_target_json);
+    let llm_guidance = if target_unresolved {
+        json!({
+            "prompt": limitation_prompt(navigation_target.as_ref()),
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
+    } else {
+        json!({
             "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
             "verify_command": agent_verify_command(
@@ -576,8 +708,56 @@ fn review_recommendation_json(
                 WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
                 None,
             ),
+        })
+    };
+
+    let mut recommendation = json!({
+        "id": format!("ripr-review-{seam_id}"),
+        "seam_id": seam_id,
+        "dedupe_key": format!("ripr:{seam_id}:{seam_file}:{seam_line}"),
+        "kind": seam.kind().as_str(),
+        "grip_class": entry.class.as_str(),
+        "severity": config.severity().for_seam(entry.class).as_str(),
+        "owner": seam.owner(),
+        "seam": {
+            "file": seam_file,
+            "line": seam_line,
+            "expression": seam.expression(),
         },
-    })
+        "source_location": source_location_json(&seam_file, Some(seam_line)),
+        "reason": reason_for(selected, missing_value.as_deref()),
+        "missing_discriminator": missing_value,
+        "suggested_test": {
+            "intent": suggested_test_intent(assertion_shape.kind),
+            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
+            "assertion_shape": assertion_shape.example,
+            "assertion_kind": assertion_shape.kind,
+            "recommended_file": recommended.file.as_str(),
+            "recommended_name": recommended.name.as_str(),
+            "near_test": nearest.map(|test| test.test_name.clone()),
+        },
+        "llm_guidance": llm_guidance,
+    });
+    if target_unresolved && let Some(object) = recommendation.as_object_mut() {
+        object.insert("gap_state".to_string(), json!("static_limitation"));
+        object.insert("repairability".to_string(), json!("no_action"));
+        object.insert(
+            "limitation".to_string(),
+            json!(CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY),
+        );
+        object.insert(
+            "limitation_route".to_string(),
+            json!(CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE),
+        );
+        object.insert(
+            "projection_exclusion_reasons".to_string(),
+            json!([CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY]),
+        );
+        if let Some(target) = navigation_target_json {
+            object.insert("navigation_only_target".to_string(), target);
+        }
+    }
+    recommendation
 }
 
 fn placement_for(
@@ -635,6 +815,56 @@ fn placement_json(placement: &ReviewPlacement) -> Value {
         "side": "RIGHT",
         "mode": placement.mode,
     })
+}
+
+fn source_location_json(file: &str, line: Option<usize>) -> Value {
+    match line {
+        Some(line) => json!({
+            "status": "resolved",
+            "file": file,
+            "line": line,
+            "span": null,
+            "limitation": null,
+            "repair_route": null,
+        }),
+        None => unresolved_source_location_json(),
+    }
+}
+
+fn unresolved_source_location_json() -> Value {
+    json!({
+        "status": "source_location_unresolved",
+        "file": "unknown",
+        "line": null,
+        "span": null,
+        "limitation": "source_location_unresolved",
+        "repair_route": "analysis/source-location-resolution",
+    })
+}
+
+fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
+    json!({
+        "scope": scope.scope,
+        "run_status": scope.run_status,
+        "basis": scope.basis,
+        "changed_files": scope.changed_files,
+        "changed_lines": scope.changed_lines,
+        "changed_owner_functions": scope.changed_owner_functions,
+        "changed_production_files": scope.changed_production_files,
+        "immediate_caller_files": scope.immediate_caller_files,
+        "scoped_production_files": scope.scoped_production_files,
+        "total_rust_files": scope.total_rust_files,
+        "total_production_files": scope.total_production_files,
+        "production_files_considered": scope.production_files_considered,
+        "classified_seams_considered": scope.classified_seams_considered,
+        "downstream_consumable": scope.downstream_consumable,
+        "limitation": scope.limitation,
+        "repair_route": scope.repair_route,
+    })
+}
+
+fn display_paths(paths: &[std::path::PathBuf]) -> Vec<String> {
+    paths.iter().map(|path| display_path(path)).collect()
 }
 
 fn suppressed_json(selected: &AgentBriefSelectedSeam<'_>, reason: &str, message: &str) -> Value {
@@ -711,6 +941,22 @@ fn llm_prompt(recommended_file: &str, near_test: Option<&str>, missing: Option<&
     )
 }
 
+fn limitation_prompt(
+    navigation_target: Option<&agent_seam_packets::NavigationOnlyExternalTarget>,
+) -> String {
+    let target = navigation_target
+        .map(|target| {
+            format!(
+                " Navigation-only external observer target: {}:{}.",
+                target.file, target.line
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        "Inspect the cross-language target limitation before repair. Do not write a Rust test, do not infer an edit surface, and route through `{CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE}`.{target}"
+    )
+}
+
 fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Value>) {
     lines.push(format!("## {heading}"));
     lines.push(String::new());
@@ -724,14 +970,137 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
     for item in items {
         let seam_id = string_field(item, "seam_id").unwrap_or("unknown");
         let reason = string_field(item, "reason").unwrap_or("No reason available.");
+        let source_location = markdown_source_location(item);
+        let state = string_field(item, "gap_state")
+            .or_else(|| string_field(item, "grip_class"))
+            .unwrap_or("unknown");
         let command = item
             .get("llm_guidance")
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
-        lines.push(format!("- `{seam_id}`: {reason}"));
+        lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
+        if let Some(canonical_gap_id) =
+            string_field(item, "canonical_gap_id").filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        }
+        lines.push(format!("  - state: `{state}`"));
+        if let Some(route) = repair_route_kind(item) {
+            lines.push(format!("  - repair_route: `{route}`"));
+        }
+        if let Some(route) = string_field(item, "limitation_route") {
+            lines.push(format!("  - limitation_route: `{route}`"));
+        }
+        if let Some(target) = item.get("navigation_only_target") {
+            push_navigation_only_target_markdown(lines, target);
+        }
+        if source_location == "unknown:unknown" {
+            lines.push(
+                "  - limitation: `source_location_unresolved`; repair_route: `analysis/source-location-resolution`"
+                    .to_string(),
+            );
+        }
         lines.push(format!("  - command: `{command}`"));
     }
     lines.push(String::new());
+}
+
+fn push_navigation_only_target_markdown(lines: &mut Vec<String>, target: &Value) {
+    let location = markdown_location_from_fields(
+        target.get("file").and_then(Value::as_str),
+        target.get("line").and_then(Value::as_u64),
+    );
+    let language = string_field(target, "language").unwrap_or("external");
+    let ready = target
+        .get("repair_packet_ready")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    lines.push(format!(
+        "  - navigation_only_target: `{location}` ({language}; repair_packet_ready={ready})"
+    ));
+    if let Some(test_name) = string_field(target, "test_name") {
+        lines.push(format!("  - external_observer: `{test_name}`"));
+    }
+}
+
+fn push_analysis_scope_summary(lines: &mut Vec<String>, value: Option<&Value>) {
+    let Some(scope) = value.and_then(Value::as_object) else {
+        return;
+    };
+    let scope_name = scope
+        .get("scope")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let run_status = scope
+        .get("run_status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let considered = scope
+        .get("production_files_considered")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let classified = scope
+        .get("classified_seams_considered")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let total_production = scope
+        .get("total_production_files")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    lines.push(format!("- analysis scope: `{scope_name}`"));
+    lines.push(format!("- run status: `{run_status}`"));
+    lines.push(format!(
+        "- scoped production files: {considered}/{total_production}"
+    ));
+    lines.push(format!("- classified seams considered: {classified}"));
+    if let (Some(limitation), Some(route)) = (
+        scope.get("limitation").and_then(Value::as_str),
+        scope.get("repair_route").and_then(Value::as_str),
+    ) {
+        lines.push(format!(
+            "- limitation: `{limitation}`; repair_route: `{route}`"
+        ));
+    }
+}
+
+fn markdown_source_location(item: &Value) -> String {
+    if let Some(source) = item.get("source_location").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            source.get("file").and_then(Value::as_str),
+            source.get("line").and_then(Value::as_u64),
+        );
+    }
+    if let Some(seam) = item.get("seam").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            seam.get("file").and_then(Value::as_str),
+            seam.get("line").and_then(Value::as_u64),
+        );
+    }
+    if let Some(placement) = item.get("placement").and_then(Value::as_object) {
+        return markdown_location_from_fields(
+            placement.get("path").and_then(Value::as_str),
+            placement.get("line").and_then(Value::as_u64),
+        );
+    }
+    "unknown:unknown".to_string()
+}
+
+fn markdown_location_from_fields(file: Option<&str>, line: Option<u64>) -> String {
+    let file = file
+        .map(str::trim)
+        .filter(|file| !file.is_empty())
+        .unwrap_or("unknown");
+    let line = line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    format!("{file}:{line}")
+}
+
+fn repair_route_kind(item: &Value) -> Option<&str> {
+    item.get("repair_card")
+        .and_then(|card| card.get("repair_route"))
+        .and_then(|route| string_field(route, "route_kind"))
 }
 
 fn push_suppressed_items(lines: &mut Vec<String>, value: Option<&Value>) {
@@ -810,6 +1179,88 @@ mod tests {
                 activate: stage(StageState::Yes),
                 propagate: stage(StageState::Yes),
                 observe: stage(StageState::Yes),
+                discriminate: stage(StageState::Weak),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+        }
+    }
+
+    fn cross_language_classified_with_external_observer() -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let seam_id = seam.id().clone();
+        ClassifiedSeam {
+            seam,
+            class: SeamGripClass::WeaklyGripped,
+            evidence: TestGripEvidence {
+                seam_id,
+                related_tests: vec![RelatedTestGrip {
+                    test_name: "blob copies resizable buffers".to_string(),
+                    file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
+                    line: 41,
+                    oracle_kind: OracleKind::ExactValue,
+                    oracle_strength: OracleStrength::Strong,
+                    evidence_summary: "configured TypeScript bridge exact value observer"
+                        .to_string(),
+                    relation_reason: RelationReason::DirectOwnerCall,
+                    relation_confidence: RelationConfidence::High,
+                }],
+                reach: stage(StageState::Yes),
+                activate: stage(StageState::Yes),
+                propagate: stage(StageState::Weak),
+                observe: stage(StageState::Weak),
+                discriminate: stage(StageState::Weak),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+        }
+    }
+
+    fn markdown_object_classified_with_external_observer() -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/runtime/api/MarkdownObject.rs",
+            "MarkdownObject::to_string",
+            SeamKind::PredicateBoundary,
+            60,
+            60,
+            "self.0.resizable && !self.0.shared",
+            RequiredDiscriminator::BoundaryValue {
+                description: "self.0.resizable && !self.0.shared".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let seam_id = seam.id().clone();
+        ClassifiedSeam {
+            seam,
+            class: SeamGripClass::WeaklyGripped,
+            evidence: TestGripEvidence {
+                seam_id,
+                related_tests: vec![RelatedTestGrip {
+                    test_name: "markdown snapshots resizable ArrayBuffer input".to_string(),
+                    file: PathBuf::from("test/js/bun/md/md-edge-cases.test.ts"),
+                    line: 42,
+                    oracle_kind: OracleKind::ExactValue,
+                    oracle_strength: OracleStrength::Strong,
+                    evidence_summary: "configured TypeScript bridge exact markdown output observer"
+                        .to_string(),
+                    relation_reason: RelationReason::DirectOwnerCall,
+                    relation_confidence: RelationConfidence::High,
+                }],
+                reach: stage(StageState::Yes),
+                activate: stage(StageState::Yes),
+                propagate: stage(StageState::Weak),
+                observe: stage(StageState::Weak),
                 discriminate: stage(StageState::Weak),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
@@ -1078,6 +1529,17 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["comments"][0]["placement"]["mode"], "exact_seam_line");
         assert_eq!(
+            value["comments"][0]["source_location"],
+            serde_json::json!({
+                "status": "resolved",
+                "file": "src/pricing.rs",
+                "line": 88,
+                "span": null,
+                "limitation": null,
+                "repair_route": null,
+            })
+        );
+        assert_eq!(
             value["comments"][0]["llm_guidance"]["verify_command"],
             "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
         );
@@ -1160,6 +1622,11 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 0);
         assert_eq!(value["summary"]["summary_only"], 1);
         assert!(value["summary_only"][0]["placement"].is_null());
+        assert_eq!(
+            value["summary_only"][0]["source_location"]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["summary_only"][0]["source_location"]["line"], 88);
         Ok(())
     }
 
@@ -1252,7 +1719,151 @@ mod tests {
 
         assert!(rendered.contains("# RIPR PR Guidance"));
         assert!(rendered.contains("Advisory static evidence only"));
+        assert!(rendered.contains("`8f7fa8644fd12280` @ `src/pricing.rs:88`"));
+        assert!(rendered.contains("state: `weakly_gripped`"));
         assert!(rendered.contains("ripr agent brief"));
+    }
+
+    #[test]
+    fn review_comments_surface_external_observer_as_navigation_only_limitation()
+    -> Result<(), String> {
+        let seams = [cross_language_classified_with_external_observer()];
+        let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(
+            "test/js/web/fetch/blob.test.ts",
+        )]);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["summary_only"], 1);
+        let item = &value["summary_only"][0];
+        assert_eq!(
+            item["summary_reason"],
+            "navigation-only cross-language target limitation; no PR repair comment emitted"
+        );
+        assert_eq!(item["gap_state"], "static_limitation");
+        assert_eq!(item["repairability"], "no_action");
+        assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
+        assert_eq!(
+            item["limitation_route"],
+            "analysis/cross-language-test-target-inference"
+        );
+        assert_eq!(
+            item["navigation_only_target"]["file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        assert_eq!(item["navigation_only_target"]["line"], 41);
+        assert_eq!(item["navigation_only_target"]["repair_packet_ready"], false);
+        assert!(
+            item["llm_guidance"].get("verify_command").is_none(),
+            "target-unresolved review guidance must not expose verify_command: {item:?}"
+        );
+        assert!(
+            item["llm_guidance"]["prompt"]
+                .as_str()
+                .is_some_and(|prompt| {
+                    prompt.contains("Do not write a Rust test")
+                        && prompt.contains("analysis/cross-language-test-target-inference")
+                }),
+            "expected limitation prompt, got {:?}",
+            item["llm_guidance"]
+        );
+
+        let markdown = render_markdown(&working_set, &seams);
+        assert!(markdown.contains("navigation_only_target: `test/js/web/fetch/blob.test.ts:41`"));
+        assert!(markdown.contains("repair_packet_ready=false"));
+        assert!(
+            markdown.contains("limitation_route: `analysis/cross-language-test-target-inference`")
+        );
+        assert!(!markdown.contains("ripr agent verify"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_markdownobject_external_observer_never_suggests_wrong_rust_target()
+    -> Result<(), String> {
+        let seams = [markdown_object_classified_with_external_observer()];
+        let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(
+            "test/js/bun/md/md-edge-cases.test.ts",
+        )]);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["summary_only"], 1);
+        let item = &value["summary_only"][0];
+        assert_eq!(item["gap_state"], "static_limitation");
+        assert_eq!(item["repairability"], "no_action");
+        assert_eq!(
+            item["limitation"], "cross_language_target_unresolved",
+            "MarkdownObject external observer must fail closed before target placement"
+        );
+        assert_eq!(
+            item["limitation_route"],
+            "analysis/cross-language-test-target-inference"
+        );
+        assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
+        assert_eq!(
+            item["navigation_only_target"]["file"],
+            "test/js/bun/md/md-edge-cases.test.ts"
+        );
+        assert_eq!(item["navigation_only_target"]["line"], 42);
+        assert!(
+            item["llm_guidance"].get("verify_command").is_none(),
+            "MarkdownObject target-unresolved guidance must not expose verify_command: {item:?}"
+        );
+        let prompt = item["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("llm_guidance prompt should be a string")?;
+        assert!(prompt.contains("Do not write a Rust test"));
+        assert!(prompt.contains("analysis/cross-language-test-target-inference"));
+        assert!(!prompt.contains("vendor/lolhtml/tests/harness/input.rs"));
+        assert!(!prompt.contains("Write one focused Rust test"));
+
+        let rendered = serde_json::to_string_pretty(&value)
+            .map_err(|err| format!("render review comment JSON: {err}"))?;
+        assert!(!rendered.contains("vendor/lolhtml/tests/harness/input.rs"));
+
+        let markdown = render_markdown(&working_set, &seams);
+        assert!(markdown.contains("`src/runtime/api/MarkdownObject.rs:60`"));
+        assert!(
+            markdown.contains("navigation_only_target: `test/js/bun/md/md-edge-cases.test.ts:42`")
+        );
+        assert!(markdown.contains("repair_packet_ready=false"));
+        assert!(
+            markdown.contains("limitation_route: `analysis/cross-language-test-target-inference`")
+        );
+        assert!(!markdown.contains("vendor/lolhtml/tests/harness/input.rs"));
+        assert!(!markdown.contains("ripr agent verify"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_markdown_fails_closed_when_source_location_is_missing() {
+        let value = serde_json::json!({
+            "comments": [
+                {
+                    "seam_id": "seam:unknown",
+                    "reason": "No source location was available.",
+                    "llm_guidance": {
+                        "command": "ripr agent brief --root . --seam-id seam:unknown --json"
+                    }
+                }
+            ],
+            "summary_only": [],
+            "suppressed": []
+        });
+
+        let rendered = render_review_comments_markdown_value(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &value,
+        );
+
+        assert!(rendered.contains("`seam:unknown` @ `unknown:unknown`"));
+        assert!(rendered.contains("state: `unknown`"));
+        assert!(rendered.contains("source_location_unresolved"));
+        assert!(rendered.contains("analysis/source-location-resolution"));
     }
 
     #[test]
@@ -1275,6 +1886,12 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["summary"]["suppressed"], 2);
         assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
+        assert_eq!(
+            value["comments"][0]["source_location"]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["comments"][0]["source_location"]["line"], 42);
+        assert_eq!(value["comments"][0]["gap_state"], "actionable");
         assert_eq!(
             value["comments"][0]["placement"]["mode"],
             "gap_record_anchor"
@@ -1306,6 +1923,11 @@ mod tests {
             &records,
         );
         assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("`gap:pr:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
+        assert!(
+            markdown.contains("canonical_gap_id: `gap:rust:pricing:discount:threshold-boundary`")
+        );
+        assert!(markdown.contains("repair_route: `AddBoundaryAssertion`"));
         assert!(markdown.contains("command: `ripr first-action"));
         Ok(())
     }

@@ -1,0 +1,118 @@
+# Archived by `cargo xtask closeout --goal lane1-real-repo-trust-readiness` on 2026-06-03.
+id = "lane1-real-repo-trust-readiness"
+title = "Lane 1 Real-Repo Trust Readiness"
+status = "closed"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/913"
+no_current_goal = true
+
+# Selected after the self-hosted routed runner proof campaign closed with
+# `no_current_goal = true`. Live repo state on 2026-06-03 shows 0.8.0 already
+# published, so this campaign treats the new large-repo and cross-language
+# issue batch as post-release trust debt / hotfix candidates, not as claims
+# already satisfied by the published 0.8.0 tag. The issue-batch slices landed
+# through #931, and no successor campaign is selected.
+
+objective = """
+Make RIPR's evidence-to-repair foundation honest on large and mixed-language
+repositories: review surfaces must be navigable, large seam-cache limits must
+be explicit named limitations, and cross-language or binding/FFI seams must
+fail closed instead of emitting wrong Rust repair work.
+"""
+
+end_state = [
+  "review-comments Markdown includes source file and line/span next to each seam row, or an explicit source_location_unresolved limitation route",
+  "large repo seam-cache skips report observed seam count, configured limit, downstream consumability, and a repair/configuration route instead of silently disappearing",
+  "Rust seams reached through TypeScript, binding, or FFI surfaces fail closed as cross_language_oracle_visibility_unresolved or cross_language_target_unresolved until RIPR can prove the external oracle path",
+  "public repair-packet queues exclude incomplete or cross-language-unresolved packets and preserve blocked-state / limitation routes",
+  "0.8.x release-line notes and issue labels do not claim the published 0.8.0 tag fixed behavior that landed only afterward",
+]
+
+hard_rules = [
+  "do not force actionability",
+  "do not suggest unrelated Rust test files for binding or FFI seams",
+  "do not silently skip cache on large repositories",
+  "do not represent sampled, stale, or limited runs as full",
+  "source ripr remains release, signing, publishing, and distribution authority",
+]
+
+non_goals = [
+  "no provider integration",
+  "no autonomous edits",
+  "no mutation execution",
+  "no default blocking CI or badge semantic switch",
+  "no claim that full cross-language oracle proof exists",
+  "no claim that every large-repo run is full",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
+]
+
+[[work_item]]
+id = "release/real-repo-trust-issue-triage"
+status = "done"
+branch = "release-real-repo-trust-triage"
+stackable = false
+acceptance = "Classify #913, #912/#909, and #908/#910/#911 as the current real-repo trust issue batch; link the duplicate/overlap cluster; label release-line blockers or post-0.8 follow-ups honestly; update 0.8.0 release/freeze non-claims so the published tag is not represented as fixing these new issues."
+commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/review-comments-source-locations"
+status = "done"
+branch = "report-review-comments-source-locations"
+stackable = false
+acceptance = "review-comments Markdown rows show file:line or explicit unknown source-location limitation next to seam IDs, and JSON/Markdown fixture coverage proves no seam row is location-free."
+commands = [
+  "cargo test -p ripr review_comments -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "cache/large-seam-cache-skip-limitation"
+status = "done"
+branch = "cache-large-seam-cache-skip-limitation"
+stackable = false
+acceptance = "Repos exceeding the seam-cache entry limit emit a named large-cache limitation with observed seam count, cache limit, downstream consumability, repair route, configurable limit, and scorecard/readiness preservation of limited state."
+commands = [
+  "cargo test -p ripr seam_cache -- --test-threads=1",
+  "cargo xtask cache report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/cross-language-oracle-visibility-limitation"
+status = "done"
+branch = "analysis-cross-language-oracle-visibility-limitation"
+stackable = false
+acceptance = "TS-tested Rust and binding/FFI seam fixtures fail closed as named cross-language limitations with source samples and no public repair packet, wrong Rust target, or verify command against unrelated Rust tests."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/binding-ffi-target-placement-fail-closed"
+status = "done"
+branch = "report-binding-ffi-target-placement-fail-closed"
+stackable = false
+acceptance = "Suggested-test placement distinguishes ordinary Rust seams from binding/FFI or externally tested seams, suppresses unrelated Rust test targets, exposes cross_language_target_unresolved, and keeps LSP repair actions unavailable for blocked packets."
+commands = [
+  "cargo test -p ripr suggested_test -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

@@ -1,0 +1,337 @@
+{
+  "schema_version": "0.1",
+  "kind": "typescript_bun_ub_calibration_corpus",
+  "spec": "RIPR-SPEC-0027",
+  "description": "Bun Blob ArrayBuffer UB calibration cases for TypeScript preview cross-language evidence.",
+  "authority_boundary": "preview_advisory_only",
+  "limits": [
+    "advisory preview evidence only",
+    "no provider calls",
+    "no source edits",
+    "no generated tests",
+    "no runtime Bun execution",
+    "no mutation execution",
+    "no default gates",
+    "no public badge contribution",
+    "no baseline authority",
+    "no RIPR Zero authority",
+    "no support-tier promotion"
+  ],
+  "cases": [
+    {
+      "id": "bun_blob_shared_and_resizable_present",
+      "source": "#31648-calibration-original",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob",
+        "blob.arrayBuffer"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "expected_verdict": "ts_discriminated",
+      "expected_missing_discriminators": [],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "no_missing_bridge_discriminator",
+      "suggested_test_file": "not_applicable",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "The calibration original requires both sides of the Rust OR boundary plus a Blob byte observer before the advisory TS verdict can say no new test is needed."
+    },
+    {
+      "id": "bun_blob_resizable_missing",
+      "source": "#31648-stripped-resizable",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob",
+        "blob.arrayBuffer"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "expected_verdict": "ts_missing_resizable",
+      "expected_missing_discriminators": [
+        "resizable_array_buffer"
+      ],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "suggested_shape": "add or inspect a resizable ArrayBuffer Blob stable-byte discriminator in the configured TypeScript observer file; keep repair_packet_ready=false until verify, receipt, and edit-surface evidence exists",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A SharedArrayBuffer Blob observer is not balanced proof for the resizable ArrayBuffer branch of array_buffer.shared || array_buffer.resizable."
+    },
+    {
+      "id": "bun_blob_shared_missing",
+      "source": "#31648-stripped-shared",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob",
+        "blob.arrayBuffer"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "expected_verdict": "ts_missing_shared",
+      "expected_missing_discriminators": [
+        "shared_array_buffer"
+      ],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "suggested_shape": "add or inspect a SharedArrayBuffer Blob stable-byte discriminator in the configured TypeScript observer file; keep repair_packet_ready=false until verify, receipt, and edit-surface evidence exists",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A resizable ArrayBuffer Blob observer is not balanced proof for the SharedArrayBuffer branch of array_buffer.shared || array_buffer.resizable."
+    },
+    {
+      "id": "bun_blob_neither_present",
+      "source": "#31648-stripped-both",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob",
+        "blob.arrayBuffer"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "expected_verdict": "ts_missing_shared_and_resizable",
+      "expected_missing_discriminators": [
+        "shared_array_buffer",
+        "resizable_array_buffer"
+      ],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+      "suggested_shape": "add or inspect SharedArrayBuffer and resizable ArrayBuffer Blob stable-byte discriminators in the configured TypeScript observer file; keep repair_packet_ready=false until verify, receipt, and edit-surface evidence exists",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "The calibration must distinguish missing proof for both sides of the OR boundary instead of collapsing to a generic weak TypeScript observer."
+    },
+    {
+      "id": "bun_blob_partial_observer_missing_external_oracle",
+      "source": "#31648-partial-blob-observer-without-byte-oracle",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "expected_verdict": "ts_missing_external_oracle",
+      "expected_missing_discriminators": [],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "route_cross_language_oracle_visibility_limitation",
+      "suggested_test_file": "not_applicable",
+      "suggested_shape": "analysis/cross-language-oracle-visibility must connect the Blob callsite to a stable byte oracle before placement is suggested",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A Blob input with both boundary discriminators is still not external oracle evidence until a stable byte observer is visible."
+    },
+    {
+      "id": "bun_blob_max_byte_length_mention_not_observer",
+      "source": "#31648-false-positive-token-mention",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [],
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "expected_verdict": "ts_mention_not_observer",
+      "expected_missing_discriminators": [],
+      "bridge_confidence": "configured_hint",
+      "expected_action": "do_not_credit_token_mention",
+      "suggested_test_file": "not_applicable",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A maxByteLength token in an unrelated TypeScript path must not satisfy the Bun Blob observer route without a Blob input and stable-byte oracle."
+    },
+    {
+      "id": "bun_blob_bridge_unknown_without_hint",
+      "source": "#31648-no-bridge-hint",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "ts_test_file": "test/js/web/fetch/blob.test.ts",
+      "ts_entrypoints": [
+        "new Blob",
+        "blob.arrayBuffer"
+      ],
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "expected_verdict": "bridge_unknown",
+      "expected_missing_discriminators": [],
+      "bridge_confidence": "unknown",
+      "expected_action": "report_bridge_unknown_not_no_static_path",
+      "suggested_test_file": "not_applicable",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "TypeScript discriminators cannot be credited to the Rust seam unless a bridge hint or later generated bridge fact connects Blob tests to the Rust owner."
+    }
+  ]
+}

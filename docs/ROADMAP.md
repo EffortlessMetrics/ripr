@@ -481,6 +481,112 @@ editor changes, no generated tests, no mutation execution, no default CI
 blocking, no automatic config or baseline mutation, and no preview evidence
 promotion.
 
+## Current Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
+
+This section is the bridge between the closed campaign history above and the
+next product era. It records where the repo is, the end state the next era
+targets, and the only sanctioned path between them, so a maintainer or agent
+can resume this work from repository artifacts instead of chat history.
+
+### Where the repo is
+
+- The evidence-to-repair use-case spec spine is landed:
+  [RIPR-SPEC-0065](specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md)
+  owns the use-case map, and child specs RIPR-SPEC-0066 through
+  RIPR-SPEC-0073 pin repo badge, PR gate, PR review cards, LSP/agent
+  feedback, downstream review consumers, TypeScript/Bun evidence, large-repo
+  diff-first operation, and receipts/outcomes/route quality.
+- [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md) sequences
+  the implementation work items for that spine. Active goals route through
+  that plan; this roadmap section does not create ready work items.
+- The post-freeze merge wave has been drained: the valid PRs deferred at
+  freeze time were merged or closed with exact supersession citations.
+- The [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md)
+  records the original candidate SHA and the standing back-sync drift. Its
+  deferred-PR list is stale by design: the merge wave landed the valid
+  deferred work after the note was written, so the candidate SHA must be
+  re-pinned before release.
+
+### Target end state
+
+RIPR becomes the evidence-to-repair router for real repositories. The
+product shape is two queues:
+
+```text
+1. Repair queue
+   Actionable packets safe to delegate, verify, receipt, and measure.
+
+2. Limitation backlog
+   Non-actionable analyzer work with named limits, samples, unlock
+   conditions, and non-claims.
+```
+
+One trust rule controls every surface (CLI, PR gate, review comments, LSP,
+badge input, CI summary, downstream consumers, previews, large-repo mode,
+receipts, route-quality reporting):
+
+```text
+Actionable means safe to delegate.
+Everything else fails closed into a named limitation, blocked state,
+or advisory preview.
+```
+
+RIPR-SPEC-0065 owns the canonical definition of done for this end state;
+this roadmap defers to it rather than restating the field contracts.
+
+### Phase P: proof-aware repo validation
+
+Before the release phase, the repo gains the same routing discipline the
+product ships: changed surfaces select proof packs; proof packs select
+local preflight commands and CI lanes; unknown surfaces route
+conservatively; release proof is never routed away. The operating model is
+[Proof routing](PROOF_ROUTING.md), and it lands in slices: operating model,
+`policy/proof-packs.toml` manifest, `cargo xtask proof route` report,
+`cargo xtask proof preflight`, PR summary integration, a CI dry-run
+artifact that demonstrates routing safety before any lane is skipped, then
+low-risk docs/spec routing, report/schema routing, and release-proof
+protection. CI stops being first discovery; measured 2026-06-07, docs-only
+PRs were paying full heavy-lane proof that their changed surfaces could
+not fail.
+
+### Phase R: publish 0.9.0 from source
+
+| Order | Step | Acceptance |
+| ---: | --- | --- |
+| R1 | Re-pin the freeze candidate to reconciled swarm `main` and refresh the freeze note. | New candidate SHA recorded; deferred-PR list replaced with actual merge dispositions; no valid PR deferred by a cut line. |
+| R2 | Refresh the source release PR (`ripr` #1424) onto the new candidate. | Source PR carries current swarm `main`; version and changelog claims match merged behavior; `cargo publish -p ripr --dry-run --locked` passes; source release authority unchanged. |
+| R3 | Tag and publish `0.9.0` from source. | `v0.9.0` tag exists; crate published; `cargo install ripr --version 0.9.0 --locked` smoke passes; the GitHub release uses the reviewed changelog. |
+| R4 | Back-sync source `main` into swarm `main` with a merge commit. | Version and changelog parity restored (swarm `crates/ripr/Cargo.toml` still carries `0.7.0`; the `0.8.0` bump was source-side only); ahead/behind accounting works for future releases. This step is mandatory, not optional cleanup. |
+| R5 | Post-release cleanup sweep. | Stale worktrees, branches, stashes, `target/ripr` cache growth, generated reports, temp files, orphaned local processes, and rescue leftovers are removed; trunk is ready for implementation work. |
+
+### Phase I: implement from RIPR-PLAN-0061
+
+After R5, implementation resumes only through the active goal manifest
+routed at [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md),
+in the plan's own sequence: review file-and-line navigation, badge
+projection of canonical actionability and runtime status, advisory PR gate
+evidence delta, the first useful LSP action, downstream consumer export,
+the bounded TypeScript adapter slices, cross-language fail-closed routing,
+large-repo diff-first operation, receipts and attempt-ledger hardening,
+route-quality metrics, and surface alignment.
+
+Each slice keeps the scoped PR contract: one production delta, one evidence
+package, explicit claim boundary, explicit non-goals.
+
+### Operating rules for this sequence
+
+- Work selection flows through `.ripr/goals/active.toml`; roadmap
+  eligibility is not execution authority.
+- PRs close only as merged, superseded with an exact replacement citation
+  (PR, commit, or spec), or invalid with a cited reason. No vague deferral.
+- Actionability is never invented: raw findings are diagnostic material,
+  not product truth, and wrong-language test suggestions are forbidden.
+- Unknown cross-language oracle visibility stays a named limitation, never
+  a repair packet.
+- No provider integration, autonomous edits, mutation execution, broad
+  refactors, or badge/CI semantic switches unless a spec-backed PR
+  requires them.
+
 ## Strategic Sequence
 
 The load-bearing path is:
@@ -771,6 +877,11 @@ ripr can compare static exposure classes with real mutation results when explici
 ```
 
 ### `0.9.0` - Language Adapter Preview
+
+The shipped 0.9.0 content is recorded in the
+[0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md); the
+freeze candidate is re-pinned during Phase R of the
+[current operating sequence](#current-operating-sequence-090-release-and-evidence-to-repair-routing).
 
 Ship:
 

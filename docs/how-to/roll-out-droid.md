@@ -10,7 +10,9 @@ and pilot the setup before broad enablement.
 `ripr` is the source template for this setup. Carry forward these defaults for
 the first rollout wave:
 
-- MiniMax M2.7 runs through Factory Droid BYOK.
+- MiniMax M3 runs directly through Factory Droid BYOK.
+- Keep the previous MiniMax M2.7 workflow revision as the rollback path if the
+  M3 provider bridge has a live Droid compatibility issue.
 - Automatic PR review, trusted manual `@droid`, and scheduled security scan are
   separate workflows.
 - Droid workflows use SHA-pinned third-party actions.
@@ -126,37 +128,36 @@ Use the runtime Factory settings file, not the Droid Action `settings:` input,
 for this MiniMax custom model bridge.
 
 The heredoc delimiter must stay quoted so the API key reference remains literal
-in `settings.local.json`:
+in `settings.json`:
 
 ```bash
 mkdir -p "$HOME/.factory"
-cat > "$HOME/.factory/settings.local.json" <<'JSON'
+cat > "$HOME/.factory/settings.json" <<'JSON'
 {
   "customModels": [
     {
-      "displayName": "MiniMax-M2.7",
-      "model": "MiniMax-M2.7",
+      "displayName": "MiniMax-M3",
+      "model": "MiniMax-M3",
       "baseUrl": "https://api.minimax.io/anthropic",
       "apiKey": "${MINIMAX_API_KEY}",
       "provider": "anthropic",
-      "maxOutputTokens": 64000,
-      "noImageSupport": true,
-      "extraArgs": {
-        "temperature": 1
-      }
+      "maxOutputTokens": 64000
     }
   ]
 }
 JSON
 ```
 
-Do not set:
+Clear any runner-level Anthropic globals on the Droid action step while keeping
+custom-model reasoning effort unset:
 
-```text
-ANTHROPIC_AUTH_TOKEN
-ANTHROPIC_BASE_URL
-reasoning_effort
+```yaml
+env:
+  ANTHROPIC_AUTH_TOKEN: ""
+  ANTHROPIC_BASE_URL: ""
 ```
+
+Do not set `reasoning_effort` for this custom model.
 
 ## Workflow Invariants
 
@@ -180,8 +181,8 @@ Start with this model baseline:
 
 ```yaml
 review_depth: shallow
-review_model: "custom:MiniMax-M2.7-0"
-security_model: "custom:MiniMax-M2.7-0"
+review_model: "custom:MiniMax-M3-0"
+security_model: "custom:MiniMax-M3-0"
 show_full_output: false
 upload_debug_artifacts: false
 ```
@@ -280,7 +281,7 @@ After merging each pilot rollout:
 
 1. Open or reuse one same-repo PR.
 2. Confirm Droid Auto Review starts.
-3. Confirm Droid initializes with `custom:MiniMax-M2.7-0`.
+3. Confirm Droid initializes with `custom:MiniMax-M3-0`.
 4. Confirm review output follows the inspection and repair-queue format.
 5. Confirm Droid-generated body text does not add extra mentions.
 6. Comment `@droid review` as a trusted actor and confirm it runs.

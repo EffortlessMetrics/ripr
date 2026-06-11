@@ -54,6 +54,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/card.tsx:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -90,18 +91,22 @@
         "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
         "gap_state": "already_observed",
         "missing_actionability_fields": [],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/card.tsx",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "PriceTag",
             "raw": "file=src/card.tsx;line=2;kind=typescript_preview_probe;source_id=probe:src_card.tsx:2:typescript_preview;owner=PriceTag",
+            "sample": null,
             "source_id": "probe:src_card.tsx:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "unlock_condition": null,
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },
       "stop_reasons": [],

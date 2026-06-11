@@ -93,3 +93,4 @@ Start new proposals from
 | [RIPR-PROP-0015](RIPR-PROP-0015-source-of-truth-control-plane.md) | accepted | Source-of-truth control plane |
 | [RIPR-PROP-0016](RIPR-PROP-0016-actionable-surface-translation.md) | accepted | Actionable surface translation |
 | [RIPR-PROP-0017](RIPR-PROP-0017-python-repair-routing-lane.md) | accepted | Python repair routing lane |
+| [RIPR-PROP-0018](RIPR-PROP-0018-perl-repair-routing-lane.md) | proposed | Perl repair routing lane |

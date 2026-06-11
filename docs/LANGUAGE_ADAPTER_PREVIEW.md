@@ -72,6 +72,37 @@ in a Python-shaped repo, add:
 enabled = ["rust"]
 ```
 
+## Bun UB Advisory Profile
+
+Bun stable-byte review can opt into the calibrated TypeScript-family preview
+profile without making TypeScript or JavaScript default-on:
+
+```toml
+[languages]
+enabled = ["rust", "typescript"]
+
+[profiles.bun_ub]
+test_roots = [
+  "test/js/**/*.test.ts",
+  "test/js/**/*.test.js",
+]
+bridge_hints = "ripr.bun.bridge.toml"
+```
+
+The `typescript` adapter covers `.ts`, `.tsx`, `.js`, and `.jsx` files, so the
+profile does not add a separate `javascript` language key. `profiles.bun_ub`
+is advisory configuration only: it records test roots and the bridge-hint file
+for Bun Blob / ArrayBuffer cross-language evidence, and `ripr doctor --root .`
+reports it when present. It does not run `tsc`, start `tsserver`, execute
+Bun/Jest/Vitest, generate tests, edit source, affect gates, badges, baselines,
+or RIPR Zero, or promote TypeScript/JavaScript beyond preview.
+
+Use the [Bun UB TypeScript preview runbook](BUN_UB_TYPESCRIPT_PREVIEW_RUNBOOK.md)
+for the operator loop that reads `rust_ungripped_ts_discriminated`,
+`rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and
+`bridge_unknown` results, plus
+`public_reachable_panic_boundary_unrevealed` FFI limitation receipts.
+
 ## Run The Local Preview Loop
 
 Start with the normal first-run loop:

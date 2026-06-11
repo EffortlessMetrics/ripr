@@ -127,6 +127,10 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
             "generated_at".to_string(),
             serde_json::Value::String("<generated_at>".to_string()),
         );
+        provenance.insert(
+            "ripr_version".to_string(),
+            serde_json::Value::String("<ripr_version>".to_string()),
+        );
         for artifact in ["before_artifact", "after_artifact", "verify_artifact"] {
             if let Some(artifact) = provenance
                 .get_mut(artifact)
@@ -258,6 +262,106 @@ fn check_json_output_has_stable_contract_fields() {
     assert!(stdout.contains(r#""oracle_kind""#));
     assert!(stdout.contains(r#""recommended_next_step""#));
     assert!(stdout.contains(r#""suggested_next_action""#));
+}
+
+#[test]
+fn diff_json_reports_changed_surface_before_full_repo_context() -> Result<(), String> {
+    let workspace = unique_temp_workspace("diff-first");
+    std::fs::create_dir_all(workspace.join("src")).map_err(|e| format!("create src dir: {e}"))?;
+    std::fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname=\"ripr-diff-first-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+    )
+    .map_err(|e| format!("write Cargo.toml: {e}"))?;
+    std::fs::write(
+        workspace.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|e| format!("write base src/lib.rs: {e}"))?;
+    run_git(&workspace, &["init"])?;
+    run_git(
+        &workspace,
+        &["config", "user.email", "ripr@example.invalid"],
+    )?;
+    run_git(&workspace, &["config", "user.name", "RIPR Test"])?;
+    run_git(&workspace, &["add", "."])?;
+    run_git(&workspace, &["commit", "-m", "base"])?;
+    run_git(
+        &workspace,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    )?;
+    std::fs::write(
+        workspace.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold\n}\n",
+    )
+    .map_err(|e| format!("write changed src/lib.rs: {e}"))?;
+    run_git(&workspace, &["add", "src/lib.rs"])?;
+    run_git(&workspace, &["commit", "-m", "change threshold boundary"])?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&[
+        "diff",
+        "--root",
+        &root,
+        "--base",
+        "refs/remotes/origin/main",
+        "--head",
+        "HEAD",
+        "--json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("parse diff JSON: {e}\n{stdout}"))?;
+    assert_eq!(
+        json_pointer_str(&report, "/kind").map_err(|e| e.to_string())?,
+        "ripr_diff"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/run_status").map_err(|e| e.to_string())?,
+        "diff_complete_full_repo_limited"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/runtime_status/diff/state").map_err(|e| e.to_string())?,
+        "diff_complete"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/runtime_status/full_repo_context/state")
+            .map_err(|e| e.to_string())?,
+        "full_repo_limited"
+    );
+    assert!(
+        !json_pointer_bool(
+            &report,
+            "/runtime_status/full_repo_context/downstream_consumable",
+        )
+        .map_err(|e| e.to_string())?
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/changed_files/0/path").map_err(|e| e.to_string())?,
+        "src/lib.rs"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/receipt/outcome_hint").map_err(|e| e.to_string())?,
+        "diff_complete/full_repo_limited"
+    );
+    assert!(
+        json_pointer_str(&report, "/receipt/path")
+            .map_err(|e| e.to_string())?
+            .contains("diff-first")
+    );
+    let changed_seams = report
+        .pointer("/changed_seams")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "expected changed_seams array".to_string())?;
+    assert!(
+        !changed_seams.is_empty(),
+        "diff-first report should preserve changed-seam evidence: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
 }
 
 #[test]
@@ -1259,7 +1363,10 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert!(text.contains(r#""schema_version": "0.3""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
-    assert!(text.contains(r#""ripr_version": "0.8.0""#));
+    assert!(text.contains(&format!(
+        r#""ripr_version": "{}""#,
+        env!("CARGO_PKG_VERSION")
+    )));
     assert!(text.contains(r#""repo_root": "#));
     assert!(text.contains(r#""config_fingerprint": "fnv1a64:"#));
     assert!(text.contains(r#""generated_at": "unix_ms:"#));

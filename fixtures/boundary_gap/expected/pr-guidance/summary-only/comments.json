@@ -1,4 +1,26 @@
 {
+  "analysis_scope": {
+    "basis": "files",
+    "changed_files": [
+      "src/other.rs"
+    ],
+    "changed_lines": 0,
+    "changed_owner_functions": 0,
+    "changed_production_files": [],
+    "classified_seams_considered": 1,
+    "downstream_consumable": true,
+    "immediate_caller_files": [],
+    "limitation": "review_comments_working_set_scope_only",
+    "production_files_considered": 1,
+    "repair_route": "analysis/review-comments-working-set",
+    "run_status": "scoped",
+    "scope": "working_set",
+    "scoped_production_files": [
+      "src/other.rs"
+    ],
+    "total_production_files": null,
+    "total_rust_files": null
+  },
   "base": "main",
   "comments": [],
   "head": "HEAD",
@@ -39,6 +61,14 @@
       },
       "seam_id": "8f7fa8644fd12280",
       "severity": "warning",
+      "source_location": {
+        "file": "src/pricing.rs",
+        "limitation": null,
+        "line": 88,
+        "repair_route": null,
+        "span": null,
+        "status": "resolved"
+      },
       "suggested_test": {
         "assertion_kind": "exact_return_value",
         "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",

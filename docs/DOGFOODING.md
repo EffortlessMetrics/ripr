@@ -25,6 +25,10 @@ actionable canonical gaps. Python repair-routing eval receipts live under
 `fixtures/python-real-repo-evals/`; they record curated scratch or real-repo
 repair-card, verify, and outcome evidence without promoting Python beyond its
 preview/advisory boundary.
+Bun UB cross-language witness receipts live under
+`fixtures/bun-ub-cross-language-dogfood/`; they record calibrated Blob /
+ArrayBuffer TypeScript preview receipts without running Bun or producing repair
+packets.
 
 ## Dogfooding Rules
 

@@ -62,6 +62,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "predicate changed at src/signals.ts:2: `if (amount >= threshold) {`",
         "language": "typescript",
@@ -98,18 +99,22 @@
         "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
         "gap_state": "already_observed",
         "missing_actionability_fields": [],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 2,
             "owner": "applyDiscount",
             "raw": "file=src/signals.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_signals.ts:2:typescript_preview;owner=applyDiscount",
+            "sample": null,
             "source_id": "probe:src_signals.ts:2:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "unlock_condition": null,
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },
       "stop_reasons": [],
@@ -180,6 +185,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "return_value changed at src/signals.ts:9: `return `summary:${status.trim()}`;`",
         "language": "typescript",
@@ -226,18 +232,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 9,
             "owner": "renderSummary",
             "raw": "file=src/signals.ts;line=9;kind=typescript_preview_probe;source_id=probe:src_signals.ts:9:typescript_preview;owner=renderSummary",
+            "sample": null,
             "source_id": "probe:src_signals.ts:9:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],
@@ -308,6 +318,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "return_value changed at src/signals.ts:13: `return count >= 1;`",
         "language": "typescript",
@@ -354,18 +365,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 13,
             "owner": "isReady",
             "raw": "file=src/signals.ts;line=13;kind=typescript_preview_probe;source_id=probe:src_signals.ts:13:typescript_preview;owner=isReady",
+            "sample": null,
             "source_id": "probe:src_signals.ts:13:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],
@@ -436,6 +451,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "side_effect changed at src/signals.ts:17: `sink.record(status);`",
         "language": "typescript",
@@ -482,18 +498,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 17,
             "owner": "notifyStatus",
             "raw": "file=src/signals.ts;line=17;kind=typescript_preview_probe;source_id=probe:src_signals.ts:17:typescript_preview;owner=notifyStatus",
+            "sample": null,
             "source_id": "probe:src_signals.ts:17:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],
@@ -564,6 +584,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "side_effect changed at src/signals.ts:21: `sink.record(\"ready\");`",
         "language": "typescript",
@@ -610,18 +631,22 @@
           "allowed_edit_surface",
           "raw_evidence_refs"
         ],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 21,
             "owner": "notifyLiteral",
             "raw": "file=src/signals.ts;line=21;kind=typescript_preview_probe;source_id=probe:src_signals.ts:21:typescript_preview;owner=notifyLiteral",
+            "sample": null,
             "source_id": "probe:src_signals.ts:21:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
         "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],
@@ -682,6 +707,7 @@
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
         "changed_behavior": "return_value changed at src/signals.ts:25: `return await Promise.resolve(`profile:${id}`);`",
         "language": "typescript",
@@ -718,18 +744,22 @@
         "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
         "gap_state": "already_observed",
         "missing_actionability_fields": [],
+        "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
             "file": "src/signals.ts",
             "kind": "typescript_preview_probe",
+            "leg": null,
             "line": 25,
             "owner": "loadProfile",
             "raw": "file=src/signals.ts;line=25;kind=typescript_preview_probe;source_id=probe:src_signals.ts:25:typescript_preview;owner=loadProfile",
+            "sample": null,
             "source_id": "probe:src_signals.ts:25:typescript_preview"
           }
         ],
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "unlock_condition": null,
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },
       "stop_reasons": [],

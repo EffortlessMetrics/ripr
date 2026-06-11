@@ -22,6 +22,8 @@
 
 mod adapter;
 mod id;
+#[cfg(test)]
+mod perl;
 #[cfg(feature = "lang-python")]
 mod python;
 mod router;

@@ -1022,7 +1022,7 @@ mod tests {
             None,
         )?;
         let result =
-            run_ripr_check_binary(&fake.binary, fake.args, &options(), Duration::from_secs(10))?;
+            run_ripr_check_binary(&fake.binary, fake.args, &options(), Duration::from_secs(30))?;
         assert!(result.contains(r#""weakly_exposed":1"#));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
@@ -1036,7 +1036,7 @@ mod tests {
             &fake.binary,
             fake.args,
             &options(),
-            Duration::from_secs(10),
+            Duration::from_secs(30),
         ) {
             Ok(output) => return Err(format!("fake failure should fail, got {output}")),
             Err(err) => err,

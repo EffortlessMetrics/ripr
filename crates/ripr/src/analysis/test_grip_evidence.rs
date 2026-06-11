@@ -1447,7 +1447,7 @@ fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
     let Some(receiver_prefix) = prefix.strip_suffix('.') else {
         return false;
     };
-    let receiver = receiver_prefix.trim();
+    let receiver = direct_receiver_method_condition_receiver(receiver_prefix);
     !receiver.is_empty()
         && receiver
             .chars()
@@ -1456,6 +1456,17 @@ fn direct_receiver_method_prefix_is_allowed(prefix: &str) -> bool {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+}
+
+fn direct_receiver_method_condition_receiver(prefix: &str) -> &str {
+    let receiver = prefix.trim();
+    if let Some(after_if) = receiver.strip_prefix("if !") {
+        return after_if.trim_start();
+    }
+    if let Some(after_if) = receiver.strip_prefix("if ") {
+        return after_if.trim_start();
+    }
+    receiver
 }
 
 fn trailing_rust_identifier(text: &str) -> String {
@@ -9403,6 +9414,23 @@ mod nested {
     }
 
     #[test]
+    fn direct_receiver_method_prefix_accepts_only_leading_condition_receiver_call() {
+        assert!(direct_receiver_method_prefix_is_allowed("pipeline."));
+        assert!(direct_receiver_method_prefix_is_allowed("if pipeline."));
+        assert!(direct_receiver_method_prefix_is_allowed("if !pipeline."));
+        assert!(direct_receiver_method_prefix_is_allowed("if ! pipeline."));
+        assert!(!direct_receiver_method_prefix_is_allowed(
+            "} else if pipeline."
+        ));
+        assert!(!direct_receiver_method_prefix_is_allowed(
+            "if pipeline.ready && other."
+        ));
+        assert!(!direct_receiver_method_prefix_is_allowed(
+            "pipeline_factory()."
+        ));
+    }
+
+    #[test]
     fn given_call_presence_when_test_local_helper_wraps_owner_call_in_option_then_activation_is_yes()
     -> Result<(), String> {
         let prod = PathBuf::from("src/pipeline.rs");
@@ -11498,6 +11526,69 @@ mod tests {
             evidence.missing_discriminators.is_empty(),
             "condition helper activation must not create boundary debt: {:?}",
             evidence.missing_discriminators
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_presence_when_same_file_condition_helper_calls_owner_method_then_activation_is_yes()
+    -> Result<(), String> {
+        let source = PathBuf::from("src/pipeline.rs");
+        let source_src = r#"
+struct Pipeline;
+
+impl Pipeline {
+    fn render_pipeline(&self, input: &str) -> String {
+        input.trim().to_string()
+    }
+}
+
+fn should_render_pipeline(input: &str) -> bool {
+    let pipeline = Pipeline;
+    if pipeline.render_pipeline(input) == "alpha" {
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn condition_wrapper_exercises_pipeline_method() {
+        assert!(should_render_pipeline(" alpha "));
+    }
+}
+"#;
+        let index = index_from_files(&[(source, source_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+        let call_presence = seams
+            .iter()
+            .find(|s| {
+                s.kind() == SeamKind::CallPresence
+                    && s.owner().ends_with("::impl Pipeline::render_pipeline")
+                    && s.expression().contains("trim")
+            })
+            .ok_or_else(|| "expected render_pipeline method call_presence seam".to_string())?;
+
+        let evidence = evidence_for_seam(call_presence, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+            "expected conditional receiver-method helper owner-call relation, got {:?}",
+            evidence.related_tests
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "conditional receiver-method route must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }

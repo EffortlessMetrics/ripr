@@ -99,11 +99,15 @@ bounded warning artifacts with
 `lane1_repo_exposure_large_cache_preflight_skip`, `run_status =
 "limited_large_cache_skip"`, `runtime_status.downstream_consumable = false`,
 and a repair route through `cargo xtask cache report` and
-`cargo xtask cache gc --dry-run`. If repo exposure completes but skips the full
-classified seam cache store because the cache entry exceeds the bounded
-full-cache store limit, the audit records
+`cargo xtask cache gc --dry-run`. Current repo seam cache writes entries larger
+than `RIPR_REPO_SEAM_CACHE_LIMIT` as bounded shard files under
+`target/ripr/cache`; older audit artifacts or older cache-store implementations
+may still record
 `lane1_repo_exposure_cache_store_skipped_large_entry` with the cache-store phase,
-classified seam count/limit input, latency trace tail, and a repair route.
+classified seam count/limit input, structured `observed_seams` and
+`cache_limit` fields, latency trace tail, and a repair route through
+`cargo xtask cache report` plus `RIPR_REPO_SEAM_CACHE_LIMIT` when the operator
+chooses to raise the full-cache shard size.
 
 ## JSON Contract
 
@@ -304,14 +308,17 @@ repo-exposure generation, emit
 `cargo xtask cache gc --dry-run`.
 
 Best-effort cache writes are not allowed to turn a completed analysis into an
-unbounded wait: large classified-seam cache entries may be skipped when the
-trace records a `cache_store` status such as
+unbounded wait. Current cache writes above `RIPR_REPO_SEAM_CACHE_LIMIT` are
+sharded, but the audit must keep compatibility for older traces that recorded a
+`cache_store` status such as
 `ignored_skipped_large_entry_seams_..._limit_...`. The audit must preserve that
-under `run_limitations[]` with category
+older signal under `run_limitations[]` with category
 `lane1_repo_exposure_cache_store_skipped_large_entry`, report
 `run_status = "limited_large_cache_skip"`, and keep
 `runtime_status.downstream_consumable = true` because the evidence was emitted
-rather than hiding the cache-store limitation in stderr.
+rather than hiding the cache-store limitation in stderr. The row must expose the
+observed seam count and configured cache limit as structured fields, while
+retaining the count/limit input string for older consumers.
 
 Given a repo-exposure subprocess that exits successfully but leaves an empty,
 malformed, or otherwise incomplete captured JSON artifact, the audit treats that

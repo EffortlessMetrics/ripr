@@ -22,6 +22,10 @@ pub(super) fn print_check_help() {
     println!("{CHECK_HELP}");
 }
 
+pub(super) fn print_diff_help() {
+    println!("{DIFF_HELP}");
+}
+
 pub(super) fn print_init_help() {
     println!("{INIT_HELP}");
 }
@@ -156,19 +160,20 @@ mod tests {
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
-        COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
-        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, POLICY_HELP,
-        PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP,
-        SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help,
-        print_agent_help, print_agent_packet_help, print_agent_receipt_help,
-        print_agent_review_summary_help, print_agent_start_help, print_agent_status_help,
-        print_agent_verify_help, print_assistant_loop_help, print_baseline_help,
-        print_calibrate_help, print_check_help, print_context_help, print_coverage_grip_help,
-        print_doctor_help, print_evidence_health_help, print_explain_help, print_first_action_help,
-        print_gate_help, print_help, print_init_help, print_lsp_help, print_outcome_help,
-        print_pilot_help, print_policy_help, print_pr_comments_help, print_pr_ledger_help,
-        print_pr_review_help, print_reports_help, print_review_comments_help, print_swarm_help,
-        print_swarm_ingest_help, print_swarm_queue_help, print_zero_help,
+        COVERAGE_GRIP_HELP, DIFF_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
+        FIRST_ACTION_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP,
+        REVIEW_COMMENTS_HELP, SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP,
+        print_agent_brief_help, print_agent_help, print_agent_packet_help,
+        print_agent_receipt_help, print_agent_review_summary_help, print_agent_start_help,
+        print_agent_status_help, print_agent_verify_help, print_assistant_loop_help,
+        print_baseline_help, print_calibrate_help, print_check_help, print_context_help,
+        print_coverage_grip_help, print_diff_help, print_doctor_help, print_evidence_health_help,
+        print_explain_help, print_first_action_help, print_gate_help, print_help, print_init_help,
+        print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
+        print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
+        print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
+        print_swarm_queue_help, print_zero_help,
     };
 
     #[test]
@@ -210,6 +215,7 @@ mod tests {
         assert!(HELP.contains("ripr agent review-summary"));
         assert!(HELP.contains("ripr swarm queue"));
         assert!(HELP.contains("ripr swarm ingest"));
+        assert!(HELP.contains("ripr diff"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -231,6 +237,8 @@ mod tests {
         assert!(CHECK_HELP.contains("needs test-efficiency"));
         assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
+        assert!(DIFF_HELP.contains("Usage: ripr diff"));
+        assert!(DIFF_HELP.contains("full-repo-limited"));
     }
 
     #[test]
@@ -250,6 +258,8 @@ mod tests {
         assert!(OUTCOME_HELP.starts_with("Compare before/after static evidence"));
         assert!(OUTCOME_HELP.contains("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
+        assert!(DIFF_HELP.starts_with("Analyze the changed surface first"));
+        assert!(DIFF_HELP.contains("--head REV"));
         assert!(
             EVIDENCE_HEALTH_HELP.starts_with("Summarize how strong the current static evidence")
         );
@@ -417,6 +427,7 @@ mod tests {
         print_swarm_help();
         print_swarm_queue_help();
         print_swarm_ingest_help();
+        print_diff_help();
         print_check_help();
         print_explain_help();
         print_context_help();

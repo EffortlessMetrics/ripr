@@ -72,3 +72,15 @@ observable behavior.
 | [RIPR-SPEC-0059](RIPR-SPEC-0059-actionable-surface-translation.md) | accepted | Actionable surface translation |
 | [RIPR-SPEC-0060](RIPR-SPEC-0060-source-of-truth-stack.md) | accepted | Source-of-truth stack |
 | [RIPR-SPEC-0061](RIPR-SPEC-0061-lane1-canonical-actionability-contract.md) | proposed | Lane 1 canonical actionability contract |
+| [RIPR-SPEC-0062](RIPR-SPEC-0062-cross-language-oracle-graph.md) | proposed | Cross-language oracle graph |
+| [RIPR-SPEC-0063](RIPR-SPEC-0063-cross-language-evidence-router-ux.md) | proposed | Cross-language evidence router UX |
+| [RIPR-SPEC-0064](RIPR-SPEC-0064-perl-fact-packet-contract.md) | proposed | Perl fact packet contract |
+| [RIPR-SPEC-0065](RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md) | proposed | Evidence-to-repair use-case roadmap |
+| [RIPR-SPEC-0066](RIPR-SPEC-0066-repo-badge-use-case.md) | proposed | Repo badge use case |
+| [RIPR-SPEC-0067](RIPR-SPEC-0067-pr-gate-use-case.md) | proposed | PR gate use case |
+| [RIPR-SPEC-0068](RIPR-SPEC-0068-pr-review-card-use-case.md) | proposed | PR review-card use case |
+| [RIPR-SPEC-0069](RIPR-SPEC-0069-lsp-agent-feedback-use-case.md) | proposed | LSP agent feedback use case |
+| [RIPR-SPEC-0070](RIPR-SPEC-0070-downstream-review-consumer-use-case.md) | proposed | Downstream review consumer use case |
+| [RIPR-SPEC-0071](RIPR-SPEC-0071-typescript-bun-evidence-use-case.md) | proposed | TypeScript/Bun evidence use case |
+| [RIPR-SPEC-0072](RIPR-SPEC-0072-large-repo-diff-first-use-case.md) | proposed | Large-repo diff-first use case |
+| [RIPR-SPEC-0073](RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md) | proposed | Receipts, outcomes, and route quality use case |

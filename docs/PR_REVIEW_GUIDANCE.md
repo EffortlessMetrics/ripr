@@ -32,7 +32,11 @@ target/ripr/review/comments.md
 ```
 
 The command reads the pull request diff and existing RIPR evidence, then writes
-bounded JSON and Markdown. It does not post to GitHub.
+bounded JSON and Markdown. In the default diff path, review analysis is scoped
+to changed production files plus bounded immediate caller files. The report
+therefore carries `analysis_scope.run_status = "limited_diff_scope"` and the
+`review_comments_diff_scope_only` limitation route instead of presenting the
+result as a full-repo scan. It does not post to GitHub.
 
 When a gap decision ledger already exists, the same command can render from the
 explicit repair-card layer instead of rerunning analysis:
@@ -56,6 +60,9 @@ rather than becoming line comments.
 
 The JSON separates recommendations by review placement:
 
+- `analysis_scope` names the reviewed input scope, including changed files,
+  changed production files, bounded immediate caller files, total production
+  files when known, considered seam counts, and the scoped-run limitation route.
 - `comments[]` contains guidance that can safely attach to a changed line.
 - `summary_only[]` contains useful guidance without a safe changed-line target.
 - `suppressed[]` records candidates hidden by caps, nearby changed tests,
@@ -148,6 +155,8 @@ pins the current behavior for:
 - cap suppression;
 - configured-off suppression;
 - nearby changed-test skip.
+- scoped metadata for the default changed-production-file and immediate-caller
+  basis.
 
 These fixtures are the regression contract for keeping PR guidance bounded and
 placement-safe.
@@ -160,6 +169,8 @@ PR review guidance remains static evidence:
 - It does not run mutation testing.
 - It does not decide whether a PR is mergeable.
 - It does not inspect arbitrary diff regions like a general LLM reviewer.
+- Its default diff path is a scoped review surface, not a complete large-repo
+  evidence scan.
 - It does not create source edits or generated tests.
 
 Real mutation testing, when supplied separately, belongs in calibration reports,

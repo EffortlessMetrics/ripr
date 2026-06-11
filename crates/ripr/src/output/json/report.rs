@@ -4,6 +4,7 @@ use crate::domain::{
     Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
@@ -227,6 +228,15 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "typescript_preview_card",
             &typescript_preview_card_json_value(&card),
+        );
+        out.push_str(",\n");
+    }
+    if let Some(card) = perl_preview_card(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "perl_preview_card",
+            &perl_preview_card_json_value(&card),
         );
         out.push_str(",\n");
     }

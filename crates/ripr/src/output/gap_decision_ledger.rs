@@ -420,6 +420,7 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
             let Some(record) = gap_record_from_python_repair_finding(finding, index)
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_action_finding(finding, index))
+                .or_else(|| gap_record_from_perl_preview_finding(finding, index))
             else {
                 continue;
             };
@@ -750,6 +751,158 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
     })
 }
 
+fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option<GapRecord> {
+    let card = finding.get("perl_preview_card")?;
+    if string_at(card, &["language"]) != Some("perl") {
+        return None;
+    }
+
+    let canonical_gap_id = string_at(card, &["canonical_gap_id"])
+        .or_else(|| string_at(finding, &["canonical_gap_id"]))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("gap:perl:check-output:item_{index}"));
+    let behavior_kind = string_at(finding, &["canonical_gap", "behavior_kind"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or_else(|| string_at(card, &["repair_route"]).unwrap_or("perl_preview"));
+    let source_file = string_at(finding, &["probe", "file"])
+        .or_else(|| string_at(finding, &["canonical_gap", "file"]))
+        .map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(card, &["changed_owner"])
+        .or_else(|| string_at(finding, &["canonical_gap", "owner"]))
+        .map(ToString::to_string);
+    let suggested_test_location = string_at(card, &["suggested_test_location"]);
+    let suggested_test_file = suggested_test_location
+        .and_then(|location| location.split_once("::").map(|(file, _)| file))
+        .or(suggested_test_location)
+        .and_then(non_empty)
+        .map(ToString::to_string);
+    let suggested_test_name = suggested_test_location
+        .and_then(|location| location.split_once("::").map(|(_, test)| test))
+        .and_then(non_empty)
+        .map(ToString::to_string);
+    let verify_command = string_at(card, &["verify", "command"]).map(ToString::to_string);
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    let repair_route = GapRepairRoute {
+        route_kind: perl_route_kind(string_at(card, &["repair_route"]).unwrap_or(behavior_kind))
+            .to_string(),
+        target_file: suggested_test_file,
+        target_line: first_related_test_line(finding),
+        related_test: suggested_test_name,
+        assertion_shape: string_at(card, &["suggested_assertion"]).map(ToString::to_string),
+        missing_discriminator: string_at(card, &["missing_discriminator"]).map(ToString::to_string),
+        changed_behavior: string_at(card, &["changed_owner"]).map(ToString::to_string),
+        stop_conditions: string_array_at(card, &["stop_if"]),
+    };
+    let verification_commands = verify_command.into_iter().collect::<Vec<_>>();
+    let projection_eligibility = BTreeMap::from([
+        (
+            "markdown_advisory".to_string(),
+            ProjectionEligibility {
+                eligible: true,
+                reason: "Perl preview cards may appear in gap-ledger Markdown planning only."
+                    .to_string(),
+            },
+        ),
+        (
+            "agent_packet".to_string(),
+            ProjectionEligibility {
+                eligible: false,
+                reason: "Perl preview cards are not public agent packets.".to_string(),
+            },
+        ),
+        (
+            "pr_comment".to_string(),
+            ProjectionEligibility {
+                eligible: false,
+                reason: "Perl preview cards are not PR comment routes yet.".to_string(),
+            },
+        ),
+        (
+            "gate_candidate".to_string(),
+            ProjectionEligibility {
+                eligible: false,
+                reason: "Preview Perl evidence has no gate authority.".to_string(),
+            },
+        ),
+        (
+            "ripr_zero_count".to_string(),
+            ProjectionEligibility {
+                eligible: false,
+                reason: "Preview Perl evidence does not contribute to RIPR Zero.".to_string(),
+            },
+        ),
+        (
+            "ripr_plus_count".to_string(),
+            ProjectionEligibility {
+                eligible: false,
+                reason: "Preview Perl evidence does not contribute to badges.".to_string(),
+            },
+        ),
+    ]);
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        kind: gap_kind_from_evidence("actionable", behavior_kind).to_string(),
+        language: "perl".to_string(),
+        language_status: string_at(card, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: behavior_kind.to_string(),
+        gap_state: string_at(card, &["gap_state"])
+            .unwrap_or("actionable")
+            .to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "repairable".to_string(),
+        repair_route: Some(repair_route),
+        static_limit_kind: Some("perl_preview".to_string()),
+        static_limit_detail: Some(
+            "Perl preview cards are advisory Markdown planning evidence only.".to_string(),
+        ),
+        static_limits: string_array_at(card, &["limits"])
+            .into_iter()
+            .map(|limit| {
+                serde_json::json!({
+                    "kind": "perl_preview_limit",
+                    "detail": limit,
+                })
+            })
+            .collect(),
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility,
+        verification_commands,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: string_at(card, &["authority_boundary"])
+            .unwrap_or("preview_advisory_only")
+            .to_string(),
+    })
+    .filter(|record| {
+        record.repair_route.is_some()
+            && !record.verification_commands.is_empty()
+            && has_local_anchor
+    })
+}
+
 fn gap_record_from_python_static_limit_finding(finding: &Value, index: usize) -> Option<GapRecord> {
     if string_at(finding, &["language"]) != Some("python") {
         return None;
@@ -983,6 +1136,20 @@ fn python_static_limit_detail(finding: &Value, static_limit_kind: &str) -> Strin
                 "Python preview reported static limit `{static_limit_kind}` without a bounded repair route."
             )
         })
+}
+
+fn perl_route_kind(value: &str) -> &'static str {
+    match value {
+        "add_exact_return_assertion" | "exact_return_assertion" | "return_value" => {
+            "AddExactReturnAssertion"
+        }
+        "add_predicate_boundary_assertion" | "predicate_boundary" => "AddBoundaryAssertion",
+        "add_exception_observer" | "exception_path" | "error_path" => "AddExceptionObserver",
+        "add_field_assertion" | "hash_field" | "object_field" | "field" => "AddFieldAssertion",
+        "add_output_observer" | "output_log" | "warn_log" => "AddOutputObserver",
+        "strengthen_existing_test" | "upgrade_assertion" => "StrengthenExistingTest",
+        _ => "AddPerlPreviewAssertion",
+    }
 }
 
 fn attach_check_output_python_receipt_routes(
@@ -2642,6 +2809,138 @@ mod tests {
             packet.contains("\"receipt_status\": \"available\""),
             "expected packet receipt availability in {packet}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_perl_preview_card_becomes_markdown_advisory_gap_record() -> Result<(), String> {
+        let payload = r#"{
+            "findings": [{
+                "id": "probe:lib_My_App_pm:8:perl_return",
+                "canonical_gap_id": "gap:perl:lib/My/App.pm:My::App::discount:return_value:exact_return_assertion:return_value",
+                "canonical_gap": {
+                    "file": "lib/My/App.pm",
+                    "owner": "perl:lib/My/App.pm::My::App::discount",
+                    "behavior_kind": "return_value"
+                },
+                "probe": {
+                    "file": "lib/My/App.pm",
+                    "line": 8,
+                    "family": "return_value"
+                },
+                "related_tests": [{
+                    "name": "discount_smoke",
+                    "file": "t/app.t",
+                    "line": 7
+                }],
+                "perl_preview_card": {
+                    "card_version": "perl_preview_card.v1",
+                    "source": "check_perl_preview",
+                    "language": "perl",
+                    "language_status": "preview",
+                    "authority_boundary": "preview_advisory_only",
+                    "surface_scope": "check_json_human_sarif_github_gap_ledger_markdown",
+                    "public_projection_ready": true,
+                    "public_repair_packet": false,
+                    "repair_packet_ready": false,
+                    "agent_packet_ready": false,
+                    "gate_candidate": false,
+                    "badge_candidate": false,
+                    "ripr_zero_candidate": false,
+                    "packet_id": "perl-preview:gap-return",
+                    "canonical_gap_id": "gap:perl:lib/My/App.pm:My::App::discount:return_value:exact_return_assertion:return_value",
+                    "gap_state": "actionable",
+                    "changed_owner": "perl:lib/My/App.pm::My::App::discount",
+                    "evidence_class": "weakly_exposed",
+                    "repair_route": "add_exact_return_assertion",
+                    "current_test_evidence": "discount_smoke has a weak smoke oracle",
+                    "missing_discriminator": "return_value",
+                    "target_test_shape": "Test::More exact_return_assertion",
+                    "suggested_test_location": "t/app.t::discount_smoke",
+                    "suggested_assertion": "assert the exact returned `return_value` value",
+                    "verify": {
+                        "command": "prove t/app.t",
+                        "status": "fact_only_not_delegated"
+                    },
+                    "receipt": {
+                        "command": null,
+                        "status": "available_not_delegated"
+                    },
+                    "confidence": "medium",
+                    "raw_evidence_refs": [{
+                        "leg": "perl_change",
+                        "file": "lib/My/App.pm",
+                        "line": 8,
+                        "kind": "perl_change",
+                        "source_id": "change:lib/My/App.pm:8:return",
+                        "owner": "perl:lib/My/App.pm::My::App::discount"
+                    }],
+                    "stop_if": ["Stop if perl-lsp packet status changes."],
+                    "must_not_change": ["Do not edit Perl production code."],
+                    "limits": ["Perl preview evidence is advisory."]
+                }
+            }]
+        }"#;
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "target/ripr/reports/check.json".to_string(),
+            records_json: Ok(payload.to_string()),
+        });
+        assert!(
+            report.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            report.warnings
+        );
+        let records = &report.records;
+
+        assert_eq!(records.len(), 1);
+        let record = &records[0];
+        assert_eq!(record.language, "perl");
+        assert_eq!(record.language_status, "preview");
+        assert_eq!(record.kind, "MissingValueAssertion");
+        assert_eq!(record.scope, "pr_local");
+        assert_eq!(record.policy_state, "not_policy_targeted");
+        assert_eq!(record.repairability, "repairable");
+        assert!(projection_eligible(record, "markdown_advisory"));
+        assert!(!projection_eligible(record, "agent_packet"));
+        assert!(!projection_eligible(record, "pr_comment"));
+        assert!(!projection_eligible(record, "gate_candidate"));
+        assert!(!projection_eligible(record, "ripr_zero_count"));
+        assert!(!projection_eligible(record, "ripr_plus_count"));
+        assert_eq!(record.receipt_command, None);
+        assert!(record.regeneration_commands.is_empty());
+        assert_eq!(
+            record.verification_commands,
+            vec!["prove t/app.t".to_string()]
+        );
+        let route = record
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair route")?;
+        assert_eq!(route.route_kind, "AddExactReturnAssertion");
+        assert_eq!(route.target_file.as_deref(), Some("t/app.t"));
+        assert_eq!(route.related_test.as_deref(), Some("discount_smoke"));
+        assert_eq!(route.target_line, Some(7));
+        assert_eq!(route.missing_discriminator.as_deref(), Some("return_value"));
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("lib/My/App.pm")
+        );
+        assert_eq!(record.authority_boundary, "preview_advisory_only");
+        assert_eq!(report.summary.preview_ineligible_total, 1);
+
+        let markdown = render_gap_decision_ledger_markdown(&report);
+        assert!(markdown.contains("language: `perl` / `preview`"));
+        assert!(markdown.contains("Eligible projections: `markdown_advisory`"));
+        assert!(markdown.contains("Verify:\n  - `prove t/app.t`"));
+        assert!(!markdown.contains("Receipt:"));
+        assert!(!markdown.contains("agent_packet"));
+        assert!(!markdown.contains("pr_comment"));
         Ok(())
     }
 

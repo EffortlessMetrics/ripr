@@ -9,6 +9,123 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.9.0 - Multi-language evidence-to-repair preview
+
+Release date: 2026-06-10.
+
+RIPR 0.9.0 extends the Lane 1 evidence-to-repair foundation beyond Rust-only
+assumptions. The headline is not that RIPR understands TypeScript; it is that
+TypeScript, JavaScript, and Bun evidence is now visible, bounded, and honest.
+Cross-language uncertainty fails closed into named limitations instead of
+becoming fake repair guidance.
+
+This release syncs release-intended `ripr-swarm` work back into source `ripr`
+with a history-preserving merge commit (swarm sync candidate `ff902885`,
+delta `74b1fab0..ff902885`, 145 commits). The post-freeze delta over the
+original `1cce26df` candidate is behavior-preserving repository infrastructure
+(advisory proof-routing CI, the first docs-only lane-skip, contract/xtask proof
+wiring, golden re-bless, and `ripr-plus` timeout hardening); `crates/ripr`
+runtime behavior is unchanged and the release Claim and Non-Claims are
+unchanged. Source `ripr` remains the release, publishing, signing, marketplace,
+badge, and distribution authority.
+
+### Release themes
+
+- TypeScript/Bun bounded preview adapter (opt-in, advisory).
+- Perl strict actionability enforcement.
+- Preview cards across every output surface.
+- Diff-first changed-surface review.
+- Cache sharding and explicit large-repo cache limits.
+- No new authority: preview evidence does not emit public repair packets.
+
+### Added
+
+#### TypeScript/Bun preview adapter (opt-in, advisory)
+
+- Added Bun `ArrayBuffer` discriminator facts, stable-byte oracle
+  classification, bridge hint evidence, and bounded verdict wording.
+- Added cross-language oracle gap routing as named limitations: TS
+  discriminator witness routes, unknown-bridge witnesses, and missing
+  oracle-edge routing.
+- Added `copy_to_unshared` bridge evidence with a configured route and a Bun
+  Markdown cross-language profile.
+- Added the configured bridge inventory report with boundary hardening.
+- Added live Bun stable-byte dogfood receipts and first-run copy-pasteable
+  Bun UB preview docs.
+- Calibrated Bun stable-byte evidence distinguishes
+  `rust_ungripped_ts_discriminated`, `rust_ungripped_ts_missing_discriminator`,
+  `ts_mention_not_observer`, `bridge_unknown`, and named static limitation
+  states. This is a Bun UB review signal, not a support-tier promotion.
+
+#### Perl strict actionability and preview projection
+
+- Hardened strict actionability packet bounds with focused helper tests.
+- Added preview cards to check JSON, human output, SARIF, GitHub annotations,
+  and gap ledger Markdown, so preview evidence renders consistently on every
+  surface without becoming a public repair packet.
+
+#### Diff-first review
+
+- Added `ripr diff` changed-surface mode v1 and a diff-scoped review fast
+  path for draft-time iteration, especially where full-repo analysis is
+  limited or expensive.
+
+#### Cache sharding and large-repo limits
+
+- Added seam-cache sharding for large repositories, sharded cache set
+  reporting, and surfaced large seam-cache skips as explicit states.
+
+#### Python projection
+
+- Added no-action preview-state annotations to SARIF output so Python
+  findings without a safe action are visibly advisory instead of silent.
+
+### Changed
+
+- Conditional receiver helper owner tracing improves owner-call routing.
+- Runtime completeness remains explicit: limited, sampled, and incomplete
+  runs carry `repair_route` and `downstream_consumable = false`.
+
+### Known limitations
+
+- TypeScript and JavaScript support is opt-in preview. Unknown frameworks,
+  helper-gated assertions, unresolved targets, and unknown bridges are named
+  limitations with analyzer routes, not repair packets.
+- Cross-language oracle visibility is resolved only for configured bridges;
+  there is no full Bun binding graph.
+- Bun stable-byte evidence is advisory and calibrated to currently modeled
+  routes.
+- `ripr check --format json` can produce very large JSON for some diffs and can
+  fail when writing large output to stdout on Windows; prefer redirecting JSON
+  to a report file rather than piping it through stdout. Output-size bounds and
+  a stdout-write fallback are planned for a 0.9.x follow-up.
+
+### Non-claims
+
+This release does not claim:
+
+- TypeScript or JavaScript stable support, or Bun UB proof.
+- Runtime Bun, Jest, Vitest, `tsc`, `tsserver`, Miri, or mutation execution.
+- Generated tests or source edits.
+- Default gates, badges, baselines, or RIPR Zero contribution from
+  TypeScript/Bun preview evidence.
+- Public repair packets from TypeScript/Bun preview evidence.
+- A full Bun binding graph or generic cross-language support for every mixed
+  TypeScript/Rust repository.
+- Autonomous edits, provider integration, mutation execution, or a default
+  blocking CI / badge semantic switch.
+
+### Validation
+
+- `cargo fmt --check`, `cargo test --workspace`,
+  `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo xtask check-pr`, `check-output-contracts`, `check-static-language`,
+  `check-traceability`, `check-capabilities`, `check-doc-index`
+- Lane proof: `lane1-evidence-audit`, `ripr-swarm plan`, `ripr-swarm
+  readiness`, `evidence-quality-scorecard`, `evidence-quality-trend`,
+  `receipts check` (limited states explicit and routed)
+- `cargo package -p ripr --locked`, `cargo publish -p ripr --dry-run --locked`
+
 ## 0.8.0 - Evidence-to-repair foundation
 
 Release date: 2026-06-02.

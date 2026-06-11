@@ -74,6 +74,11 @@ they are active, closed, complete, blocked, or historical.
   (proposed, not active until explicitly selected)
 - [TypeScript preview completion](typescript-preview-completion/implementation-plan.md)
   (proposed lane plan; preview/advisory boundary preserved)
+- [Cross-language evidence router UX](cross-language-evidence-router-ux/implementation-plan.md)
+  (proposed successor plan; preview/advisory cross-language routing only)
+- [Use-case spec layer](use-case-specs/implementation-plan.md)
+  (proposed; sequences the RIPR-SPEC-0065 through RIPR-SPEC-0073
+  implementation slices after the spec set lands)
 
 ### Closed or Complete Plans
 

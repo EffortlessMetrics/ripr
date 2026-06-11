@@ -12,13 +12,25 @@ pub fn load_diff(
     }
 
     let base = base.unwrap_or("origin/main");
+    run_git_diff(root, &format!("{base}...HEAD"), &[])
+}
+
+pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
+    run_git_diff(
+        root,
+        &format!("{base}...{head}"),
+        &["--unified=0", "--no-ext-diff"],
+    )
+}
+
+fn run_git_diff(root: &Path, range: &str, extra_args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
         .arg("diff")
-        .arg(format!("{base}...HEAD"))
+        .args(extra_args)
+        .arg(range)
         .current_dir(root)
         .output()
         .map_err(|err| format!("failed to run git diff: {err}"))?;
-
     if !output.status.success() {
         return Err(format!(
             "git diff failed: {}",

@@ -14,6 +14,7 @@ use crate::domain::OracleStrength;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
+use crate::output::evidence_record::cross_language_test_target_unresolved;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -166,6 +167,9 @@ fn push_seam_actions(
         INSPECT_SEAM_PACKET_TITLE,
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
+    if cross_language_test_target_unresolved(context.seam) {
+        return;
+    }
     if suggested_assertion.is_some() || related_test.is_some() {
         actions.push(copy_targeted_test_brief_action(
             context.seam,
@@ -270,57 +274,62 @@ fn push_gap_actions(
     params: &CodeActionParams,
     context: GapActionContext<'_>,
 ) {
-    if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            COPY_FIRST_REPAIR_PACKET_TITLE,
-            COPY_FIRST_REPAIR_PACKET_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = python_agent_packet_target(params, context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            COPY_PYTHON_AGENT_PACKET_TITLE,
-            COPY_PYTHON_AGENT_PACKET_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic) {
-        actions.push(copy_context_action(
-            INSPECT_GAP_PACKET_TITLE,
-            INSPECT_GAP_PACKET_COMMAND_TITLE,
-            target,
-        ));
-    }
-    if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
-        actions.push(copy_python_repair_card_action(target));
-    }
-    if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
-        actions.push(copy_python_pytest_skeleton_action(target));
-    }
-    if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
-        actions.push(open_related_test_action(target));
-    }
-    let verify_command = first_safe_command_at(
-        context.snapshot.root.as_path(),
-        context.data,
-        &["verification_commands"],
-    );
-    if let Some(command) = &verify_command {
-        actions.push(copy_agent_loop_command_action(
-            AGENT_VERIFY_COMMAND_TITLE,
-            COPY_AGENT_VERIFY_COMMAND,
-            gap_command_target(context.diagnostic, "gap_verify", command),
-        ));
-    }
-    if verify_command.is_some()
-        && let Some(command) =
-            first_safe_receipt_command(context.snapshot.root.as_path(), context.data)
-    {
-        actions.push(copy_agent_loop_command_action(
-            AGENT_RECEIPT_COMMAND_TITLE,
-            COPY_AGENT_RECEIPT_COMMAND,
-            gap_command_target(context.diagnostic, "gap_receipt", &command),
-        ));
+    if !gap_cross_language_target_unresolved(context.data) {
+        if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
+            actions.push(copy_context_action(
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) =
+            python_agent_packet_target(params, context.snapshot, context.diagnostic)
+        {
+            actions.push(copy_context_action(
+                COPY_PYTHON_AGENT_PACKET_TITLE,
+                COPY_PYTHON_AGENT_PACKET_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic)
+        {
+            actions.push(copy_context_action(
+                INSPECT_GAP_PACKET_TITLE,
+                INSPECT_GAP_PACKET_COMMAND_TITLE,
+                target,
+            ));
+        }
+        if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
+            actions.push(copy_python_repair_card_action(target));
+        }
+        if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
+            actions.push(copy_python_pytest_skeleton_action(target));
+        }
+        if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
+            actions.push(open_related_test_action(target));
+        }
+        let verify_command = first_safe_command_at(
+            context.snapshot.root.as_path(),
+            context.data,
+            &["verification_commands"],
+        );
+        if let Some(command) = &verify_command {
+            actions.push(copy_agent_loop_command_action(
+                AGENT_VERIFY_COMMAND_TITLE,
+                COPY_AGENT_VERIFY_COMMAND,
+                gap_command_target(context.diagnostic, "gap_verify", command),
+            ));
+        }
+        if verify_command.is_some()
+            && let Some(command) =
+                first_safe_receipt_command(context.snapshot.root.as_path(), context.data)
+        {
+            actions.push(copy_agent_loop_command_action(
+                AGENT_RECEIPT_COMMAND_TITLE,
+                COPY_AGENT_RECEIPT_COMMAND,
+                gap_command_target(context.diagnostic, "gap_receipt", &command),
+            ));
+        }
     }
     if let Some(target) = static_limit_note_target(context.diagnostic) {
         actions.push(copy_context_action(
@@ -1119,7 +1128,7 @@ fn path_matches_diagnostic_language(data: &Value, path: &str) -> bool {
 fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     let note = static_limit_note(data)?;
-    Some(serde_json::json!({
+    let mut target = serde_json::json!({
         "label": "static_limit_note",
         "gap_id": string_at(data, &["gap_id"]),
         "canonical_gap_id": string_at(data, &["canonical_gap_id"]),
@@ -1127,7 +1136,40 @@ fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
         "language_status": string_at(data, &["language_status"]),
         "note": note,
         "limits_note": "Static evidence only; no runtime adequacy claim.",
-    }))
+    });
+    if let Some(navigation_target) = value_at(data, &["navigation_only_target"]).cloned()
+        && let Some(object) = target.as_object_mut()
+    {
+        object.insert("navigation_only_target".to_string(), navigation_target);
+    }
+    Some(target)
+}
+
+fn gap_cross_language_target_unresolved(data: &Value) -> bool {
+    const CATEGORY: &str = "cross_language_target_unresolved";
+    string_at(data, &["static_limit_kind"]) == Some(CATEGORY)
+        || string_at(data, &["static_limit_category"]) == Some(CATEGORY)
+        || value_at(data, &["projection_exclusion_reasons"])
+            .and_then(Value::as_array)
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some(CATEGORY))
+            })
+        || limitation_array_contains_category(data, &["static_limits"], CATEGORY)
+        || limitation_array_contains_category(data, &["static_limitations"], CATEGORY)
+}
+
+fn limitation_array_contains_category(data: &Value, path: &[&str], category: &str) -> bool {
+    value_at(data, path)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                string_at(item, &["static_limit_kind"]) == Some(category)
+                    || string_at(item, &["static_limit_category"]) == Some(category)
+                    || string_at(item, &["category"]) == Some(category)
+            })
+        })
 }
 
 fn static_limit_note(data: &Value) -> Option<String> {
@@ -1148,12 +1190,41 @@ fn static_limit_note(data: &Value) -> Option<String> {
             }
         }
     }
+    if let Some(target_lines) = navigation_only_target_lines(data) {
+        lines.extend(target_lines);
+    }
     if lines.is_empty() {
         None
     } else {
         lines.push("Boundary: static evidence only; advisory action.".to_string());
         Some(lines.join("\n"))
     }
+}
+
+fn navigation_only_target_lines(data: &Value) -> Option<Vec<String>> {
+    let target = value_at(data, &["navigation_only_target"])?;
+    let file = string_at(target, &["file"])?;
+    let line = target
+        .get("line")
+        .and_then(Value::as_u64)
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut lines = vec![format!("Navigation-only target: {file}:{line}")];
+    if let Some(test_name) = string_at(target, &["test_name"]) {
+        lines.push(format!("External observer: {test_name}"));
+    }
+    if let Some(language) = string_at(target, &["language"]) {
+        lines.push(format!("External language: {language}"));
+    }
+    if let Some(route) = string_at(target, &["limitation_route"]) {
+        lines.push(format!("Limitation route: {route}"));
+    }
+    let ready = target
+        .get("repair_packet_ready")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    lines.push(format!("Repair packet ready: {ready}"));
+    Some(lines)
 }
 
 fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {

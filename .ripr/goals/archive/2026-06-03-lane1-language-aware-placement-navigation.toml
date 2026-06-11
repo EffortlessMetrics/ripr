@@ -1,0 +1,113 @@
+# Archived by `cargo xtask closeout --goal lane1-language-aware-placement-navigation` on 2026-06-03.
+id = "lane1-language-aware-placement-navigation"
+title = "Lane 1 Language-Aware Placement Navigation"
+status = "closed"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/911"
+no_current_goal = true
+
+# Selected after Lane 1 Large-Repo Runtime Completeness closed with
+# `no_current_goal = true`. Live repo state on 2026-06-03 shows #911 remains
+# open as the narrow language-aware suggested-test placement follow-up after
+# #931 made binding/FFI target placement fail closed. This campaign may improve
+# navigation only when target evidence is explicit; it must not create public
+# repair packets or claim full cross-language oracle proof. The selected
+# navigation and route-quality slices landed through #940; no successor
+# campaign is selected by this closeout.
+
+objective = """
+Make suggested-test placement safe and useful for binding, FFI, and externally
+tested seams by routing known external target evidence as navigation-only
+limitation context, while keeping unknown targets fail-closed instead of
+emitting unrelated Rust test files or repair packets.
+"""
+
+end_state = [
+  "ordinary Rust seams with direct Rust-side test context continue to suggest only locally supported Rust test targets",
+  "binding, FFI, or externally tested seams with explicit configured external observer evidence can surface a navigation-only target file and route without becoming public repair packets",
+  "binding, FFI, or externally tested seams without explicit target evidence keep suggested test placement unknown or not applicable with a named blocked route",
+  "LSP, review-comments, and agent packet surfaces suppress repair actions whenever allowed_edit_surface, verify_command, receipt_command, or target shape are unresolved",
+  "readiness and route-quality surfaces preserve language-aware target-placement limitations as limitations rather than actionability",
+]
+
+hard_rules = [
+  "do not suggest unrelated Rust test files for binding or FFI seams",
+  "do not infer TypeScript, Python, or other external test targets without explicit bridge or observer evidence",
+  "do not create public repair packets from navigation-only external target evidence",
+  "do not invent verify commands, receipt commands, candidate values, or allowed edit surfaces for unresolved external targets",
+  "do not claim full cross-language oracle graph proof or runtime coverage proof",
+  "do not claim 0.8.0 on crates.io includes post-release swarm fixes",
+  "source ripr remains release, signing, publishing, and distribution authority",
+]
+
+non_goals = [
+  "no provider integration",
+  "no autonomous edits",
+  "no mutation execution",
+  "no default blocking CI or badge semantic switch",
+  "no full cross-language oracle proof",
+  "no generated tests",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
+]
+
+[[work_item]]
+id = "goals/language-aware-placement-navigation-activation"
+status = "done"
+branch = "campaign-language-aware-placement-navigation"
+stackable = false
+acceptance = "Select #911 as the first Lane 1 successor after lane1-large-repo-runtime-completeness closed with no_current_goal=true, without changing analyzer behavior, repair-packet authority, release claims, gates, badges, or source distribution authority."
+commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/language-aware-placement-navigation"
+status = "done"
+branch = "report-language-aware-placement-navigation"
+stackable = false
+acceptance = "Review-comments, LSP, and packet-adjacent output can surface explicit external observer target evidence as navigation-only limitation context for configured binding/FFI routes, while unknown external targets keep a named blocked route and no repair action, no verify command, no receipt command, and no allowed edit surface."
+commands = [
+  "cargo test -p ripr suggested_test -- --test-threads=1",
+  "cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1",
+  "cargo test -p ripr lsp --lib",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/language-aware-placement-route-quality"
+status = "done"
+branch = "report-language-aware-placement-route-quality"
+stackable = false
+acceptance = "Readiness, route-quality, and calibration outputs summarize language-aware placement limits and navigation-only external target evidence without promoting unresolved or preview external targets into public repair packets."
+commands = [
+  "cargo xtask ripr-swarm readiness",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/language-aware-placement-closeout"
+status = "done"
+branch = "campaign-language-aware-placement-closeout"
+stackable = false
+blocked_by = ["report/language-aware-placement-navigation", "report/language-aware-placement-route-quality"]
+acceptance = "Close the #911 campaign with issue state, claim boundaries, validation evidence, remaining #908/#910 cross-language oracle graph work, and no successor unless current repo-owned state selects one."
+commands = [
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+]

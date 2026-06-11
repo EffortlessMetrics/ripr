@@ -1,0 +1,173 @@
+{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:repo:exact-return",
+  "packet_status": "complete",
+  "packet_fingerprint": "sha256:exact-return",
+  "producer": {
+    "name": "perl-lsp",
+    "version": "0.0.0-fixture",
+    "capabilities": ["syntax", "workspace", "test_facts"]
+  },
+  "root": {
+    "repo_relative": ".",
+    "vcs_head": "abc123",
+    "path_style": "repo_relative"
+  },
+  "input": {
+    "base": "origin/main",
+    "head": "HEAD",
+    "diff_id": "sha256:diff",
+    "requested_fact_classes": ["owners", "changes", "tests", "oracles"]
+  },
+  "files": [
+    {
+      "file_id": "file:lib/My/App.pm",
+      "path": "lib/My/App.pm",
+      "role": ["source"],
+      "digest": "sha256:source",
+      "package_names": ["My::App"],
+      "provenance_refs": ["prov:file-index:source"]
+    },
+    {
+      "file_id": "file:t/app.t",
+      "path": "t/app.t",
+      "role": ["test"],
+      "digest": "sha256:test",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test"]
+    }
+  ],
+  "owners": [
+    {
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "file_id": "file:lib/My/App.pm",
+      "kind": "sub",
+      "package": "My::App",
+      "name": "discount",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 10, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:discount"]
+    }
+  ],
+  "changes": [
+    {
+      "change_id": "change:lib/My/App.pm:8:return",
+      "file_id": "file:lib/My/App.pm",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 8, "end_column": 14},
+      "behavior_hint": "return_value",
+      "changed_text_digest": "sha256:return",
+      "provenance_refs": ["prov:diff:1"]
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "test:t/app.t:test_discount_threshold",
+      "file_id": "file:t/app.t",
+      "framework": "Test::More",
+      "name": "test_discount_threshold",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 57},
+      "runner_hints": ["prove"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:1"]
+    }
+  ],
+  "oracles": [
+    {
+      "oracle_id": "oracle:t/app.t:6:is",
+      "test_id": "test:t/app.t:test_discount_threshold",
+      "kind": "exact_return_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "is(My::App::discount(100), 10, 'discount threshold')",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 57},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:1"]
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "relation:change:discount-return:test:threshold",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app.t:test_discount_threshold",
+      "oracle_id": "oracle:t/app.t:6:is",
+      "relation_kind": "direct_owner_call",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:1"]
+    }
+  ],
+  "dynamic_boundaries": [],
+  "verify_commands": [
+    {
+      "command_id": "verify:t/app.t:prove",
+      "runner": "prove",
+      "argv": ["prove", "t/app.t"],
+      "scope": "file",
+      "test_id": "test:t/app.t:test_discount_threshold",
+      "confidence": "medium",
+      "preconditions": ["prove_on_path"],
+      "provenance_refs": ["prov:runner:1"]
+    }
+  ],
+  "limitations": [],
+  "provenance": [
+    {
+      "provenance_id": "prov:file-index:source",
+      "source": "workspace",
+      "file_id": "file:lib/My/App.pm",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:file-index:test",
+      "source": "workspace",
+      "file_id": "file:t/app.t",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:syntax:discount",
+      "source": "syntax",
+      "file_id": "file:lib/My/App.pm",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 10, "end_column": 2},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:diff:1",
+      "source": "diff",
+      "file_id": "file:lib/My/App.pm",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 8, "end_column": 14},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:test-discovery:1",
+      "source": "test_discovery",
+      "file_id": "file:t/app.t",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 57},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:oracle:1",
+      "source": "oracle_extraction",
+      "file_id": "file:t/app.t",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 57},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:relation:1",
+      "source": "semantic",
+      "file_id": "file:t/app.t",
+      "range": {"start_line": 6, "start_column": 1, "end_line": 6, "end_column": 57},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:runner:1",
+      "source": "runner_detection",
+      "file_id": "file:t/app.t",
+      "range": null,
+      "confidence": "medium"
+    }
+  ]
+}

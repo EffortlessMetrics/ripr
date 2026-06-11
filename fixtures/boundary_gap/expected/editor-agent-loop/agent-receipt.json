@@ -25,7 +25,7 @@
     },
     "movement": "unchanged",
     "repo_root": ".",
-    "ripr_version": "0.8.0",
+    "ripr_version": "<ripr_version>",
     "seam_id": "67fc764ba37d77bd",
     "verify_artifact": {
       "path": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
