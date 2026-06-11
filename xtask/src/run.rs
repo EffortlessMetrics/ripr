@@ -762,11 +762,19 @@ mod tests {
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
         let args = vec!["-c".to_string(), "sleep 30 & wait".to_string()];
+        // The timeout must comfortably exceed the time for `sh` to fork
+        // `sleep 30` INTO its process group, otherwise the group-kill on
+        // timeout can race a not-yet-grouped descendant: the descendant
+        // survives, keeps the inherited stdout pipe open, and `read_to_end`
+        // hangs. Under parallel test load process startup can take hundreds of
+        // ms, so a tight (100 ms) timeout flaked (#1022). Five seconds is a
+        // generous, deterministic margin — do not tighten without re-checking
+        // this race.
         let output = capture_output_with_timeout(
             "sh",
             &args,
             &[],
-            Duration::from_millis(100),
+            Duration::from_secs(5),
             "pipe-inheriting descendant",
         )?;
 
@@ -795,11 +803,14 @@ mod tests {
                 marker.display()
             ),
         ];
+        // Same race as the unix variant: give `cmd` ample time to spawn the
+        // `ping` descendant before the timeout's taskkill /T fires, so the
+        // tree-kill reliably catches it under parallel load (#1022).
         let output = capture_output_with_timeout(
             "cmd",
             &args,
             &[],
-            Duration::from_secs(1),
+            Duration::from_secs(5),
             "pipe-inheriting descendant",
         )?;
 
