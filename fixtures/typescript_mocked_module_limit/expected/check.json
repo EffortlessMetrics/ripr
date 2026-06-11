@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_mocked_module_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: applyDiscount", "static_limit mocked_module: `./api`", "gap_state: static_limitation", "actionability_category: mocked_module", "why_not_actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance", "repair_route: add mock-shape support or validate the real substitution under test before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount"],
       "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "Static limit `mocked_module`: related test file mocks `./api` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `mocked_module`: static limit `mocked_module` prevents bounded TypeScript repair guidance. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

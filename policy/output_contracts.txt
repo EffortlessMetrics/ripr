@@ -53,7 +53,7 @@ probe_family|predicate|Probe family value.
 probe_family|return_value|Probe family value.
 probe_family|side_effect|Probe family value.
 probe_family|static_unknown|Probe family value.
-schema_version|0.1|Current check JSON schema version.
+schema_version|0.2|Current check JSON schema version.
 severity|info|Output and LSP severity value.
 severity|note|Output and LSP severity value.
 severity|warning|Output and LSP severity value.

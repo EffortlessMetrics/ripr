@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unresolved_fixture_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit unresolved_pytest_fixture: related test uses fixture-sourced values", "test_framework: pytest (test_apply_discount_fixture_case)", "test_fixtures: discount_case (test_apply_discount_fixture_case)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_fixture_case (test_apply_discount_fixture_case)", "related_test_relation: syntactic_call (test_apply_discount_fixture_case)", "test_oracle: exact_value strong (test_apply_discount_fixture_case)", "test_oracle_shape: field_assertion (test_apply_discount_fixture_case)"],
       "missing": ["Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the changed discriminator or expected value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

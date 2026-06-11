@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unrelated_test_mention/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function"],
       "missing": ["No Python test references `apply_discount(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

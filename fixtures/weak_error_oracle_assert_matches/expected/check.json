@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/weak_error_oracle_assert_matches/input",
@@ -32,17 +32,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Medium oracle found: property or partial structural assertion", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"],
       "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -53,13 +54,11 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }
@@ -109,17 +108,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
       "missing": [],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -130,13 +130,11 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }
@@ -186,17 +184,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
       "missing": [],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -207,13 +206,11 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }

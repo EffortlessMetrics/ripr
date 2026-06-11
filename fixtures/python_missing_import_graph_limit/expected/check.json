@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_missing_import_graph_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: total", "owner_kind: function", "static_limit missing_import_graph: changed line calls an imported symbol", "test_framework: pytest (test_total_includes_tax)", "test_fixtures: client (test_total_includes_tax)", "test_verify_command: pytest tests/test_totals.py::test_total_includes_tax (test_total_includes_tax)", "related_test_relation: syntactic_call (test_total_includes_tax)", "test_oracle: exact_value strong (test_total_includes_tax)"],
       "missing": ["Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

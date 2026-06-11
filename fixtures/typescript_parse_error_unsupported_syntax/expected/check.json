@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_parse_error_unsupported_syntax/input",
@@ -31,6 +31,8 @@
       ],
       "evidence": ["static_limit unsupported_syntax: 1 parser error(s)", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:2:typescript_preview_unsupported_syntax"],
       "missing": ["Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.", "TypeScript preview actionability `static_limitation` / `unsupported_syntax`: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s). Repair route: fix or isolate the unsupported syntax before relying on repair guidance"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

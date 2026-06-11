@@ -21,7 +21,7 @@ use crate::domain::{Finding, Summary};
 use crate::output;
 use std::path::PathBuf;
 
-pub(crate) const CHECK_OUTPUT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const CHECK_OUTPUT_SCHEMA_VERSION: &str = "0.2";
 
 /// Input contract for [`check_workspace`].
 ///

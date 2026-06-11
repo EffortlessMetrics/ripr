@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_property_based_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit property_based_test: related test uses generated inputs", "test_framework: pytest (test_apply_discount_property)", "test_fixtures: amount, threshold (test_apply_discount_property)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_property (test_apply_discount_property)", "related_test_relation: syntactic_call (test_apply_discount_property)", "test_oracle: relational_check weak (test_apply_discount_property)", "test_oracle_shape: boundary_assertion (test_apply_discount_property)"],
       "missing": ["Static limit `property_based_test`: a related Python test uses property-based generated inputs such as `@given(...)`; syntax-first preview evidence cannot prove whether the generated cases include the changed discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

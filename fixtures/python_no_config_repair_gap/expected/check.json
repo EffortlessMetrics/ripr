@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_no_config_repair_gap/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: trial_extension", "owner_kind: function", "missing_discriminator: days == minimum_days", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_promotions.py", "suggested_test_name: test_trial_extension_long_smoke", "suggested_test_node_id: tests/test_promotions.py::test_trial_extension_long_smoke", "suggested_verify_command: pytest tests/test_promotions.py::test_trial_extension_long_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_trial_extension_long_smoke)", "test_verify_command: pytest tests/test_promotions.py::test_trial_extension_long_smoke (test_trial_extension_long_smoke)", "related_test_relation: syntactic_call (test_trial_extension_long_smoke)", "test_oracle: smoke_only smoke (test_trial_extension_long_smoke)", "test_oracle_shape: broad_smoke_assertion (test_trial_extension_long_smoke)"],
       "missing": ["Related Python test reaches `trial_extension` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

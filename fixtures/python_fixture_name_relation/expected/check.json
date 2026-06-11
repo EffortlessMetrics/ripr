@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_fixture_name_relation/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_checkout_total)", "test_fixtures: pricing (test_checkout_total)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_total (test_checkout_total)", "related_test_relation: fixture_name (test_checkout_total)", "related_test_uncertain: fixture_name (test_checkout_total)"],
       "missing": ["Only heuristic Python test links were found for `calculate_fee`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

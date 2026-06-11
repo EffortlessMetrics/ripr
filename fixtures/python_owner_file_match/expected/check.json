@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_owner_file_match/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_total", "owner_kind: function", "test_framework: pytest (test_checkout_total_includes_fee)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_total_includes_fee (test_checkout_total_includes_fee)", "related_test_relation: syntactic_call (test_checkout_total_includes_fee)", "test_oracle: exact_value strong (test_checkout_total_includes_fee)"],
       "missing": ["Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

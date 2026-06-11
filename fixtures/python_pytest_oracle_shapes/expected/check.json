@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_pytest_oracle_shapes/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: log contains \"coupon expired\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifications.py", "suggested_test_name: test_warn_coupon_logs_expired_message", "suggested_test_node_id: tests/test_notifications.py::test_warn_coupon_logs_expired_message", "suggested_verify_command: pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_warn_coupon_logs_expired_message)", "test_fixtures: caplog (test_warn_coupon_logs_expired_message)", "test_verify_command: pytest tests/test_notifications.py::test_warn_coupon_logs_expired_message (test_warn_coupon_logs_expired_message)", "related_test_relation: syntactic_call (test_warn_coupon_logs_expired_message)", "test_oracle: relational_check weak (test_warn_coupon_logs_expired_message)", "test_oracle_shape: output_assertion (test_warn_coupon_logs_expired_message)"],
       "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the changed output/log/call effect."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

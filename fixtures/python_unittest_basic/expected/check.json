@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unittest_basic/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: risk_score", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_risk.py", "suggested_test_name: test_risk_score_high", "suggested_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_risk_score_high)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high (test_risk_score_high)", "related_test_relation: syntactic_call (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)", "test_oracle_shape: broad_smoke_assertion (test_risk_score_high)"],
       "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

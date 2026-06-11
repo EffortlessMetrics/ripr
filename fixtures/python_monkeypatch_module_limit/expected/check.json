@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_monkeypatch_module_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: fetch_total", "owner_kind: function", "static_limit mocked_module: related test uses patch/mock/monkeypatch module syntax", "test_framework: pytest (test_fetch_total_monkeypatches_remote_total)", "test_fixtures: monkeypatch (test_fetch_total_monkeypatches_remote_total)", "test_verify_command: pytest tests/test_service.py::test_fetch_total_monkeypatches_remote_total (test_fetch_total_monkeypatches_remote_total)", "related_test_relation: syntactic_call (test_fetch_total_monkeypatches_remote_total)", "test_oracle: exact_value strong (test_fetch_total_monkeypatches_remote_total)"],
       "missing": ["Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

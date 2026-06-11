@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_decorator_indirection_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: fetch_total", "owner_kind: function", "owner_decorators: retry", "static_limit decorator_indirection: `retry`", "test_framework: pytest (test_fetch_total_uses_retry_path)", "test_fixtures: client (test_fetch_total_uses_retry_path)", "test_verify_command: pytest tests/test_retry_total.py::test_fetch_total_uses_retry_path (test_fetch_total_uses_retry_path)", "related_test_relation: syntactic_call (test_fetch_total_uses_retry_path)", "test_oracle: exact_value strong (test_fetch_total_uses_retry_path)"],
       "missing": ["Static limit `decorator_indirection`: owner `fetch_total` is decorated with `retry`; syntax-first preview evidence does not resolve decorator-modified call behavior."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

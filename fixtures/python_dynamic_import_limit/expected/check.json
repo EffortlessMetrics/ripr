@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dynamic_import_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: run_plugin", "owner_kind: function", "static_limit missing_import_graph: changed line uses dynamic import syntax", "test_framework: pytest (test_run_plugin_returns_payload_status)", "test_verify_command: pytest tests/test_plugin_loader.py::test_run_plugin_returns_payload_status (test_run_plugin_returns_payload_status)", "related_test_relation: syntactic_call (test_run_plugin_returns_payload_status)", "test_oracle: exact_value strong (test_run_plugin_returns_payload_status)"],
       "missing": ["Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

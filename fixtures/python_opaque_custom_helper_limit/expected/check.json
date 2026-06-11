@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_opaque_custom_helper_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit opaque_custom_assertion_helper: related test uses an opaque custom assertion helper", "test_framework: pytest (test_apply_discount_custom_helper)", "test_verify_command: pytest tests/test_pricing.py::test_apply_discount_custom_helper (test_apply_discount_custom_helper)", "related_test_relation: syntactic_call (test_apply_discount_custom_helper)", "test_oracle: unknown unknown (test_apply_discount_custom_helper)", "test_oracle_shape: unknown_custom_helper (test_apply_discount_custom_helper)"],
       "missing": ["Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or determine whether it already observes the changed discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

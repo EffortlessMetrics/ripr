@@ -186,6 +186,8 @@ fn finding_json_with_config_and_counts(
     out.push_str(",\n");
     array_field(out, indent + 1, "evidence", &finding.evidence, true);
     array_field(out, indent + 1, "missing", &finding.missing, true);
+    assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
+    out.push_str(",\n");
     activation_json(out, finding, indent + 1);
     out.push_str(",\n");
     value_facts_array_json(
@@ -512,9 +514,39 @@ fn value_fact_json(out: &mut String, fact: &ValueFact, indent: usize) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     number_field(out, indent + 1, "line", fact.line, true);
-    field(out, indent + 1, "text", &fact.text, true);
     field(out, indent + 1, "value", &fact.value, true);
     field(out, indent + 1, "context", fact.context.as_str(), false);
+    out.push_str(&format!("{sp}}}"));
+}
+
+/// Collect the unique (line -> assertion source text) map for a slice of
+/// [`ValueFact`]s and emit it as a JSON object keyed by line number string.
+///
+/// **Schema 0.2 dedup**: per-value objects no longer carry a redundant `text`
+/// field; downstream recovers the full assertion source via
+/// `assertion_texts[line.to_string()]`.
+///
+/// **Known limitation**: the map is keyed by line number only, so if two
+/// assertions in different source files share the same line number within one
+/// finding, only one text is retained.  This is a low-probability edge case; a
+/// future schema could use `"file:line"` composite keys.
+fn assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
+    let sp = "  ".repeat(indent);
+    let isp = "  ".repeat(indent + 1);
+    // BTreeMap gives deterministic (ascending) key order.
+    let mut map: BTreeMap<usize, &str> = BTreeMap::new();
+    for fact in facts {
+        map.entry(fact.line).or_insert(fact.text.as_str());
+    }
+    out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
+    let entries: Vec<_> = map.into_iter().collect();
+    for (idx, (line, text)) in entries.iter().enumerate() {
+        let trailing = if idx + 1 != entries.len() { "," } else { "" };
+        out.push_str(&format!(
+            "{isp}\"{line}\": \"{}\"{trailing}\n",
+            escape(text)
+        ));
+    }
     out.push_str(&format!("{sp}}}"));
 }
 

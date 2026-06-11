@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/mixed_rust_typescript_preview/input",
@@ -32,41 +32,39 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
       "missing": ["Missing discriminator value: amount == discount_threshold"],
+      "assertion_texts": {
+        "5": "assert_eq!(discounted_total(50, 100), 50);",
+        "10": "assert_eq!(discounted_total(10_000, 100), 9_990);"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 5,
-            "text": "assert_eq!(discounted_total(50, 100), 50);",
             "value": "50",
             "context": "assertion_argument"
           },
           {
             "line": 5,
-            "text": "assert_eq!(discounted_total(50, 100), 50);",
             "value": "amount = 50",
             "context": "function_argument"
           },
           {
             "line": 5,
-            "text": "assert_eq!(discounted_total(50, 100), 50);",
             "value": "discount_threshold = 100",
             "context": "function_argument"
           },
           {
             "line": 10,
-            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
             "value": "9_990",
             "context": "assertion_argument"
           },
           {
             "line": 10,
-            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
             "value": "amount = 10_000",
             "context": "function_argument"
           },
           {
             "line": 10,
-            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
             "value": "discount_threshold = 100",
             "context": "function_argument"
           }
@@ -82,37 +80,31 @@
       "observed_values": [
         {
           "line": 5,
-          "text": "assert_eq!(discounted_total(50, 100), 50);",
           "value": "50",
           "context": "assertion_argument"
         },
         {
           "line": 5,
-          "text": "assert_eq!(discounted_total(50, 100), 50);",
           "value": "amount = 50",
           "context": "function_argument"
         },
         {
           "line": 5,
-          "text": "assert_eq!(discounted_total(50, 100), 50);",
           "value": "discount_threshold = 100",
           "context": "function_argument"
         },
         {
           "line": 10,
-          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
           "value": "9_990",
           "context": "assertion_argument"
         },
         {
           "line": 10,
-          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
           "value": "amount = 10_000",
           "context": "function_argument"
         },
         {
           "line": 10,
-          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
           "value": "discount_threshold = 100",
           "context": "function_argument"
         }
@@ -175,6 +167,8 @@
       ],
       "evidence": ["owner: applyDiscount", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=web/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:web_discount.ts:2:typescript_preview;owner=applyDiscount"],
       "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

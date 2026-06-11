@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_mock_interaction_shape/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: recording_callback", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_callbacks.py", "suggested_test_name: test_recording_callback_starts_idle", "suggested_test_node_id: tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_recording_callback_starts_idle)", "test_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (test_recording_callback_starts_idle)", "related_test_relation: syntactic_call (test_recording_callback_starts_idle)", "test_oracle: mock_expectation medium (test_recording_callback_starts_idle)", "test_oracle_shape: mock_expectation (test_recording_callback_starts_idle)"],
       "missing": ["Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

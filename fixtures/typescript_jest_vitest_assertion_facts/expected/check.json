@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_jest_vitest_assertion_facts/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: applyDiscount", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/signals.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_signals.ts:2:typescript_preview;owner=applyDiscount"],
       "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -153,6 +155,8 @@
       ],
       "evidence": ["owner: renderSummary", "missing_discriminator: return value == `summary:${status.trim()}`", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/signals.ts;line=9;kind=typescript_preview_probe;source_id=probe:src_signals.ts:9:typescript_preview;owner=renderSummary"],
       "missing": ["Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before routing a repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -286,6 +290,8 @@
       ],
       "evidence": ["owner: isReady", "missing_discriminator: return value == count >= 1", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/signals.ts;line=13;kind=typescript_preview_probe;source_id=probe:src_signals.ts:13:typescript_preview;owner=isReady"],
       "missing": ["Related test reaches `isReady` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -419,6 +425,8 @@
       ],
       "evidence": ["owner: notifyStatus", "missing_discriminator: call sink.record includes status", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/signals.ts;line=17;kind=typescript_preview_probe;source_id=probe:src_signals.ts:17:typescript_preview;owner=notifyStatus"],
       "missing": ["Related test reaches `notifyStatus` with a mock interaction oracle, but TypeScript preview does not yet establish the changed call payload; keep the item advisory until mock-shape actionability can name the callee, expected arguments, verify command, receipt command, and edit boundaries.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -552,6 +560,8 @@
       ],
       "evidence": ["owner: notifyLiteral", "missing_discriminator: call sink.record includes \"ready\"", "mock_payload_evidence: expect(sink.record).toHaveBeenCalledWith(\"ready\")", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/signals.ts;line=21;kind=typescript_preview_probe;source_id=probe:src_signals.ts:21:typescript_preview;owner=notifyLiteral"],
       "missing": ["Related test reaches `notifyLiteral` with bounded mock payload evidence `expect(sink.record).toHaveBeenCalledWith(\"ready\")`; keep the item advisory until mock-shape actionability can name verify command, receipt command, evidence refs, and edit boundaries.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -685,6 +695,8 @@
       ],
       "evidence": ["owner: loadProfile", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/signals.ts;line=25;kind=typescript_preview_probe;source_id=probe:src_signals.ts:25:typescript_preview;owner=loadProfile"],
       "missing": ["Related test reaches `loadProfile` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

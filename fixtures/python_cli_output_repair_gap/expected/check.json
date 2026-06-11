@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_cli_output_repair_gap/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: ship", "owner_kind: function", "owner_decorators: click.command", "missing_discriminator: output contains \"shipment queued\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_commands.py", "suggested_test_name: test_ship_smoke", "suggested_test_node_id: tests/test_commands.py::test_ship_smoke", "suggested_verify_command: pytest tests/test_commands.py::test_ship_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_ship_smoke)", "test_fixtures: capsys (test_ship_smoke)", "test_verify_command: pytest tests/test_commands.py::test_ship_smoke (test_ship_smoke)", "related_test_relation: syntactic_call (test_ship_smoke)", "test_oracle: smoke_only smoke (test_ship_smoke)", "test_oracle_shape: broad_smoke_assertion (test_ship_smoke)"],
       "missing": ["Related Python test reaches `ship` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed output/log/call effect."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

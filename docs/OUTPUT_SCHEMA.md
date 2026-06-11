@@ -6,7 +6,7 @@ agents.
 The current schema version is:
 
 ```text
-0.1
+0.2
 ```
 
 Schema changes that remove fields, rename fields, or change field meanings
@@ -362,11 +362,13 @@ A finding contains:
   ],
   "evidence": [],
   "missing": [],
+  "assertion_texts": {
+    "12": "assert_eq!(discounted_total(50, 100), 50);"
+  },
   "activation": {
     "observed_values": [
       {
         "line": 12,
-        "text": "assert_eq!(discounted_total(50, 100), 50);",
         "value": "amount = 50",
         "context": "function_argument"
       }
@@ -386,7 +388,6 @@ A finding contains:
   "observed_values": [
     {
       "line": 12,
-      "text": "assert_eq!(discounted_total(50, 100), 50);",
       "value": "amount = 50",
       "context": "function_argument"
     }
@@ -421,11 +422,20 @@ A finding contains:
 }
 ```
 
-The evidence-first fields are additive in schema `0.1`:
+The evidence-first fields are additive in schema `0.2`:
 
 - `evidence_path` is an ordered, human-readable summary of reachability,
   infection, propagation, observation, discrimination, local flow, related test
   oracles, observed values, and missing discriminator evidence.
+- `assertion_texts` (added in schema `0.2`) is a finding-level JSON object
+  mapping line-number strings to assertion source text.  Per-value objects in
+  `observed_values` no longer carry a redundant `text` field; downstream
+  consumers recover the assertion source via
+  `finding.assertion_texts[line.to_string()]`.  **Known limitation**: the map
+  is keyed by line number only, so if two assertions in different source files
+  share the same line number within one finding, only one text is retained.
+  This is a low-probability edge case; a future schema could use `"file:line"`
+  composite keys.
 - `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
   nested activation evidence for consumers that want direct finding-level
   access.
@@ -1532,11 +1542,13 @@ Consumers must not treat limited artifacts as canonical actionable counts.
             "summary": "equality discriminator is missing"
           }
         },
+        "assertion_texts": {
+          "12": "discounted_total(50, 100)"
+        },
         "observed_values": [
           {
             "value": "50",
             "line": 12,
-            "text": "discounted_total(50, 100)",
             "context": "function_argument"
           }
         ],
@@ -11064,11 +11076,13 @@ the receipt.
             "summary": "equality boundary is not observed"
           }
         },
+        "assertion_texts": {
+          "12": "discounted_total(50, 100)"
+        },
         "observed_values": [
           {
             "value": "50",
             "line": 12,
-            "text": "discounted_total(50, 100)",
             "context": "function_argument"
           }
         ],

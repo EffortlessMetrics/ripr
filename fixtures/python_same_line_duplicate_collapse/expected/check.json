@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_same_line_duplicate_collapse/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: checkout_payload", "owner_kind: function", "missing_discriminator: status == \"paid\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checkout.py", "suggested_test_name: test_checkout_payload_smoke", "suggested_test_node_id: tests/test_checkout.py::test_checkout_payload_smoke", "suggested_verify_command: pytest tests/test_checkout.py::test_checkout_payload_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checkout_payload_smoke)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_payload_smoke (test_checkout_payload_smoke)", "related_test_relation: syntactic_call (test_checkout_payload_smoke)", "test_oracle: smoke_only smoke (test_checkout_payload_smoke)", "test_oracle_shape: broad_smoke_assertion (test_checkout_payload_smoke)"],
       "missing": ["Related Python test reaches `checkout_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

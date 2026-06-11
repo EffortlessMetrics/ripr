@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_related_test_name_similarity/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary_case)", "test_verify_command: pytest tests/test_checkout.py::test_apply_discount_boundary_case (test_apply_discount_boundary_case)", "related_test_relation: test_name_similarity (test_apply_discount_boundary_case)", "related_test_uncertain: test_name_similarity (test_apply_discount_boundary_case)"],
       "missing": ["Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

@@ -253,10 +253,11 @@ fn check_json_output_has_stable_contract_fields() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""classification": "weakly_exposed""#));
     assert!(stdout.contains(r#""evidence_path""#));
     assert!(stdout.contains(r#""flow_sinks""#));
+    assert!(stdout.contains(r#""assertion_texts""#));
     assert!(stdout.contains(r#""activation""#));
     assert!(stdout.contains(r#""missing_discriminators""#));
     assert!(stdout.contains(r#""oracle_kind""#));

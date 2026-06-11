@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_method_owner/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
       "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

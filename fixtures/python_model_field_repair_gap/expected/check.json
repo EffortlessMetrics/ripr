@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_model_field_repair_gap/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: build_user", "owner_kind: function", "missing_discriminator: result.active == True", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_users.py", "suggested_test_name: test_build_user_smoke", "suggested_test_node_id: tests/test_users.py::test_build_user_smoke", "suggested_verify_command: pytest tests/test_users.py::test_build_user_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_build_user_smoke)", "test_verify_command: pytest tests/test_users.py::test_build_user_smoke (test_build_user_smoke)", "related_test_relation: syntactic_call (test_build_user_smoke)", "test_oracle: smoke_only smoke (test_build_user_smoke)", "test_oracle_shape: broad_smoke_assertion (test_build_user_smoke)"],
       "missing": ["Related Python test reaches `build_user` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

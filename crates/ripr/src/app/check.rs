@@ -125,7 +125,7 @@ mod tests {
     fn check_workspace_runs_diff_use_case_from_input() -> Result<(), String> {
         let output = check_workspace(sample_diff_input())?;
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.summary.findings, output.findings.len());
@@ -143,7 +143,7 @@ mod tests {
 
         let output = check_workspace_repo(input)?;
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.root, sample_root());
@@ -155,7 +155,7 @@ mod tests {
         let input = sample_diff_input();
         let output = repo_seam_inventory_input(input);
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.root, sample_root());

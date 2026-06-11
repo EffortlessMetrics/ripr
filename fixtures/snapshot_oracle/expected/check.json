@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/snapshot_oracle/input",
@@ -32,11 +32,13 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"ok\".to_string()", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Related tests contain input values, but the equality-boundary discriminator is missing"],
       "missing": ["Missing discriminator value: code == 299", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "let rendered = render_status(404);"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 5,
-            "text": "let rendered = render_status(404);",
             "value": "code = 404",
             "context": "function_argument"
           }
@@ -52,7 +54,6 @@
       "observed_values": [
         {
           "line": 5,
-          "text": "let rendered = render_status(404);",
           "value": "code = 404",
           "context": "function_argument"
         }

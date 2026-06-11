@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_strong_oracle/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: applyDiscount", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:2:typescript_preview;owner=applyDiscount"],
       "missing": ["Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

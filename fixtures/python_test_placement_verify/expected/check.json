@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_test_placement_verify/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pricing.py", "suggested_test_name: test_calculate_discount_smoke", "suggested_test_node_id: tests/test_pricing.py::test_calculate_discount_smoke", "suggested_verify_command: pytest tests/test_pricing.py::test_calculate_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_calculate_discount_smoke)", "test_verify_command: pytest tests/test_pricing.py::test_calculate_discount_smoke (test_calculate_discount_smoke)", "related_test_relation: syntactic_call (test_calculate_discount_smoke)", "test_oracle: smoke_only smoke (test_calculate_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_calculate_discount_smoke)"],
       "missing": ["Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -161,6 +163,8 @@
       ],
       "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_rejects_zero_value", "suggested_verify_command: python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_rejects_zero_value)", "test_verify_command: python -m unittest tests.test_validation.TestValidation.test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
       "missing": ["Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

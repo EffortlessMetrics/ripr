@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unsupported_syntax_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
       "missing": ["Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

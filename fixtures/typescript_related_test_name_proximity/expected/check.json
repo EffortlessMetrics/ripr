@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_related_test_name_proximity/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: applyDiscount", "gap_state: advisory", "actionability_category: ambiguous_related_test", "why_not_actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof", "repair_route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection", "missing_actionability_fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:2:typescript_preview;owner=applyDiscount", "related_test_relation: same_file_proximity (threshold documented elsewhere)", "related_test_uncertain: same_file_proximity (threshold documented elsewhere)", "related_test_relation: describe_name (applyDiscount threshold documented elsewhere)", "related_test_uncertain: describe_name (applyDiscount threshold documented elsewhere)", "related_test_relation: test_name (applyDiscount boundary)", "related_test_uncertain: test_name (applyDiscount boundary)"],
       "missing": ["Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `ambiguous_related_test`: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof. Repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

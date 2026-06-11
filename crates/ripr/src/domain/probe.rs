@@ -189,6 +189,14 @@ impl ValueContext {
     }
 }
 
+/// A single observed value extracted from a test assertion.
+///
+/// The `text` field holds the full assertion source text; it is used by the
+/// human renderer.  The JSON renderer (schema 0.2+) **deduplicates** it into a
+/// finding-level `assertion_texts` map keyed by line number, so `text` does
+/// **not** appear in per-value objects in the JSON output.  Downstream JSON
+/// consumers should recover the assertion source via
+/// `finding.assertion_texts[line.to_string()]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValueFact {
     pub line: usize,

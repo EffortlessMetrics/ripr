@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/opaque_fixture_builder/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount", "Related tests use opaque fixtures; activation/infection is unknown", "Strong oracle found: exact value or pattern assertion"],
       "missing": ["No detected boundary input for the changed predicate", "Related tests use opaque fixtures; activation/infection is unknown"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

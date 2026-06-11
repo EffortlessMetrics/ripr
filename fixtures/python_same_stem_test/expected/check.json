@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_same_stem_test/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: reconcile_total", "owner_kind: function", "test_framework: pytest (test_reconcile_fixture_contract)", "test_verify_command: pytest tests/test_reconcile.py::test_reconcile_fixture_contract (test_reconcile_fixture_contract)", "related_test_relation: same_stem (test_reconcile_fixture_contract)", "related_test_uncertain: same_stem (test_reconcile_fixture_contract)"],
       "missing": ["Only heuristic Python test links were found for `reconcile_total`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

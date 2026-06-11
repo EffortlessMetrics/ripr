@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -219,7 +219,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
         };
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -344,7 +344,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
         };
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -913,7 +913,7 @@ mod tests {
 
     fn sample_output(base: Option<String>) -> CheckOutput {
         CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -961,5 +961,58 @@ mod tests {
         finding.related_tests = related_tests;
         finding.recommended_next_step = None;
         finding
+    }
+
+    /// Schema 0.2 size-budget guard: 500 ValueFacts sharing the same line+text
+    /// should produce a rendered JSON well under 500 KB.  Under the old schema
+    /// (0.1) each object repeated the full assertion source text verbatim, so
+    /// the same payload would have been ~50 MB+.
+    #[test]
+    fn json_size_budget_for_many_shared_line_text_value_facts() {
+        let long_text = "a".repeat(100);
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = (0..500)
+            .map(|i| ValueFact {
+                line: 42,
+                text: long_text.clone(),
+                value: format!("arg_{i} = {i}"),
+                context: ValueContext::FunctionArgument,
+            })
+            .collect();
+
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![finding],
+        };
+
+        let rendered = render(&output);
+        // Each value entry is small (no text). The assertion_texts map has one
+        // entry with 100 chars.  Total JSON must be well under 500 KB.
+        assert!(
+            rendered.len() < 500_000,
+            "schema 0.2 output should be under 500 KB for 500 shared-line facts; got {} bytes",
+            rendered.len()
+        );
+        // The text appears exactly once in the output (in assertion_texts), not 500 times.
+        assert_eq!(
+            rendered.matches(&long_text).count(),
+            1,
+            "long assertion text should appear exactly once in the output (in assertion_texts)"
+        );
+        // Each per-value object must not contain the text field.
+        assert!(
+            !rendered.contains("\"text\":"),
+            "per-value objects must not contain a 'text' field in schema 0.2"
+        );
+        // assertion_texts map must be present.
+        assert!(
+            rendered.contains("\"assertion_texts\""),
+            "schema 0.2 output must include the finding-level assertion_texts map"
+        );
     }
 }

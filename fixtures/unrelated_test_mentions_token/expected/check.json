@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/unrelated_test_mentions_token/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["Changed behavior appears to influence returned value: amount - 10", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated"],
       "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

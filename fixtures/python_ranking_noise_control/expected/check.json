@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_ranking_noise_control/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_calculate_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_calculate_discount_smoke)", "test_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke (test_calculate_discount_smoke)", "related_test_relation: syntactic_call (test_calculate_discount_smoke)", "test_oracle: smoke_only smoke (test_calculate_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_calculate_discount_smoke)"],
       "missing": ["Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -161,6 +163,8 @@
       ],
       "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_calculate_fee_exact)", "test_verify_command: pytest tests/test_observed.py::test_calculate_fee_exact (test_calculate_fee_exact)", "related_test_relation: syntactic_call (test_calculate_fee_exact)", "test_oracle: exact_value strong (test_calculate_fee_exact)"],
       "missing": ["Related Python test reaches `calculate_fee` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -229,6 +233,8 @@
       ],
       "evidence": ["owner: isolated_total", "owner_kind: function"],
       "missing": ["No Python test references `isolated_total(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -276,6 +282,8 @@
       ],
       "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_exact)", "test_verify_command: pytest tests/test_dynamic.py::test_call_named_exact (test_call_named_exact)", "related_test_relation: syntactic_call (test_call_named_exact)", "test_oracle: exact_value strong (test_call_named_exact)"],
       "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

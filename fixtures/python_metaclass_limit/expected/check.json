@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_metaclass_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: InvoiceRecord", "owner_kind: class", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_invoice_record_status)", "test_verify_command: pytest tests/test_models.py::test_invoice_record_status (test_invoice_record_status)", "related_test_relation: same_stem (test_invoice_record_status)", "related_test_uncertain: same_stem (test_invoice_record_status)"],
       "missing": ["Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dynamic_route_registration_limit/input",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: checkout", "owner_kind: function", "owner_decorators: api.post", "static_limit decorator_indirection: dynamic_route_registration `api.post`", "test_framework: pytest (test_expired_coupon_response_smoke)", "test_fixtures: client (test_expired_coupon_response_smoke)", "test_verify_command: pytest tests/test_checkout.py::test_expired_coupon_response_smoke (test_expired_coupon_response_smoke)", "related_test_relation: same_stem (test_expired_coupon_response_smoke)", "related_test_uncertain: same_stem (test_expired_coupon_response_smoke)"],
       "missing": ["Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a concrete route path."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],

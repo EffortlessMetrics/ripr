@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unittest_oracle_shapes/input",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: warn_coupon", "owner_kind: function", "missing_discriminator: return value == \"coupon expired\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifications.py", "suggested_test_name: test_warn_coupon_output_message", "suggested_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak unittest relation", "test_framework: unittest (test_warn_coupon_output_message)", "test_verify_command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (test_warn_coupon_output_message)", "related_test_relation: syntactic_call (test_warn_coupon_output_message)", "test_oracle: relational_check weak (test_warn_coupon_output_message)", "test_oracle_shape: output_assertion (test_warn_coupon_output_message)"],
       "missing": ["Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
