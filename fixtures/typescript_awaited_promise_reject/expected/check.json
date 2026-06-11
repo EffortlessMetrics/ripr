@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_profile.ts:3:typescript_preview",
+      "id": "probe:src_profile.ts:typescript_preview:9da98202",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_profile.ts:3:typescript_preview",
+        "id": "probe:src_profile.ts:typescript_preview:9da98202",
         "family": "error_path",
         "delta": "control",
         "file": "src/profile.ts",
@@ -31,7 +31,7 @@
       "flow_sinks": [
         {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
       ],
-      "evidence": ["owner: loadProfile", "missing_discriminator: rejects Error matching \"missing id\"", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:3:typescript_preview;owner=loadProfile"],
+      "evidence": ["owner: loadProfile", "missing_discriminator: rejects Error matching \"missing id\"", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:9da98202;owner=loadProfile"],
       "missing": ["Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
@@ -122,9 +122,9 @@
             "leg": null,
             "line": 3,
             "owner": "loadProfile",
-            "raw": "file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:3:typescript_preview;owner=loadProfile",
+            "raw": "file=src/profile.ts;line=3;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:9da98202;owner=loadProfile",
             "sample": null,
-            "source_id": "probe:src_profile.ts:3:typescript_preview"
+            "source_id": "probe:src_profile.ts:typescript_preview:9da98202"
           }
         ],
         "repair_packet_ready": false,
@@ -142,12 +142,12 @@
       "owner_kind": "function"
     },
     {
-      "id": "probe:src_profile.ts:10:typescript_preview",
+      "id": "probe:src_profile.ts:typescript_preview:1733d672",
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_profile.ts:10:typescript_preview",
+        "id": "probe:src_profile.ts:typescript_preview:1733d672",
         "family": "error_path",
         "delta": "control",
         "file": "src/profile.ts",
@@ -166,7 +166,7 @@
       "flow_sinks": [
         {"kind":"error_variant","text":"await Promise.reject(new Error(\"missing id\"));","line":10}
       ],
-      "evidence": ["owner: publishProfile", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:10:typescript_preview;owner=publishProfile"],
+      "evidence": ["owner: publishProfile", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:1733d672;owner=publishProfile"],
       "missing": ["Related test reaches `publishProfile` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "assertion_texts": {
       },
@@ -237,9 +237,9 @@
             "leg": null,
             "line": 10,
             "owner": "publishProfile",
-            "raw": "file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:10:typescript_preview;owner=publishProfile",
+            "raw": "file=src/profile.ts;line=10;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:1733d672;owner=publishProfile",
             "sample": null,
-            "source_id": "probe:src_profile.ts:10:typescript_preview"
+            "source_id": "probe:src_profile.ts:typescript_preview:1733d672"
           }
         ],
         "repair_packet_ready": false,

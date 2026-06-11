@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":4,"probes":4,"findings":4,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_c_discount.py:2:python_preview",
+      "id": "probe:src_c_discount.py:python_preview:91995184",
       "canonical_gap_id": "gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_c_discount.py:2:python_preview",
+        "id": "probe:src_c_discount.py:python_preview:91995184",
         "family": "predicate",
         "delta": "control",
         "file": "src/c_discount.py",
@@ -125,7 +125,7 @@
       "owner_kind": "function"
     },
     {
-      "id": "probe:src_b_observed.py:2:python_preview",
+      "id": "probe:src_b_observed.py:python_preview:3c7333c2",
       "canonical_gap_id": "gap:python:src/b_observed.py:calculate_fee:return_value:return_value:amount+5",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -142,7 +142,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_b_observed.py:2:python_preview",
+        "id": "probe:src_b_observed.py:python_preview:3c7333c2",
         "family": "return_value",
         "delta": "value",
         "file": "src/b_observed.py",
@@ -195,7 +195,7 @@
       "owner_kind": "function"
     },
     {
-      "id": "probe:src_d_isolated.py:2:python_preview",
+      "id": "probe:src_d_isolated.py:python_preview:557fe7cf",
       "canonical_gap_id": "gap:python:src/d_isolated.py:isolated_total:return_value:return_value:amount+1",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -212,7 +212,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_d_isolated.py:2:python_preview",
+        "id": "probe:src_d_isolated.py:python_preview:557fe7cf",
         "family": "return_value",
         "delta": "value",
         "file": "src/d_isolated.py",
@@ -257,12 +257,12 @@
       "owner_kind": "function"
     },
     {
-      "id": "probe:src_a_dynamic.py:2:python_preview",
+      "id": "probe:src_a_dynamic.py:python_preview:01f806b7",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_a_dynamic.py:2:python_preview",
+        "id": "probe:src_a_dynamic.py:python_preview:01f806b7",
         "family": "return_value",
         "delta": "value",
         "file": "src/a_dynamic.py",

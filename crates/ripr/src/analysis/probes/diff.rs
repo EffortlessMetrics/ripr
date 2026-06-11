@@ -6,7 +6,7 @@ use super::super::rust_index::{
 use super::classify::{classify_changed_syntax, should_ignore_changed_line};
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::delta_for_family;
-use super::ids::diff_probe_id;
+use super::ids::{diff_probe_id, normalize_expression};
 use super::lexical::classify_changed_line;
 use crate::domain::{Probe, ProbeFamily, SourceLocation};
 use std::path::Path;
@@ -70,7 +70,25 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         }
     }
 
+    // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
+    // to the 2nd+ occurrences (the first keeps its id as-is, i.e. ordinal 1).
+    dedup_probe_ids(&mut probes);
+
     probes
+}
+
+/// Scan `probes` in order; for any id that appears more than once, rewrite the
+/// 2nd+ occurrences to append `.2`, `.3`, … (ordinal-based collision suffix).
+fn dedup_probe_ids(probes: &mut [Probe]) {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, u32> = HashMap::new();
+    for probe in probes.iter_mut() {
+        let count = seen.entry(probe.id.0.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            probe.id.0 = format!("{}.{}", probe.id.0, count);
+        }
+    }
 }
 
 /// Tests are the instrument, not the surface under test: a probe on a line
@@ -105,7 +123,15 @@ fn build_probe(
             find_owner_function(context.index, &context.changed.path, changed_line.line)
                 .map(|function| function.id.clone())
         });
-    let id = diff_probe_id(&context.changed.path, changed_line.line, &family);
+    let norm_expr = normalize_expression(text);
+    // Ordinal 1 here; post-hoc dedup in probes_for_file handles collisions.
+    let id = diff_probe_id(
+        &context.changed.path,
+        &family,
+        owner.as_ref(),
+        &norm_expr,
+        1,
+    );
     let expected_sinks = expected_sinks(text, &family);
     let required_oracles = required_oracles(text, &family);
 
@@ -230,7 +256,7 @@ mod tests {
 
         assert_eq!(probes.len(), 1);
         let probe = &probes[0];
-        assert_eq!(probe.id.0, "probe:src_lib.rs:3:predicate");
+        assert_eq!(probe.id.0, "probe:src_lib.rs:predicate:b6638ef3");
         assert_eq!(probe.family, ProbeFamily::Predicate);
         assert_eq!(
             probe.owner,
@@ -311,7 +337,7 @@ mod tests {
         let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
 
         assert_eq!(probes.len(), 1);
-        assert_eq!(probes[0].id.0, "probe:src_lib.rs:10:static_unknown");
+        assert_eq!(probes[0].id.0, "probe:src_lib.rs:static_unknown:1e078e9a");
         assert_eq!(probes[0].family, ProbeFamily::StaticUnknown);
         assert_eq!(probes[0].before, None);
     }
@@ -365,7 +391,7 @@ mod tests {
             return;
         };
         let side_effect = &probes[side_effect_position];
-        assert_eq!(side_effect.id.0, "probe:src_lib.rs:4:side_effect");
+        assert_eq!(side_effect.id.0, "probe:src_lib.rs:side_effect:682b613e");
         assert_eq!(
             side_effect.before,
             Some("events.publish(invoice);".to_string())

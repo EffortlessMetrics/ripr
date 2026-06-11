@@ -60,7 +60,7 @@ mod tests {
     fn explain_finding_with_input_renders_selected_finding() -> Result<(), String> {
         let rendered = explain_finding_with_input(
             sample_diff_input(),
-            "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+            "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683",
         )?;
 
         assert!(rendered.contains("Static exposure"));

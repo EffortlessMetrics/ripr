@@ -20,7 +20,7 @@
     {
       "id": "mock_interaction_without_payload_proof",
       "source_fixture": "fixtures/typescript_jest_vitest_assertion_facts",
-      "source_finding_id": "probe:src_signals.ts:17:typescript_preview",
+      "source_finding_id": "probe:src_signals.ts:typescript_preview:5f264af5",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "mock interaction without payload proof",
@@ -38,7 +38,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "mock payloads are not yet a safe discriminator",
       "raw_evidence_refs": [
-        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:17:typescript_preview"
+        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:typescript_preview:5f264af5"
       ],
       "non_claims": [
         "no provider calls",
@@ -57,7 +57,7 @@
     {
       "id": "broad_throw_or_rejects_without_payload",
       "source_fixture": "fixtures/typescript_awaited_promise_reject",
-      "source_finding_id": "probe:src_profile.ts:3:typescript_preview",
+      "source_finding_id": "probe:src_profile.ts:typescript_preview:9da98202",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "broad toThrow or rejects without payload",
@@ -75,7 +75,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "broad error evidence does not establish missing discriminator",
       "raw_evidence_refs": [
-        "fixtures/typescript_awaited_promise_reject/expected/check.json#probe:src_profile.ts:3:typescript_preview"
+        "fixtures/typescript_awaited_promise_reject/expected/check.json#probe:src_profile.ts:typescript_preview:9da98202"
       ],
       "non_claims": [
         "no provider calls",
@@ -94,7 +94,7 @@
     {
       "id": "snapshot_only_weak_oracle",
       "source_fixture": "fixtures/typescript_jest_vitest_assertion_facts",
-      "source_finding_id": "probe:src_signals.ts:9:typescript_preview",
+      "source_finding_id": "probe:src_signals.ts:typescript_preview:8ca5702a",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "snapshot-only weak oracle",
@@ -112,7 +112,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "add an exact-value assertion alongside the snapshot",
       "raw_evidence_refs": [
-        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:9:typescript_preview"
+        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:typescript_preview:8ca5702a"
       ],
       "non_claims": [
         "no provider calls",
@@ -131,7 +131,7 @@
     {
       "id": "smoke_only_truthiness",
       "source_fixture": "fixtures/typescript_jest_vitest_assertion_facts",
-      "source_finding_id": "probe:src_signals.ts:13:typescript_preview",
+      "source_finding_id": "probe:src_signals.ts:typescript_preview:54d687f5",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "smoke-only truthiness",
@@ -149,7 +149,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "replace or augment the smoke-only assertion",
       "raw_evidence_refs": [
-        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:13:typescript_preview"
+        "fixtures/typescript_jest_vitest_assertion_facts/expected/check.json#probe:src_signals.ts:typescript_preview:54d687f5"
       ],
       "non_claims": [
         "no provider calls",
@@ -168,7 +168,7 @@
     {
       "id": "heuristic_related_test_link",
       "source_fixture": "fixtures/typescript_related_test_name_proximity",
-      "source_finding_id": "probe:src_pricing.ts:2:typescript_preview",
+      "source_finding_id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "heuristic related-test link",
@@ -186,7 +186,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "related-test link is heuristic-only",
       "raw_evidence_refs": [
-        "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:2:typescript_preview"
+        "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:typescript_preview:bd772dc8"
       ],
       "non_claims": [
         "no provider calls",
@@ -205,7 +205,7 @@
     {
       "id": "owner_name_in_test_title_only",
       "source_fixture": "fixtures/typescript_related_test_name_proximity",
-      "source_finding_id": "probe:src_pricing.ts:2:typescript_preview",
+      "source_finding_id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "owner name in test title only",
@@ -223,7 +223,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "related_test_relation: test_name",
       "raw_evidence_refs": [
-        "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:2:typescript_preview"
+        "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:typescript_preview:bd772dc8"
       ],
       "non_claims": [
         "no provider calls",
@@ -242,7 +242,7 @@
     {
       "id": "method_receiver_ambiguity",
       "source_fixture": "fixtures/typescript_owner_kinds",
-      "source_finding_id": "probe:src_owners.ts:7:typescript_preview",
+      "source_finding_id": "probe:src_owners.ts:typescript_preview:bd728bcd",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "method receiver incomplete repair packet",
@@ -260,7 +260,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "Related test reaches `total` with a smoke-only oracle",
       "raw_evidence_refs": [
-        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:7:typescript_preview"
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:typescript_preview:bd728bcd"
       ],
       "non_claims": [
         "no provider calls",
@@ -279,7 +279,7 @@
     {
       "id": "class_method_static_call_incomplete_packet",
       "source_fixture": "fixtures/typescript_owner_kinds",
-      "source_finding_id": "probe:src_owners.ts:11:typescript_preview",
+      "source_finding_id": "probe:src_owners.ts:typescript_preview:3416313c",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "static class-method incomplete repair packet",
@@ -297,7 +297,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "Related test reaches `build` with a smoke-only oracle",
       "raw_evidence_refs": [
-        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:11:typescript_preview"
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:typescript_preview:3416313c"
       ],
       "non_claims": [
         "no provider calls",
@@ -316,7 +316,7 @@
     {
       "id": "module_initializer_ambiguity",
       "source_fixture": "fixtures/typescript_owner_kinds",
-      "source_finding_id": "probe:src_owners.ts:15:typescript_preview",
+      "source_finding_id": "probe:src_owners.ts:typescript_preview:961b59c7",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "module initializer missing target shape",
@@ -334,7 +334,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "related module-initializer observer reaches",
       "raw_evidence_refs": [
-        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:15:typescript_preview"
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:typescript_preview:961b59c7"
       ],
       "non_claims": [
         "no provider calls",
@@ -353,7 +353,7 @@
     {
       "id": "mocked_module_limit",
       "source_fixture": "fixtures/typescript_mocked_module_limit",
-      "source_finding_id": "probe:src_discount.ts:2:typescript_preview",
+      "source_finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "mocked module",
@@ -371,7 +371,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "static limit `mocked_module`",
       "raw_evidence_refs": [
-        "fixtures/typescript_mocked_module_limit/expected/check.json#probe:src_discount.ts:2:typescript_preview"
+        "fixtures/typescript_mocked_module_limit/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1"
       ],
       "non_claims": [
         "no provider calls",
@@ -390,7 +390,7 @@
     {
       "id": "decorator_indirection_limit",
       "source_fixture": "fixtures/typescript_static_limit_taxonomy",
-      "source_finding_id": "probe:src_decorated.tsx:7:typescript_preview",
+      "source_finding_id": "probe:src_decorated.tsx:typescript_preview:a66c44ee",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "decorator indirection",
@@ -408,7 +408,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "static limit `decorator_indirection`",
       "raw_evidence_refs": [
-        "fixtures/typescript_static_limit_taxonomy/expected/check.json#probe:src_decorated.tsx:7:typescript_preview"
+        "fixtures/typescript_static_limit_taxonomy/expected/check.json#probe:src_decorated.tsx:typescript_preview:a66c44ee"
       ],
       "non_claims": [
         "no provider calls",
@@ -427,7 +427,7 @@
     {
       "id": "dynamic_dispatch_limit",
       "source_fixture": "fixtures/typescript_static_limit_taxonomy",
-      "source_finding_id": "probe:src_dispatch.ts:2:typescript_preview",
+      "source_finding_id": "probe:src_dispatch.ts:typescript_preview:dd0f8848",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "dynamic dispatch",
@@ -445,7 +445,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "static limit `dynamic_dispatch`",
       "raw_evidence_refs": [
-        "fixtures/typescript_static_limit_taxonomy/expected/check.json#probe:src_dispatch.ts:2:typescript_preview"
+        "fixtures/typescript_static_limit_taxonomy/expected/check.json#probe:src_dispatch.ts:typescript_preview:dd0f8848"
       ],
       "non_claims": [
         "no provider calls",

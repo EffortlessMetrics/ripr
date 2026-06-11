@@ -35,3 +35,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+content-addressed-probe-ids-#1053
+
+Command:
+`cargo xtask goldens bless strong_boundary_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+platform-stable content-addressed ids (#1053): normalize owner path separators in fp8
+
+Command:
+`cargo xtask goldens bless strong_boundary_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

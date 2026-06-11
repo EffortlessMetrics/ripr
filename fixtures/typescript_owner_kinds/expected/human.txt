@@ -27,7 +27,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/owners.ts:2 (typescript_preview_probe) source=probe:src_owners.ts:2:typescript_preview owner=formatPrice
+  raw evidence: src/owners.ts:2 (typescript_preview_probe) source=probe:src_owners.ts:typescript_preview:f895095a owner=formatPrice
 
 Static exposure
   exposed (info, confidence 0.60)
@@ -88,7 +88,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/owners.ts:7 (typescript_preview_probe) source=probe:src_owners.ts:7:typescript_preview owner=total
+  raw evidence: src/owners.ts:7 (typescript_preview_probe) source=probe:src_owners.ts:typescript_preview:bd728bcd owner=total
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -151,7 +151,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/owners.ts:11 (typescript_preview_probe) source=probe:src_owners.ts:11:typescript_preview owner=build
+  raw evidence: src/owners.ts:11 (typescript_preview_probe) source=probe:src_owners.ts:typescript_preview:3416313c owner=build
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -214,7 +214,7 @@ Preview actionability
   repair route: add probe-specific discriminator extraction for this expression before repair packet projection
   missing fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries
-  raw evidence: src/owners.ts:15 (typescript_preview_probe) source=probe:src_owners.ts:15:typescript_preview owner=DEFAULT_RATE
+  raw evidence: src/owners.ts:15 (typescript_preview_probe) source=probe:src_owners.ts:typescript_preview:961b59c7 owner=DEFAULT_RATE
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

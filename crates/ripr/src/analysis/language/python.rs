@@ -19,14 +19,16 @@
 //! related-test oracles produce `weakly_exposed`; missing related tests produce
 //! `no_static_path`.
 
-use super::super::{AnalysisOptions, diff::ChangedFile};
+use super::super::{
+    AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
+};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
     LanguageId as DomainLanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, RelatedTest, RevealEvidence, RiprEvidence,
+    SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
 };
 use rustpython_parser::{
     Mode,
@@ -4015,8 +4017,17 @@ fn classify_change(
     let canonical_gap = static_limit
         .is_none()
         .then(|| canonical_python_gap_for(file, owner, &family, line_text));
+    let owner_id = owner.symbol_id();
+    let probe_id = fingerprint_probe_id(
+        "probe",
+        &id_path,
+        "python_preview",
+        owner_id.0.as_str(),
+        &normalize_expression(line_text),
+        1,
+    );
     let probe = Probe {
-        id: ProbeId(format!("probe:{id_path}:{line}:python_preview")),
+        id: probe_id,
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: Some(owner.symbol_id()),
         family: family.clone(),
@@ -5664,7 +5675,12 @@ def test_build_user_smoke():
         .ok_or_else(|| "after owner should classify".to_string())?;
 
         assert_eq!(before_finding.probe.owner, after_finding.probe.owner);
-        assert_ne!(before_finding.probe.id, after_finding.probe.id);
+        // With content-addressed ids, moving the owner to a different line
+        // (without changing the expression) must NOT change the probe id.
+        assert_eq!(
+            before_finding.probe.id, after_finding.probe.id,
+            "content-addressed id must be stable across line movement"
+        );
         Ok(())
     }
 

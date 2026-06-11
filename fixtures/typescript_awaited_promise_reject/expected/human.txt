@@ -28,7 +28,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/profile.ts:3 (typescript_preview_probe) source=probe:src_profile.ts:3:typescript_preview owner=loadProfile
+  raw evidence: src/profile.ts:3 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:9da98202 owner=loadProfile
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -90,7 +90,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/profile.ts:10 (typescript_preview_probe) source=probe:src_profile.ts:10:typescript_preview owner=publishProfile
+  raw evidence: src/profile.ts:10 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:1733d672 owner=publishProfile
 
 Static exposure
   exposed (info, confidence 0.60)

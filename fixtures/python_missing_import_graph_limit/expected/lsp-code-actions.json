@@ -3,9 +3,9 @@
     {
       "arguments": [
         {
-          "finding_id": "probe:src_totals.py:4:python_preview",
+          "finding_id": "probe:src_totals.py:python_preview:1274639f",
           "line": 4,
-          "probe_id": "probe:src_totals.py:4:python_preview",
+          "probe_id": "probe:src_totals.py:python_preview:1274639f",
           "uri": "src/totals.py"
         }
       ],

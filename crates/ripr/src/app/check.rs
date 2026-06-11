@@ -129,10 +129,8 @@ mod tests {
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.summary.findings, output.findings.len());
-        assert!(
-            output.findings.iter().any(|finding| finding.id
-                == "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path")
-        );
+        assert!(output.findings.iter().any(|finding| finding.id
+            == "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683"));
         Ok(())
     }
 

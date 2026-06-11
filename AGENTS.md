@@ -166,8 +166,8 @@ cargo run -p ripr -- --version
 cargo run -p ripr -- doctor
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff --json
-cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:21:error_path
-cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:21:error_path --json
+cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771
+cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771 --json
 ```
 
 Editor extension checks:

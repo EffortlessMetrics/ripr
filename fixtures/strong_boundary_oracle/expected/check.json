@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:2:predicate",
+      "id": "probe:src_lib.rs:predicate:8390dd91",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:2:predicate",
+        "id": "probe:src_lib.rs:predicate:8390dd91",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/strong_boundary_oracle/input/src/lib.rs",

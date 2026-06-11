@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Breaking changes
+
+- **Content-addressed finding/probe IDs** (#1053): The `id` field format changed from `probe:<path>:<line>:<family>` to `probe:<path>:<family>:<fp8>[.<n>]` where `<fp8>` is the first 8 hex chars of SHA-256 over `path\0family\0owner\0expression\0`. The `line` segment is removed from the id. The `line` field in the `probe` JSON object is unchanged. Existing `.ripr/suppressions.toml` entries keyed by `finding_id` must be updated to the new id format; stale ids will fail closed (no match = not suppressed). The new ids track the code (expression + owner + family), so a suppression survives line movement and invalidates when the expression changes.
+
 ## 0.9.0 - Multi-language evidence-to-repair preview
 
 Release date: 2026-06-10.

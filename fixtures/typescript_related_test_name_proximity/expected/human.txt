@@ -28,7 +28,7 @@ Preview actionability
   repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
   missing fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
-  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:2:typescript_preview owner=applyDiscount
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:bd772dc8 owner=applyDiscount
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

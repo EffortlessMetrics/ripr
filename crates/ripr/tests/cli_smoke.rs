@@ -3116,7 +3116,7 @@ fn explain_returns_targeted_probe_details() {
         &root,
         "--diff",
         &diff,
-        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250",
     ]);
     assert_success(&output);
 
@@ -3138,14 +3138,16 @@ fn context_json_returns_probe_and_discriminator_guidance() {
         "--diff",
         &diff,
         "--at",
-        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250",
         "--json",
     ]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#)
+        stdout.contains(
+            r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250""#
+        )
     );
     assert!(stdout.contains(r#""discriminate": "weak""#));
     assert!(stdout.contains(r#""missing""#));

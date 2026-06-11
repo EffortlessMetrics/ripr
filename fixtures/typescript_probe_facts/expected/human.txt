@@ -28,7 +28,7 @@ Preview actionability
   repair route: add probe-specific discriminator extraction for this expression before repair packet projection
   missing fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries
-  raw evidence: src/ambiguous.ts:4 (typescript_preview_probe) source=probe:src_ambiguous.ts:4:typescript_preview owner=summarize
+  raw evidence: src/ambiguous.ts:4 (typescript_preview_probe) source=probe:src_ambiguous.ts:typescript_preview:ba5968cd owner=summarize
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -87,7 +87,7 @@ Preview actionability
   why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
   repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
   evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
-  raw evidence: src/ambiguous.ts:5 (typescript_preview_probe) source=probe:src_ambiguous.ts:5:typescript_preview owner=summarize
+  raw evidence: src/ambiguous.ts:5 (typescript_preview_probe) source=probe:src_ambiguous.ts:typescript_preview:62d9564b owner=summarize
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -149,7 +149,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/errors.ts:3 (typescript_preview_probe) source=probe:src_errors.ts:3:typescript_preview owner=parseToken
+  raw evidence: src/errors.ts:3 (typescript_preview_probe) source=probe:src_errors.ts:typescript_preview:491cf8da owner=parseToken
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -212,7 +212,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/notify.js:2 (typescript_preview_probe) source=probe:src_notify.js:2:typescript_preview owner=notify
+  raw evidence: src/notify.js:2 (typescript_preview_probe) source=probe:src_notify.js:typescript_preview:2f0e6fff owner=notify
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -275,7 +275,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:2:typescript_preview owner=discountedTotal
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:eaef2ad8 owner=discountedTotal
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -337,7 +337,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/pricing.ts:3 (typescript_preview_probe) source=probe:src_pricing.ts:3:typescript_preview owner=discountedTotal
+  raw evidence: src/pricing.ts:3 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:11e59c24 owner=discountedTotal
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -400,7 +400,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/profile.ts:4 (typescript_preview_probe) source=probe:src_profile.ts:4:typescript_preview owner=updateProfile
+  raw evidence: src/profile.ts:4 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:7c5ce045 owner=updateProfile
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -463,7 +463,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/profile.ts:5 (typescript_preview_probe) source=probe:src_profile.ts:5:typescript_preview owner=updateProfile
+  raw evidence: src/profile.ts:5 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:be31b1f9 owner=updateProfile
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -526,7 +526,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/view.jsx:2 (typescript_preview_probe) source=probe:src_view.jsx:2:typescript_preview owner=StatusView
+  raw evidence: src/view.jsx:2 (typescript_preview_probe) source=probe:src_view.jsx:typescript_preview:48669bf1 owner=StatusView
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -589,7 +589,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/widget.tsx:4 (typescript_preview_probe) source=probe:src_widget.tsx:4:typescript_preview owner=PriceBadge
+  raw evidence: src/widget.tsx:4 (typescript_preview_probe) source=probe:src_widget.tsx:typescript_preview:9044230b owner=PriceBadge
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

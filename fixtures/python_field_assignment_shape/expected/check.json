@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_invoice.py:6:python_preview",
+      "id": "probe:src_invoice.py:python_preview:5473c8e6",
       "canonical_gap_id": "gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_invoice.py:6:python_preview",
+        "id": "probe:src_invoice.py:python_preview:5473c8e6",
         "family": "field_construction",
         "delta": "value",
         "file": "src/invoice.py",

@@ -75,7 +75,7 @@ mod tests {
     fn collect_context_with_input_renders_selected_finding_packet() -> Result<(), String> {
         let rendered = collect_context_with_input(
             sample_diff_input(),
-            "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+            "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683",
             2,
         )?;
 

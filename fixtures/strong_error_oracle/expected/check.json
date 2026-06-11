@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":2,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:7:call_deletion",
+      "id": "probe:src_lib.rs:call_deletion:5bd64dc4",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:7:call_deletion",
+        "id": "probe:src_lib.rs:call_deletion:5bd64dc4",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/strong_error_oracle/input/src/lib.rs",
@@ -83,12 +83,12 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:7:error_path",
+      "id": "probe:src_lib.rs:error_path:99b06ce7",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:7:error_path",
+        "id": "probe:src_lib.rs:error_path:99b06ce7",
         "family": "error_path",
         "delta": "value",
         "file": "fixtures/strong_error_oracle/input/src/lib.rs",
@@ -159,12 +159,12 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:7:return_value",
+      "id": "probe:src_lib.rs:return_value:e21dcccc",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:7:return_value",
+        "id": "probe:src_lib.rs:return_value:e21dcccc",
         "family": "return_value",
         "delta": "value",
         "file": "fixtures/strong_error_oracle/input/src/lib.rs",

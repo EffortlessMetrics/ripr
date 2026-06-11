@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_pricing.py:2:python_preview",
+      "id": "probe:src_pricing.py:python_preview:5511809e",
       "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_pricing.py:2:python_preview",
+        "id": "probe:src_pricing.py:python_preview:5511809e",
         "family": "return_value",
         "delta": "value",
         "file": "src/pricing.py",

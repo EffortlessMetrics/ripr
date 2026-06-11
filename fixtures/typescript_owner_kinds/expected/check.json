@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":1,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_owners.ts:2:typescript_preview",
+      "id": "probe:src_owners.ts:typescript_preview:f895095a",
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_owners.ts:2:typescript_preview",
+        "id": "probe:src_owners.ts:typescript_preview:f895095a",
         "family": "return_value",
         "delta": "value",
         "file": "src/owners.ts",
@@ -31,7 +31,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return `$${amount.toFixed(3)}`;","line":2}
       ],
-      "evidence": ["owner: formatPrice", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/owners.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_owners.ts:2:typescript_preview;owner=formatPrice"],
+      "evidence": ["owner: formatPrice", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/owners.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:f895095a;owner=formatPrice"],
       "missing": ["Related test reaches `formatPrice` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "assertion_texts": {
       },
@@ -102,9 +102,9 @@
             "leg": null,
             "line": 2,
             "owner": "formatPrice",
-            "raw": "file=src/owners.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_owners.ts:2:typescript_preview;owner=formatPrice",
+            "raw": "file=src/owners.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:f895095a;owner=formatPrice",
             "sample": null,
-            "source_id": "probe:src_owners.ts:2:typescript_preview"
+            "source_id": "probe:src_owners.ts:typescript_preview:f895095a"
           }
         ],
         "repair_packet_ready": false,
@@ -122,12 +122,12 @@
       "owner_kind": "arrow_function"
     },
     {
-      "id": "probe:src_owners.ts:7:typescript_preview",
+      "id": "probe:src_owners.ts:typescript_preview:bd728bcd",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_owners.ts:7:typescript_preview",
+        "id": "probe:src_owners.ts:typescript_preview:bd728bcd",
         "family": "return_value",
         "delta": "value",
         "file": "src/owners.ts",
@@ -146,7 +146,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return this.items.length + 1;","line":7}
       ],
-      "evidence": ["owner: total", "missing_discriminator: return value == this.items.length + 1", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/owners.ts;line=7;kind=typescript_preview_probe;source_id=probe:src_owners.ts:7:typescript_preview;owner=total"],
+      "evidence": ["owner: total", "missing_discriminator: return value == this.items.length + 1", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/owners.ts;line=7;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:bd728bcd;owner=total"],
       "missing": ["Related test reaches `total` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
@@ -237,9 +237,9 @@
             "leg": null,
             "line": 7,
             "owner": "total",
-            "raw": "file=src/owners.ts;line=7;kind=typescript_preview_probe;source_id=probe:src_owners.ts:7:typescript_preview;owner=total",
+            "raw": "file=src/owners.ts;line=7;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:bd728bcd;owner=total",
             "sample": null,
-            "source_id": "probe:src_owners.ts:7:typescript_preview"
+            "source_id": "probe:src_owners.ts:typescript_preview:bd728bcd"
           }
         ],
         "repair_packet_ready": false,
@@ -257,12 +257,12 @@
       "owner_kind": "method"
     },
     {
-      "id": "probe:src_owners.ts:11:typescript_preview",
+      "id": "probe:src_owners.ts:typescript_preview:3416313c",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_owners.ts:11:typescript_preview",
+        "id": "probe:src_owners.ts:typescript_preview:3416313c",
         "family": "return_value",
         "delta": "value",
         "file": "src/owners.ts",
@@ -281,7 +281,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return new Cart({ tracked: true });","line":11}
       ],
-      "evidence": ["owner: build", "missing_discriminator: return value == new Cart({ tracked: true })", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/owners.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_owners.ts:11:typescript_preview;owner=build"],
+      "evidence": ["owner: build", "missing_discriminator: return value == new Cart({ tracked: true })", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/owners.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:3416313c;owner=build"],
       "missing": ["Related test reaches `build` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
@@ -372,9 +372,9 @@
             "leg": null,
             "line": 11,
             "owner": "build",
-            "raw": "file=src/owners.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_owners.ts:11:typescript_preview;owner=build",
+            "raw": "file=src/owners.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:3416313c;owner=build",
             "sample": null,
-            "source_id": "probe:src_owners.ts:11:typescript_preview"
+            "source_id": "probe:src_owners.ts:typescript_preview:3416313c"
           }
         ],
         "repair_packet_ready": false,
@@ -392,12 +392,12 @@
       "owner_kind": "class_method"
     },
     {
-      "id": "probe:src_owners.ts:15:typescript_preview",
+      "id": "probe:src_owners.ts:typescript_preview:961b59c7",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_owners.ts:15:typescript_preview",
+        "id": "probe:src_owners.ts:typescript_preview:961b59c7",
         "family": "predicate",
         "delta": "control",
         "file": "src/owners.ts",
@@ -415,7 +415,7 @@
       "evidence_path": ["reach yes: 1 related test(s) found for owner `DEFAULT_RATE`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `relational_check` (rank 3)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/owners.test.ts:16 rate is visible uses weak relational check oracle: expect(...).toBeGreaterThan(...)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: DEFAULT_RATE", "probe_fact: ambiguous_fallback", "gap_state: advisory", "actionability_category: missing_target_shape", "why_not_actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape", "repair_route: add probe-specific discriminator extraction for this expression before repair packet projection", "missing_actionability_fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:15:typescript_preview;owner=DEFAULT_RATE"],
+      "evidence": ["owner: DEFAULT_RATE", "probe_fact: ambiguous_fallback", "gap_state: advisory", "actionability_category: missing_target_shape", "why_not_actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape", "repair_route: add probe-specific discriminator extraction for this expression before repair packet projection", "missing_actionability_fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:961b59c7;owner=DEFAULT_RATE"],
       "missing": ["Related test reaches `DEFAULT_RATE` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "TypeScript preview actionability `advisory` / `missing_target_shape`: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape. Repair route: add probe-specific discriminator extraction for this expression before repair packet projection"],
       "assertion_texts": {
       },
@@ -494,9 +494,9 @@
             "leg": null,
             "line": 15,
             "owner": "DEFAULT_RATE",
-            "raw": "file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:15:typescript_preview;owner=DEFAULT_RATE",
+            "raw": "file=src/owners.ts;line=15;kind=typescript_preview_probe;source_id=probe:src_owners.ts:typescript_preview:961b59c7;owner=DEFAULT_RATE",
             "sample": null,
-            "source_id": "probe:src_owners.ts:15:typescript_preview"
+            "source_id": "probe:src_owners.ts:typescript_preview:961b59c7"
           }
         ],
         "repair_packet_ready": false,

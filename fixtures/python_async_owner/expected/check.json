@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_loading.py:2:python_preview",
+      "id": "probe:src_loading.py:python_preview:f9419b36",
       "canonical_gap_id": "gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_loading.py:2:python_preview",
+        "id": "probe:src_loading.py:python_preview:f9419b36",
         "family": "return_value",
         "delta": "value",
         "file": "src/loading.py",

@@ -14,14 +14,16 @@
 //! uncertainty-only, static limits fail closed, and incomplete repair packets
 //! remain advisory.
 
-use super::super::{AnalysisOptions, diff::ChangedFile, probes};
+use super::super::{
+    AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression, probes,
+};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
     ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
     LanguageId as DomainLanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, RelatedTest, RevealEvidence, RiprEvidence,
+    SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
 };
 use crate::domain::{FlowSinkFact, FlowSinkKind};
 use oxc_allocator::Allocator;
@@ -4306,10 +4308,19 @@ fn classify_change(
     } else {
         Vec::new()
     };
+    let owner_sym = owner.symbol_id();
+    let ts_probe_id = fingerprint_probe_id(
+        "probe",
+        &id_path,
+        "typescript_preview",
+        owner_sym.0.as_str(),
+        &normalize_expression(line_text),
+        1,
+    );
     let probe = Probe {
-        id: ProbeId(format!("probe:{id_path}:{line}:typescript_preview")),
+        id: ts_probe_id,
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
-        owner: Some(owner.symbol_id()),
+        owner: Some(owner_sym),
         family: family.clone(),
         delta,
         before: None,
@@ -4525,15 +4536,19 @@ fn bun_cross_language_finding_for_changed_rust_line_with_profile(
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect::<String>();
+    let bun_owner_id = format!("rust:{}::{}", profile.rust_file, profile.rust_owner);
+    let bun_probe_id = fingerprint_probe_id(
+        "probe",
+        &id_path,
+        "typescript_bun_ub_cross_language_preview",
+        &bun_owner_id,
+        &normalize_expression(profile.rust_boundary),
+        1,
+    );
     let probe = Probe {
-        id: ProbeId(format!(
-            "probe:{id_path}:{line}:typescript_bun_ub_cross_language_preview"
-        )),
+        id: bun_probe_id,
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
-        owner: Some(SymbolId(format!(
-            "rust:{}::{}",
-            profile.rust_file, profile.rust_owner
-        ))),
+        owner: Some(SymbolId(bun_owner_id)),
         family: ProbeFamily::Predicate,
         delta: DeltaKind::Control,
         before: None,
@@ -5265,10 +5280,16 @@ fn unsupported_syntax_finding(
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
+    let unsup_probe_id = fingerprint_probe_id(
+        "probe",
+        &id_path,
+        "typescript_preview_unsupported_syntax",
+        "",
+        &normalize_expression(line_text),
+        1,
+    );
     let probe = Probe {
-        id: ProbeId(format!(
-            "probe:{id_path}:{line}:typescript_preview_unsupported_syntax"
-        )),
+        id: unsup_probe_id.clone(),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: None,
         family: ProbeFamily::StaticUnknown,
@@ -5323,7 +5344,7 @@ fn unsupported_syntax_finding(
                 file,
                 line,
                 None,
-                &format!("probe:{id_path}:{line}:typescript_preview_unsupported_syntax"),
+                &unsup_probe_id.0,
             ),
         ],
         missing: vec![

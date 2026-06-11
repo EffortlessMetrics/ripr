@@ -28,7 +28,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/profile.ts:4 (typescript_preview_probe) source=probe:src_profile.ts:4:typescript_preview owner=updateProfile
+  raw evidence: src/profile.ts:4 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:7c5ce045 owner=updateProfile
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -91,7 +91,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/profile.ts:5 (typescript_preview_probe) source=probe:src_profile.ts:5:typescript_preview owner=updateProfile
+  raw evidence: src/profile.ts:5 (typescript_preview_probe) source=probe:src_profile.ts:typescript_preview:be31b1f9 owner=updateProfile
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

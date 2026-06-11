@@ -25,7 +25,7 @@ Preview actionability
   why not actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)
   repair route: fix or isolate the unsupported syntax before relying on repair guidance
   evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
-  raw evidence: src/broken.ts:2 (typescript_preview_probe) source=probe:src_broken.ts:2:typescript_preview_unsupported_syntax
+  raw evidence: src/broken.ts:2 (typescript_preview_probe) source=probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
 
 Static exposure
   static_unknown (note, confidence 0.20)

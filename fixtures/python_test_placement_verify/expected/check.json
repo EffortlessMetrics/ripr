@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":2,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_pricing.py:2:python_preview",
+      "id": "probe:src_pricing.py:python_preview:b6c16437",
       "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_pricing.py:2:python_preview",
+        "id": "probe:src_pricing.py:python_preview:b6c16437",
         "family": "predicate",
         "delta": "control",
         "file": "src/pricing.py",
@@ -125,7 +125,7 @@
       "owner_kind": "function"
     },
     {
-      "id": "probe:src_validation.py:3:python_preview",
+      "id": "probe:src_validation.py:python_preview:82db397b",
       "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -142,7 +142,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_validation.py:3:python_preview",
+        "id": "probe:src_validation.py:python_preview:82db397b",
         "family": "error_path",
         "delta": "control",
         "file": "src/validation.py",

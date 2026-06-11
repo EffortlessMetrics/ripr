@@ -27,7 +27,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/signals.ts:2 (typescript_preview_probe) source=probe:src_signals.ts:2:typescript_preview owner=applyDiscount
+  raw evidence: src/signals.ts:2 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:7878a956 owner=applyDiscount
 
 Static exposure
   exposed (info, confidence 0.60)
@@ -88,7 +88,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/signals.ts:9 (typescript_preview_probe) source=probe:src_signals.ts:9:typescript_preview owner=renderSummary
+  raw evidence: src/signals.ts:9 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:8ca5702a owner=renderSummary
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -151,7 +151,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/signals.ts:13 (typescript_preview_probe) source=probe:src_signals.ts:13:typescript_preview owner=isReady
+  raw evidence: src/signals.ts:13 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:54d687f5 owner=isReady
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -214,7 +214,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/signals.ts:17 (typescript_preview_probe) source=probe:src_signals.ts:17:typescript_preview owner=notifyStatus
+  raw evidence: src/signals.ts:17 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:5f264af5 owner=notifyStatus
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -277,7 +277,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/signals.ts:21 (typescript_preview_probe) source=probe:src_signals.ts:21:typescript_preview owner=notifyLiteral
+  raw evidence: src/signals.ts:21 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:7d6e77de owner=notifyLiteral
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)
@@ -339,7 +339,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/signals.ts:25 (typescript_preview_probe) source=probe:src_signals.ts:25:typescript_preview owner=loadProfile
+  raw evidence: src/signals.ts:25 (typescript_preview_probe) source=probe:src_signals.ts:typescript_preview:a68ad559 owner=loadProfile
 
 Static exposure
   exposed (info, confidence 0.60)

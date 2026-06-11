@@ -83,3 +83,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+content-addressed-probe-ids-#1053
+
+Command:
+`cargo xtask goldens bless typescript_effect_probe_shapes --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

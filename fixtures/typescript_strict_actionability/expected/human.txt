@@ -28,7 +28,7 @@ Preview actionability
   repair route: add trusted related-test matching for this owner shape before emitting a repair packet
   missing fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
-  raw evidence: src/context.ts:2 (typescript_preview_probe) source=probe:src_context.ts:2:typescript_preview owner=thresholdLabel
+  raw evidence: src/context.ts:2 (typescript_preview_probe) source=probe:src_context.ts:typescript_preview:74e6172a owner=thresholdLabel
 
 Static exposure
   no_static_path (warning, confidence 0.40)
@@ -86,7 +86,7 @@ Preview actionability
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
   evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
-  raw evidence: src/observed.ts:2 (typescript_preview_probe) source=probe:src_observed.ts:2:typescript_preview owner=normalizeCount
+  raw evidence: src/observed.ts:2 (typescript_preview_probe) source=probe:src_observed.ts:typescript_preview:d09a8abb owner=normalizeCount
 
 Static exposure
   exposed (info, confidence 0.60)
@@ -147,7 +147,7 @@ Preview actionability
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
   missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
   evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:2:typescript_preview owner=discountedTotal
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:eaef2ad8 owner=discountedTotal
 
 Static exposure
   weakly_exposed (warning, confidence 0.40)

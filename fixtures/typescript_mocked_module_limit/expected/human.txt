@@ -27,7 +27,7 @@ Preview actionability
   why not actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance
   repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet
   evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
-  raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:2:typescript_preview owner=applyDiscount
+  raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
 
 Static exposure
   exposed (info, confidence 0.60)

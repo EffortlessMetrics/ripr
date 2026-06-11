@@ -155,10 +155,10 @@ ripr check --diff example.diff --json
 ripr check --diff example.diff --format github
 
 # Explain one finding
-ripr explain --diff example.diff probe:src_lib.rs:88:predicate
+ripr explain --diff example.diff probe:src_lib.rs:predicate:bbaa2c25
 
 # Emit an agent-ready context packet
-ripr context --diff example.diff --at probe:src_lib.rs:88:predicate --json
+ripr context --diff example.diff --at probe:src_lib.rs:predicate:bbaa2c25 --json
 
 # Start the experimental LSP sidecar
 ripr lsp

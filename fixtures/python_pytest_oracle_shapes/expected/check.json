@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_notifications.py:6:python_preview",
+      "id": "probe:src_notifications.py:python_preview:5ec908f0",
       "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_notifications.py:6:python_preview",
+        "id": "probe:src_notifications.py:python_preview:5ec908f0",
         "family": "side_effect",
         "delta": "effect",
         "file": "src/notifications.py",

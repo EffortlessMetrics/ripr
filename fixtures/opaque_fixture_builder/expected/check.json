@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:2:predicate",
+      "id": "probe:src_lib.rs:predicate:47d36ed0",
       "classification": "infection_unknown",
       "severity": "warning",
       "confidence": 0.87,
       "probe": {
-        "id": "probe:src_lib.rs:2:predicate",
+        "id": "probe:src_lib.rs:predicate:47d36ed0",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/opaque_fixture_builder/input/src/lib.rs",

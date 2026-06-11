@@ -79279,7 +79279,7 @@ fn exact_owner_call_has_external_expected_value() {
         let typescript_preview_repair_loop_run = super::DogfoodTypescriptPreviewRepairLoopRun {
             name: "typescript_boundary_predicate_proof".to_string(),
             source_fixture: "fixtures/typescript_boundary_gap".to_string(),
-            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            source_finding_id: "probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             language: "typescript".to_string(),
             classification: "weakly_exposed".to_string(),
             changed_owner: "applyDiscount".to_string(),
@@ -79305,7 +79305,7 @@ fn exact_owner_call_has_external_expected_value() {
                 "default gate or badge policy".to_string(),
             ],
             raw_evidence_refs: vec![
-                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview"
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1"
                     .to_string(),
             ],
             non_claims: vec![
@@ -84559,7 +84559,7 @@ fn exact_owner_call_has_external_expected_value() {
         DogfoodTypescriptPreviewRepairLoopScenario {
             name: "typescript_boundary_predicate_proof".to_string(),
             source_fixture: "fixtures/typescript_boundary_gap".to_string(),
-            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            source_finding_id: "probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             language: "typescript".to_string(),
             language_status: "preview".to_string(),
             classification: "weakly_exposed".to_string(),
@@ -84587,7 +84587,7 @@ fn exact_owner_call_has_external_expected_value() {
                 "default gate or badge policy".to_string(),
             ],
             raw_evidence_refs: vec![
-                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview".to_string(),
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             ],
             non_claims: vec![
                 "no provider calls".to_string(),

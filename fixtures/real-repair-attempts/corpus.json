@@ -2054,7 +2054,7 @@
         "do not add provider calls, generated tests, source edits, runtime Jest/Vitest execution, or mutation execution"
       ],
       "raw_evidence_refs": [
-        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:7:typescript_preview",
+        "fixtures/typescript_owner_kinds/expected/check.json#probe:src_owners.ts:typescript_preview:bd728bcd",
         "fixtures/typescript_owner_kinds/expected/human.txt",
         "fixtures/typescript-preview-false-actionable-audit/corpus.json",
         "crates/ripr/src/analysis/language/typescript.rs",

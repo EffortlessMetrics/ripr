@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_discount.py:2:python_preview",
+      "id": "probe:src_discount.py:python_preview:d1182145",
       "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_discount.py:2:python_preview",
+        "id": "probe:src_discount.py:python_preview:d1182145",
         "family": "predicate",
         "delta": "control",
         "file": "src/discount.py",

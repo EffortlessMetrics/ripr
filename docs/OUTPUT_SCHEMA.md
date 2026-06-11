@@ -303,16 +303,18 @@ Field contract:
 
 ## Finding
 
+The `id` field is content-addressed: `probe:<sanitized_path>:<family>:<fp8>[.<n>]` where `<fp8>` is the first 8 hex chars of SHA-256 over `path\0family\0owner\0expression\0`. This means a suppression tracks the code, not the line — the same expression moved to a new line keeps its id (suppression follows it), while changed code at a spot gets a new id (stale suppression invalidates). The `line` field in the `probe` object still gives locality for display.
+
 A finding contains:
 
 ```json
 {
-  "id": "probe:src_lib.rs:88:predicate",
+  "id": "probe:src_lib.rs:predicate:bbaa2c25",
   "classification": "weakly_exposed",
   "severity": "warning",
   "confidence": 0.92,
   "probe": {
-    "id": "probe:src_lib.rs:88:predicate",
+    "id": "probe:src_lib.rs:predicate:bbaa2c25",
     "family": "predicate",
     "delta": "control",
     "file": "src/lib.rs",
@@ -1112,7 +1114,7 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
   "version": "1.0",
   "tool": "ripr",
   "probe": {
-    "id": "probe:src_lib.rs:88:predicate",
+    "id": "probe:src_lib.rs:predicate:bbaa2c25",
     "family": "predicate",
     "delta": "control",
     "file": "src/lib.rs",

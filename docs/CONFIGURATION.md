@@ -190,7 +190,7 @@ ripr explain [--root PATH] [--base REV | --diff PATH] <finding-id | file:line>
 
 The trailing positional argument selects the finding. Either form works:
 
-- A finding id, e.g. `probe:src_lib.rs:88:predicate`.
+- A finding id, e.g. `probe:src_lib.rs:predicate:bbaa2c25`.
 - A `file:line` location, where the file matches the finding's path by exact
   match or path-suffix match.
 

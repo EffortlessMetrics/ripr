@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_service.py:10:python_preview",
+      "id": "probe:src_service.py:python_preview:94fc2856",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_service.py:10:python_preview",
+        "id": "probe:src_service.py:python_preview:94fc2856",
         "family": "return_value",
         "delta": "value",
         "file": "src/service.py",

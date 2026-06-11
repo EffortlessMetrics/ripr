@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+content-addressed-probe-ids-#1053
+
+Command:
+`cargo xtask goldens bless python_test_placement_verify --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
