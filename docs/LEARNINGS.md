@@ -790,3 +790,59 @@ reachable. Cheap adversarial validation caught two such gaps on paper (a VS Code
 command with no LSP producer; an agent doc describing commands that didn't exist
 yet) before any code was written. Plan with cheap agents, surface with stronger
 ones, and put the verification budget on the producer-reachability question.
+
+## 2026-06-12: Release-State Boundary and crates.io Query Honesty
+
+Two operator-grade lessons surfaced from a single stale sign-off phrase
+("published 0.9.x untouched, crates.io the one hard stop") that turned out to be
+wrong in two independent ways. Both are reliability lessons, not release notes.
+
+### The release hard stop is the version bump, not an ad-hoc `cargo publish`
+
+The published-vs-unreleased boundary, stated precisely:
+
+```text
+0.9.0 is published on crates.io.
+ripr-swarm main is ahead of published 0.9.0 (all current campaign work is unreleased).
+crates.io publish is AUTOMATED by the gh version-bump / GitHub release workflow.
+The irreversible trigger is therefore the VERSION BUMP, not a manual `cargo publish`.
+swarm CI only ever runs `cargo publish -p ripr --dry-run` (validation, never a real publish).
+```
+
+So the rule for autonomous work: normal swarm development is fine (PRs, tests,
+dry-runs, docs, changelog drafts, release-candidate prep, source-sync prep), but
+do **not** bump `crates/ripr/Cargo.toml`'s version or trigger the release
+workflow without explicit approval — that lever auto-publishes. Publishing the
+current work is an explicit next-release decision (choose 0.9.1 vs 0.10.0, audit
+what is on main since 0.9.0, draft changelog, source sync, then bump).
+
+### crates.io API errors are not release facts
+
+A crates.io `403` can mean the request *reached* crates.io but failed the API
+data-access policy — most often because no identifying `User-Agent` was sent. Do
+not parse an HTTP error body as crate metadata; check the HTTP status first.
+
+```text
+Bad:  HTTP 403 body parsed as JSON -> max_version = None -> conclusion: "not published"
+Good: HTTP 403 -> status: crates_io_query_failed (data-access / missing user-agent)
+                -> conclusion: UNKNOWN, not "unpublished"
+```
+
+For any release-state check: use an identifying `User-Agent`
+(`curl -H "User-Agent: EffortlessMetrics-ripr-release-check/0.1 (contact: ...)"`),
+treat non-2xx as `unknown`/error rather than absence, and confirm published state
+through a 2xx response or the crates.io UI. This is RIPR's own philosophy turned
+on its own tooling:
+
+```text
+unknown is not zero
+limited is not clean
+failed lookup is not absence
+```
+
+The meta-lesson: the original misread blamed the local *sandbox* for what was
+crates.io's *policy* (the network was wide open — 200s everywhere once a
+User-Agent was sent). That is the exact proxy-for-artifact failure the tool
+exists to catch, aimed at the operating environment instead of the code. Read the
+error the artifact actually returned; do not round it off to the nearest
+convenient cause.
