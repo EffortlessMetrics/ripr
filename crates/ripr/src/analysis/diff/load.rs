@@ -68,7 +68,7 @@ fn resolve_default_base(root: &Path) -> Result<String, String> {
     Err(
         "could not resolve a default base (no origin/main, origin/master, or local main/master \
          found). Pass `--base <ref>` to diff against a specific ref, or \
-         `--root . --mode fast` for a full-repo scan."
+         `--root . --format repo-exposure-md` for a full-repo scan."
             .to_string(),
     )
 }
@@ -286,8 +286,8 @@ mod tests {
             "expected --base guidance in message, got: {err}"
         );
         assert!(
-            err.contains("--mode fast"),
-            "expected --mode fast guidance in message, got: {err}"
+            err.contains("--format repo-exposure-md"),
+            "expected --format repo-exposure-md guidance in message, got: {err}"
         );
 
         let _ = fs::remove_dir_all(&dir);

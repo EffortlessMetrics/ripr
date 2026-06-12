@@ -1062,6 +1062,16 @@ mod tests {
             rendered.contains("diff-first"),
             "expected diff-first guidance in why; got:\n{rendered}"
         );
+        // Bug 2 regression guard: the why field must recommend --format repo-exposure-md,
+        // not --mode fast (which is a speed tier, not a scope provider).
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "json why must recommend --format repo-exposure-md; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "json why must NOT recommend --mode fast as a full-repo-scan command; got:\n{rendered}"
+        );
         // Must still be valid JSON.
         let parse_result = serde_json::from_str::<serde_json::Value>(&rendered);
         assert!(
@@ -1097,6 +1107,35 @@ mod tests {
         assert!(
             parse_result.is_ok(),
             "JSON must be valid when scope_disclosures is absent; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn json_guidance_recommends_format_repo_exposure_md_not_mode_fast() {
+        // Bug 2 regression guard: the JSON why string must contain
+        // --format repo-exposure-md and NOT --mode fast.
+        // --mode is a speed tier; --format repo-exposure-md is the real full-repo scope.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "json why must recommend --format repo-exposure-md; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "json why must NOT recommend --mode fast; got:\n{rendered}"
         );
     }
 }

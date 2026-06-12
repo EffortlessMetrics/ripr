@@ -12,7 +12,7 @@ crates/ripr/src/analysis/diff/load.rs|use std::process::Command|2|analysis/diff|
 crates/ripr/src/cli/commands.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
 crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|First-pr setup preflight validates git worktree, base/head refs, and diff range before assigning repair work; unit tests initialize temp git repos for those fail-closed packets.
 crates/ripr/src/output/first_pr.rs|use std::process::Command|1|first-pr/front-door-polish|First-pr setup preflight imports Command for bounded git probes and temp-git test setup.
-crates/ripr/tests/cli_smoke.rs|Command::new|3|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides.
+crates/ripr/tests/cli_smoke.rs|Command::new|5|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides; +2 for RIPR-SPEC-0083 regression guard smoke tests.
 crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
 editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.

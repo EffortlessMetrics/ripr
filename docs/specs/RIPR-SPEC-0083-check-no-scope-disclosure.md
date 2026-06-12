@@ -46,8 +46,8 @@ Policy impact:
 
 ## Problem
 
-When a user runs bare `ripr check` (no `--diff`, `--base`, `--files`, or
-full-repo `--mode` flag), the tool analyzes nothing but still prints:
+When a user runs bare `ripr check` (no `--diff` or `--base`), the tool
+analyzes nothing but still prints:
 
 ```
 No diff-derived mutation exposure probes found.
@@ -69,25 +69,29 @@ no-scope case.
 The disclosure fires when ALL of the following are true:
 
 1. The CLI `check` command was invoked.
-2. No explicit analysis scope was provided: none of `--diff`, `--base`, or
-   `--mode` (any value) was given in the CLI arguments.
+2. No explicit analysis scope was provided: none of `--diff` or `--base`
+   was given in the CLI arguments. `--mode` is a **speed tier** on the diff
+   path, not a scope provider — `ripr check --mode fast` with no `--diff`/
+   `--base` analyzes nothing and DOES trigger the disclosure.
 3. The result is empty (zero findings).
 
 The guidance does NOT fire when:
 
 - `ripr check --diff <file>` was given and that diff had 0 probes (real result).
 - `ripr check --base origin/main` was given and produced 0 probes (real result).
-- `ripr check --mode fast` / `--mode deep` scanned the repo and found 0
-  probes (real result).
 
 In those cases the existing "No diff-derived mutation exposure probes found."
-message is honest and correct.
+message is honest and correct. The full-repo scan command
+`ripr check --root . --format repo-exposure-md` uses `--format` (scope), not
+`--mode` (speed), so it also suppresses the disclosure (it analyzes the whole
+repo).
 
 ### Scope detection
 
 The CLI `check()` handler tracks a `scope_explicitly_provided` boolean,
-initialised to `false`. It is set to `true` when any of `--diff`, `--base`, or
-`--mode` is parsed from the argv. After running the analysis, if the flag is
+initialised to `false`. It is set to `true` when `--diff` or `--base` is
+parsed from the argv. `--mode` does NOT set this flag — it is a speed tier on
+the diff path, not a scope provider. After running the analysis, if the flag is
 still `false` and the result is empty, `output.no_scope_provided` is set to
 `true`. The renderers read this field.
 
@@ -99,7 +103,7 @@ When `no_scope_provided` is true, the following note is appended after the
 ```
 Note: no analysis scope was provided — `ripr check` is diff-first. Run
 `ripr check --base origin/main` to analyze your changes, or
-`ripr check --root . --mode fast` for a full-repo scan. An empty result here
+`ripr check --root . --format repo-exposure-md` for a full-repo scan. An empty result here
 does NOT mean your changed behavior is covered.
 ```
 
@@ -120,7 +124,7 @@ No-scope example:
   {
     "scope_status": "no_scope_provided",
     "category": "no_scope_disclosure",
-    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --mode fast"
+    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --format repo-exposure-md"
   }
 ]
 ```
@@ -144,14 +148,15 @@ When scope was provided (real analyzed-empty), `scope_disclosures` is absent.
 
 ## Required Evidence
 
-- CLI arg parse result for `--diff`, `--base`, and `--mode` flags.
+- CLI arg parse result for `--diff` and `--base` flags (scope providers).
+  `--mode` is a speed tier and is explicitly NOT a scope provider.
 - `CheckOutput.no_scope_provided: bool` field (additive, default `false`).
 
 ## Inputs
 
 | Input | Required? | Purpose |
 | --- | --- | --- |
-| CLI argv `--diff`, `--base`, `--mode` presence | yes | Determines `scope_explicitly_provided` signal |
+| CLI argv `--diff`, `--base` presence | yes | Determines `scope_explicitly_provided` signal; `--mode` is NOT a scope provider |
 | Analysis result `findings.is_empty()` | yes | Disclosure only fires for empty results |
 
 ## Outputs
@@ -171,16 +176,27 @@ When scope was provided (real analyzed-empty), `scope_disclosures` is absent.
    NO `Note:` guidance; NO `scope_disclosures` in JSON.
 3. **Scope provided via diff**: `ripr check --diff comment.diff` produces 0
    probes → same as case 2; no disclosure.
-4. **Scope provided via mode**: `ripr check --mode fast` produces 0 probes →
-   same as case 2; no disclosure.
+4. **Speed tier without scope**: `ripr check --mode fast` (no `--diff`/`--base`)
+   → guidance FIRES. `--mode` is a speed tier, not a scope provider; a bare
+   `--mode fast` analyzes nothing and must disclose. This is the corrected
+   version of the original example which incorrectly claimed `--mode fast`
+   suppresses the disclosure.
+5. **Full-repo scan via format**: `ripr check --root . --format repo-exposure-md`
+   → no guidance. `--format repo-exposure-md` triggers a repo-scope analysis;
+   scope is real (not empty). This is the correct "full-repo scan" command,
+   NOT `--mode fast`.
 
 ## Test Mapping
 
 - `crates/ripr/src/output/human.rs::tests::render_emits_no_scope_guidance_when_no_scope_provided_and_empty`
 - `crates/ripr/src/output/human.rs::tests::render_omits_no_scope_guidance_when_scope_provided_and_empty`
 - `crates/ripr/src/output/human.rs::tests::render_no_scope_guidance_uses_conservative_static_language`
+- `crates/ripr/src/output/human.rs::tests::guidance_recommends_format_repo_exposure_md_not_mode_fast`
 - `crates/ripr/src/output/json::tests::json_render_emits_scope_disclosures_when_no_scope_provided`
 - `crates/ripr/src/output/json::tests::json_render_omits_scope_disclosures_when_scope_provided`
+- `crates/ripr/src/output/json::tests::json_guidance_recommends_format_repo_exposure_md_not_mode_fast`
+- `crates/ripr/tests/cli_smoke.rs::check_mode_fast_alone_shows_no_scope_disclosure_smoke` (Bug 1 regression guard)
+- `crates/ripr/tests/cli_smoke.rs::check_with_base_scope_does_not_show_no_scope_disclosure_smoke` (unchanged path guard)
 
 ## Implementation Mapping
 
@@ -205,9 +221,12 @@ When scope was provided (real analyzed-empty), `scope_disclosures` is absent.
 - `cargo xtask check-traceability` pass.
 - `cargo xtask check-output-contracts` pass.
 - `cargo xtask check-support-tiers` pass.
-- Behavioral repro: `ripr check` (no args) prints `Note: no analysis scope
-  was provided` in human output and `scope_disclosures` in JSON; `ripr check
-  --diff <file>` with 0 probes shows NO guidance in either format.
+- Behavioral repro: (a) `ripr check` (no args) prints `Note: no analysis scope
+  was provided` in human output and `scope_disclosures` in JSON; (b) `ripr check
+  --mode fast` (no diff/base) also fires the disclosure — `--mode` is a speed
+  tier, not a scope provider; (c) `ripr check --diff <file>` with 0 probes shows
+  NO guidance; (d) `ripr check --root . --format repo-exposure-md` does a real
+  repo scan (Scope: repo) and shows NO guidance.
 
 ## Metrics
 

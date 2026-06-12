@@ -35,7 +35,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             out.push_str(
                 "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
 Run `ripr check --base origin/main` to analyze your changes, or \
-`ripr check --root . --mode fast` for a full-repo scan. \
+`ripr check --root . --format repo-exposure-md` for a full-repo scan. \
 An empty result here does NOT mean your changed behavior is covered.\n",
             );
         }
@@ -905,11 +905,21 @@ mod tests {
             rendered.contains("does NOT mean your changed behavior is covered"),
             "expected honesty note; got:\n{rendered}"
         );
+        // Bug 2 regression guard: the recommended full-repo-scan command must be
+        // --format repo-exposure-md, not --mode fast (which is a speed tier).
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "expected --format repo-exposure-md in guidance; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "guidance must NOT recommend --mode fast as a full-repo scan; got:\n{rendered}"
+        );
     }
 
     #[test]
     fn render_omits_no_scope_guidance_when_scope_provided_and_empty() {
-        // Scope was provided (--diff/--base/--mode) but found 0 probes.
+        // Scope was provided (--diff/--base) but found 0 probes.
         // `no_scope_provided: false` must NOT emit the guidance — the result
         // is honest: that diff really had no probes.
         let output = CheckOutput {
@@ -965,6 +975,35 @@ mod tests {
         assert!(
             rendered.contains("no analysis scope was provided"),
             "expected scope disclosure lead-in; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn guidance_recommends_format_repo_exposure_md_not_mode_fast() {
+        // Bug 2 regression guard: the human guidance string must recommend
+        // --format repo-exposure-md for a full-repo scan, NOT --mode fast.
+        // --mode is a speed tier on the diff path; it does NOT provide scope.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "guidance must recommend --format repo-exposure-md for full-repo scan; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "guidance must NOT recommend --mode fast as a full-repo-scan command; got:\n{rendered}"
         );
     }
 }

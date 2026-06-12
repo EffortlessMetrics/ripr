@@ -3334,8 +3334,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
     // RIPR-SPEC-0083: track whether the user provided any analysis scope.
-    // Starts false; set true when --diff, --base, or a full-repo --mode flag
-    // is given. When still false at analysis time, the output discloses that
+    // Starts false; set true when --diff or --base is parsed from argv.
+    // --mode is a SPEED TIER on the diff path, NOT a scope provider — a bare
+    // `ripr check --mode fast` analyzes nothing and must still show the no-scope
+    // disclosure. When still false at analysis time, the output discloses that
     // nothing was analyzed, preventing an empty result from being read as clean.
     let mut scope_explicitly_provided = false;
     // RIPR-SPEC-0084: track whether --base was explicitly given by the user.
@@ -3365,7 +3367,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
                 explicit.mode = true;
-                scope_explicitly_provided = true;
+                // NOTE: do NOT set scope_explicitly_provided here.
+                // --mode is a speed tier on the diff path, not a scope provider.
+                // `ripr check --mode fast` with no --diff/--base analyzes nothing
+                // and must still trigger the no-scope disclosure (RIPR-SPEC-0083).
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {

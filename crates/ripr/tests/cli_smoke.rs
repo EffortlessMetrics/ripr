@@ -3943,3 +3943,101 @@ fn agent_receipt_legacy_alias_still_dispatches_smoke() {
         "agent receipt should still dispatch and return a parse error; got: {combined}"
     );
 }
+
+// RIPR-SPEC-0083 regression guards: --mode is a speed tier, not a scope provider.
+
+/// Bug 1 regression guard: `ripr check --mode fast` with no --diff/--base must
+/// show the no-scope disclosure. --mode is a speed tier on the diff path; it does
+/// NOT provide analysis scope. Before the fix, the --mode arm set
+/// scope_explicitly_provided = true, suppressing the disclosure.
+#[test]
+fn check_mode_fast_alone_shows_no_scope_disclosure_smoke() {
+    // Run in a temp git repo with one commit and HEAD up-to-date, so
+    // resolve_default_base succeeds but the diff against HEAD is empty.
+    // With --mode fast and no --diff/--base, the result is empty and the
+    // no-scope disclosure must fire on stdout (Bug 1 regression guard).
+    // Before the fix, the --mode arm set scope_explicitly_provided = true,
+    // suppressing the disclosure.
+    let root = unique_temp_workspace("mode-fast-no-scope");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"mode-fast-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // HEAD is now up-to-date — diff against HEAD is empty.
+    // With --mode fast and no --diff/--base, scope_explicitly_provided is false,
+    // so the no-scope disclosure must fire.
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--mode", "fast"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The output must contain the no-scope disclosure note, not be silently empty.
+    assert!(
+        stdout.contains("no analysis scope was provided"),
+        "check --mode fast alone must show no-scope disclosure (Bug 1); got stdout:\n{stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("--format repo-exposure-md"),
+        "no-scope guidance must recommend --format repo-exposure-md (Bug 2); got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("--mode fast"),
+        "no-scope guidance must NOT recommend --mode fast; got:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Regression guard: `ripr check --base origin/main` (real diff scope) must NOT
+/// show the no-scope disclosure when the result is empty.
+#[test]
+fn check_with_base_scope_does_not_show_no_scope_disclosure_smoke() {
+    // Use the in-repo sample diff workspace which has an origin/main analog.
+    // We just need to confirm the disclosure is absent when scope is provided.
+    // The workspace check may fail (no commits, no origin), but IF it succeeds
+    // with 0 findings, the disclosure must be absent.
+    let root = unique_temp_workspace("base-scope-no-disclosure");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"no-scope-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // With explicit --base, the disclosure must NOT fire even if there are 0 findings.
+    assert!(
+        !stdout.contains("no analysis scope was provided"),
+        "check --base HEAD must NOT show no-scope disclosure; got stdout:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
