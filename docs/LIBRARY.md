@@ -100,7 +100,7 @@ direction. When you need to know "what happened at a particular milestone" or
 | [ADRs](adr/README.md) | Architecture decision records, indexed and cross-linked. Each ADR is a supersedeable point-in-time decision with consequences and revisit criteria. |
 | [Roadmap](ROADMAP.md) | Current product direction: the end-goal loop, capability horizon, and what `ripr` must not become. |
 | [Implementation Campaigns](IMPLEMENTATION_CAMPAIGNS.md) | The multi-PR campaign history: objectives, end states, and work items per campaign. |
-| [Active Goal Manifest](.ripr/goals/active.toml) | Machine-readable current campaign state, drivable by `cargo xtask goals next`. The single-file operational source of truth for an in-flight campaign. |
+| [Active Goal Manifest](../.ripr/goals/active.toml) | Machine-readable current campaign state, drivable by `cargo xtask goals next`. The single-file operational source of truth for an in-flight campaign. |
 
 ### Learning Milestones Timeline
 

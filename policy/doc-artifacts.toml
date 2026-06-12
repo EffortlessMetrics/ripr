@@ -289,3 +289,11 @@ path = "docs/specs/RIPR-SPEC-0084-default-base-resolution.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Fix raw git error when origin/main is absent by resolving the repo's real default branch and failing closed with a named actionable message; addresses #1144; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0085"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Umbrella contract for turning the existing oxc-AST TypeScript preview adapter into a bounded evidence adapter (two outcomes: complete repair packet or named limitation); anchors the TypeScript wave PR sequence; references SPEC-0027/0071/0062/0063; no separate proposal artifact."

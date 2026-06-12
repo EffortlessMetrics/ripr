@@ -5201,3 +5201,17 @@ outputs = [
 metrics = [
   "default_base_resolution_status_proposed"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0085"
+name = "TypeScript evidence adapter contract"
+spec = "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
+]
+metrics = [
+  "typescript_evidence_adapter_contract_status_proposed"
+]
