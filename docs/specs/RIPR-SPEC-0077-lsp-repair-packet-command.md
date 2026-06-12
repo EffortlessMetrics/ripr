@@ -31,6 +31,8 @@ Support-tier impact:
 - None. This spec adds `ripr.collectRepairPacket` as a new LSP
   `executeCommand`. No existing contract is modified. No language,
   surface, or evidence class is promoted to a stronger support tier.
+- Claim boundaries remain governed by the canonical ledger in
+  [support tiers](../status/SUPPORT_TIERS.md); nothing here promotes a tier.
 
 Policy impact:
 

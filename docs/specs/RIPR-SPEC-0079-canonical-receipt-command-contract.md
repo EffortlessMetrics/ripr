@@ -32,6 +32,8 @@ Support-tier impact:
   alias rules. No existing contract is modified beyond naming which
   command is canonical in the `receipt_command` field. No language,
   surface, or evidence class is promoted to a stronger support tier.
+- Claim boundaries remain governed by the canonical ledger in
+  [support tiers](../status/SUPPORT_TIERS.md); nothing here promotes a tier.
 
 Policy impact:
 

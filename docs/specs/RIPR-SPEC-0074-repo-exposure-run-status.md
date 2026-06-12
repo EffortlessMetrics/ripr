@@ -33,7 +33,8 @@ Support-tier impact:
   version `0.3`. No language, surface, or evidence class is promoted
   to a stronger support tier.
 - Claim boundaries for this surface are governed by the canonical
-  ledger in the support-tiers doc; nothing here promotes a tier.
+  ledger in [support tiers](../status/SUPPORT_TIERS.md); nothing here
+  promotes a tier.
 
 Policy impact:
 

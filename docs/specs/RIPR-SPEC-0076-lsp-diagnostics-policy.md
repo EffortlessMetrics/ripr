@@ -31,6 +31,8 @@ Support-tier impact:
 - None. This spec records the severity-mapping policy for LSP diagnostics.
   It does not promote any language, surface, or evidence class to a stronger
   support tier.
+- Claim boundaries remain governed by the canonical ledger in
+  [support tiers](../status/SUPPORT_TIERS.md); nothing here promotes a tier.
 
 Policy impact:
 
