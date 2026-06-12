@@ -10,7 +10,10 @@ use super::hover::{
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
-use super::{COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, REFRESH_COMMAND};
+use super::{
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND,
+    REFRESH_COMMAND,
+};
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
 use crate::domain::context_packet::ContextPacket;
@@ -19,6 +22,7 @@ use crate::output::agent_seam_packets::{
     render_agent_gap_record_packet_json, suggested_assertion_for_classified_seam,
     targeted_test_brief_outline_for_classified_seam,
 };
+use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, parse_gap_records_json,
 };
@@ -561,6 +565,9 @@ impl LanguageServer for Backend {
         if params.command == COLLECT_EVIDENCE_CONTEXT_COMMAND {
             return Ok(self.collect_evidence_context_packet(&params.arguments));
         }
+        if params.command == COLLECT_WORKSPACE_STATUS_COMMAND {
+            return Ok(self.collect_workspace_status());
+        }
         Ok(None)
     }
 }
@@ -606,6 +613,215 @@ impl Backend {
         let seam_id = args.get("seam_id").and_then(|v| v.as_str())?;
         let seam = snapshot.classified_seam_by_id(seam_id)?;
         Some(evidence_context_packet(&snapshot, seam))
+    }
+
+    fn collect_workspace_status(&self) -> Option<LSPAny> {
+        let snapshot = match self.latest_analysis.lock().ok()? {
+            guard if guard.is_none() => {
+                return Some(serde_json::json!({
+                    "schema_version": "0.1",
+                    "tool": "ripr",
+                    "kind": "workspace_status",
+                    "run_status": "no_snapshot",
+                    "snapshot_age_ms": serde_json::Value::Null,
+                    "snapshot_duration_ms": serde_json::Value::Null,
+                    "diagnostics": serde_json::Value::Null,
+                    "top_actionable_packet": serde_json::Value::Null,
+                    "top_limitation": serde_json::Value::Null,
+                    "report_paths": workspace_status_report_paths(),
+                    "refresh_command": REFRESH_COMMAND,
+                    "limits_note": "Static evidence only; advisory, not a gate decision.",
+                }));
+            }
+            guard => guard.clone()?,
+        };
+
+        let age_ms = snapshot
+            .refresh
+            .age()
+            .map(|d| serde_json::Value::from(d.as_millis() as u64))
+            .unwrap_or(serde_json::Value::Null);
+        let duration_ms = snapshot
+            .refresh
+            .duration
+            .map(|d| serde_json::Value::from(d.as_millis() as u64))
+            .unwrap_or(serde_json::Value::Null);
+
+        let total_diagnostics = snapshot.diagnostic_count();
+        let files = snapshot.diagnostic_uri_count();
+        let findings = snapshot.finding_count();
+        let seam_diagnostics = snapshot.seam_diagnostic_count();
+        let gap_artifacts = snapshot.gap_artifacts.len();
+        let actionable_gap_artifacts = snapshot
+            .gap_artifacts
+            .iter()
+            .filter(|a| a.is_actionable_gap())
+            .count();
+        let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
+
+        let top_actionable_packet = workspace_status_top_actionable_packet(&snapshot);
+        let top_limitation = workspace_status_top_limitation(&snapshot);
+
+        let run_status = workspace_status_run_status(&snapshot);
+
+        Some(serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "workspace_status",
+            "run_status": run_status,
+            "snapshot_age_ms": age_ms,
+            "snapshot_duration_ms": duration_ms,
+            "diagnostics": {
+                "total": total_diagnostics,
+                "files": files,
+                "findings": findings,
+                "seam_diagnostics": seam_diagnostics,
+                "gap_artifacts": gap_artifacts,
+                "actionable_gap_artifacts": actionable_gap_artifacts,
+                "gap_artifact_rejections": gap_artifact_rejections,
+            },
+            "top_actionable_packet": top_actionable_packet,
+            "top_limitation": top_limitation,
+            "report_paths": workspace_status_report_paths(),
+            "refresh_command": REFRESH_COMMAND,
+            "limits_note": "Static evidence only; advisory, not a gate decision.",
+        }))
+    }
+}
+
+fn workspace_status_report_paths() -> serde_json::Value {
+    serde_json::json!({
+        "actionable_gaps": "target/ripr/reports/actionable-gaps.json",
+        "first_useful_action": DEFAULT_FIRST_USEFUL_ACTION_OUT,
+        "gap_decision_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        "start_here": "target/ripr/reports/start-here.json",
+    })
+}
+
+fn workspace_status_run_status(snapshot: &AnalysisSnapshot) -> &'static str {
+    if snapshot
+        .gap_artifact_rejections
+        .iter()
+        .any(|r| matches!(r, super::gap_artifacts::GapArtifactRejection::StaleArtifact))
+    {
+        return "stale";
+    }
+    if !snapshot.gap_artifact_rejections.is_empty() {
+        return "cache_limited";
+    }
+    let has_static_limit = snapshot
+        .findings
+        .iter()
+        .any(|f| f.static_limit_kind.is_some())
+        || snapshot.gap_artifacts.iter().any(|a| a.has_static_limit());
+    if has_static_limit {
+        return "limited";
+    }
+    "full"
+}
+
+fn workspace_status_top_actionable_packet(snapshot: &AnalysisSnapshot) -> serde_json::Value {
+    let artifact = snapshot
+        .gap_artifacts
+        .iter()
+        .find(|a| a.is_safe_projection_input() && a.is_actionable_gap());
+    let Some(artifact) = artifact else {
+        return serde_json::Value::Null;
+    };
+    let canonical_gap_id = artifact
+        .identities
+        .first()
+        .and_then(|id| id.canonical_gap_id.as_deref())
+        .unwrap_or("");
+    let verify_command = artifact
+        .verify_commands
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let receipt_command = artifact
+        .receipt_commands
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let file = artifact
+        .related_paths
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let repair_kind = artifact.gap_state.as_deref().unwrap_or("actionable");
+    serde_json::json!({
+        "canonical_gap_id": canonical_gap_id,
+        "file": file,
+        "line": serde_json::Value::Null,
+        "repair_kind": repair_kind,
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+    })
+}
+
+fn workspace_status_top_limitation(snapshot: &AnalysisSnapshot) -> serde_json::Value {
+    let rejection = snapshot.gap_artifact_rejections.first();
+    let Some(rejection) = rejection else {
+        return serde_json::Value::Null;
+    };
+    let category = rejection.as_str();
+    let (repair_route, why_not_actionable) = workspace_status_rejection_repair(rejection);
+    serde_json::json!({
+        "category": category,
+        "repair_route": repair_route,
+        "why_not_actionable": why_not_actionable,
+    })
+}
+
+fn workspace_status_rejection_repair(
+    rejection: &super::gap_artifacts::GapArtifactRejection,
+) -> (&'static str, &'static str) {
+    use super::gap_artifacts::GapArtifactRejection;
+    match rejection {
+        GapArtifactRejection::StaleArtifact => (
+            "regenerate_gap_artifacts",
+            "gap artifacts are stale; rerun ripr check to refresh",
+        ),
+        GapArtifactRejection::WrongRoot(_) => (
+            "verify_workspace_root",
+            "gap artifact root does not match workspace root",
+        ),
+        GapArtifactRejection::UnsupportedSchema(_) => (
+            "upgrade_ripr",
+            "gap artifact schema version is not supported by this ripr version",
+        ),
+        GapArtifactRejection::MalformedArtifact(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifact is malformed; rerun ripr check to regenerate",
+        ),
+        GapArtifactRejection::MissingIdentity => (
+            "regenerate_gap_artifacts",
+            "gap artifact is missing a canonical identity; rerun ripr check",
+        ),
+        GapArtifactRejection::MalformedCommandPayload(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifact command payload is malformed; rerun ripr check",
+        ),
+        GapArtifactRejection::OutOfWorkspacePath(_) => (
+            "verify_workspace_root",
+            "gap artifact references a path outside the workspace",
+        ),
+        GapArtifactRejection::DisabledLanguage(_) => (
+            "enable_language_in_config",
+            "gap artifact language is not enabled in ripr config",
+        ),
+        GapArtifactRejection::UnavailableLanguage(_) => (
+            "upgrade_ripr",
+            "gap artifact language is not available in this ripr build",
+        ),
+        GapArtifactRejection::UnsupportedStaticLimitKind(_) => (
+            "upgrade_ripr",
+            "gap artifact static_limit_kind is not recognized by this ripr version",
+        ),
+        GapArtifactRejection::UnsupportedKind(_) => (
+            "upgrade_ripr",
+            "gap artifact kind is not supported by this ripr version",
+        ),
     }
 }
 

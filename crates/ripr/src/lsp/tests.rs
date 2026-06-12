@@ -17,10 +17,11 @@ use super::hover::{classified_seam_hover_response, hover_response, hover_with_sn
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND,
-    COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND,
-    COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
-    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND,
+    COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND,
+    COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND,
+    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
@@ -66,7 +67,8 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
         vec![
             REFRESH_COMMAND,
             COLLECT_CONTEXT_COMMAND,
-            COLLECT_EVIDENCE_CONTEXT_COMMAND
+            COLLECT_EVIDENCE_CONTEXT_COMMAND,
+            COLLECT_WORKSPACE_STATUS_COMMAND,
         ]
     );
     Ok(())
@@ -138,6 +140,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         assert_eq!(
             initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][2],
             COLLECT_EVIDENCE_CONTEXT_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][3],
+            COLLECT_WORKSPACE_STATUS_COMMAND
         );
         assert_eq!(
             initialize["result"]["capabilities"]["hoverProvider"],
@@ -5018,6 +5024,248 @@ fn execute_command_refresh_remains_unchanged() -> Result<(), String> {
             .commands
             .iter()
             .any(|command| command == REFRESH_COMMAND)
+    );
+    Ok(())
+}
+
+#[test]
+fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let status = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status even without snapshot".to_string())?;
+
+        assert_eq!(status["schema_version"], "0.1");
+        assert_eq!(status["tool"], "ripr");
+        assert_eq!(status["kind"], "workspace_status");
+        assert_eq!(status["run_status"], "no_snapshot");
+        assert_eq!(status["top_actionable_packet"], serde_json::Value::Null);
+        assert_eq!(status["top_limitation"], serde_json::Value::Null);
+        assert_eq!(
+            status["limits_note"],
+            "Static evidence only; advisory, not a gate decision."
+        );
+        assert_eq!(status["refresh_command"], REFRESH_COMMAND);
+        assert!(
+            status["report_paths"]["actionable_gaps"]
+                .as_str()
+                .is_some_and(|p| p.contains("actionable-gaps")),
+            "expected report_paths.actionable_gaps in status: {status}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_counts()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let finding = sample_finding();
+        let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic],
+            vec![finding],
+        );
+        diagnostics
+            .snapshot
+            .refresh
+            .record_duration(Duration::from_millis(12));
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let status = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status after snapshot".to_string())?;
+
+        assert_eq!(status["schema_version"], "0.1");
+        assert_eq!(status["tool"], "ripr");
+        assert_eq!(status["kind"], "workspace_status");
+        assert_ne!(
+            status["run_status"], "no_snapshot",
+            "run_status must not be no_snapshot when snapshot is present"
+        );
+        assert!(
+            status["snapshot_age_ms"].as_u64().is_some(),
+            "expected numeric snapshot_age_ms"
+        );
+        assert_eq!(
+            status["snapshot_duration_ms"].as_u64(),
+            Some(12),
+            "expected snapshot_duration_ms of 12 ms"
+        );
+        assert_eq!(
+            status["diagnostics"]["findings"].as_u64(),
+            Some(1),
+            "expected findings count of 1"
+        );
+        assert_eq!(status["refresh_command"], REFRESH_COMMAND);
+        assert!(
+            status["report_paths"]["gap_decision_ledger"]
+                .as_str()
+                .is_some_and(|p| p.contains("gap-decision-ledger")),
+            "expected report_paths.gap_decision_ledger in status"
+        );
+        assert!(
+            status["report_paths"]["start_here"]
+                .as_str()
+                .is_some_and(|p| p.contains("start-here")),
+            "expected report_paths.start_here in status"
+        );
+        assert_eq!(
+            status["limits_note"],
+            "Static evidence only; advisory, not a gate decision."
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_workspace_status_with_actionable_gap_and_rejection_returns_packet_and_limitation()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics =
+            sample_workspace_diagnostics(PathBuf::from("/workspace"), uri, Vec::new(), Vec::new());
+        diagnostics
+            .snapshot
+            .gap_artifacts
+            .push(ValidatedGapArtifact {
+                kind: GapArtifactKind::ActionableGaps,
+                root: Some(".".to_string()),
+                identities: vec![GapArtifactIdentity {
+                    canonical_gap_id: Some("gap:rust:pricing:threshold-boundary".to_string()),
+                    seam_id: None,
+                    finding_id: None,
+                }],
+                language: Some(LanguageId::Rust),
+                language_status: Some(LanguageStatus::Stable),
+                gap_state: Some("actionable".to_string()),
+                related_paths: vec!["src/pricing.rs".to_string()],
+                verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+                receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+                static_limit_kinds: Vec::new(),
+                has_text_static_limit: false,
+            });
+        diagnostics
+            .snapshot
+            .gap_artifact_rejections
+            .push(GapArtifactRejection::WrongRoot(
+                "/other/workspace".to_string(),
+            ));
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let status = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+
+        // run_status should be cache_limited because there's a rejection
+        assert_eq!(
+            status["run_status"], "cache_limited",
+            "expected cache_limited run_status when rejections present"
+        );
+
+        // top_actionable_packet should be non-null with the expected fields
+        let packet = &status["top_actionable_packet"];
+        assert_ne!(
+            packet,
+            &serde_json::Value::Null,
+            "expected non-null top_actionable_packet"
+        );
+        assert_eq!(
+            packet["canonical_gap_id"],
+            "gap:rust:pricing:threshold-boundary"
+        );
+        assert_eq!(
+            packet["verify_command"],
+            "ripr agent verify --root . --json"
+        );
+        assert_eq!(
+            packet["receipt_command"],
+            "ripr agent receipt --root . --json"
+        );
+        assert_eq!(packet["file"], "src/pricing.rs");
+
+        // top_limitation should be non-null with category + repair_route + why_not_actionable
+        let limitation = &status["top_limitation"];
+        assert_ne!(
+            limitation,
+            &serde_json::Value::Null,
+            "expected non-null top_limitation"
+        );
+        assert_eq!(limitation["category"], "wrong_root");
+        assert!(
+            limitation["repair_route"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "expected non-empty repair_route in top_limitation"
+        );
+        assert!(
+            limitation["why_not_actionable"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "expected non-empty why_not_actionable in top_limitation"
+        );
+
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_workspace_status_registered_in_capabilities() -> Result<(), String> {
+    let Some(provider) = initialize_result().capabilities.execute_command_provider else {
+        return Err("expected execute command provider".to_string());
+    };
+
+    assert!(
+        provider
+            .commands
+            .iter()
+            .any(|command| command == COLLECT_WORKSPACE_STATUS_COMMAND),
+        "expected collectWorkspaceStatus in registered commands"
     );
     Ok(())
 }
