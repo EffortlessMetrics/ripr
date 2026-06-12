@@ -3,6 +3,11 @@
 `ripr` uses Diataxis so docs answer the reader's immediate problem instead of
 mixing tutorials, references, and design arguments in one place.
 
+**Front-door catalog:** [LIBRARY.md](LIBRARY.md) organizes accumulated knowledge
+into three shelves — agentic learnings, repo domain learnings, and repo learnings
+over time — with annotated links to canonical docs and a timeline of major
+learning milestones. Start there when orienting to the codebase.
+
 ## Tutorials
 
 Tutorials help a new user succeed once.

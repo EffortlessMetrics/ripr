@@ -363,3 +363,7 @@ See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.
 See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
 agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
 for why constraints enable autonomy.
+
+See `docs/LIBRARY.md` for the curated knowledge library: agentic learnings,
+repo domain learnings, and a dated timeline of major learning milestones across
+all campaigns.
