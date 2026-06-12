@@ -30,6 +30,8 @@ Usage:
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
+  ripr receipt write --gap <canonical_gap_id> --verify-command "<cmd>" --status <verify_status> [--packet <packet_id>] [--out PATH] [--json]
+  ripr receipt check [--path PATH] [--gap <canonical_gap_id>]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr agent packet --root . --seam-id ID --json
@@ -81,6 +83,8 @@ Quick start:
   ripr reports index
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
+  ripr receipt write --gap demo:gap:1 --verify-command "cargo test -p ripr" --status passed
+  ripr receipt check --gap demo:gap:1
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
   ripr agent packet --root . --seam-id f3c9e4d21a0b7c88 --json

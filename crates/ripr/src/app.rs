@@ -5,6 +5,7 @@ pub(crate) mod agent_workflow;
 mod check;
 mod context;
 mod explain;
+pub(crate) mod receipt;
 mod selector;
 
 pub use crate::output::format::OutputFormat;

@@ -5031,9 +5031,34 @@ metrics = [
 id = "RIPR-SPEC-0079"
 name = "Canonical receipt command contract"
 spec = "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
-tests = []
+tests = [
+  "crates/ripr/src/app/receipt.rs::receipt_write_valid_args_writes_json",
+  "crates/ripr/src/app/receipt.rs::receipt_write_without_packet_id_records_null",
+  "crates/ripr/src/app/receipt.rs::receipt_write_all_valid_statuses_accepted",
+  "crates/ripr/src/app/receipt.rs::receipt_write_missing_gap_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_write_invalid_status_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_write_missing_verify_command_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_valid_receipt_exits_zero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_missing_file_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_malformed_json_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_missing_required_field_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_invalid_status_in_file_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_check_no_path_no_gap_exits_nonzero",
+  "crates/ripr/src/app/receipt.rs::receipt_out_path_uses_explicit_path_when_provided",
+  "crates/ripr/src/app/receipt.rs::receipt_out_path_defaults_to_canonical_location",
+  "crates/ripr/tests/cli_smoke.rs::receipt_write_then_check_exits_zero",
+  "crates/ripr/tests/cli_smoke.rs::receipt_write_with_packet_id_smoke",
+  "crates/ripr/tests/cli_smoke.rs::receipt_write_missing_gap_exits_nonzero_smoke",
+  "crates/ripr/tests/cli_smoke.rs::receipt_write_invalid_status_exits_nonzero_smoke",
+  "crates/ripr/tests/cli_smoke.rs::receipt_check_missing_file_exits_nonzero_smoke",
+  "crates/ripr/tests/cli_smoke.rs::receipt_help_exits_zero_smoke",
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_legacy_alias_still_dispatches_smoke"
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/app/receipt.rs",
+  "crates/ripr/src/cli/commands/receipt.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
 ]

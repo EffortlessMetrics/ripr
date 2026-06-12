@@ -1,6 +1,6 @@
 # RIPR-SPEC-0079: Canonical Receipt Command Contract
 
-Status: proposed
+Status: accepted
 
 Owner: product-swarm
 
@@ -292,15 +292,32 @@ non-zero on any error, printing a human-readable message to stderr.
 
 ## Test Mapping
 
-No tests yet — this is a proposed spec. Tests will be added in PR 3
-(implementation of `ripr receipt write / check`):
+Unit tests (app layer) — `crates/ripr/src/app/receipt.rs`:
 
-- `crates/ripr/src/cli/tests.rs::receipt_write_missing_gap_exits_nonzero`
-- `crates/ripr/src/cli/tests.rs::receipt_write_invalid_status_exits_nonzero`
-- `crates/ripr/src/cli/tests.rs::receipt_write_valid_args_writes_json`
-- `crates/ripr/src/cli/tests.rs::receipt_check_valid_receipt_exits_zero`
-- `crates/ripr/src/cli/tests.rs::receipt_check_missing_file_exits_nonzero`
-- `crates/ripr/src/cli/tests.rs::receipt_agent_alias_accepted`
+- `receipt_write_valid_args_writes_json`
+- `receipt_write_without_packet_id_records_null`
+- `receipt_write_all_valid_statuses_accepted`
+- `receipt_write_missing_gap_exits_nonzero`
+- `receipt_write_invalid_status_exits_nonzero`
+- `receipt_write_missing_verify_command_exits_nonzero`
+- `receipt_check_valid_receipt_exits_zero`
+- `receipt_check_missing_file_exits_nonzero`
+- `receipt_check_malformed_json_exits_nonzero`
+- `receipt_check_missing_required_field_exits_nonzero`
+- `receipt_check_invalid_status_in_file_exits_nonzero`
+- `receipt_check_no_path_no_gap_exits_nonzero`
+- `receipt_out_path_uses_explicit_path_when_provided`
+- `receipt_out_path_defaults_to_canonical_location`
+
+Integration smoke tests — `crates/ripr/tests/cli_smoke.rs`:
+
+- `receipt_write_then_check_exits_zero`
+- `receipt_write_with_packet_id_smoke`
+- `receipt_write_missing_gap_exits_nonzero_smoke`
+- `receipt_write_invalid_status_exits_nonzero_smoke`
+- `receipt_check_missing_file_exits_nonzero_smoke`
+- `receipt_help_exits_zero_smoke`
+- `agent_receipt_legacy_alias_still_dispatches_smoke`
 
 Emitter-alignment tests (PR 2):
 
@@ -310,30 +327,37 @@ Emitter-alignment tests (PR 2):
 
 ## Implementation Mapping
 
-No code yet — this is a proposed spec. Implementation targets:
+PR 3 (this PR):
 
-- `crates/ripr/src/cli/commands/receipt.rs` — `receipt_write_command()`, `receipt_check_command()`.
-- `crates/ripr/src/agent/loop_commands.rs` — `canonical_receipt_command()` thin wrapper calling `agent_receipt_command()`.
-- `crates/ripr/src/output/agent_seam_packets.rs` — replace 9 `outcome_command()` calls with `canonical_receipt_command()` (PR 2).
-- `crates/ripr/src/output/first_pr.rs:3125` — same replacement (PR 2).
-- `crates/ripr/src/lsp/backend.rs:1502` — same replacement (PR 2).
-- `crates/ripr/src/cli/commands/agent_gap_packet.rs:52` — same replacement (PR 2).
-- `xtask/src/main.rs:77814,79391` — same replacement (PR 2).
+- `crates/ripr/src/app/receipt.rs` — `write_receipt()`, `check_receipt()`, `receipt_out_path()`, `ReceiptWriteOptions`, `ReceiptCheckOptions`.
+- `crates/ripr/src/cli/commands/receipt.rs` — argv adapter only; delegates to `crate::app::receipt`.
+
+Emitter-alignment (PR 2 — already shipped):
+
+- `crates/ripr/src/output/agent_seam_packets.rs` — `canonical_receipt_command()` used in all seam-packet emitters.
+- `crates/ripr/src/output/first_pr.rs` — same.
+- `crates/ripr/src/lsp/backend.rs` — same.
+- `crates/ripr/src/cli/commands/agent_gap_packet.rs` — same.
+- `xtask/src/main.rs` — same.
 
 ## CI Proof
 
 - `cargo xtask check-spec-format` passes on this file.
 - `cargo xtask check-doc-artifacts` passes with the new registration.
 - `cargo xtask check-doc-index` passes with the README entry.
-- `cargo xtask check-traceability` passes (proposed spec; no code yet).
+- `cargo xtask check-traceability` passes (tests + code arrays populated in PR 3).
 - `cargo xtask check-static-language` passes (no forbidden vocabulary).
+- `cargo xtask check-architecture` passes.
+- `cargo xtask check-public-api` passes (no new public symbols).
+- `cargo xtask check-no-panic-family` passes.
+- `cargo xtask check-allow-attributes` passes.
+- `cargo xtask check-output-contracts` passes.
+- `cargo test -p ripr` — 2480 pass, 1 ignored.
 
 ## Metrics
 
-- Gate: acceptance tests 1–7 pass (deferred to PR 3 and PR 2).
-- Promote to accepted when `ripr receipt write / check` ships in a
-  tagged release and all `receipt_command` emitters emit the canonical
-  form (verified by golden tests in PR 2).
+- Gate: acceptance tests 1–7 pass (PR 3 ships `ripr receipt write / check`; PR 2 shipped emitter alignment).
+- Status promoted to `accepted` in PR 3 once all gates green.
 
 ## Failure Modes
 

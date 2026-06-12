@@ -3729,3 +3729,217 @@ fn check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied() -> Re
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
 }
+
+// ── ripr receipt write / check smoke tests (RIPR-SPEC-0079) ──────────────────
+
+/// Smoke: `ripr receipt write` with valid args writes a receipt JSON and
+/// `ripr receipt check <path>` validates it, both exit 0.
+#[test]
+fn receipt_write_then_check_exits_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-write-check");
+    std::fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join("r.json");
+    let out_path_str = out_path.to_str().ok_or("out_path is not valid UTF-8")?;
+
+    // Write the receipt.
+    let write_output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "passed",
+        "--out",
+        out_path_str,
+        "--json",
+    ]);
+    assert_success(&write_output);
+    let write_stdout = String::from_utf8_lossy(&write_output.stdout);
+    assert!(
+        write_stdout.contains("\"schema_version\""),
+        "receipt write should print JSON, got: {write_stdout}"
+    );
+
+    // Parse and validate required fields.
+    let value: serde_json::Value = serde_json::from_str(&write_stdout)
+        .map_err(|e| format!("receipt JSON did not parse: {e}\nstdout: {write_stdout}"))?;
+    assert_eq!(value["schema_version"], "0.1", "schema_version mismatch");
+    assert_eq!(value["kind"], "receipt", "kind mismatch");
+    assert_eq!(
+        value["canonical_gap_id"], "demo:gap:1",
+        "canonical_gap_id mismatch"
+    );
+    assert_eq!(value["verify_status"], "passed", "verify_status mismatch");
+    assert_eq!(
+        value["verify_command"], "cargo test",
+        "verify_command mismatch"
+    );
+    assert_eq!(
+        value["packet_id"],
+        serde_json::Value::Null,
+        "packet_id should be null"
+    );
+    assert_eq!(
+        value["packet_id_available"], false,
+        "packet_id_available should be false"
+    );
+    assert!(
+        value["written_at"].as_str().unwrap_or("").contains('T'),
+        "written_at should be RFC3339"
+    );
+
+    // Check the receipt using positional path argument.
+    let check_output = run_ripr(&["receipt", "check", out_path_str]);
+    assert_success(&check_output);
+    let check_stdout = String::from_utf8_lossy(&check_output.stdout);
+    assert!(
+        check_stdout.contains("structurally valid"),
+        "receipt check should report valid, got: {check_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+/// Smoke: `ripr receipt write` with `--packet` records packet_id correctly.
+#[test]
+fn receipt_write_with_packet_id_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-with-packet");
+    std::fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join("r.json");
+    let out_path_str = out_path.to_str().ok_or("out_path is not valid UTF-8")?;
+
+    let write_output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--packet",
+        "packet-abc123",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "not_run",
+        "--out",
+        out_path_str,
+    ]);
+    assert_success(&write_output);
+    let stdout = String::from_utf8_lossy(&write_output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("receipt JSON did not parse: {e}\nstdout: {stdout}"))?;
+    assert_eq!(
+        value["packet_id"], "packet-abc123",
+        "packet_id should be set"
+    );
+    assert_eq!(
+        value["packet_id_available"], true,
+        "packet_id_available should be true"
+    );
+    assert_eq!(value["verify_status"], "not_run");
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+/// Smoke: `ripr receipt write` with missing `--gap` exits non-zero with a
+/// clear error message.
+#[test]
+fn receipt_write_missing_gap_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "write",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "passed",
+    ]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("canonical_gap_id"),
+        "error should mention canonical_gap_id; got stderr={stderr} stdout={stdout}"
+    );
+}
+
+/// Smoke: `ripr receipt write` with invalid `--status` exits non-zero with
+/// a clear message listing valid values.
+#[test]
+fn receipt_write_invalid_status_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "bogus",
+    ]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("bogus"),
+        "error should echo bad status; got stderr={stderr} stdout={stdout}"
+    );
+    assert!(
+        combined.contains("passed"),
+        "error should list valid values; got stderr={stderr} stdout={stdout}"
+    );
+}
+
+/// Smoke: `ripr receipt check` on a missing file exits non-zero.
+#[test]
+fn receipt_check_missing_file_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "check",
+        "--path",
+        "target/ripr/receipts/completely-nonexistent-12345.json",
+    ]);
+    assert_failure(&output);
+}
+
+/// Smoke: `ripr receipt --help` exits 0 and mentions expected content.
+#[test]
+fn receipt_help_exits_zero_smoke() {
+    let output = run_ripr(&["receipt", "--help"]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("ripr receipt write"),
+        "help should mention write"
+    );
+    assert!(
+        stdout.contains("ripr receipt check"),
+        "help should mention check"
+    );
+    assert!(
+        stdout.contains("RIPR-SPEC-0079"),
+        "help should reference spec"
+    );
+}
+
+/// Smoke: `ripr agent receipt` (legacy alias) still exits non-zero with a
+/// parse error rather than panicking or silently succeeding with no args —
+/// which confirms the alias is still wired.
+#[test]
+fn agent_receipt_legacy_alias_still_dispatches_smoke() {
+    // ripr agent receipt without any args should return a parse error, not panic.
+    let output = run_ripr(&["agent", "receipt"]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    // Should say "requires --json" or "requires --verify-json" or similar — any
+    // parse error from the agent receipt handler means the alias is dispatching.
+    assert!(
+        combined.contains("requires") || combined.contains("missing"),
+        "agent receipt should still dispatch and return a parse error; got: {combined}"
+    );
+}

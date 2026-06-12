@@ -206,6 +206,8 @@ mod tests {
         assert!(HELP.contains("ripr reports index"));
         assert!(HELP.contains("ripr reports gap-ledger"));
         assert!(HELP.contains("ripr calibrate"));
+        assert!(HELP.contains("ripr receipt write"));
+        assert!(HELP.contains("ripr receipt check"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
         assert!(HELP.contains("ripr agent packet"));

@@ -34,6 +34,8 @@ mod agent_dispatch;
 mod agent_gap_packet;
 #[path = "commands/policy.rs"]
 mod policy_commands;
+#[path = "commands/receipt.rs"]
+mod receipt_command;
 #[path = "commands/swarm/mod.rs"]
 mod swarm_command;
 
@@ -74,6 +76,10 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
         | AgentCommand::ReviewSummaryHelp) => agent_dispatch::run_agent_help_command(&help_command)
             .unwrap_or_else(|| Err("agent help command was not dispatched".to_string())),
     }
+}
+
+pub(super) fn receipt(args: &[String]) -> Result<(), String> {
+    receipt_command::run_receipt(args)
 }
 
 pub(super) fn swarm(args: &[String]) -> Result<(), String> {

@@ -29,6 +29,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::FirstAction(args) => commands::first_action(&args),
         CliCommand::Reports(args) => commands::reports(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
+        CliCommand::Receipt(args) => commands::receipt(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Swarm(args) => commands::swarm(&args),
         CliCommand::Diff(args) => commands::diff(&args),
@@ -145,6 +146,10 @@ mod tests {
                 "xml"
             ]))),
             Err("unknown calibrate format \"xml\"".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Receipt(args(&["unknown"]))),
+            Err("unknown receipt subcommand \"unknown\"; expected `write` or `check`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Agent(args(&["unknown"]))),
