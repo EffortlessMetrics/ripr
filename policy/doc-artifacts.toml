@@ -249,3 +249,11 @@ path = "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Focused receipt-command contract under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0080"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0080-route-quality-standalone-report.md"
+status = "proposed"
+owner = "swarm"
+standalone_reason = "Standalone route-quality extraction under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."

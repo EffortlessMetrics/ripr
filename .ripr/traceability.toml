@@ -5066,3 +5066,26 @@ metrics = [
   "unit_test_pass_rate"
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0080"
+name = "Route-quality standalone report"
+spec = "docs/specs/RIPR-SPEC-0080-route-quality-standalone-report.md"
+tests = [
+  "xtask/src/main.rs::tests::route_quality_success_rate_is_null_when_attempted_is_zero",
+  "xtask/src/main.rs::tests::route_quality_success_rate_computed_when_attempted_nonzero",
+  "xtask/src/main.rs::tests::route_quality_empty_input_produces_empty_not_zero_filled_report",
+  "xtask/src/main.rs::tests::route_quality_cross_validates_with_attempt_ledger_repair_route_quality"
+]
+fixtures = []
+code = [
+  "xtask/src/main.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0080-route-quality-standalone-report.md"
+]
+metrics = [
+  "route_quality_standalone_report_status_proposed"
+]
+

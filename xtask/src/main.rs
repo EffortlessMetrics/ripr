@@ -24053,6 +24053,20 @@ struct RiprSwarmReadinessReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmRouteQualityReport {
+    status: String,
+    runtime_status: Lane1RuntimeStatus,
+    generated_at: String,
+    attempt_ledger_path: String,
+    attempt_ledger_state: String,
+    attempt_ledger_limitation: Option<String>,
+    repair_route_quality_latest: Vec<RiprSwarmRepairRouteQualityRow>,
+    repair_route_quality_historical: Vec<RiprSwarmRepairRouteQualityRow>,
+    language_repair_route_quality_latest: Vec<RiprSwarmRepairRouteQualityRow>,
+    language_repair_route_quality_historical: Vec<RiprSwarmRepairRouteQualityRow>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmAttemptLedgerReport {
     status: String,
     runtime_status: Lane1RuntimeStatus,
@@ -26359,6 +26373,193 @@ fn ripr_swarm_attempt_ledger_report(args: &RiprSwarmAttemptLedgerArgs) -> Result
         "swarm-attempt-ledger.md",
         &ripr_swarm_attempt_ledger_markdown(&report),
     )
+}
+
+fn ripr_swarm_route_quality_report(args: &[String]) -> Result<(), String> {
+    let mut attempt_ledger_path = PathBuf::from("target/ripr/reports/swarm-attempt-ledger.json");
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--attempt-ledger" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("route-quality --attempt-ledger requires a path".to_string());
+                };
+                attempt_ledger_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown route-quality argument `{other}`\nusage: cargo xtask route-quality [--attempt-ledger <path>]"
+                ));
+            }
+        }
+        index += 1;
+    }
+    let generated_at = generated_at_unix_ms()?;
+    let (ledger_state, ledger_limitation, ledger_value) =
+        ripr_swarm_read_optional_json(&attempt_ledger_path);
+    let report = ripr_swarm_route_quality_from_ledger_value(
+        generated_at,
+        normalize_path(&attempt_ledger_path),
+        ledger_state,
+        ledger_limitation,
+        ledger_value.as_ref(),
+    );
+    write_report(
+        "route-quality.json",
+        &ripr_swarm_route_quality_report_json(&report)?,
+    )?;
+    write_report(
+        "route-quality.md",
+        &ripr_swarm_route_quality_report_markdown(&report),
+    )
+}
+
+fn ripr_swarm_route_quality_from_ledger_value(
+    generated_at: String,
+    attempt_ledger_path: String,
+    attempt_ledger_state: String,
+    attempt_ledger_limitation: Option<String>,
+    attempt_ledger_value: Option<&Value>,
+) -> RiprSwarmRouteQualityReport {
+    let (
+        status,
+        runtime_status,
+        rows_latest,
+        rows_historical,
+        rows_language_latest,
+        rows_language_historical,
+    ) = if let Some(ledger) = attempt_ledger_value {
+        let attempts = ripr_swarm_attempt_ledger_entries_from_value(ledger);
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        let rows_latest = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
+        let rows_language_latest =
+            ripr_swarm_attempt_ledger_language_repair_route_quality(&latest_attempts);
+        let rows_historical = ripr_swarm_attempt_ledger_repair_route_quality(&attempts);
+        let rows_language_historical =
+            ripr_swarm_attempt_ledger_language_repair_route_quality(&attempts);
+        let runtime_status = lane1_runtime_status_from_report_value(ledger)
+            .unwrap_or_else(lane1_runtime_status_full);
+        let status = "advisory".to_string();
+        (
+            status,
+            runtime_status,
+            rows_latest,
+            rows_historical,
+            rows_language_latest,
+            rows_language_historical,
+        )
+    } else {
+        let runtime_status = lane1_runtime_status_limited_input(
+            "attempt_ledger_input",
+            "swarm-attempt-ledger",
+            Some(&attempt_ledger_path),
+            "attempt_ledger_input_unavailable",
+            "run cargo xtask ripr-swarm attempt-ledger before building the route-quality report",
+            false,
+        );
+        (
+            "blocked".to_string(),
+            runtime_status,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    };
+    RiprSwarmRouteQualityReport {
+        status,
+        runtime_status,
+        generated_at,
+        attempt_ledger_path,
+        attempt_ledger_state,
+        attempt_ledger_limitation,
+        repair_route_quality_latest: rows_latest,
+        repair_route_quality_historical: rows_historical,
+        language_repair_route_quality_latest: rows_language_latest,
+        language_repair_route_quality_historical: rows_language_historical,
+    }
+}
+
+fn ripr_swarm_route_quality_report_json(
+    report: &RiprSwarmRouteQualityReport,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "route-quality",
+        "scope": "repo",
+        "status": report.status,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
+        "generated_at": report.generated_at,
+        "metadata": {
+            "attempt_ledger_path": report.attempt_ledger_path,
+            "attempt_ledger_state": report.attempt_ledger_state,
+            "attempt_ledger_limitation": report.attempt_ledger_limitation,
+        },
+        "repair_route_quality_latest": ripr_swarm_repair_route_quality_json(&report.repair_route_quality_latest),
+        "repair_route_quality_historical": ripr_swarm_repair_route_quality_json(&report.repair_route_quality_historical),
+        "language_repair_route_quality_latest": ripr_swarm_repair_route_quality_json(&report.language_repair_route_quality_latest),
+        "language_repair_route_quality_historical": ripr_swarm_repair_route_quality_json(&report.language_repair_route_quality_historical),
+        "must_not_infer": [
+            "route-quality rows group latest attempt outcomes by repair_kind; they are a grouping signal, not a gate or ranking",
+            "success_rate is (improved + resolved + expected_unchanged) / attempted and is null when attempted == 0; it does not weight by receipt presence",
+            "empty arrays mean no attempts were found with matching outcomes; they do not imply zero quality",
+            "route-quality does not report orphan receipt sources or stale receipt counts; no producer for those fields exists yet",
+            "route-quality counts do not change public badge semantics or CI gate mode",
+            "this report is advisory; do not promote or downgrade actionability from route-quality evidence alone"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render route-quality JSON: {err}"))
+}
+
+fn ripr_swarm_route_quality_report_markdown(report: &RiprSwarmRouteQualityReport) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR Route Quality Report\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
+    out.push_str("Advisory grouping of repair-route outcomes by `repair_kind`. Does not execute repairs, create receipts, or change gate semantics.\n\n");
+    lane1_runtime_status_push_markdown(&mut out, &report.runtime_status);
+    out.push_str("## Inputs\n\n");
+    out.push_str("| Input | State | Path | Limitation |\n");
+    out.push_str("| --- | --- | --- | --- |\n");
+    out.push_str(&format!(
+        "| attempt ledger | `{}` | `{}` | {} |\n\n",
+        audit_markdown_cell(&report.attempt_ledger_state),
+        audit_markdown_cell(&report.attempt_ledger_path),
+        audit_markdown_cell(report.attempt_ledger_limitation.as_deref().unwrap_or(""))
+    ));
+    out.push_str("## Latest Repair Route Quality\n\n");
+    ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality_latest);
+    out.push_str("## Latest Repair Route Quality By Language\n\n");
+    ripr_swarm_push_repair_route_quality_table(
+        &mut out,
+        &report.language_repair_route_quality_latest,
+    );
+    out.push_str("## Historical Repair Route Quality\n\n");
+    out.push_str("Durable history rows preserve older unchanged, regressed, and no-receipt attempts after a later attempt improves or resolves the same canonical gap.\n\n");
+    ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality_historical);
+    out.push_str("## Historical Repair Route Quality By Language\n\n");
+    ripr_swarm_push_repair_route_quality_table(
+        &mut out,
+        &report.language_repair_route_quality_historical,
+    );
+    out.push_str("## Must Not Infer\n\n");
+    out.push_str("- Route-quality rows group latest attempt outcomes by `repair_kind`; they are a grouping signal, not a ranking gate.\n");
+    out.push_str("- `repair_kind_success_rate` is `(improved + resolved + expected_unchanged) / attempted`; it is `null` when `attempted == 0` — never `0.0` as a fake rate.\n");
+    out.push_str("- Empty arrays mean no attempts with matching outcomes were found; they do not imply zero quality.\n");
+    out.push_str("- Orphan receipt sources and stale receipt counts are not reported here; no real producer for those fields exists yet.\n");
+    out.push_str("- Route-quality counts do not change public badge semantics or CI gate mode.\n");
+    out.push_str("- This report is advisory; do not promote or downgrade actionability from route-quality evidence alone.\n");
+    out
 }
 
 #[cfg(test)]
@@ -70733,6 +70934,9 @@ mod tests {
     use super::ripr_swarm_attempt_ledger_repair_route_quality;
     use super::ripr_swarm_repair_route_quality_attempt_is_failure;
     use super::ripr_swarm_repair_route_quality_failure_count;
+    use super::ripr_swarm_repair_route_quality_success_rate;
+    use super::ripr_swarm_route_quality_from_ledger_value;
+    use super::ripr_swarm_route_quality_report_json;
     use super::run::{
         TimedFileOutput, TimedOutput, capture_output, run, run_output, run_output_optional,
         run_output_owned,
@@ -115203,5 +115407,184 @@ level = "deny"
                 "warn".to_string()
             )]
         );
+    }
+
+    // RIPR-SPEC-0080 route-quality standalone report tests
+
+    #[test]
+    fn route_quality_success_rate_is_null_when_attempted_is_zero() {
+        let row = super::RiprSwarmRepairRouteQualityRow {
+            repair_kind: "add_call_observer".to_string(),
+            attempted: 0,
+            improved: 0,
+            resolved: 0,
+            expected_unchanged: 0,
+            ..super::RiprSwarmRepairRouteQualityRow::default()
+        };
+        assert_eq!(
+            ripr_swarm_repair_route_quality_success_rate(&row),
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn route_quality_success_rate_computed_when_attempted_nonzero() {
+        let row = super::RiprSwarmRepairRouteQualityRow {
+            repair_kind: "add_call_observer".to_string(),
+            attempted: 4,
+            improved: 2,
+            resolved: 1,
+            expected_unchanged: 0,
+            unchanged: 1,
+            ..super::RiprSwarmRepairRouteQualityRow::default()
+        };
+        // success = improved(2) + resolved(1) + expected_unchanged(0) = 3; rate = 3/4 = 0.75
+        let rate = ripr_swarm_repair_route_quality_success_rate(&row);
+        assert_eq!(rate, serde_json::json!(0.75));
+        assert!(rate != serde_json::Value::Null);
+        // Confirm the JSON value is a number, not null
+        assert!(rate.is_number());
+    }
+
+    #[test]
+    fn route_quality_empty_input_produces_empty_not_zero_filled_report() -> Result<(), String> {
+        let report = ripr_swarm_route_quality_from_ledger_value(
+            "unix_ms:1".to_string(),
+            "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+            "missing".to_string(),
+            Some("no ledger found".to_string()),
+            None,
+        );
+        assert_eq!(report.repair_route_quality_latest, vec![]);
+        assert_eq!(report.repair_route_quality_historical, vec![]);
+        assert_eq!(report.language_repair_route_quality_latest, vec![]);
+        assert_eq!(report.language_repair_route_quality_historical, vec![]);
+        assert_eq!(report.status, "blocked");
+        let json_str = ripr_swarm_route_quality_report_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json_str).map_err(|err| err.to_string())?;
+        assert_eq!(value["repair_route_quality_latest"], serde_json::json!([]));
+        assert_eq!(
+            value["repair_route_quality_historical"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            value["language_repair_route_quality_latest"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            value["language_repair_route_quality_historical"],
+            serde_json::json!([])
+        );
+        // Confirm forbidden keys are absent
+        assert!(value.get("top_orphan_receipt_sources").is_none());
+        assert!(value.get("stale_receipt_count").is_none());
+        assert!(value.get("top_limitation_routes").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn route_quality_cross_validates_with_attempt_ledger_repair_route_quality() -> Result<(), String>
+    {
+        // Build a minimal attempt ledger value with two attempts and check that
+        // route_quality.repair_route_quality_latest matches repair_route_quality in the
+        // swarm-attempt-ledger, differing only by the added success_rate field.
+        let ledger_value = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": { "state": "full", "downstream_consumable": true },
+            "repair_route_quality": [],
+            "language_repair_route_quality": [],
+            "historical_repair_route_quality": [],
+            "historical_language_repair_route_quality": [],
+            "attempts": [
+                {
+                    "packet_id": "packet-a",
+                    "canonical_gap_id": "gap-a",
+                    "attempt_id": "attempt-a-1",
+                    "repair_kind": "add_assertion",
+                    "outcome": "evidence_improved",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test",
+                    "verify_result": "pass",
+                    "receipt_state": "receipt_present",
+                    "reason": "test"
+                },
+                {
+                    "packet_id": "packet-b",
+                    "canonical_gap_id": "gap-b",
+                    "attempt_id": "attempt-b-1",
+                    "repair_kind": "add_assertion",
+                    "outcome": "evidence_unchanged",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test",
+                    "verify_result": "pass",
+                    "receipt_state": "receipt_present",
+                    "reason": "test"
+                }
+            ],
+            "latest_attempts": []
+        });
+
+        let route_quality_report = ripr_swarm_route_quality_from_ledger_value(
+            "unix_ms:2".to_string(),
+            "test".to_string(),
+            "read".to_string(),
+            None,
+            Some(&ledger_value),
+        );
+        let attempts = super::ripr_swarm_attempt_ledger_entries_from_value(&ledger_value);
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        let ledger_rows = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
+
+        // The route-quality report latest rows must match the ledger rows (same counts)
+        assert_eq!(
+            route_quality_report.repair_route_quality_latest.len(),
+            ledger_rows.len()
+        );
+        for (rq_row, ledger_row) in route_quality_report
+            .repair_route_quality_latest
+            .iter()
+            .zip(ledger_rows.iter())
+        {
+            assert_eq!(rq_row.repair_kind, ledger_row.repair_kind);
+            assert_eq!(rq_row.attempted, ledger_row.attempted);
+            assert_eq!(rq_row.improved, ledger_row.improved);
+            assert_eq!(rq_row.unchanged, ledger_row.unchanged);
+            assert_eq!(rq_row.resolved, ledger_row.resolved);
+            assert_eq!(rq_row.regressed, ledger_row.regressed);
+            assert_eq!(rq_row.attempted_no_receipt, ledger_row.attempted_no_receipt);
+            assert_eq!(rq_row.receipt_present, ledger_row.receipt_present);
+            assert_eq!(
+                rq_row.missing_verify_result,
+                ledger_row.missing_verify_result
+            );
+            assert_eq!(rq_row.expected_unchanged, ledger_row.expected_unchanged);
+            assert_eq!(rq_row.unknown, ledger_row.unknown);
+        }
+
+        // Verify the JSON output includes success_rate for each row and no forbidden keys
+        let json_str = ripr_swarm_route_quality_report_json(&route_quality_report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json_str).map_err(|err| err.to_string())?;
+        let rq_latest = value["repair_route_quality_latest"]
+            .as_array()
+            .ok_or("repair_route_quality_latest must be an array")?;
+        assert!(
+            !rq_latest.is_empty(),
+            "expected non-empty route quality rows"
+        );
+        for row in rq_latest {
+            assert!(
+                row.get("repair_kind_success_rate").is_some(),
+                "each row must have repair_kind_success_rate"
+            );
+        }
+        assert!(value.get("top_orphan_receipt_sources").is_none());
+        assert!(value.get("stale_receipt_count").is_none());
+        assert!(value.get("top_limitation_routes").is_none());
+        Ok(())
     }
 }

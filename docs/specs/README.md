@@ -90,3 +90,4 @@ observable behavior.
 | [RIPR-SPEC-0077](RIPR-SPEC-0077-lsp-repair-packet-command.md) | proposed | LSP repair packet command |
 | [RIPR-SPEC-0078](RIPR-SPEC-0078-lsp-top-limitation-command.md) | proposed | LSP top-limitation command |
 | [RIPR-SPEC-0079](RIPR-SPEC-0079-canonical-receipt-command-contract.md) | proposed | Canonical receipt command contract |
+| [RIPR-SPEC-0080](RIPR-SPEC-0080-route-quality-standalone-report.md) | proposed | Route-quality standalone report |
