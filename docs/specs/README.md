@@ -86,3 +86,4 @@ observable behavior.
 | [RIPR-SPEC-0073](RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md) | proposed | Receipts, outcomes, and route quality use case |
 | [RIPR-SPEC-0074](RIPR-SPEC-0074-repo-exposure-run-status.md) | proposed | Repo exposure run status |
 | [RIPR-SPEC-0075](RIPR-SPEC-0075-pr-evidence-summary.md) | proposed | PR evidence summary |
+| [RIPR-SPEC-0076](RIPR-SPEC-0076-lsp-diagnostics-policy.md) | accepted | LSP diagnostics severity policy |

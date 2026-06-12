@@ -4956,3 +4956,27 @@ metrics = [
   "unit_test_pass_rate"
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0076"
+name = "LSP diagnostics severity policy"
+spec = "docs/specs/RIPR-SPEC-0076-lsp-diagnostics-policy.md"
+tests = [
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::no_warning_for_finding_with_static_limit",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::no_warning_for_preview_finding",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::warning_only_when_gap_record_has_complete_packet",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::no_warning_for_preview_gap_record",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::no_warning_for_static_limit_gap_record",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::limited_run_downgrades_finding_warnings",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::stale_run_suppresses_gap_record_diagnostics",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/diagnostics.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0076-lsp-diagnostics-policy.md",
+]
+metrics = [
+  "lsp_diagnostics_policy_warning_rate_advisory_zero",
+  "unit_test_pass_rate"
+]
