@@ -28,6 +28,17 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 
     if output.findings.is_empty() {
         out.push_str("No diff-derived mutation exposure probes found.\n");
+        // RIPR-SPEC-0083: disclose when no analysis scope was provided.
+        // This fires only when the caller passed no --diff/--base/--mode, so
+        // an empty result here means "nothing was analyzed", not "tests pass".
+        if output.no_scope_provided {
+            out.push_str(
+                "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
+Run `ripr check --base origin/main` to analyze your changes, or \
+`ripr check --root . --mode fast` for a full-repo scan. \
+An empty result here does NOT mean your changed behavior is covered.\n",
+            );
+        }
         render_preview_language_advisories(&mut out, output);
         return out;
     }
@@ -123,6 +134,7 @@ mod tests {
             },
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -672,6 +684,7 @@ mod tests {
                 sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
                 enabled: true,
             }],
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -706,6 +719,7 @@ mod tests {
                 sample_paths: vec!["app/main.py".to_string()],
                 enabled: true,
             }],
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -731,6 +745,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -762,6 +777,7 @@ mod tests {
                 sample_paths: vec!["src/lib.ts".to_string()],
                 enabled: true,
             }],
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -791,6 +807,7 @@ mod tests {
                 sample_paths: vec!["src/utils.ts".to_string()],
                 enabled: false,
             }],
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -853,6 +870,101 @@ mod tests {
         assert!(
             !rendered.contains(r"tests\sample.rs"),
             "backslash related-test path must not appear in human output; got:\n{rendered}"
+        );
+    }
+
+    // RIPR-SPEC-0083 tests: no-scope disclosure honesty
+
+    #[test]
+    fn render_emits_no_scope_guidance_when_no_scope_provided_and_empty() {
+        // The cardinal case: bare `ripr check` produces an empty result.
+        // `no_scope_provided: true` must emit the guidance note.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("no analysis scope was provided"),
+            "expected no-scope guidance; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("`ripr check --base origin/main`"),
+            "expected --base guidance; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("does NOT mean your changed behavior is covered"),
+            "expected honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_no_scope_guidance_when_scope_provided_and_empty() {
+        // Scope was provided (--diff/--base/--mode) but found 0 probes.
+        // `no_scope_provided: false` must NOT emit the guidance — the result
+        // is honest: that diff really had no probes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("no analysis scope was provided"),
+            "scope-provided empty result must NOT show no-scope guidance; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("does NOT mean your changed behavior is covered"),
+            "scope-provided empty result must NOT show honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_no_scope_guidance_uses_conservative_static_language() {
+        // Verify the no-scope disclosure text uses only approved static-language
+        // vocabulary. The gate bans mutation-testing runtime terms; we verify
+        // the disclosure uses the approved phrasing ("does NOT mean your changed
+        // behavior is covered") rather than any runtime claim.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        // Confirm the actual approved honesty phrase is present.
+        assert!(
+            rendered.contains("does NOT mean your changed behavior is covered"),
+            "expected approved honesty phrase; got:\n{rendered}"
+        );
+        // The disclosure is a static analysis advisory, not a runtime claim.
+        assert!(
+            rendered.contains("no analysis scope was provided"),
+            "expected scope disclosure lead-in; got:\n{rendered}"
         );
     }
 }

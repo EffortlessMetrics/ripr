@@ -1478,6 +1478,7 @@ weakly_gripped = "note"
             summary: Summary::default(),
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 

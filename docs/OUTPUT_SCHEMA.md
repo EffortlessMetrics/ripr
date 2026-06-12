@@ -653,6 +653,34 @@ analyzed under advisory preview support that may be incomplete
 (`enabled == true`). In neither case is an empty result a Rust-grade clean
 result.
 
+### `scope_disclosures` (top-level additive advisory, RIPR-SPEC-0083)
+
+Added as an additive optional top-level array. Emitted only when `ripr check`
+was invoked with **no analysis scope** (no `--diff`, `--base`, or `--mode`
+flag) and the result is empty. Absent when scope was explicitly provided (even
+if the analyzed scope produced 0 findings). Does not bump `schema_version`.
+
+No-scope example — the RIPR-SPEC-0083 case where bare `ripr check` analyzes
+nothing yet prints empty:
+
+```json
+"scope_disclosures": [
+  {
+    "scope_status": "no_scope_provided",
+    "category": "no_scope_disclosure",
+    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --mode fast"
+  }
+]
+```
+
+When scope was explicitly provided (`--diff`, `--base`, or `--mode`),
+`scope_disclosures` is absent. A scope-provided empty result is honest and
+requires no disclosure.
+
+- `scope_status` — always `"no_scope_provided"` for machine filtering
+- `category` — always `"no_scope_disclosure"` for machine filtering
+- `why` — advisory rationale string guiding the user to the correct invocation
+
 ## Enums
 
 `classification` values:

@@ -52,6 +52,25 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when no analysis scope was
+    // provided and the result is empty. Absent when scope was given (real
+    // analyzed-empty is honest) or when findings are non-empty.
+    // See RIPR-SPEC-0083.
+    if output.no_scope_provided {
+        out.push_str(",\n  \"scope_disclosures\": [\n");
+        out.push_str("    {\n");
+        field(&mut out, 3, "scope_status", "no_scope_provided", true);
+        field(&mut out, 3, "category", "no_scope_disclosure", true);
+        field(
+            &mut out,
+            3,
+            "why",
+            "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --mode fast",
+            false,
+        );
+        out.push_str("    }\n");
+        out.push_str("  ]");
+    }
     // Additive advisory field — emitted only when preview-language files were
     // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
     if !output.preview_language_advisories.is_empty() {

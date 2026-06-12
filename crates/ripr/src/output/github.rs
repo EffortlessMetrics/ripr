@@ -236,6 +236,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -303,6 +304,7 @@ mod tests {
                 static_limit_kind: None,
             }],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -360,6 +362,7 @@ mod tests {
                 static_limit_kind: None,
             }],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -575,6 +578,7 @@ mod tests {
                 static_limit_kind: None,
             }],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 
@@ -841,6 +845,7 @@ mod tests {
                 static_limit_kind: None,
             }],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);

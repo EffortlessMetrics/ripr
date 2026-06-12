@@ -3333,6 +3333,11 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
+    // RIPR-SPEC-0083: track whether the user provided any analysis scope.
+    // Starts false; set true when --diff, --base, or a full-repo --mode flag
+    // is given. When still false at analysis time, the output discloses that
+    // nothing was analyzed, preventing an empty result from being read as clean.
+    let mut scope_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3343,15 +3348,18 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
             "--base" => {
                 i += 1;
                 input.base = Some(expect_value(args, i, "--base")?.to_string());
+                scope_explicitly_provided = true;
             }
             "--diff" => {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
+                scope_explicitly_provided = true;
             }
             "--mode" => {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
                 explicit.mode = true;
+                scope_explicitly_provided = true;
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {
@@ -3396,7 +3404,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
-    let output = if format.is_repo_seam_inventory() {
+    let mut output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
@@ -3407,6 +3415,12 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     } else {
         app::check_workspace_with_config(input, &config)?
     };
+    // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
+    // The guidance fires only when scope was NOT explicitly provided — it must
+    // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
+    if !scope_explicitly_provided && output.findings.is_empty() {
+        output.no_scope_provided = true;
+    }
     write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
     Ok(())
 }

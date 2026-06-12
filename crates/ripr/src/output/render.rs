@@ -791,6 +791,7 @@ mod tests {
             summary: Summary::default(),
             findings,
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 

@@ -5152,3 +5152,30 @@ metrics = [
   "preview_language_disclosure_status_proposed"
 ]
 
+
+[[behavior]]
+id = "RIPR-SPEC-0083"
+name = "check no-scope disclosure"
+spec = "docs/specs/RIPR-SPEC-0083-check-no-scope-disclosure.md"
+tests = [
+  "crates/ripr/src/output/human.rs::tests::render_emits_no_scope_guidance_when_no_scope_provided_and_empty",
+  "crates/ripr/src/output/human.rs::tests::render_omits_no_scope_guidance_when_scope_provided_and_empty",
+  "crates/ripr/src/output/human.rs::tests::render_no_scope_guidance_uses_conservative_static_language",
+  "crates/ripr/src/output/json::tests::json_render_emits_scope_disclosures_when_no_scope_provided",
+  "crates/ripr/src/output/json::tests::json_render_omits_scope_disclosures_when_scope_provided"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/app/check/output_builder.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json/report.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0083-check-no-scope-disclosure.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "check_no_scope_disclosure_status_proposed"
+]

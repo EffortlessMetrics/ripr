@@ -149,6 +149,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -265,6 +266,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -427,6 +429,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -924,6 +927,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 
@@ -993,6 +997,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -1018,6 +1023,80 @@ mod tests {
         assert!(
             rendered.contains("\"assertion_texts\""),
             "schema 0.2 output must include the finding-level assertion_texts map"
+        );
+    }
+
+    // RIPR-SPEC-0083 tests: no-scope JSON disclosure
+
+    #[test]
+    fn json_render_emits_scope_disclosures_when_no_scope_provided() {
+        // When no_scope_provided=true the JSON output must include the
+        // scope_disclosures additive field with scope_status=no_scope_provided.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("\"scope_disclosures\""),
+            "expected scope_disclosures field; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"no_scope_provided\""),
+            "expected scope_status=no_scope_provided; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"no_scope_disclosure\""),
+            "expected category=no_scope_disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("diff-first"),
+            "expected diff-first guidance in why; got:\n{rendered}"
+        );
+        // Must still be valid JSON.
+        let parse_result = serde_json::from_str::<serde_json::Value>(&rendered);
+        assert!(
+            parse_result.is_ok(),
+            "JSON must be valid when scope_disclosures is present; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn json_render_omits_scope_disclosures_when_scope_provided() {
+        // When no_scope_provided=false (scope was provided) the scope_disclosures
+        // field must be absent — this is a real analyzed-empty result.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("\"scope_disclosures\""),
+            "scope_disclosures must be absent when scope was provided; got:\n{rendered}"
+        );
+        // Still valid JSON.
+        let parse_result = serde_json::from_str::<serde_json::Value>(&rendered);
+        assert!(
+            parse_result.is_ok(),
+            "JSON must be valid when scope_disclosures is absent; got:\n{rendered}"
         );
     }
 }

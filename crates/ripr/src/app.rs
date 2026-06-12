@@ -126,6 +126,11 @@ pub struct CheckOutput {
     /// analyzed the scope but found nothing actionable at this time.
     /// See RIPR-SPEC-0082.
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// When `true`, no analysis scope was provided by the caller (no `--diff`,
+    /// `--base`, `--files`, or full-repo mode flag). An empty result in this
+    /// state does NOT mean the changed behavior is covered — it means nothing
+    /// was analyzed. See RIPR-SPEC-0083.
+    pub no_scope_provided: bool,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

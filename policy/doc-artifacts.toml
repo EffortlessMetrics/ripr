@@ -273,3 +273,11 @@ path = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Honesty disclosure for preview-language content in diff scope; addresses #1111 silent empty-result gap; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0083"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0083-check-no-scope-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure when ripr check is run with no analysis scope; extends the #1111 honesty theme to the no-scope case; no separate proposal artifact."
