@@ -11000,6 +11000,27 @@ top-level `attempt_outcome` are one of `attempted_no_receipt`,
 classifies an external result artifact; it does not run verification or write
 the receipt.
 
+`classification.reason` carries a machine-readable string for every outcome.
+For `unknown` outcomes it is always one of the following closed set of
+`ingest_reason` values:
+
+| `reason` value | When emitted |
+| --- | --- |
+| `forbidden_edit` | Agent edited a file on the packet's `forbidden_files` list; all movement claims are discarded. |
+| `missing_verify` | Verify evidence is absent, failed, or inconclusive; classifier cannot reach any improvement outcome. |
+| `movement_without_snapshot_provenance` | Receipt claims a movement (improved/unchanged/regressed/resolved) but the receipt provenance block is missing a non-empty `before_artifact.sha256` or `after_artifact.sha256`. Classifier fails closed per RIPR-SPEC-0073 outcome-resolution rule 5. |
+| `stale_packet` | The input packet's `staleness_status` is `stale`; evidence from a stale packet is unreliable and no movement claim is accepted. |
+
+For non-`unknown` outcomes (e.g. `resolved`, `evidence_improved`) the reason
+is a human-readable sentence describing the classification; those sentences are
+not part of the closed `ingest_reason` vocabulary and may change without a
+schema bump.
+
+`evidence.receipt.provenance` carries:
+- `before_sha256` — the `before_artifact.sha256` from the receipt provenance block, or `null` if absent.
+- `after_sha256` — the `after_artifact.sha256` from the receipt provenance block, or `null` if absent.
+- `snapshot_provenance_present` — `true` only when both `before_sha256` and `after_sha256` are non-empty. A movement claim is accepted only when this is `true`.
+
 ```json
 {
   "schema_version": "0.3",

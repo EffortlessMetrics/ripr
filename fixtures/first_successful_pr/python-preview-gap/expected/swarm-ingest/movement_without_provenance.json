@@ -1,11 +1,11 @@
 {
-  "attempt_outcome": "resolved",
+  "attempt_outcome": "unknown",
   "classification": {
     "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
-    "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
-    "outcome": "resolved",
-    "reason": "Verify passed and receipt movement indicates the gap closed.",
-    "state": "closed"
+    "gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "outcome": "unknown",
+    "reason": "movement_without_snapshot_provenance",
+    "state": "uncertain"
   },
   "evidence": {
     "agent_status": "completed",
@@ -24,9 +24,9 @@
       "path": ".ripr/receipts/python-threshold.json",
       "present": true,
       "provenance": {
-        "after_sha256": "f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099",
-        "before_sha256": "a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011",
-        "snapshot_provenance_present": true
+        "after_sha256": null,
+        "before_sha256": null,
+        "snapshot_provenance_present": false
       }
     },
     "staleness_status": "not_evaluated",
@@ -40,7 +40,7 @@
     }
   },
   "inputs": {
-    "result": "inputs/agent-results/closed.json"
+    "result": "inputs/agent-results/movement_without_provenance.json"
   },
   "must_not_infer": [
     "do not trust agent-reported success without verify evidence",
@@ -49,8 +49,8 @@
     "do not run providers, generate tests, run mutation testing, or claim runtime proof from ingest"
   ],
   "next_action": {
-    "kind": "closed",
-    "summary": "Attach the receipt and keep the focused test repair."
+    "kind": "uncertain",
+    "summary": "Produce a receipt with before/after artifact sha256 provenance before judging movement."
   },
   "report": "swarm-ingest",
   "safety": {

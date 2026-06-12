@@ -58470,6 +58470,7 @@ fn check_output_contracts() -> Result<(), String> {
     let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
     let mutation_calibration =
         read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
+    let swarm_ingest = read_text_lossy(Path::new("crates/ripr/src/output/swarm_ingest.rs"))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -58562,6 +58563,22 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "ingest_reason" => {
+                require_contract_value(
+                    "crates/ripr/src/output/swarm_ingest.rs",
+                    &swarm_ingest,
                     value,
                     kind,
                     &mut violations,

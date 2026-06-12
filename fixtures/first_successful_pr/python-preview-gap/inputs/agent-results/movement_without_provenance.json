@@ -1,6 +1,6 @@
 {
   "packet": {
-    "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
     "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
     "allowed_files": [
       "tests/test_pricing.py"
@@ -23,13 +23,7 @@
   "receipt": {
     "path": ".ripr/receipts/python-threshold.json",
     "provenance": {
-      "movement": "resolved",
-      "before_artifact": {
-        "sha256": "a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011"
-      },
-      "after_artifact": {
-        "sha256": "f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099"
-      }
+      "movement": "resolved"
     }
   }
 }
