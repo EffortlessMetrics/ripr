@@ -4787,14 +4787,30 @@ metrics = [
 id = "RIPR-SPEC-0068"
 name = "PR review-card use case"
 spec = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_reject_seam_id_without_source_location",
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_reject_seam_id_without_source_location_summary_only",
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_actionable_card_carries_verify_and_receipt_commands",
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_every_card_carries_gap_state",
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/pr-guidance"
+]
+code = [
+  "crates/ripr/src/output/review_comments.rs",
+  "crates/ripr/src/output/evidence_record.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "schemas/ripr/review-comments.schema.json"
 ]
 metrics = [
-  "pr_review_card_use_case_status_proposed",
+  "card_navigability_rate",
+  "actionable_card_completeness",
+  "selection_reason_coverage",
+  "unit_test_pass_rate"
 ]
 
 [[behavior]]
@@ -4939,3 +4955,4 @@ metrics = [
   "run_status_always_present_in_repo_exposure_json",
   "unit_test_pass_rate"
 ]
+

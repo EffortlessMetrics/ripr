@@ -22,7 +22,7 @@ Advisory static evidence only. RIPR does not edit source, generate tests, run mu
 ## Summary-Only Recommendations
 
 - `8f7fa8644fd12280` @ `src/pricing.rs:88`: Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.
-  - state: `weakly_gripped`
+  - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json`
 
 ## Suppressed

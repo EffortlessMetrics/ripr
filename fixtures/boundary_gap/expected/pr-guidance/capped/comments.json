@@ -25,6 +25,7 @@
   "comments": [
     {
       "dedupe_key": "ripr:53d21b642e4945bb:src/pricing.rs:10",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-53d21b642e4945bb",
       "kind": "predicate_boundary",
@@ -42,6 +43,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 53d21b642e4945bb --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -71,6 +73,7 @@
     },
     {
       "dedupe_key": "ripr:5b353664321bdea6:src/pricing.rs:20",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-5b353664321bdea6",
       "kind": "predicate_boundary",
@@ -88,6 +91,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 5b353664321bdea6 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -117,6 +121,7 @@
     },
     {
       "dedupe_key": "ripr:644b716437604271:src/pricing.rs:30",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-644b716437604271",
       "kind": "predicate_boundary",
@@ -134,6 +139,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 644b716437604271 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -181,6 +187,7 @@
   "summary_only": [
     {
       "dedupe_key": "ripr:6d620c643ca5495c:src/pricing.rs:40",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-6d620c643ca5495c",
       "kind": "predicate_boundary",
@@ -198,6 +205,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 6d620c643ca5495c --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -224,10 +232,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:7678476441e9ad27:src/pricing.rs:50",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-7678476441e9ad27",
       "kind": "predicate_boundary",
@@ -245,6 +254,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 7678476441e9ad27 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -271,10 +281,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:7f21626446d108b2:src/pricing.rs:60",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-7f21626446d108b2",
       "kind": "predicate_boundary",
@@ -292,6 +303,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 7f21626446d108b2 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -318,10 +330,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:86849d644aa3d7fd:src/pricing.rs:70",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-86849d644aa3d7fd",
       "kind": "predicate_boundary",
@@ -339,6 +352,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 86849d644aa3d7fd --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -365,10 +379,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:8f9b38644fe8dee8:src/pricing.rs:80",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f9b38644fe8dee8",
       "kind": "predicate_boundary",
@@ -386,6 +401,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f9b38644fe8dee8 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -412,10 +428,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:98b15364552d0c53:src/pricing.rs:90",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-98b15364552d0c53",
       "kind": "predicate_boundary",
@@ -433,6 +450,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 98b15364552d0c53 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -459,10 +477,11 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     },
     {
       "dedupe_key": "ripr:b74a163aa6812b31:src/pricing.rs:100",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-b74a163aa6812b31",
       "kind": "predicate_boundary",
@@ -480,6 +499,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id b74a163aa6812b31 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
@@ -506,7 +526,7 @@
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary_discriminator"
       },
-      "summary_reason": "inline comment cap reached"
+      "summary_reason": "inline_comment_cap_reached"
     }
   ],
   "suppressed": [

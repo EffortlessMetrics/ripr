@@ -5734,10 +5734,40 @@ Field contract:
   comment body instead of raw static classes. It carries gap kind, changed
   behavior when available, why the gap matters, the bounded repair route,
   evidence IDs, verification commands, source artifact, and authority boundary.
+- `comments[].gap_state` - canonical actionability state per RIPR-SPEC-0061.
+  Present on every card (working-set and gap-ledger paths). Values:
+  `"actionable"`, `"static_limitation"`, `"already_observed"`,
+  `"internal_only"`, or `"unknown"`. This replaces the previous implicit
+  classification from `grip_class` alone for consumer code; always prefer
+  `gap_state` for routing decisions. Enforced by reject-list test
+  `spec0068_every_card_carries_gap_state`.
+- `comments[].receipt_command` - copyable `ripr agent receipt` command.
+  Present when `gap_state == "actionable"`. This completes the
+  actionable-card contract: `verify_command` (in `llm_guidance`) plus
+  `receipt_command` together form the proof-closure handoff. Enforced by
+  reject-list test `spec0068_actionable_card_carries_verify_and_receipt_commands`.
+- `comments[].why_not_actionable` - human-readable sentence from the first
+  `EvidenceRecordStaticLimitation.reason`. Present when
+  `gap_state == "static_limitation"`. Consumers should show this alongside
+  `limitation` and `limitation_route` when explaining why no repair is offered.
+- `comments[].non_claims` - advisory-only boundary declarations. Present when
+  `gap_state == "static_limitation"`. Always carries
+  `authority_boundary: "advisory_static_evidence_only"`. The `language_status`
+  field classifies the evidence tier (`"advisory"`, `"preview_advisory"`, etc.).
+- `comments[].canonical_gap_id` - stable gap identity from the gap-ledger.
+  Present on gap-ledger path cards when available. Deferred on the working-set
+  path (no `CanonicalGapIdentity` is threaded through the working-set renderer
+  today; planned for a future slice).
 - `summary_only[]` - same recommendation shape without `placement`. These rows
   still carry `source_location` for navigable Markdown and JSON parity. CI
   should show these in the Markdown/job summary but must not invent a
   changed-line annotation for them.
+- `summary_only[].summary_reason` - closed-vocabulary token explaining why the
+  card is in the summary rather than the inline set. Valid tokens:
+  `inline_comment_cap_reached`, `no_safe_changed_line_placement`,
+  `navigation_only_cross_language_target`, `nearby_test_changed`,
+  `summary_cap`, `missing_verification_command`. Free-text values are
+  forbidden per RIPR-SPEC-0068; adding a new token requires amending the spec.
 - `suppressed[]` - bounded records for recommendations hidden by caps or
   nearby test changes.
 - `warnings[]` - selection warnings from the agent brief selection path.

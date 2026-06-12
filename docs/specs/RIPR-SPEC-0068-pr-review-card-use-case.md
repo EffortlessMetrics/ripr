@@ -1,6 +1,6 @@
 # RIPR-SPEC-0068: PR Review-Card Use Case
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -287,26 +287,63 @@ these states as success:
 
 ## Test Mapping
 
-- None yet. This spec is docs-only; traceability entries are added
-  when the implementation slices land tests against the card-field
-  contract, the closed reason vocabulary, and the reject list above.
+- `crates/ripr/src/output/review_comments.rs::tests::spec0068_reject_seam_id_without_source_location`
+  — seam_id always co-occurs with a resolved or unresolved source_location.
+- `crates/ripr/src/output/review_comments.rs::tests::spec0068_reject_seam_id_without_source_location_summary_only`
+  — same rule on summary-only cards.
+- `crates/ripr/src/output/review_comments.rs::tests::spec0068_actionable_card_carries_verify_and_receipt_commands`
+  — actionable cards carry non-empty verify_command and receipt_command.
+- `crates/ripr/src/output/review_comments.rs::tests::spec0068_every_card_carries_gap_state`
+  — every rendered card (inline, summary-only, cross-language) carries gap_state.
+- `crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary`
+  — every summary_reason value is a member of the closed vocabulary constants.
+
+**Deferral note (working-set canonical_gap_id):** the gap-ledger path already emits
+`canonical_gap_id` from `record.canonical_gap_id`. The working-set path does not
+thread a `CanonicalGapIdentity` through `review_recommendation_json` today; emitting
+`canonical_gap_id` on working-set cards is deferred to the linked plan slice when the
+working-set render path gets access to the canonical gap identity. The seam_id and
+source_location contract is fully enforced now.
 
 ## Implementation Mapping
 
-- docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md — this
-  document.
-- plans/use-case-specs/implementation-plan.md (planned) — the
-  "review file:line" slice: enforce the hard navigational rule
-  (placement or explicit `source_location_unresolved` on every
-  card), close the selection-reason vocabulary by replacing today's
-  free-text `summary_reason` strings with the planned tokens,
-  deliver the contract-to-implement card fields (receipt command,
-  `gap_state` on every card, the structured related-test object,
-  card-level `oracle_kind` / `oracle_strength`, `analysis_scope` on
-  the gap-ledger guidance artifact), and add the reject-list checks
-  to output-contract tests.
-- Existing mechanism: `crates/ripr/src/output/review_comments.rs`
-  and `crates/ripr/src/output/pr_inline_comment_publish_plan.rs`.
+- docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md — this document.
+- `crates/ripr/src/output/review_comments.rs` — primary renderer;
+  all reject-list tests live here.
+- `crates/ripr/src/output/evidence_record.rs` — exports
+  `gap_state_for`, `actionability_for`, `canonical_receipt_command_for`,
+  `static_limitations_for`, `is_static_limited` as `pub(crate)`;
+  `review_comments.rs` calls these directly so no duplicate logic exists.
+- `crates/ripr/src/output/pr_inline_comment_publish_plan.rs` — publish plan.
+- `schemas/ripr/review-comments.schema.json` — schema updated to allow
+  `gap_state`, `receipt_command`, `non_claims`, `why_not_actionable`,
+  `canonical_gap_id` on recommendation cards.
+- `docs/OUTPUT_SCHEMA.md` — card fields documented.
+- `.ripr/traceability.toml` — SPEC-0068 mapped to the five reject-list tests.
+
+### Shipped (this slice)
+
+- Hard navigational rule: `source_location` (resolved or unresolved) on every
+  working-set card routed through `source_location_json` / `unresolved_source_location_json`.
+- Closed selection-reason vocabulary: `inline_comment_cap_reached`,
+  `no_safe_changed_line_placement`, `navigation_only_cross_language_target` replace
+  the three former free-text strings. Existing tokens `nearby_test_changed`,
+  `summary_cap`, and `missing_verification_command` retained unchanged.
+- `gap_state` on every working-set card via `gap_state_for(entry, actionability)`.
+- `receipt_command` on every `gap_state == "actionable"` working-set card via
+  `canonical_receipt_command_for(entry, gap_state)`.
+- `why_not_actionable` (first static-limitation reason) on every
+  `gap_state == "static_limitation"` card.
+- `non_claims` (`language_status`, `authority_boundary`) on every limitation card.
+- Five reject-list unit tests (SPEC-0068 prefix).
+- Golden fixtures re-blessed for all pr-guidance cases.
+
+### Deferred (linked plan slice)
+
+- `canonical_gap_id` on working-set cards (gap-ledger path already has it).
+- Structured related-test object `{name, file, line}`.
+- Card-level `oracle_kind` / `oracle_strength`.
+- `analysis_scope` on the gap-ledger guidance artifact.
 
 ## Metrics
 

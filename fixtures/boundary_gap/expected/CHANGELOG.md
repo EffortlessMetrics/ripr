@@ -227,3 +227,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+spec-0068: add gap_state+receipt_command to all working-set cards; tokenize summary_reason vocabulary
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+SPEC-0068: add gap_state+receipt_command to working-set cards; tokenize summary_reason vocabulary; add reject-list tests
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

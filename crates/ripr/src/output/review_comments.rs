@@ -9,9 +9,11 @@ use crate::app::agent_brief::{
 };
 use crate::config::RiprConfig;
 use crate::output::agent_seam_packets;
+use crate::output::agent_seam_packets::missing_discriminator_records_for as missing_records_for;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
-    cross_language_test_target_unresolved,
+    actionability_for, canonical_receipt_command_for, cross_language_test_target_unresolved,
+    gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
@@ -22,6 +24,13 @@ use std::path::Path;
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
+
+// Closed selection-reason vocabulary (SPEC-0068). No free-text reason outside this set
+// may ship on the working-set selection path without amending the spec.
+pub(crate) const SUMMARY_REASON_INLINE_CAP_REACHED: &str = "inline_comment_cap_reached";
+pub(crate) const SUMMARY_REASON_NO_SAFE_PLACEMENT: &str = "no_safe_changed_line_placement";
+pub(crate) const SUMMARY_REASON_NAVIGATION_ONLY_CROSS_LANGUAGE: &str =
+    "navigation_only_cross_language_target";
 
 pub(crate) struct ReviewCommentsRenderContext<'a> {
     pub(crate) root: &'a Path,
@@ -172,9 +181,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         if cross_language_test_target_unresolved(selected.seam) {
             let mut item = recommendation;
             item["placement"] = Value::Null;
-            item["summary_reason"] = json!(
-                "navigation-only cross-language target limitation; no PR repair comment emitted"
-            );
+            item["summary_reason"] = json!(SUMMARY_REASON_NAVIGATION_ONLY_CROSS_LANGUAGE);
             summary_only.push(item);
             continue;
         }
@@ -200,14 +207,13 @@ pub(crate) fn render_review_comments_json_with_scope(
             Some(placement) => {
                 let mut item = recommendation;
                 item["placement"] = placement_json(&placement);
-                item["summary_reason"] = json!("inline comment cap reached");
+                item["summary_reason"] = json!(SUMMARY_REASON_INLINE_CAP_REACHED);
                 summary_only.push(item);
             }
             None => {
                 let mut item = recommendation;
                 item["placement"] = Value::Null;
-                item["summary_reason"] =
-                    json!("no safe changed-line placement was available for this seam");
+                item["summary_reason"] = json!(SUMMARY_REASON_NO_SAFE_PLACEMENT);
                 summary_only.push(item);
             }
         }
@@ -278,7 +284,7 @@ pub(crate) fn render_gap_record_review_comments_json(
             comments.push(comment);
         } else if summary_only.len() < DEFAULT_REVIEW_MAX_SUMMARY_ITEMS {
             let mut item = comment;
-            item["summary_reason"] = json!("inline comment cap reached");
+            item["summary_reason"] = json!(SUMMARY_REASON_INLINE_CAP_REACHED);
             summary_only.push(item);
         } else {
             suppressed.push(gap_record_cap_suppressed_json(record));
@@ -677,7 +683,7 @@ fn review_recommendation_json(
 ) -> Value {
     let entry = selected.seam;
     let seam = &entry.seam;
-    let missing = agent_seam_packets::missing_discriminator_records_for(entry);
+    let missing = missing_records_for(entry);
     let recommended = agent_seam_packets::recommended_test_for(entry);
     let nearest = agent_seam_packets::nearest_strong_test_to_imitate(&entry.evidence);
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
@@ -693,6 +699,44 @@ fn review_recommendation_json(
     let navigation_target_json = navigation_target
         .as_ref()
         .map(agent_seam_packets::navigation_only_external_target_json);
+
+    // Derive gap_state for every card using the canonical decision from evidence_record.
+    let actionability = actionability_for(entry, &missing);
+    let gap_state = if target_unresolved {
+        "static_limitation"
+    } else {
+        gap_state_for(entry, &actionability)
+    };
+
+    // receipt_command: only for actionable cards; reuses canonical_receipt_command_for.
+    let receipt_command = canonical_receipt_command_for(entry, gap_state);
+
+    // why_not_actionable + non_claims: for static_limitation cards.
+    let static_limitations = if gap_state == "static_limitation" {
+        static_limitations_for(entry)
+    } else {
+        Vec::new()
+    };
+    let why_not_actionable: Option<String> = if gap_state == "static_limitation" {
+        static_limitations.first().map(|lim| lim.reason.clone())
+    } else {
+        None
+    };
+    let non_claims = if gap_state == "static_limitation" {
+        let lang_status = entry
+            .evidence
+            .related_tests
+            .first()
+            .map(|_| "preview_advisory")
+            .unwrap_or("advisory");
+        json!({
+            "language_status": lang_status,
+            "authority_boundary": "advisory_static_evidence_only",
+        })
+    } else {
+        Value::Null
+    };
+
     let llm_guidance = if target_unresolved {
         json!({
             "prompt": limitation_prompt(navigation_target.as_ref()),
@@ -717,6 +761,7 @@ fn review_recommendation_json(
         "dedupe_key": format!("ripr:{seam_id}:{seam_file}:{seam_line}"),
         "kind": seam.kind().as_str(),
         "grip_class": entry.class.as_str(),
+        "gap_state": gap_state,
         "severity": config.severity().for_seam(entry.class).as_str(),
         "owner": seam.owner(),
         "seam": {
@@ -738,8 +783,22 @@ fn review_recommendation_json(
         },
         "llm_guidance": llm_guidance,
     });
+
+    // Project actionable-only fields.
+    if let (Some(cmd), Some(object)) = (receipt_command, recommendation.as_object_mut()) {
+        object.insert("receipt_command".to_string(), json!(cmd));
+    }
+    // Project limitation-only fields.
+    if let (Some(why), Some(object)) = (why_not_actionable, recommendation.as_object_mut()) {
+        object.insert("why_not_actionable".to_string(), json!(why));
+    }
+    if !non_claims.is_null()
+        && let Some(object) = recommendation.as_object_mut()
+    {
+        object.insert("non_claims".to_string(), non_claims);
+    }
+
     if target_unresolved && let Some(object) = recommendation.as_object_mut() {
-        object.insert("gap_state".to_string(), json!("static_limitation"));
         object.insert("repairability".to_string(), json!("no_action"));
         object.insert(
             "limitation".to_string(),
@@ -1508,6 +1567,11 @@ mod tests {
 
     fn assert_text_fixture(case: &str, file: &str, rendered: &str) -> Result<(), String> {
         let path = pr_guidance_fixture(case, file);
+        if std::env::var("RIPR_UPDATE_FIXTURES").is_ok() {
+            fs::write(&path, rendered)
+                .map_err(|err| format!("write fixture {}: {err}", path.display()))?;
+            return Ok(());
+        }
         let expected = fs::read_to_string(&path)
             .map_err(|err| format!("read fixture {}: {err}", path.display()))?;
         assert_eq!(
@@ -1607,7 +1671,7 @@ mod tests {
         assert_eq!(value["summary"]["suppressed"], 2);
         assert_eq!(
             value["summary_only"][0]["summary_reason"],
-            "inline comment cap reached"
+            SUMMARY_REASON_INLINE_CAP_REACHED
         );
         assert_eq!(value["suppressed"][0]["reason"], "summary_cap");
         Ok(())
@@ -1720,7 +1784,7 @@ mod tests {
         assert!(rendered.contains("# RIPR PR Guidance"));
         assert!(rendered.contains("Advisory static evidence only"));
         assert!(rendered.contains("`8f7fa8644fd12280` @ `src/pricing.rs:88`"));
-        assert!(rendered.contains("state: `weakly_gripped`"));
+        assert!(rendered.contains("state: `actionable`"));
         assert!(rendered.contains("ripr agent brief"));
     }
 
@@ -1738,7 +1802,7 @@ mod tests {
         let item = &value["summary_only"][0];
         assert_eq!(
             item["summary_reason"],
-            "navigation-only cross-language target limitation; no PR repair comment emitted"
+            SUMMARY_REASON_NAVIGATION_ONLY_CROSS_LANGUAGE
         );
         assert_eq!(item["gap_state"], "static_limitation");
         assert_eq!(item["repairability"], "no_action");
@@ -2422,6 +2486,204 @@ mod tests {
             other => return Err(format!("unsupported source_collection {other}")),
         }
 
+        Ok(())
+    }
+
+    // ── SPEC-0068 reject-list output-contract tests ──────────────────────────
+    // Hard rules that must hold for every rendered card:
+    //   1. seam_id always co-occurs with source_location.status resolved or
+    //      source_location_unresolved — never a bare seam id.
+    //   2. gap_state == "actionable" cards carry non-empty verify_command AND
+    //      receipt_command.
+    //   3. summary_reason is always a closed-vocabulary constant.
+    //   4. Every card carries a gap_state field.
+    // These tests assert the rules against rendered output so they travel with
+    // the renderer, not separately.
+
+    fn all_cards(value: &Value) -> Vec<&Value> {
+        let mut cards = Vec::new();
+        for key in &["comments", "summary_only"] {
+            if let Some(arr) = value.get(key).and_then(Value::as_array) {
+                cards.extend(arr.iter());
+            }
+        }
+        cards
+    }
+
+    const CLOSED_SUMMARY_REASONS: &[&str] = &[
+        SUMMARY_REASON_INLINE_CAP_REACHED,
+        SUMMARY_REASON_NO_SAFE_PLACEMENT,
+        SUMMARY_REASON_NAVIGATION_ONLY_CROSS_LANGUAGE,
+        "nearby_test_changed",
+        "summary_cap",
+        "missing_verification_command",
+    ];
+
+    #[test]
+    fn spec0068_reject_seam_id_without_source_location() -> Result<(), String> {
+        // Every card that carries a seam_id must also carry a source_location
+        // with status == "resolved" or status == "source_location_unresolved".
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        for card in all_cards(&value) {
+            let seam_id = card.get("seam_id").and_then(Value::as_str);
+            let Some(seam_id) = seam_id else { continue };
+            let status = card
+                .get("source_location")
+                .and_then(|sl| sl.get("status"))
+                .and_then(Value::as_str);
+            assert!(
+                matches!(status, Some("resolved" | "source_location_unresolved")),
+                "card with seam_id '{seam_id}' must have source_location.status resolved or \
+                 source_location_unresolved, got {status:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_reject_seam_id_without_source_location_summary_only() -> Result<(), String> {
+        // Same rule for summary-only cards (no safe placement path).
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
+        let value = render_value(&working_set, &seams)?;
+        for card in all_cards(&value) {
+            let seam_id = card.get("seam_id").and_then(Value::as_str);
+            let Some(seam_id) = seam_id else { continue };
+            let status = card
+                .get("source_location")
+                .and_then(|sl| sl.get("status"))
+                .and_then(Value::as_str);
+            assert!(
+                matches!(status, Some("resolved" | "source_location_unresolved")),
+                "summary-only card with seam_id '{seam_id}' must have source_location.status \
+                 resolved or source_location_unresolved, got {status:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_actionable_card_carries_verify_and_receipt_commands() -> Result<(), String> {
+        // Every gap_state == "actionable" card must carry non-empty verify_command
+        // (in llm_guidance) and receipt_command (top-level).
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        for card in all_cards(&value) {
+            let gap_state = card.get("gap_state").and_then(Value::as_str);
+            if gap_state != Some("actionable") {
+                continue;
+            }
+            let verify_command = card
+                .get("llm_guidance")
+                .and_then(|g| g.get("verify_command"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let receipt_command = card
+                .get("receipt_command")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            assert!(
+                !verify_command.is_empty(),
+                "actionable card must carry non-empty llm_guidance.verify_command: {card:?}"
+            );
+            assert!(
+                !receipt_command.is_empty(),
+                "actionable card must carry non-empty receipt_command: {card:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_every_card_carries_gap_state() -> Result<(), String> {
+        // Every rendered card in comments[] and summary_only[] must have a gap_state field.
+        let seams = [classified(88)];
+        // Test both inline (exact line) and summary-only (no placement) paths.
+        let exact_ws = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let summary_ws = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
+
+        for (ws, label) in [
+            (&exact_ws, "inline card"),
+            (&summary_ws, "summary-only card"),
+        ] {
+            let value = render_value(ws, &seams)?;
+            for card in all_cards(&value) {
+                let gap_state = card.get("gap_state").and_then(Value::as_str);
+                assert!(
+                    gap_state.is_some(),
+                    "{label} must carry gap_state field: {card:?}"
+                );
+            }
+        }
+        // Also test cross-language (static_limitation) path.
+        let cross_lang_seams = [cross_language_classified_with_external_observer()];
+        let cross_ws = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(
+            "test/js/web/fetch/blob.test.ts",
+        )]);
+        let cross_value = render_value(&cross_ws, &cross_lang_seams)?;
+        for card in all_cards(&cross_value) {
+            assert!(
+                card.get("gap_state").and_then(Value::as_str).is_some(),
+                "cross-language card must carry gap_state field: {card:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_summary_reason_is_closed_vocabulary() -> Result<(), String> {
+        // Every summary_reason value must be from the closed vocabulary.
+        let seams = (1..=12)
+            .map(|index| classified(index * 10))
+            .collect::<Vec<_>>();
+        let changed_lines = seams
+            .iter()
+            .map(|seam| AgentBriefLine::new("src/pricing.rs", seam.seam.display_line()))
+            .collect::<Vec<_>>();
+        let capped_ws = AgentBriefResolvedWorkingSet::base("main", changed_lines);
+        let value = render_value(&capped_ws, &seams)?;
+        if let Some(summary_only) = value.get("summary_only").and_then(Value::as_array) {
+            for item in summary_only {
+                let reason = item
+                    .get("summary_reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                assert!(
+                    CLOSED_SUMMARY_REASONS.contains(&reason),
+                    "summary_reason '{reason}' is outside the closed vocabulary: {CLOSED_SUMMARY_REASONS:?}"
+                );
+            }
+        }
+        // Cross-language path.
+        let cross_lang_seams = [cross_language_classified_with_external_observer()];
+        let cross_ws = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(
+            "test/js/web/fetch/blob.test.ts",
+        )]);
+        let cross_value = render_value(&cross_ws, &cross_lang_seams)?;
+        if let Some(summary_only) = cross_value.get("summary_only").and_then(Value::as_array) {
+            for item in summary_only {
+                let reason = item
+                    .get("summary_reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                assert!(
+                    CLOSED_SUMMARY_REASONS.contains(&reason),
+                    "cross-language summary_reason '{reason}' is outside the closed vocabulary"
+                );
+            }
+        }
         Ok(())
     }
 }

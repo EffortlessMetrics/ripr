@@ -25,6 +25,7 @@
   "comments": [
     {
       "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88",
+      "gap_state": "actionable",
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f7fa8644fd12280",
       "kind": "predicate_boundary",
@@ -42,6 +43,7 @@
         "side": "RIGHT"
       },
       "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
         "file": "src/pricing.rs",
