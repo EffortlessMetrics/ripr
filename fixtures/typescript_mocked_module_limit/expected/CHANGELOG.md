@@ -166,3 +166,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive typescript_limitation:typescript_mock_only_observer evidence line (RIPR-SPEC-0085 PR4 named taxonomy)
+
+Command:
+`cargo xtask goldens bless typescript_mocked_module_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

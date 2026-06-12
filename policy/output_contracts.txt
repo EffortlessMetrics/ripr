@@ -1,9 +1,5 @@
 # kind|value|reason
 
-ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
-ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
-ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
-ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
 confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
 confidence_label|contradicts_static_clean|Mutation calibration confidence label.
 confidence_label|contradicts_static_gap|Mutation calibration confidence label.
@@ -34,6 +30,10 @@ flow_sink|match_arm|Flow sink value.
 flow_sink|return_value|Flow sink value.
 flow_sink|struct_field|Flow sink value.
 flow_sink|unknown|Flow sink value.
+ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
+ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
+ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
+ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
 oracle_kind|broad_error|Oracle kind value.
 oracle_kind|exact_error_variant|Oracle kind value.
 oracle_kind|exact_value|Oracle kind value.

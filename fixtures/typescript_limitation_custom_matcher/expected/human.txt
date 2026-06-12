@@ -1,0 +1,70 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_limitation_custom_matcher/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/pricing.ts:2
+
+Changed
+  after:      if (base >= 0) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::computePrice
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: incomplete_repair_packet
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  raw evidence: src/pricing.ts:2 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:0335115b owner=computePrice
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `computePrice`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `base == 0`.
+  - related test tests/pricing.test.ts:15 price is in expected range uses unknown unknown oracle: expect(...).toBeWithinRange(...)
+
+Weakness
+  - Related test reaches `computePrice` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - missing discriminator base == 0: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: computePrice
+  owner kind: function
+  changed behavior: predicate changed at src/pricing.ts:2: `if (base >= 0) {`
+  related test: tests/pricing.test.ts:15 price is in expected range
+  oracle: unknown (unknown)
+  missing discriminator: base == 0
+  suggested assertion shape: Add an exact boundary assertion for `base == 0`.
+  repair packet ready: false
+  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+Next step
+  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `base == 0`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

@@ -20,6 +20,19 @@ pub(crate) fn classify_change(
     let bun_bridge_hints = collect_related_bun_bridge_hints(&bun_array_buffer_facts);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &mock_paths);
+
+    // Collect named TS-specific limitations (RIPR-SPEC-0085 §PR4 taxonomy).
+    // These are ADDITIVE evidence lines; existing `static_limit_kind` is unchanged.
+    let named_limitations_from_static: Vec<TypeScriptNamedLimitation> = static_limit
+        .as_ref()
+        .and_then(|limit| named_limitation_for_static_limit(limit, file, line))
+        .into_iter()
+        .collect();
+    // Oracle-based limitations fire from oracle-eligible candidates even when
+    // there is no static_limit. We always compute them; they are empty when there
+    // are no oracle-eligible candidates or no qualifying assertions.
+    let named_limitations_from_oracle =
+        named_limitations_for_oracle_candidates(&related_candidates);
     let has_oracle_eligible_relation = related_candidates
         .iter()
         .any(|candidate| candidate.relation.uses_oracle());
@@ -241,6 +254,14 @@ pub(crate) fn classify_change(
     }
     if let Some(limit) = &static_limit {
         evidence.extend(limit.evidence.iter().cloned());
+    }
+    // Emit additive named limitation evidence lines (RIPR-SPEC-0085 §PR4).
+    // These lines are ADDITIVE — they do not change any existing field value.
+    for named_limit in named_limitations_from_static
+        .iter()
+        .chain(named_limitations_from_oracle.iter())
+    {
+        evidence.extend(named_limit.evidence_lines());
     }
     evidence.extend(actionability.evidence(typescript_raw_evidence_ref(
         file,

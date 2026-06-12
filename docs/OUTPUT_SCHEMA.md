@@ -524,6 +524,32 @@ The evidence-first fields are additive in schema `0.2`:
     `jest <file>`, `vitest run <file>`, `bun test <file>`,
     `node --test <file>`, `npm test -- <file>`, `pnpm test -- <file>`,
     `yarn test <file>`.
+  - `typescript_limitation: <name>` — ADDITIVE evidence line (RIPR-SPEC-0085
+    §PR4, named limitation taxonomy). Emitted only when a REAL detected
+    TypeScript construct triggers the named limitation. No existing field is
+    changed. Current emitted names and their real producers:
+    - `typescript_mock_only_observer` — fired by `StaticLimitKind::MockedModule`
+      (a related test file uses `jest.mock()`/`vi.mock()`).
+    - `typescript_import_graph_unresolved` — fired by
+      `StaticLimitKind::MissingImportGraph` (the changed line calls an imported
+      symbol whose cross-module implementation is unavailable to the syntax
+      adapter).
+    - `typescript_snapshot_discriminator_unresolved` — fired when an
+      oracle-eligible related test assertion has `OracleKind::Snapshot`
+      (`toMatchSnapshot`/`toMatchInlineSnapshot`).
+    - `typescript_custom_matcher_unresolved` — fired when an oracle-eligible
+      related test assertion has `OracleKind::Unknown` AND a non-empty matcher
+      name that is not in the recognised matcher set (real oxc-parsed AST
+      evidence).
+    Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
+    `typescript_dynamic_assertion_unresolved`, `typescript_target_unresolved`,
+    `typescript_oracle_helper_gated`.
+  - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
+    `file:line` of the real AST evidence that triggered the named limitation.
+  - `typescript_limitation_why: <name> — <why>` — additive; human-readable
+    reason why the finding is not actionable for this limitation.
+  - `typescript_limitation_repair_route: <name> → <route>` — additive; pointer
+    to the analyzer backlog slice that would resolve this limitation.
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1

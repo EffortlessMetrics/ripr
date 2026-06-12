@@ -5230,20 +5230,35 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_package_root_returns_none_fail_closed",
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_monorepo_strips_package_root_prefix",
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_takes_priority_over_runner",
-  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_normalizes_backslash_separators"
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_normalizes_backslash_separators",
+  # PR4: TS-specific named limitation taxonomy
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_import_graph_unresolved_emitted_for_missing_import_graph",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_snapshot_discriminator_emitted_for_snapshot_oracle",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_emitted_for_unrecognised_matcher",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_not_emitted_for_recognised_matcher",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_oracle_based_not_emitted_for_heuristic_only_relation"
 ]
 fixtures = [
   "fixtures/ts_pkg_discovery_single_package",
   "fixtures/ts_pkg_discovery_monorepo",
-  "fixtures/ts_pkg_discovery_no_package"
+  "fixtures/ts_pkg_discovery_no_package",
+  # PR4: named limitation fixtures (three reused, one new)
+  "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_static_limit_taxonomy",
+  "fixtures/typescript_jest_vitest_assertion_facts",
+  "fixtures/typescript_limitation_custom_matcher"
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript/package.rs",
+  "crates/ripr/src/analysis/language/typescript/static_limit.rs",
+  "crates/ripr/src/analysis/language/typescript/classifier.rs",
   "crates/ripr/src/analysis/language/typescript/mod.rs",
   "crates/ripr/src/output/typescript_preview_card.rs"
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
+  "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md",
+  "docs/OUTPUT_SCHEMA.md"
 ]
 metrics = [
   "typescript_evidence_adapter_contract_status_proposed"

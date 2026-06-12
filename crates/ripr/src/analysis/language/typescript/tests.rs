@@ -3958,3 +3958,321 @@ fn classify_change_surfaces_mocked_module_static_limit_in_missing_and_evidence()
     );
     Ok(())
 }
+
+// ── Named limitation taxonomy (RIPR-SPEC-0085 §PR4) ────────────────────────
+//
+// Each test below verifies a REAL producer for its named limitation.
+// Unit tests hand-set fixture data but each producer corresponds to a real
+// TypeScript AST condition; the full production path is exercised via the
+// fixture goldens (typescript_mocked_module_limit,
+// typescript_static_limit_taxonomy, typescript_jest_vitest_assertion_facts,
+// typescript_limitation_custom_matcher).
+
+/// `typescript_mock_only_observer` fires when `static_limit_kind == MockedModule`,
+/// which is produced by `collect_related_mock_paths` when a related test file
+/// contains `vi.mock(...)` / `jest.mock(...)` calls.
+#[test]
+fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() -> Result<(), String>
+{
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/lib.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = vec![TypeScriptTest {
+        name: "alpha".to_string(),
+        local_name: "alpha".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/lib.test.ts"),
+        line: 1,
+        body_text: "applyDiscount(50, 100)".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+        }],
+        mocks_in_file: vec!["./api".to_string()],
+        imports_in_file: Vec::new(),
+    }];
+    let finding = classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        "    if (amount >= threshold) {",
+        &[owner],
+        &tests,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // The named limitation must be present in evidence
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_mock_only_observer",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_mock_only_observer at src/lib.ts:2",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_mock_only_observer",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_mock_only_observer → analysis/typescript-mock-shape-resolution",
+    );
+    // The existing static_limit_kind field must NOT change
+    assert_eq!(
+        finding.static_limit_kind,
+        Some(StaticLimitKind::MockedModule)
+    );
+    // repair_packet_ready remains false (checked via gap_state)
+    assert_evidence_contains(&finding, "gap_state: static_limitation");
+    Ok(())
+}
+
+/// `typescript_import_graph_unresolved` fires when `static_limit_kind == MissingImportGraph`,
+/// which is produced by `static_limit_for_change` when the changed line calls
+/// an imported symbol from the owner's import list.
+#[test]
+fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -> Result<(), String>
+{
+    let owner = TypeScriptOwner {
+        name: "LabelView".to_string(),
+        file: PathBuf::from("src/label.jsx"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: vec![TypeScriptImport {
+            source: "./labels".to_string(),
+            imported: Some("normalizeLabel".to_string()),
+            local: "normalizeLabel".to_string(),
+            namespace: false,
+        }],
+    };
+    let tests = vec![TypeScriptTest {
+        name: "LabelView smoke".to_string(),
+        local_name: "LabelView smoke".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/label.test.jsx"),
+        line: 1,
+        body_text: "LabelView({ label: ' Ready ' });".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBeTruthy".to_string(),
+            argument_count: 0,
+            line: 2,
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Smoke,
+            mock_payload: None,
+            error_payload: None,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    }];
+    let finding = classify_change(
+        Path::new("src/label.jsx"),
+        2,
+        "    return normalizeLabel(props.label);",
+        &[owner],
+        &tests,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_import_graph_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_import_graph_unresolved at src/label.jsx:2",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_import_graph_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_import_graph_unresolved → analysis/typescript-import-graph",
+    );
+    assert_eq!(
+        finding.static_limit_kind,
+        Some(StaticLimitKind::MissingImportGraph)
+    );
+    assert_evidence_contains(&finding, "gap_state: static_limitation");
+    Ok(())
+}
+
+/// `typescript_snapshot_discriminator_unresolved` fires when an oracle-eligible
+/// related test has an assertion with `OracleKind::Snapshot`.
+/// Real producer: `oracle.rs::oracle_for_matcher` maps `toMatchSnapshot` /
+/// `toMatchInlineSnapshot` to `OracleKind::Snapshot`.
+#[test]
+fn named_limitation_snapshot_discriminator_emitted_for_snapshot_oracle() -> Result<(), String> {
+    let owner = test_owner("renderSummary", "src/signals.ts");
+    let tests = extract_tests(
+        Path::new("tests/signals.test.ts"),
+        r#"import { renderSummary } from "../src/signals";
+test("renders summary snapshot", () => {
+  expect(renderSummary("ready")).toMatchSnapshot();
+});
+"#,
+    );
+    let finding = classify_change(
+        Path::new("src/signals.ts"),
+        2,
+        "    return `summary:${status.trim()}`;",
+        &[owner],
+        &tests,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_snapshot_discriminator_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_snapshot_discriminator_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_snapshot_discriminator_unresolved → analysis/typescript-snapshot-oracle-hardening",
+    );
+    // static_limit_kind is unset (snapshot is not a static_limit, it is oracle-based)
+    assert_eq!(finding.static_limit_kind, None);
+    // repair_packet_ready remains false — gap_state is advisory (not static_limitation)
+    // because snapshot is not a StaticLimitKind
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.contains("gap_state: static_limitation"))
+    );
+    Ok(())
+}
+
+/// `typescript_custom_matcher_unresolved` fires when an oracle-eligible related
+/// test has an assertion with `OracleKind::Unknown` AND a non-empty matcher string.
+/// Real producer: any `expect(x).<matcher>(...)` whose matcher is not in
+/// `oracle.rs`'s recognised set returns `(OracleKind::Unknown, OracleStrength::Unknown)`.
+#[test]
+fn named_limitation_custom_matcher_emitted_for_unrecognised_matcher() -> Result<(), String> {
+    let owner = test_owner("computePrice", "src/pricing.ts");
+    let tests = extract_tests(
+        Path::new("tests/pricing.test.ts"),
+        r#"import { computePrice } from "../src/pricing";
+test("price is in expected range", () => {
+  const price = computePrice(10, 3);
+  expect(price).toBeWithinRange(20, 40);
+});
+"#,
+    );
+    let finding = classify_change(
+        Path::new("src/pricing.ts"),
+        2,
+        "    if (base >= 0) {",
+        &[owner],
+        &tests,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_custom_matcher_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_custom_matcher_unresolved — the test uses an unrecognised matcher `.toBeWithinRange(...)`",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_custom_matcher_unresolved → analysis/typescript-custom-matcher-resolution",
+    );
+    // Static limit kind is unset (custom matcher is oracle-based, not a static limit)
+    assert_eq!(finding.static_limit_kind, None);
+    Ok(())
+}
+
+/// Recognised matchers (e.g. `toBe`) must NOT trigger
+/// `typescript_custom_matcher_unresolved`.
+#[test]
+fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Result<(), String> {
+    let owner = test_owner("applyDiscount", "src/lib.ts");
+    let test = direct_test_with_assertion(
+        "discount test",
+        "applyDiscount(100, 100)",
+        "toBe",
+        1,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    );
+    let finding = classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        "    if (amount >= threshold) {",
+        &[owner],
+        &[test],
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_custom_matcher_unresolved",
+    );
+    Ok(())
+}
+
+/// Heuristic-only (name/proximity) related tests must NOT trigger oracle-based
+/// named limitations, because heuristic relations are not oracle-eligible.
+#[test]
+fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Result<(), String> {
+    // A heuristic (test-name match) test with snapshot assertion — must NOT
+    // trigger typescript_snapshot_discriminator_unresolved because the relation
+    // is not oracle-eligible.
+    let owner = test_owner("renderSummary", "src/signals.ts");
+    let test = TypeScriptTest {
+        name: "renderSummary snapshot".to_string(), // name match only
+        local_name: "renderSummary snapshot".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/signals.test.ts"),
+        line: 1,
+        // No call to renderSummary( in body_text → heuristic-only name relation
+        body_text: "expect(getOutput()).toMatchSnapshot();".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toMatchSnapshot".to_string(),
+            argument_count: 0,
+            line: 2,
+            oracle_kind: OracleKind::Snapshot,
+            oracle_strength: OracleStrength::Medium,
+            mock_payload: None,
+            error_payload: None,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/signals.ts"),
+        2,
+        "    return `summary:${status.trim()}`;",
+        &[owner],
+        &[test],
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // Heuristic relation: no oracle-eligible relation → no snapshot limitation
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_snapshot_discriminator_unresolved",
+    );
+    Ok(())
+}
