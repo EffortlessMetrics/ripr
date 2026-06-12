@@ -5005,3 +5005,25 @@ metrics = [
   "unit_test_pass_rate"
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0078"
+name = "LSP top-limitation command"
+spec = "docs/specs/RIPR-SPEC-0078-lsp-top-limitation-command.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_no_snapshot_returns_no_limitation",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_with_rejection_returns_limitation",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_registered_in_capabilities"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/backend.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0078-lsp-top-limitation-command.md"
+]
+metrics = [
+  "unit_test_pass_rate"
+]
+

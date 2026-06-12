@@ -18,10 +18,10 @@ use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_dura
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
-    COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
-    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
-    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
-    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_TOP_LIMITATION_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND,
+    COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND,
+    COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
+    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
@@ -70,6 +70,7 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
             COLLECT_EVIDENCE_CONTEXT_COMMAND,
             COLLECT_WORKSPACE_STATUS_COMMAND,
             COLLECT_REPAIR_PACKET_COMMAND,
+            COLLECT_TOP_LIMITATION_COMMAND,
         ]
     );
     Ok(())
@@ -149,6 +150,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         assert_eq!(
             initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][4],
             COLLECT_REPAIR_PACKET_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][5],
+            COLLECT_TOP_LIMITATION_COMMAND
         );
         assert_eq!(
             initialize["result"]["capabilities"]["hoverProvider"],
@@ -5541,8 +5546,8 @@ fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<
     };
     assert_eq!(
         provider.commands.len(),
-        5,
-        "expected 5 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET), got {:?}",
+        6,
+        "expected 6 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION), got {:?}",
         provider.commands
     );
     assert!(
@@ -5551,6 +5556,154 @@ fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<
             .iter()
             .any(|command| command == COLLECT_REPAIR_PACKET_COMMAND),
         "expected collectRepairPacket in registered commands, got {:?}",
+        provider.commands
+    );
+    Ok(())
+}
+
+#[test]
+fn execute_command_collect_top_limitation_no_snapshot_returns_no_limitation() -> Result<(), String>
+{
+    // When there is no snapshot yet the command must return Some(value) with
+    // status == "no_limitation" — not null, which is a meaningful "no blockers" answer.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_TOP_LIMITATION_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| {
+                "expected Some(value) with status no_limitation, got null".to_string()
+            })?;
+
+        assert_eq!(
+            value["schema_version"], "0.1",
+            "sentinel must carry schema_version"
+        );
+        assert_eq!(value["tool"], "ripr", "sentinel must carry tool");
+        assert_eq!(
+            value["kind"], "top_limitation",
+            "sentinel must carry kind=top_limitation"
+        );
+        assert_eq!(
+            value["status"], "no_limitation",
+            "no snapshot must yield status=no_limitation, got {value}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_top_limitation_with_rejection_returns_limitation() -> Result<(), String>
+{
+    // A snapshot with a GapArtifactRejection must return the full limitation packet
+    // with all required fields and no mutation-runtime vocabulary.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut diagnostics =
+            sample_workspace_diagnostics(PathBuf::from("/workspace"), uri, Vec::new(), Vec::new());
+        // Inject a DisabledLanguage rejection so sample_sources is non-empty.
+        diagnostics
+            .snapshot
+            .gap_artifact_rejections
+            .push(GapArtifactRejection::DisabledLanguage(
+                "typescript".to_string(),
+            ));
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_TOP_LIMITATION_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let limitation = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected limitation packet, got null".to_string())?;
+
+        assert_eq!(limitation["schema_version"], "0.1");
+        assert_eq!(limitation["tool"], "ripr");
+        assert_eq!(limitation["kind"], "top_limitation");
+        assert!(
+            limitation["limitation_category"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "limitation_category must be non-empty, got {limitation}"
+        );
+        assert!(
+            limitation["repair_route"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "repair_route must be non-empty, got {limitation}"
+        );
+        assert!(
+            limitation["why_not_actionable"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "why_not_actionable must be non-empty, got {limitation}"
+        );
+        assert!(
+            limitation["non_claims"].as_array().is_some(),
+            "non_claims must be an array, got {limitation}"
+        );
+        assert_eq!(
+            limitation["limits_note"], "Static evidence only; advisory, not a gate decision.",
+            "limits_note must be present"
+        );
+        // No mutation-runtime vocabulary in the packet.
+        let limitation_str = limitation.to_string().to_ascii_lowercase();
+        let banned: Vec<String> = vec![
+            std::iter::once('k').chain("illed".chars()).collect(),
+            std::iter::once('s').chain("urvived".chars()).collect(),
+            std::iter::once('p').chain("roven".chars()).collect(),
+            std::iter::once('a').chain("dequate".chars()).collect(),
+            std::iter::once('u').chain("ntested".chars()).collect(),
+        ];
+        for term in &banned {
+            assert!(
+                !limitation_str.contains(term.as_str()),
+                "limitation packet must not contain mutation-runtime term '{term}'"
+            );
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_top_limitation_registered_in_capabilities() -> Result<(), String> {
+    let Some(provider) = initialize_result().capabilities.execute_command_provider else {
+        return Err("expected execute command provider".to_string());
+    };
+    assert_eq!(
+        provider.commands.len(),
+        6,
+        "expected 6 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION), got {:?}",
+        provider.commands
+    );
+    assert!(
+        provider
+            .commands
+            .iter()
+            .any(|command| command == COLLECT_TOP_LIMITATION_COMMAND),
+        "expected collectTopLimitation in registered commands, got {:?}",
         provider.commands
     );
     Ok(())

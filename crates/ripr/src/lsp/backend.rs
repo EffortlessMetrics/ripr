@@ -12,7 +12,7 @@ use super::hover::{
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
-    COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
+    COLLECT_TOP_LIMITATION_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
@@ -571,6 +571,9 @@ impl LanguageServer for Backend {
         if params.command == COLLECT_REPAIR_PACKET_COMMAND {
             return Ok(self.collect_repair_packet(&params.arguments));
         }
+        if params.command == COLLECT_TOP_LIMITATION_COMMAND {
+            return Ok(self.collect_top_limitation());
+        }
         Ok(None)
     }
 }
@@ -828,6 +831,57 @@ fn workspace_status_rejection_repair(
     }
 }
 
+/// Extract the String payload from rejection variants that carry one.
+/// Unit and `&str`-reason variants emit an empty list.
+/// gap_id-bearing sample sources are a deferred follow-up — the rejection does
+/// not carry a gap_id.
+fn limitation_sample_sources(
+    rejection: &super::gap_artifacts::GapArtifactRejection,
+) -> Vec<String> {
+    use super::gap_artifacts::GapArtifactRejection;
+    match rejection {
+        GapArtifactRejection::DisabledLanguage(s)
+        | GapArtifactRejection::MalformedCommandPayload(s)
+        | GapArtifactRejection::OutOfWorkspacePath(s)
+        | GapArtifactRejection::UnavailableLanguage(s)
+        | GapArtifactRejection::UnsupportedKind(s)
+        | GapArtifactRejection::UnsupportedSchema(s)
+        | GapArtifactRejection::UnsupportedStaticLimitKind(s)
+        | GapArtifactRejection::WrongRoot(s) => vec![s.clone()],
+        GapArtifactRejection::MalformedArtifact(_)
+        | GapArtifactRejection::MissingIdentity
+        | GapArtifactRejection::StaleArtifact => vec![],
+    }
+}
+
+/// Per-category static non-claims table.
+/// Vocabulary: approved static-exposure terms only (exposed/weakly_exposed/etc.).
+fn limitation_non_claims(category: &str) -> Vec<&'static str> {
+    match category {
+        "disabled_language" | "unavailable_language" => vec![
+            "not a Rust repair packet",
+            "does not indicate the behavior is reachable",
+            "does not indicate tests are absent",
+        ],
+        "wrong_root" | "out_of_workspace_path" => vec![
+            "not a repair packet",
+            "path resolution required before exposure can be assessed",
+        ],
+        "stale_artifact"
+        | "missing_identity"
+        | "malformed_artifact"
+        | "malformed_command_payload" => vec![
+            "not a repair packet",
+            "artifact regeneration required before exposure can be assessed",
+        ],
+        "unsupported_schema" | "unsupported_kind" | "unsupported_static_limit_kind" => vec![
+            "not a repair packet",
+            "ripr upgrade required before exposure can be assessed",
+        ],
+        _ => vec!["not a repair packet"],
+    }
+}
+
 fn collect_gap_record_context_packet(
     root: &Path,
     args: &serde_json::Map<String, serde_json::Value>,
@@ -879,6 +933,42 @@ impl Backend {
         // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
         let ledger_path = absolute_context_path(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
         collect_repair_packet_from_ledger(&ledger_path, gap_id_arg.as_deref())
+    }
+
+    fn collect_top_limitation(&self) -> Option<LSPAny> {
+        let snapshot = self.latest_analysis.lock().ok()?.clone();
+        let Some(snapshot) = snapshot else {
+            // No snapshot yet — return the "no blockers" sentinel, not null.
+            return Some(serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "kind": "top_limitation",
+                "status": "no_limitation",
+            }));
+        };
+        let rejection = snapshot.gap_artifact_rejections.first()?;
+        let category = rejection.as_str();
+        let (repair_route, why_not_actionable) = workspace_status_rejection_repair(rejection);
+        // sample_sources: emit the String payload if the variant carries one.
+        // gap_id-bearing sample sources are a deferred follow-up — the
+        // GapArtifactRejection enum does not carry a gap_id.
+        let sample_sources = limitation_sample_sources(rejection);
+        // unlock_condition is honest: the same analyzer route that must be
+        // implemented to remove the limitation.
+        let unlock_condition = repair_route;
+        let non_claims = limitation_non_claims(category);
+        Some(serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "top_limitation",
+            "limitation_category": category,
+            "repair_route": repair_route,
+            "why_not_actionable": why_not_actionable,
+            "sample_sources": sample_sources,
+            "unlock_condition": unlock_condition,
+            "non_claims": non_claims,
+            "limits_note": "Static evidence only; advisory, not a gate decision.",
+        }))
     }
 }
 

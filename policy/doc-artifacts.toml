@@ -232,3 +232,10 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0077-lsp-repair-packet-command.md"
 status = "proposed"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0078"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0078-lsp-top-limitation-command.md"
+status = "proposed"
+owner = "product-swarm"
