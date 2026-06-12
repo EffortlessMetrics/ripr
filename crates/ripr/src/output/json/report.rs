@@ -52,6 +52,35 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when preview-language files were
+    // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
+    if !output.preview_language_advisories.is_empty() {
+        out.push_str(",\n  \"preview_languages\": [\n");
+        let advisories = &output.preview_language_advisories;
+        for (idx, adv) in advisories.iter().enumerate() {
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &adv.language, true);
+            number_field(&mut out, 3, "file_count", adv.file_count, true);
+            array_field(&mut out, 3, "sample_paths", &adv.sample_paths, true);
+            out.push_str(&format!(
+                "      \"enabled\": {},\n      \"analyzed\": {},\n",
+                adv.enabled, adv.enabled
+            ));
+            field(&mut out, 3, "category", "preview_language_advisory", true);
+            let why = if adv.enabled {
+                "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+            } else {
+                "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+            };
+            field(&mut out, 3, "why", why, false);
+            out.push_str("    }");
+            if idx + 1 != advisories.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
     if let Some(report) = finding_alignment.as_ref() {
         out.push_str(",\n");
         out.push_str("  \"finding_alignment\": ");

@@ -234,6 +234,7 @@ mod tests {
             base: None,
             summary: Summary::default(),
             findings: vec![],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -300,6 +301,7 @@ mod tests {
                 owner_kind: None,
                 static_limit_kind: None,
             }],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -356,6 +358,7 @@ mod tests {
                 owner_kind: None,
                 static_limit_kind: None,
             }],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -570,6 +573,7 @@ mod tests {
                 owner_kind: None,
                 static_limit_kind: None,
             }],
+            preview_language_advisories: Vec::new(),
         }
     }
 

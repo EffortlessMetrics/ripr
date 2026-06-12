@@ -85,6 +85,7 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         base: defaults.base,
         summary: Summary::default(),
         findings,
+        preview_language_advisories: Vec::new(),
     }
 }
 

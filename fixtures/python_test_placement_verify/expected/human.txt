@@ -125,3 +125,6 @@ Python repair card (preview/advisory)
 
 Next step
   Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching "positive required"`.
+
+
+Note: 2 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

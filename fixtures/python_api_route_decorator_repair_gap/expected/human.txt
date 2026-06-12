@@ -64,3 +64,6 @@ Python repair card (preview/advisory)
 
 Next step
   Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `response.status_code == 422`.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

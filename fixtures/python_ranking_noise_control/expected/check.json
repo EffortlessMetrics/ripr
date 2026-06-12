@@ -314,5 +314,16 @@
       "owner_kind": "function",
       "static_limit_kind": "dynamic_dispatch"
     }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 4,
+      "sample_paths": ["src/a_dynamic.py", "src/b_observed.py", "src/c_discount.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
   ]
 }

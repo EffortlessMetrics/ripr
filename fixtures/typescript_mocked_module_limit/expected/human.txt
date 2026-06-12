@@ -64,3 +64,6 @@ TypeScript preview card (advisory)
 
 Next step
   TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

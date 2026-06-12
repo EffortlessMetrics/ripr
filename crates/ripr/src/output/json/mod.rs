@@ -148,6 +148,7 @@ mod tests {
                     "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
                 ),
             ],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -263,6 +264,7 @@ mod tests {
                     vec![],
                 ),
             ],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -424,6 +426,7 @@ mod tests {
                     vec![],
                 ),
             ],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);
@@ -920,6 +923,7 @@ mod tests {
             base,
             summary: Summary::default(),
             findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
         }
     }
 
@@ -988,6 +992,7 @@ mod tests {
             base: None,
             summary: Summary::default(),
             findings: vec![finding],
+            preview_language_advisories: Vec::new(),
         };
 
         let rendered = render(&output);

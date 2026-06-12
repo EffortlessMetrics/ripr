@@ -790,6 +790,7 @@ mod tests {
             base: Some("origin/main".to_string()),
             summary: Summary::default(),
             findings,
+            preview_language_advisories: Vec::new(),
         }
     }
 

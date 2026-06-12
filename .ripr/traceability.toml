@@ -5116,3 +5116,39 @@ metrics = [
   "lsp_receipt_status_command_status_proposed"
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0082"
+name = "preview-language disclosure"
+spec = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
+tests = [
+  "crates/ripr/src/output/human.rs::tests::render_emits_preview_disclosure_when_typescript_files_in_scope",
+  "crates/ripr/src/output/human.rs::tests::render_emits_preview_disclosure_when_python_files_in_scope",
+  "crates/ripr/src/output/human.rs::tests::render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled",
+  "crates/ripr/src/output/human.rs::tests::render_omits_preview_disclosure_for_pure_rust_scope",
+  "crates/ripr/src/output/human.rs::tests::render_preview_disclosure_count_matches_advisory_file_count",
+  "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_preview_advisory_when_ts_files_present",
+  "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_ts_diff_with_rust_only_config",
+  "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff",
+  "crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope",
+  "crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
+  "crates/ripr/src/analysis/workspace/discover.rs",
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/app/check.rs",
+  "crates/ripr/src/app/check/output_builder.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/diff_report.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "preview_language_disclosure_status_proposed"
+]
+

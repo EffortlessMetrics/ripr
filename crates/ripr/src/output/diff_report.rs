@@ -69,6 +69,33 @@ pub(crate) struct DiffSummary {
     pub(crate) unknown: usize,
 }
 
+/// Advisory disclosure for one preview-language adapter that processed files
+/// in the diff scope. Serialized into the JSON diff report when present.
+///
+/// An empty `preview_languages` array means only stable (Rust) files were in
+/// scope. A non-empty array means at least one preview-language file was
+/// present — an empty `changed_seams` together with a non-empty
+/// `preview_languages` is NOT a clean Rust-grade result.
+///
+/// See RIPR-SPEC-0082.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct DiffPreviewLanguageAdvisory {
+    /// Stable language wire string (e.g. `"typescript"`, `"python"`).
+    pub(crate) language: String,
+    /// Number of files routed to this preview adapter.
+    pub(crate) file_count: usize,
+    /// Up to three sample file paths (normalized, forward-slash).
+    pub(crate) sample_paths: Vec<String>,
+    /// Whether the preview adapter was enabled (ran) for this analysis.
+    pub(crate) enabled: bool,
+    /// Whether the files were analyzed (mirrors `enabled`).
+    pub(crate) analyzed: bool,
+    /// Advisory category tag.
+    pub(crate) category: &'static str,
+    /// Human-readable advisory note.
+    pub(crate) why: &'static str,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct DiffReport {
     pub(crate) schema_version: String,
@@ -84,6 +111,13 @@ pub(crate) struct DiffReport {
     pub(crate) summary: DiffSummary,
     pub(crate) changed_files: Vec<DiffChangedFile>,
     pub(crate) changed_seams: Vec<DiffChangedSeam>,
+    /// Advisory disclosures for preview-language files in the analyzed scope.
+    ///
+    /// Empty when only Rust (stable) files were in scope. Non-empty entries
+    /// mean the diff contained preview-language files and empty changed_seams
+    /// is NOT a clean Rust-grade result. See RIPR-SPEC-0082.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) preview_languages: Vec<DiffPreviewLanguageAdvisory>,
 }
 
 pub(crate) fn build_diff_report(
@@ -159,6 +193,23 @@ pub(crate) fn build_diff_report(
         },
         changed_files,
         changed_seams,
+        preview_languages: output
+            .preview_language_advisories
+            .iter()
+            .map(|advisory| DiffPreviewLanguageAdvisory {
+                language: advisory.language.clone(),
+                file_count: advisory.file_count,
+                sample_paths: advisory.sample_paths.clone(),
+                enabled: advisory.enabled,
+                analyzed: advisory.enabled,
+                category: "preview_language_advisory",
+                why: if advisory.enabled {
+                    "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+                } else {
+                    "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+                },
+            })
+            .collect(),
     }
 }
 
@@ -245,6 +296,7 @@ mod tests {
                     ..Summary::default()
                 },
                 findings: vec![sample_finding()],
+                preview_language_advisories: Vec::new(),
             },
             "origin/main",
             "HEAD",
@@ -339,5 +391,82 @@ mod tests {
             owner_kind: None,
             static_limit_kind: None,
         }
+    }
+
+    // RIPR-SPEC-0082 tests: preview-language JSON disclosure
+    #[test]
+    fn diff_report_includes_preview_languages_when_ts_files_in_scope() -> Result<(), String> {
+        use crate::analysis::PreviewLanguageAdvisory;
+        let report = build_diff_report(
+            &CheckOutput {
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary::default(),
+                findings: vec![],
+                preview_language_advisories: vec![PreviewLanguageAdvisory {
+                    language: "typescript".to_string(),
+                    file_count: 2,
+                    sample_paths: vec!["src/discount.ts".to_string()],
+                    enabled: true,
+                }],
+            },
+            "origin/main",
+            "HEAD",
+            vec![],
+            "target/ripr/receipts/test.json".to_string(),
+        );
+
+        let json = render_diff_report_json(&report)?;
+        assert!(
+            json.contains(r#""preview_languages""#),
+            "expected preview_languages in JSON; got:\n{json}"
+        );
+        assert!(
+            json.contains(r#""language": "typescript""#),
+            "expected language=typescript; got:\n{json}"
+        );
+        assert!(
+            json.contains(r#""file_count": 2"#),
+            "expected file_count=2; got:\n{json}"
+        );
+        assert!(
+            json.contains(r#""category": "preview_language_advisory""#),
+            "expected category; got:\n{json}"
+        );
+        assert!(
+            json.contains("preview adapter; advisory"),
+            "expected why note; got:\n{json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn diff_report_omits_preview_languages_for_pure_rust_scope() -> Result<(), String> {
+        let report = build_diff_report(
+            &CheckOutput {
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary::default(),
+                findings: vec![],
+                preview_language_advisories: Vec::new(),
+            },
+            "origin/main",
+            "HEAD",
+            vec![],
+            "target/ripr/receipts/test.json".to_string(),
+        );
+
+        let json = render_diff_report_json(&report)?;
+        assert!(
+            !json.contains("preview_languages"),
+            "pure-Rust scope must not emit preview_languages in JSON; got:\n{json}"
+        );
+        Ok(())
     }
 }

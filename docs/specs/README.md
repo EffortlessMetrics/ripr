@@ -92,3 +92,4 @@ observable behavior.
 | [RIPR-SPEC-0079](RIPR-SPEC-0079-canonical-receipt-command-contract.md) | proposed | Canonical receipt command contract |
 | [RIPR-SPEC-0080](RIPR-SPEC-0080-route-quality-standalone-report.md) | proposed | Route-quality standalone report |
 | [RIPR-SPEC-0081](RIPR-SPEC-0081-lsp-receipt-status-command.md) | proposed | LSP receipt-status command |
+| [RIPR-SPEC-0082](RIPR-SPEC-0082-preview-language-disclosure.md) | proposed | Preview-language disclosure |

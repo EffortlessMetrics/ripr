@@ -265,3 +265,11 @@ path = "docs/specs/RIPR-SPEC-0081-lsp-receipt-status-command.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "LSP receipt-status command under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0082"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure for preview-language content in diff scope; addresses #1111 silent empty-result gap; no separate proposal artifact."

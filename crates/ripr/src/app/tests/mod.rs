@@ -74,6 +74,7 @@ fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         base: Some("origin/main".to_string()),
         summary: Summary::default(),
         findings,
+        preview_language_advisories: Vec::new(),
     }
 }
 

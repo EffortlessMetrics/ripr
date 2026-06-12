@@ -6,5 +6,16 @@
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":0,"findings":0,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 1,
+      "sample_paths": ["src/discount.ts"],
+      "enabled": false,
+      "analyzed": false,
+      "category": "preview_language_advisory",
+      "why": "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+    }
   ]
 }

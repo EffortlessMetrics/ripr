@@ -1451,6 +1451,7 @@ weakly_gripped = "note"
             base: Some("origin/main".to_string()),
             summary: Summary::default(),
             findings: vec![sample_finding()],
+            preview_language_advisories: Vec::new(),
         }
     }
 

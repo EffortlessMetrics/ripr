@@ -16,7 +16,7 @@ pub use context::{collect_context, collect_context_with_input};
 pub(crate) use explain::explain_finding_with_config;
 pub use explain::{explain_finding, explain_finding_with_input};
 
-use crate::analysis::AnalysisMode;
+use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
@@ -118,6 +118,14 @@ pub struct CheckOutput {
     pub summary: Summary,
     /// Probe-level findings.
     pub findings: Vec<Finding>,
+    /// Advisory records for preview-language files in the analyzed scope.
+    ///
+    /// Non-empty only when TypeScript, JavaScript, or Python files were
+    /// present in the diff or repo. An empty result with non-empty advisories
+    /// is NOT a clean Rust-grade result — it means the preview adapter
+    /// analyzed the scope but found nothing actionable at this time.
+    /// See RIPR-SPEC-0082.
+    pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

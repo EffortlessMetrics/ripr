@@ -465,5 +465,16 @@
       "owner_kind": "function",
       "static_limit_kind": "metaprogramming"
     }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 4,
+      "sample_paths": ["src/decorated.tsx", "src/dispatch.ts", "src/label.jsx"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
   ]
 }

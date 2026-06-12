@@ -5,9 +5,20 @@ use super::language::TypeScriptAdapter;
 use super::language::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, RustAdapter,
 };
-use super::{AnalysisOptions, AnalysisResult, diff, sort, summary};
+use super::{AnalysisOptions, AnalysisResult, PreviewLanguageAdvisory, diff, sort, summary};
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
+
+/// Whether a language id corresponds to a preview adapter.
+///
+/// Only Rust is stable. TypeScript/JavaScript and Python are preview per
+/// RIPR-SPEC-0026.
+fn is_preview_language(language: LanguageId) -> bool {
+    matches!(
+        language,
+        LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Python | LanguageId::Perl
+    )
+}
 
 pub(crate) fn run_diff_pipeline_with_oracle_policy(
     options: &AnalysisOptions,
@@ -36,12 +47,21 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         total_changed_files += result.changed_files;
     }
 
+    // Detect preview-language files in the diff regardless of whether the
+    // adapter is enabled, so an empty result is never silently presented as a
+    // clean Rust-grade result for a TypeScript/JavaScript/Python change
+    // (RIPR-SPEC-0082, #1111). Detection is pure path routing — it does not
+    // require the adapter to be enabled.
+    let preview_paths: Vec<&diff::ChangedFile> = changed_files.iter().collect();
+    let preview_advisories = detect_preview_advisories(languages, preview_paths.into_iter());
+
     sort::sort_findings(&mut findings);
     let summary_result = summary::summarize_findings(total_changed_files, &findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
         findings,
+        preview_language_advisories: preview_advisories,
     })
 }
 
@@ -65,13 +85,116 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         total_production_files += result.production_files;
     }
 
+    // Detect preview-language files anywhere in the workspace regardless of
+    // adapter enablement, so a repo-scope clean result is never silently
+    // presented as Rust-grade clean when TypeScript/JavaScript/Python files
+    // exist but are not analyzed (RIPR-SPEC-0082, #1111).
+    let preview_advisories = detect_repo_preview_advisories(&options.root, languages);
+
     sort::sort_findings(&mut findings);
     let summary_result = summary::summarize_findings(total_production_files, &findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
         findings,
+        preview_language_advisories: preview_advisories,
     })
+}
+
+/// Build repo-scope preview advisories by walking the workspace for
+/// preview-language files, grouped by language, regardless of enablement.
+fn detect_repo_preview_advisories(
+    root: &std::path::Path,
+    enabled: &[LanguageId],
+) -> Vec<PreviewLanguageAdvisory> {
+    let discovered = super::workspace::discover_preview_language_files(root);
+    let mut advisories: Vec<PreviewLanguageAdvisory> = Vec::new();
+    for language in PREVIEW_LANGUAGE_ORDER {
+        if !language.is_available() {
+            continue;
+        }
+        let files: Vec<String> = discovered
+            .iter()
+            .filter(|(lang, _)| lang == language)
+            .map(|(_, path)| path.to_string_lossy().replace('\\', "/"))
+            .collect();
+        if files.is_empty() {
+            continue;
+        }
+        let file_count = files.len();
+        let sample_paths: Vec<String> = files.into_iter().take(3).collect();
+        advisories.push(PreviewLanguageAdvisory {
+            language: language.as_str().to_string(),
+            file_count,
+            sample_paths,
+            enabled: enabled.contains(language),
+        });
+    }
+    advisories
+}
+
+/// Languages that route through a compiled preview adapter, in stable order.
+const PREVIEW_LANGUAGE_ORDER: &[LanguageId] = &[
+    LanguageId::TypeScript,
+    LanguageId::JavaScript,
+    LanguageId::Python,
+];
+
+/// Build preview-language advisories by routing a stream of paths, regardless
+/// of whether the adapter is enabled.
+///
+/// Each path is routed via `analysis::language::route`. Files that route to a
+/// compiled preview language (TypeScript/JavaScript or Python) are grouped by
+/// language. For each preview language with at least one file, one advisory is
+/// emitted. `enabled` is `true` when the language is present in `enabled`
+/// (the active `[languages]` list), `false` otherwise — so a TypeScript change
+/// analyzed under the default Rust-only config still breaks the silent
+/// empty-result honesty gap (RIPR-SPEC-0082, #1111).
+///
+/// Only compiled-in preview adapters are reported (`LanguageId::is_available`);
+/// a preview language whose feature is not built is skipped, since the binary
+/// could not analyze it under any config.
+fn detect_preview_advisories<'a, I>(
+    enabled: &[LanguageId],
+    paths: I,
+) -> Vec<PreviewLanguageAdvisory>
+where
+    I: Iterator<Item = &'a diff::ChangedFile>,
+{
+    let mut counts: Vec<(LanguageId, usize, Vec<String>)> = Vec::new();
+    for changed in paths {
+        let Some(language) = super::language::route(&changed.path) else {
+            continue;
+        };
+        if !is_preview_language(language) || !language.is_available() {
+            continue;
+        }
+        let normalized = changed.path.to_string_lossy().replace('\\', "/");
+        match counts.iter_mut().find(|(lang, _, _)| *lang == language) {
+            Some((_, count, samples)) => {
+                *count += 1;
+                if samples.len() < 3 {
+                    samples.push(normalized);
+                }
+            }
+            None => counts.push((language, 1, vec![normalized])),
+        }
+    }
+
+    let mut advisories: Vec<PreviewLanguageAdvisory> = Vec::new();
+    for language in PREVIEW_LANGUAGE_ORDER {
+        if let Some((_, file_count, sample_paths)) =
+            counts.iter().find(|(lang, _, _)| lang == language)
+        {
+            advisories.push(PreviewLanguageAdvisory {
+                language: language.as_str().to_string(),
+                file_count: *file_count,
+                sample_paths: sample_paths.clone(),
+                enabled: enabled.contains(language),
+            });
+        }
+    }
+    advisories
 }
 
 #[cfg(feature = "lang-typescript")]
@@ -288,6 +411,161 @@ index 0000000..1111111 100644
 
         assert!(result.findings.is_empty());
         assert_eq!(result.summary.changed_rust_files, 2);
+        Ok(())
+    }
+
+    // RIPR-SPEC-0082: preview-language advisory detection tests
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn diff_pipeline_emits_preview_advisory_when_ts_files_present() -> Result<(), String> {
+        let root = temp_root("spec-0082-ts-advisory")?;
+        let diff_file = root.join("ts.diff");
+        write(
+            &diff_file,
+            r#"diff --git a/src/discount.ts b/src/discount.ts
+index 0000000..1111111 100644
+--- a/src/discount.ts
++++ b/src/discount.ts
+@@ -1,0 +1,3 @@
++export function discount(amount: number, threshold: number): number {
++  return amount >= threshold ? amount - 10 : amount;
++}
+"#,
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: true,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::TypeScript],
+        )?;
+
+        // The advisory must be present with correct language and non-zero count.
+        if result.preview_language_advisories.is_empty() {
+            return Err(
+                "expected preview_language_advisories to be non-empty for TS diff".to_string(),
+            );
+        }
+        let advisory = &result.preview_language_advisories[0];
+        if advisory.language != "typescript" {
+            return Err(format!(
+                "expected language=typescript, got {}",
+                advisory.language
+            ));
+        }
+        if advisory.file_count == 0 {
+            return Err("expected file_count > 0 in preview advisory".to_string());
+        }
+        if !advisory.enabled {
+            return Err("expected enabled=true when TypeScript is in the enabled list".to_string());
+        }
+        Ok(())
+    }
+
+    // RIPR-SPEC-0082 / #1111 default case: a TypeScript diff with NO ripr.toml
+    // (only Rust enabled) must STILL produce a preview advisory, marked
+    // `enabled == false`, so the silent empty-result honesty gap is closed.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn diff_pipeline_emits_not_enabled_advisory_for_ts_diff_with_rust_only_config()
+    -> Result<(), String> {
+        let root = temp_root("spec-0082-ts-not-enabled")?;
+        let diff_file = root.join("ts.diff");
+        write(
+            &diff_file,
+            r#"diff --git a/src/utils.ts b/src/utils.ts
+index 0000000..1111111 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,0 +1,3 @@
++export function add(a: number, b: number): number {
++  return a === 0 ? b : a + b;
++}
+"#,
+        )?;
+
+        // ONLY Rust enabled — the default config. TypeScript is NOT enabled.
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: true,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+        )?;
+
+        if result.preview_language_advisories.is_empty() {
+            return Err(
+                "expected a preview advisory for a TS diff even when only Rust is enabled (#1111)"
+                    .to_string(),
+            );
+        }
+        let advisory = &result.preview_language_advisories[0];
+        if advisory.language != "typescript" {
+            return Err(format!(
+                "expected language=typescript, got {}",
+                advisory.language
+            ));
+        }
+        if advisory.file_count != 1 {
+            return Err(format!(
+                "expected file_count=1, got {}",
+                advisory.file_count
+            ));
+        }
+        if advisory.enabled {
+            return Err(
+                "expected enabled=false when TypeScript is NOT in the enabled list".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_pipeline_no_preview_advisory_for_rust_only_diff() -> Result<(), String> {
+        let root = temp_root("spec-0082-rust-only")?;
+        fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create src dir failed: {err}"))?;
+        let diff_file = root.join("rust.diff");
+        write(
+            &diff_file,
+            r#"diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,0 +1,3 @@
++pub fn price(amount: i32, threshold: i32) -> i32 {
++    if amount >= threshold { amount - 10 } else { amount }
++}
+"#,
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: true,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+        )?;
+
+        if !result.preview_language_advisories.is_empty() {
+            return Err(format!(
+                "expected no preview advisories for Rust-only diff, got: {:?}",
+                result.preview_language_advisories
+            ));
+        }
         Ok(())
     }
 

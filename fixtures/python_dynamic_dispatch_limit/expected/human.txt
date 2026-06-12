@@ -35,3 +35,6 @@ Weakness
 
 Stop reasons:
   - dynamic_dispatch_unresolved
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

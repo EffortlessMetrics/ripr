@@ -5,3 +5,5 @@ root: fixtures/python_generated_file_excluded/input
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
 No diff-derived mutation exposure probes found.
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

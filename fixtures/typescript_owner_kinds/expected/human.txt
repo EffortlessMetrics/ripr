@@ -249,3 +249,6 @@ TypeScript preview card (advisory)
 
 Next step
   TypeScript preview advisory: related module-initializer observer reaches `DEFAULT_RATE` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

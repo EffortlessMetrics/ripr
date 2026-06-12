@@ -55,10 +55,47 @@ pub struct AnalysisOptions {
     pub include_unchanged_tests: bool,
 }
 
+/// Advisory record for one compiled preview-language adapter whose files are
+/// present in the analyzed scope.
+///
+/// Produced by the pipeline when TypeScript, JavaScript, or Python files are
+/// present in the diff or repo — regardless of whether the adapter is
+/// `enabled` in `ripr.toml` and regardless of whether any findings were
+/// emitted. The count and sample paths come from real path routing
+/// (`analysis::language::route`); they are never fabricated.
+///
+/// The `enabled` flag distinguishes the two honesty cases per
+/// RIPR-SPEC-0082:
+///
+/// - `enabled == true` — the adapter ran; an empty result is advisory and may
+///   be incomplete, not a Rust-grade clean result.
+/// - `enabled == false` — the adapter is preview and NOT enabled, so these
+///   files were not analyzed at all; the empty result must not be read as
+///   clean.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewLanguageAdvisory {
+    /// Stable language wire string (e.g. `"typescript"`, `"python"`).
+    pub language: String,
+    /// Number of files routed to this preview adapter.
+    pub file_count: usize,
+    /// Up to three sample file paths (normalized, forward-slash).
+    pub sample_paths: Vec<String>,
+    /// Whether this preview adapter was enabled (ran) for this analysis.
+    ///
+    /// `false` means the preview-language files were detected in scope but not
+    /// analyzed because the adapter is not enabled in `ripr.toml`.
+    pub enabled: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
     pub summary: Summary,
     pub findings: Vec<Finding>,
+    /// Advisory records for preview-language files in the analyzed scope.
+    ///
+    /// Empty when only Rust (stable) files are in scope. Non-empty only when
+    /// at least one file routed to a preview adapter (TypeScript/JS or Python).
+    pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.

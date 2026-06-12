@@ -5,3 +5,5 @@ root: fixtures/typescript_disabled/input
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
 No diff-derived mutation exposure probes found.
+
+Note: this diff contains 1 Typescript(s). The Typescript adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.

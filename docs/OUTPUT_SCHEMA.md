@@ -611,6 +611,48 @@ The evidence-first fields are additive in schema `0.2`:
   `opaque_custom_assertion_helper`, `property_based_test`,
   `unresolved_pytest_fixture`, or `unsupported_syntax`.
 
+### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
+
+Added in schema `0.2` as an additive optional top-level array. Emitted whenever
+preview-language files (TypeScript, JavaScript, or Python) are present in the
+analyzed scope — **regardless of whether the preview adapter is enabled** in
+`ripr.toml`. Absent for pure-Rust scopes. Does not bump `schema_version`.
+
+Not-enabled (default) example — the #1111 case where a TypeScript change is run
+under the default Rust-only config and was therefore not analyzed:
+
+```json
+"preview_languages": [
+  {
+    "language": "typescript",
+    "file_count": 1,
+    "sample_paths": ["src/utils.ts"],
+    "enabled": false,
+    "analyzed": false,
+    "category": "preview_language_advisory",
+    "why": "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+  }
+]
+```
+
+Enabled example carries `"enabled": true`, `"analyzed": true`, and a
+`"why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"`.
+
+- `language` — stable wire string; one of `typescript`, `javascript`, `python`
+- `file_count` — number of files in scope routed to this adapter (real, never fabricated)
+- `sample_paths` — up to three normalized (forward-slash) file paths
+- `enabled` — whether the preview adapter was enabled (ran) for this analysis
+- `analyzed` — whether the files were analyzed (mirrors `enabled`)
+- `category` — always `"preview_language_advisory"` for machine filtering
+- `why` — advisory rationale string (case-specific)
+
+An empty or absent `preview_languages` array means only stable (Rust) content
+was in scope. A non-empty array is an honesty signal: either the listed
+preview-language files were not analyzed at all (`enabled == false`) or were
+analyzed under advisory preview support that may be incomplete
+(`enabled == true`). In neither case is an empty result a Rust-grade clean
+result.
+
 ## Enums
 
 `classification` values:

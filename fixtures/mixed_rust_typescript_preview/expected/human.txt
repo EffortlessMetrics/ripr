@@ -98,3 +98,6 @@ TypeScript preview card (advisory)
 
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
