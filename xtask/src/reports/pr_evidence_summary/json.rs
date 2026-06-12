@@ -7,24 +7,30 @@ use serde_json::{Value, json};
 
 /// Build the in-memory summary struct from parsed artifact values.
 ///
-/// - `start_here_value`   — parsed start-here.json, or None.
-/// - `gap_ledger_value`   — parsed gap-decision-ledger.json, or None.
-/// - `repo_exposure_value`— parsed repo-exposure.json, or None.
-/// - `diff_report_value`  — parsed diff-report.json, or None.
-/// - `baseline_value`     — parsed baseline snapshot, or None (no --baseline).
+/// - `start_here_value`      — parsed start-here.json, or None.
+/// - `gap_ledger_value`      — parsed gap-decision-ledger.json, or None.
+/// - `repo_exposure_value`   — parsed repo-exposure.json, or None.
+/// - `diff_report_value`     — parsed diff-report.json, or None.
+/// - `baseline_value`        — parsed baseline snapshot, or None (no --baseline).
+/// - `attempt_ledger_value`  — parsed swarm-attempt-ledger.json, or None.
+///   When present, `verify_failed_receipts` is derived from its
+///   `attempts[].verify_result` field. When absent, `verify_failed_receipts`
+///   stays `not_available` (honest-absent rule: absence ≠ zero).
 pub(super) fn build_pr_evidence_summary(
     start_here_value: Option<&Value>,
     gap_ledger_value: Option<&Value>,
     repo_exposure_value: Option<&Value>,
     diff_report_value: Option<&Value>,
     baseline_value: Option<&Value>,
+    attempt_ledger_value: Option<&Value>,
 ) -> PrEvidenceSummaryJson {
     let run_status = derive_run_status(diff_report_value, repo_exposure_value);
     let changed_surfaces = derive_changed_surfaces(diff_report_value);
     let gaps = derive_gaps(gap_ledger_value, baseline_value);
     let limitations = derive_limitations(repo_exposure_value);
     let missing_receipts = derive_missing_receipts(gap_ledger_value);
-    let receipt_status = derive_receipt_status(gap_ledger_value, &missing_receipts);
+    let receipt_status =
+        derive_receipt_status(gap_ledger_value, &missing_receipts, attempt_ledger_value);
     let (top_repair, top_repair_state) = derive_top_repair(start_here_value);
     let top_limitation = limitations.first().map(|entry| TopLimitation {
         category: entry.category.clone(),
@@ -174,33 +180,89 @@ fn derive_missing_receipts(gap_ledger_value: Option<&Value>) -> U64OrNotAvailabl
     U64OrNotAvailable::Value(repairable.saturating_sub(improved))
 }
 
+/// Return true when a `verify_result` string value indicates a real verify
+/// failure that is counted by this summary.
+///
+/// Accepted failure tokens come from two producers:
+/// - `swarm_ingest.rs` (`verify.status:"failed"`, `exit_code != 0`) → outcome
+///   ledger `verify_result:"fail"` (or the verbatim string `"failed"` when the
+///   originating value was the status field itself).
+/// - The real-repair-attempts corpus, which uses `"error"` for unexpected
+///   non-zero exit codes.
+///
+/// The full token set mirrors what `ripr-swarm attempt-ledger` tolerates in its
+/// own `missing_verify_result` detection logic.
+fn is_verify_failure_result(v: &str) -> bool {
+    matches!(v, "fail" | "failed" | "error")
+}
+
+/// Derive `verify_failed_receipts` from the attempt-ledger artifact.
+///
+/// Returns `NotAvailable` when the artifact is absent — absence means the
+/// ledger was never inspected, so a `0` would be a fake zero. Returns
+/// `Value(n)` — including `Value(0)` — when the ledger IS present, because
+/// then we actually read every entry and a genuinely-failed entry would have
+/// been counted (the non-zero is validated and reachable by the test
+/// `verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure`).
+///
+/// Only the top-level `attempts[]` array is scanned (current-run entries,
+/// not the `latest_attempts[]` view). `verify_result` ∈
+/// `{"fail", "failed", "error"}` counts as a failure.
+fn count_verify_failed_from_attempt_ledger(
+    attempt_ledger_value: Option<&Value>,
+) -> U64OrNotAvailable {
+    let Some(ledger) = attempt_ledger_value else {
+        // Absent ledger → not_available (honest-absent rule).
+        return U64OrNotAvailable::NotAvailable;
+    };
+    let attempts = match ledger.get("attempts").and_then(Value::as_array) {
+        Some(arr) => arr,
+        // Ledger present but `attempts` key absent or not an array → 0 failures
+        // found (we did inspect the artifact and found nothing to count).
+        None => return U64OrNotAvailable::Value(0),
+    };
+    let count = attempts
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("verify_result")
+                .and_then(Value::as_str)
+                .is_some_and(is_verify_failure_result)
+        })
+        .count();
+    U64OrNotAvailable::Value(count as u64)
+}
+
 /// Derive the six-count receipt-status object.
 ///
 /// `receipts_present` and `missing_receipts` are derivable from existing
-/// gap-ledger summary counts. The other four are `NotAvailable` because the
-/// gap-decision-ledger build path does not currently carry the per-record
-/// signals required to classify them, and emitting `0` would be a fake zero —
-/// a real condition cannot produce a non-zero count, so a `0` would falsely
-/// assert "we checked and found none" (see #1130 adversarial review):
+/// gap-ledger summary counts. Three counts stay `NotAvailable` because their
+/// producers are not available here:
 ///
 /// - `orphan_receipts`: requires a sweep of `target/ripr/receipts/` vs. ledger
 ///   records to find files that no record references. No filesystem scan is
 ///   performed during summary derivation.
-/// - `stale_receipts`: requires a real staleness signal per receipt. The genuine
-///   staleness signal lives in `swarm_ingest` (`staleness_status`), a separate
-///   artifact that the gap-ledger build does not consume; the gap-ledger never
-///   writes `receipt.state == "receipt_stale"` in production.
-/// - `gap_mismatch_receipts`: requires reading the receipt file itself to compare
-///   its recorded `canonical_gap_id` against the attached gap record — the ledger
-///   ingest does not surface the receipt's own gap id field.
-/// - `verify_failed_receipts`: requires a real verify pass/fail signal per receipt.
-///   The genuine verify signal lives in `swarm_ingest` (`verify.passed`/`failed`),
-///   a separate artifact that the gap-ledger build does not consume; the
-///   gap-ledger never writes `receipt.state == "receipt_verify_failed"` in
-///   production.
+///   Unlock: add a receipts/ dir sweep to the ledger build path.
+/// - `stale_receipts`: the genuine staleness signal lives in `swarm_ingest`
+///   (`staleness_status`), which the gap-ledger build does not consume.
+///   Emitting `0` would be a fake zero — no production path produces a
+///   non-zero today (see #1130 adversarial review).
+///   Unlock: wire `swarm_ingest.staleness_status` into the gap-ledger build.
+/// - `gap_mismatch_receipts`: requires reading each receipt file to compare
+///   its recorded `canonical_gap_id` against the attached gap record.
+///   The ledger ingest does not surface the receipt's own gap id field.
+///   Unlock: read each receipt's own `canonical_gap_id` in the ledger build.
+///
+/// `verify_failed_receipts` is NOW derivable when `attempt_ledger_value` is
+/// `Some(_)` — it is counted from `attempts[].verify_result` ∈
+/// `{"fail", "failed", "error"}`, which flows from the real
+/// `swarm_ingest.verify.status/exit_code` pipeline through
+/// `actionable-gap-outcomes.json` into the attempt ledger. When the attempt
+/// ledger is absent the field stays `not_available` (honest-absent rule).
 fn derive_receipt_status(
     gap_ledger_value: Option<&Value>,
     missing_receipts: &U64OrNotAvailable,
+    attempt_ledger_value: Option<&Value>,
 ) -> ReceiptStatusCounts {
     // receipts_present = receipt_improved_total + receipt_unchanged_after_attempt_total.
     // Both are advisory counts; if the summary block is absent we emit NotAvailable.
@@ -231,19 +293,24 @@ fn derive_receipt_status(
     ReceiptStatusCounts {
         receipts_present,
         missing_receipts: missing,
-        // NOT DERIVABLE: requires receipts/ dir sweep vs. ledger records.
+        // NOT DERIVABLE from this path: requires a receipts/ dir sweep vs.
+        // ledger records. Unlock: add the sweep to the ledger build.
         orphan_receipts: U64OrNotAvailable::NotAvailable,
         // NOT DERIVABLE: the real staleness signal lives in swarm_ingest
         // (staleness_status), which the gap-ledger build does not consume.
-        // Emitting 0 would be a fake zero — no production producer exists.
+        // Emitting 0 would be a fake zero — no production producer exists here.
+        // Unlock: wire swarm_ingest.staleness_status into the gap-ledger build.
         stale_receipts: U64OrNotAvailable::NotAvailable,
-        // NOT DERIVABLE: requires reading each receipt file to compare its own
-        // canonical_gap_id against the attached gap record.
+        // NOT DERIVABLE from this path: requires reading each receipt file to
+        // compare its own canonical_gap_id against the attached gap record.
+        // Unlock: read each receipt's own canonical_gap_id in the ledger build.
         gap_mismatch_receipts: U64OrNotAvailable::NotAvailable,
-        // NOT DERIVABLE: the real verify pass/fail signal lives in swarm_ingest
-        // (verify.passed/failed), which the gap-ledger build does not consume.
-        // Emitting 0 would be a fake zero — no production producer exists.
-        verify_failed_receipts: U64OrNotAvailable::NotAvailable,
+        // DERIVABLE from the attempt ledger: count attempts[].verify_result ∈
+        // {"fail", "failed", "error"}, which flows from the real
+        // swarm_ingest.verify.status/exit_code pipeline. When the attempt
+        // ledger is absent, stay not_available (honest-absent rule — absence
+        // is NOT zero).
+        verify_failed_receipts: count_verify_failed_from_attempt_ledger(attempt_ledger_value),
     }
 }
 
@@ -482,7 +549,7 @@ mod tests {
     use super::*;
 
     fn missing_all() -> PrEvidenceSummaryJson {
-        build_pr_evidence_summary(None, None, None, None, None)
+        build_pr_evidence_summary(None, None, None, None, None, None)
     }
 
     #[test]
@@ -567,7 +634,7 @@ mod tests {
                 "changed_files": 3
             }
         });
-        let s = build_pr_evidence_summary(Some(&start_here), None, None, Some(&diff), None);
+        let s = build_pr_evidence_summary(Some(&start_here), None, None, Some(&diff), None, None);
 
         assert_eq!(s.run_status, "diff_complete_full_repo_limited");
         assert!(matches!(s.changed_surfaces, U64OrNotAvailable::Value(3)));
@@ -608,7 +675,7 @@ mod tests {
                 "receipt_state": "receipt_missing"
             }
         });
-        let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None);
+        let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
         let json = render_pr_evidence_summary_json(&s);
         assert!(
             json.contains("\"canonical_gap_id\": \"gap:rust:src:fn:boundary\""),
@@ -635,7 +702,7 @@ mod tests {
                 "receipt_improved_total": 1
             }
         });
-        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None, None);
         assert!(matches!(
             s.gaps.total_actionable,
             U64OrNotAvailable::Value(4)
@@ -659,7 +726,7 @@ mod tests {
                 }
             ]
         });
-        let s = build_pr_evidence_summary(None, None, Some(&repo), None, None);
+        let s = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
         assert_eq!(s.run_status, "seam_limit_applied");
         assert_eq!(s.limitations.len(), 1);
         assert_eq!(s.limitations[0].category, "repo_seam_limit_applied");
@@ -779,9 +846,13 @@ mod tests {
 
     /// Regression guard for #1130: even when a gap-ledger summary IS present
     /// (and even if it carries receipt_stale_total / receipt_verify_failed_total
-    /// keys), the four deferred fields stay not_available. The gap-ledger build
-    /// has no production producer for these states, so a numeric value here
-    /// would be a fake zero / fabricated count.
+    /// keys), the three gap-ledger-path-only deferred fields stay not_available.
+    /// The gap-ledger build has no production producer for stale/orphan/mismatch,
+    /// so a numeric value here would be a fake zero / fabricated count.
+    ///
+    /// verify_failed_receipts also stays not_available here because no attempt
+    /// ledger is supplied; it only becomes a real count when an attempt ledger
+    /// IS supplied (see `verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure`).
     #[test]
     fn receipt_status_deferred_fields_stay_not_available_even_with_ledger_summary() {
         let ledger = serde_json::json!({
@@ -790,13 +861,13 @@ mod tests {
                 "receipt_improved_total": 1,
                 "receipt_unchanged_after_attempt_total": 0,
                 // These keys could appear if a future producer wrote them, but
-                // until a real producer exists the summary must NOT surface them
-                // as receipt_status counts.
+                // the gap-ledger build has no real stale/orphan/mismatch producer.
                 "receipt_stale_total": 0,
                 "receipt_verify_failed_total": 0
             }
         });
-        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        // No attempt ledger supplied → verify_failed_receipts stays not_available.
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None, None);
         assert!(
             matches!(
                 s.receipt_status.stale_receipts,
@@ -809,7 +880,7 @@ mod tests {
                 s.receipt_status.verify_failed_receipts,
                 U64OrNotAvailable::NotAvailable
             ),
-            "verify_failed_receipts must stay not_available (no real producer in gap-ledger build)"
+            "verify_failed_receipts must stay not_available when no attempt ledger is supplied"
         );
         assert!(
             matches!(
@@ -837,7 +908,7 @@ mod tests {
                 "receipt_unchanged_after_attempt_total": 1
             }
         });
-        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None, None);
         // receipts_present = improved(2) + unchanged(1) = 3
         assert!(
             matches!(
@@ -867,7 +938,7 @@ mod tests {
                 "receipt_unchanged_after_attempt_total": 0
             }
         });
-        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None, None);
         match s.receipt_status.missing_receipts {
             U64OrNotAvailable::Value(n) => assert!(
                 n >= 1,
@@ -896,9 +967,12 @@ mod tests {
     }
 
     /// JSON must contain receipt_status with receipts_present and
-    /// missing_receipts as computed integers when the ledger is present.
-    /// The four not-yet-derivable fields stay not_available even when a ledger
-    /// summary is present (no real producer exists — see #1130).
+    /// missing_receipts as computed integers when the gap ledger is present.
+    /// The three gap-ledger-path-only fields stay not_available because their
+    /// producers are not on this path (see #1130).
+    /// verify_failed_receipts stays not_available here because no attempt ledger
+    /// is supplied; when an attempt ledger IS supplied it becomes a real count
+    /// (see `verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure`).
     #[test]
     fn receipt_status_json_derived_fields_are_integers() {
         let ledger = serde_json::json!({
@@ -908,7 +982,8 @@ mod tests {
                 "receipt_unchanged_after_attempt_total": 1
             }
         });
-        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        // No attempt ledger → verify_failed_receipts stays not_available.
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None, None);
         let json = render_pr_evidence_summary_json(&s);
         // receipts_present = 1+1 = 2
         assert!(
@@ -922,7 +997,7 @@ mod tests {
             json.contains("\"missing_receipts\": 3"),
             "missing_receipts=3 must appear in JSON: {json}"
         );
-        // The four not-yet-derivable fields must still be not_available.
+        // The three gap-ledger-path-only deferred fields must still be not_available.
         assert!(
             json.contains("\"orphan_receipts\": \"not_available\""),
             "orphan_receipts must remain not_available even when ledger is present: {json}"
@@ -935,9 +1010,177 @@ mod tests {
             json.contains("\"gap_mismatch_receipts\": \"not_available\""),
             "gap_mismatch_receipts must remain not_available even when ledger is present: {json}"
         );
+        // verify_failed_receipts: not_available when no attempt ledger supplied.
         assert!(
             json.contains("\"verify_failed_receipts\": \"not_available\""),
-            "verify_failed_receipts must remain not_available even when ledger is present: {json}"
+            "verify_failed_receipts must be not_available without an attempt ledger: {json}"
         );
+    }
+
+    // ── verify_failed_receipts non-zero proof ────────────────────────────────
+
+    /// Build an attempt-ledger JSON that mirrors the real `swarm_ingest.rs:861`
+    /// fixture: `verify.status:"failed"`, `exit_code:1` → `attempt_outcome:
+    /// "receipt_present"` with `classification.state:"verify_failed"`.
+    ///
+    /// When that entry flows through the attempt-ledger build (which reads
+    /// `verify_result` from outcomes, populating it as `"fail"` or the verbatim
+    /// status string), the resulting `attempts[].verify_result` is a failure
+    /// token. This helper synthesises that terminal ledger JSON exactly as the
+    /// real attempt-ledger JSON writer produces it — avoiding the full pipeline
+    /// while being traceable to the real producer.
+    fn attempt_ledger_with_one_failure() -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "attempts": [
+                {
+                    "packet_id": "packet:python:verify-fail",
+                    "canonical_gap_id": "gap:python:verify-fail",
+                    "attempt_id": "attempt:gap-python-verify-fail:receipt-present",
+                    "actor_kind": "codex",
+                    "verify_command": "pytest tests/test_verify.py",
+                    // "failed" is the verbatim value that swarm_ingest.rs records
+                    // when verify.status:"failed" (exit_code:1) — the same case as
+                    // swarm_ingest.rs:861 fail_closed_verify_failed_but_movement_claimed.
+                    "verify_result": "failed",
+                    "outcome": "receipt_present",
+                    "receipt_state": "receipt_present",
+                    "reason": "verify_failed guard fired before provenance check"
+                }
+            ]
+        })
+    }
+
+    fn attempt_ledger_all_passed() -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "attempts": [
+                {
+                    "packet_id": "packet:rust:boundary",
+                    "canonical_gap_id": "gap:rust:boundary",
+                    "attempt_id": "attempt:gap-rust-boundary:evidence-improved",
+                    "actor_kind": "codex",
+                    "verify_command": "cargo test boundary",
+                    "verify_result": "pass",
+                    "outcome": "evidence_improved",
+                    "receipt_state": "receipt_present",
+                    "reason": "evidence improved after verify passed"
+                }
+            ]
+        })
+    }
+
+    /// Non-zero proof (a): with a real-failure input, verify_failed_receipts == 1.
+    /// The `verify_result:"failed"` value mirrors the output of the real
+    /// swarm_ingest.rs pipeline for `verify.status:"failed"` (the
+    /// `fail_closed_verify_failed_but_movement_claimed` fixture at line 861).
+    #[test]
+    fn verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure() {
+        let ledger = attempt_ledger_with_one_failure();
+        let s = build_pr_evidence_summary(None, None, None, None, None, Some(&ledger));
+        assert!(
+            matches!(
+                s.receipt_status.verify_failed_receipts,
+                U64OrNotAvailable::Value(1)
+            ),
+            "verify_failed_receipts must be 1 when attempt ledger has one failed-verify entry"
+        );
+        // stale/orphan/gap_mismatch must remain not_available in all cases.
+        assert!(
+            matches!(
+                s.receipt_status.stale_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "stale_receipts must stay not_available"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.orphan_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "orphan_receipts must stay not_available"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.gap_mismatch_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "gap_mismatch_receipts must stay not_available"
+        );
+        let json = render_pr_evidence_summary_json(&s);
+        assert!(
+            json.contains("\"verify_failed_receipts\": 1"),
+            "JSON must show verify_failed_receipts: 1 — got: {json}"
+        );
+    }
+
+    /// Non-zero proof (b): with an all-passed attempt ledger, verify_failed_receipts == 0.
+    /// This is an honest 0: we inspected the ledger and no failure was present.
+    #[test]
+    fn verify_failed_receipts_zero_when_attempt_ledger_all_passed() {
+        let ledger = attempt_ledger_all_passed();
+        let s = build_pr_evidence_summary(None, None, None, None, None, Some(&ledger));
+        assert!(
+            matches!(
+                s.receipt_status.verify_failed_receipts,
+                U64OrNotAvailable::Value(0)
+            ),
+            "verify_failed_receipts must be 0 (honest inspected zero) when all verifies passed"
+        );
+        let json = render_pr_evidence_summary_json(&s);
+        assert!(
+            json.contains("\"verify_failed_receipts\": 0"),
+            "JSON must show verify_failed_receipts: 0 (honest zero) — got: {json}"
+        );
+        // stale/orphan/gap_mismatch must remain not_available.
+        assert!(
+            json.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must stay not_available: {json}"
+        );
+        assert!(
+            json.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must stay not_available: {json}"
+        );
+        assert!(
+            json.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must stay not_available: {json}"
+        );
+    }
+
+    /// Non-zero proof (c): with no attempt ledger, verify_failed_receipts == not_available.
+    #[test]
+    fn verify_failed_receipts_not_available_when_no_attempt_ledger() {
+        let s = build_pr_evidence_summary(None, None, None, None, None, None);
+        assert!(
+            matches!(
+                s.receipt_status.verify_failed_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "verify_failed_receipts must be not_available when no attempt ledger supplied"
+        );
+        let json = render_pr_evidence_summary_json(&s);
+        assert!(
+            json.contains("\"verify_failed_receipts\": \"not_available\""),
+            "JSON must show verify_failed_receipts: not_available — got: {json}"
+        );
+    }
+
+    /// is_verify_failure_result covers all expected failure tokens and rejects
+    /// non-failure tokens.
+    #[test]
+    fn is_verify_failure_result_matches_expected_tokens() {
+        assert!(is_verify_failure_result("fail"));
+        assert!(is_verify_failure_result("failed"));
+        assert!(is_verify_failure_result("error"));
+        assert!(!is_verify_failure_result("pass"));
+        assert!(!is_verify_failure_result("passed"));
+        assert!(!is_verify_failure_result("not_run"));
+        assert!(!is_verify_failure_result("not_applicable"));
+        assert!(!is_verify_failure_result(""));
+        assert!(!is_verify_failure_result("unknown"));
     }
 }

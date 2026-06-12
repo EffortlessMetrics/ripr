@@ -13404,7 +13404,7 @@ Field sources:
 | `receipt_status.orphan_receipts` | not yet derivable | `"not_available"` until receipts/ dir sweep added to ledger |
 | `receipt_status.stale_receipts` | not yet derivable | `"not_available"` until the real staleness signal (`swarm_ingest.staleness_status`) is wired into the gap-ledger build |
 | `receipt_status.gap_mismatch_receipts` | not yet derivable | `"not_available"` until each receipt's own `canonical_gap_id` is read and compared |
-| `receipt_status.verify_failed_receipts` | not yet derivable | `"not_available"` until the real verify signal (`swarm_ingest.verify.passed/failed`) is wired into the gap-ledger build |
+| `receipt_status.verify_failed_receipts` | attempt-ledger `attempts[].verify_result` ∈ `{"fail","failed","error"}` | `"not_available"` when `swarm-attempt-ledger.json` is absent; integer count (incl. 0) when present (RIPR-SPEC-0057, PR7 of #1123) |
 | `top_repair` | start-here | `selected` (when `state == "top_gap"`) |
 | `top_repair_state` | start-here | `selected.state` (when not `"top_gap"`) |
 | `top_limitation` | first entry in `limitations[]` | derived |
@@ -13412,13 +13412,24 @@ Field sources:
 
 The `receipt_status` object is additive — existing consumers reading `missing_receipts`
 at the top level continue to work unchanged (`schema_version` stays `"0.1"`; additive
-fields do not require a version bump per the stability rules above). The four
-`"not_available"` fields honestly signal "this signal is not yet computed" rather
-than claiming zero: emitting `0` would falsely assert that we checked and found none.
-The real verify-failed and staleness signals live in the `swarm_ingest` artifact
-(`verify.passed`/`failed`, `staleness_status`), which the gap-decision-ledger build
-path does not consume; until a real producer is wired in, surfacing a `0` here would
-be a fabricated count that no real condition can produce (see #1130 adversarial review).
+fields do not require a version bump per the stability rules above).
+
+`verify_failed_receipts` is now derivable (PR7 of #1123): when
+`target/ripr/reports/swarm-attempt-ledger.json` is present, it is counted
+from `attempts[].verify_result` ∈ `{"fail", "failed", "error"}`, which flows
+from the real `swarm_ingest` verify pipeline (`verify.status`/`exit_code`).
+When the artifact is absent the field stays `"not_available"` (honest-absent
+rule: absence is not zero). A `0` is now honest because a failed entry would
+have been counted (validated by
+`verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure`).
+
+The three remaining `"not_available"` fields (`orphan_receipts`,
+`stale_receipts`, `gap_mismatch_receipts`) honestly signal "this signal is
+not yet computed" rather than claiming zero: emitting `0` would falsely assert
+we checked and found none. The staleness signal lives in `swarm_ingest`
+(`staleness_status`), which the gap-decision-ledger build path does not consume;
+until a real producer is wired in, surfacing a `0` would be a fabricated count
+that no real condition can produce (see #1130 adversarial review).
 
 Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 

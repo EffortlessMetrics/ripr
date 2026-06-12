@@ -29,6 +29,9 @@ const GAP_DECISION_LEDGER_JSON: &str = "target/ripr/reports/gap-decision-ledger.
 const REPO_EXPOSURE_JSON: &str = "target/ripr/reports/repo-exposure.json";
 /// Diff-report artifact (run_status and changed_files from DiffReport).
 const DIFF_REPORT_JSON: &str = "target/ripr/reports/diff-report.json";
+/// Swarm attempt-ledger artifact; `attempts[].verify_result` backs
+/// `receipt_status.verify_failed_receipts` (RIPR-SPEC-0057 / PR7 of #1123).
+const ATTEMPT_LEDGER_JSON: &str = "target/ripr/reports/swarm-attempt-ledger.json";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SummaryOptions {
@@ -62,6 +65,10 @@ fn write_evidence_summary_pair(repo: &Path, options: &SummaryOptions) -> Result<
     let gap_ledger = load_json(repo, GAP_DECISION_LEDGER_JSON);
     let repo_exposure = load_json(repo, REPO_EXPOSURE_JSON);
     let diff_report = load_json(repo, DIFF_REPORT_JSON);
+    // Attempt ledger: backs verify_failed_receipts (RIPR-SPEC-0057 / PR7 of #1123).
+    // Absent → not_available (honest-absent rule). Present → real count from
+    // attempts[].verify_result ∈ {"fail", "failed", "error"}.
+    let attempt_ledger = load_json(repo, ATTEMPT_LEDGER_JSON);
     let baseline_loaded;
     let baseline_value = if let Some(path) = options.baseline.as_deref() {
         baseline_loaded = load_json(repo, path);
@@ -76,6 +83,7 @@ fn write_evidence_summary_pair(repo: &Path, options: &SummaryOptions) -> Result<
         repo_exposure.value.as_ref(),
         diff_report.value.as_ref(),
         baseline_value,
+        attempt_ledger.value.as_ref(),
     );
 
     let json_text = render_pr_evidence_summary_json(&summary_struct);
@@ -762,6 +770,72 @@ mod tests {
         let text =
             serde_json::to_string_pretty(value).map_err(|err| format!("serialize: {err}"))?;
         write_file(repo, relative, &text)
+    }
+
+    /// When the attempt ledger artifact is present with one failed-verify entry,
+    /// verify_failed_receipts must be 1 (non-zero — the non-zero proof for the
+    /// integration path). stale/orphan/gap_mismatch must still be not_available.
+    #[test]
+    fn evidence_summary_pair_attempt_ledger_verify_failed_is_nonzero() -> Result<(), String> {
+        let repo = temp_repo("pr-evidence-summary-verify-failed")?;
+
+        // Write the attempt ledger with one failed-verify entry.
+        // This mirrors the real swarm_ingest.rs:861 fixture:
+        //   verify.status:"failed", exit_code:1 → attempt_outcome:"receipt_present"
+        //   classification.state:"verify_failed"
+        // The attempt-ledger build records verify_result:"failed" from the outcome.
+        write_json(
+            &repo,
+            ATTEMPT_LEDGER_JSON,
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "report": "swarm-attempt-ledger",
+                "attempts": [
+                    {
+                        "packet_id": "packet:python:verify-fail",
+                        "canonical_gap_id": "gap:python:verify-fail",
+                        "attempt_id": "attempt:gap-python-verify-fail:receipt-present",
+                        "actor_kind": "codex",
+                        "verify_command": "pytest tests/test_verify.py",
+                        "verify_result": "failed",
+                        "outcome": "receipt_present",
+                        "receipt_state": "receipt_present",
+                        "reason": "verify_failed guard fired"
+                    }
+                ]
+            }),
+        )?;
+
+        let options = SummaryOptions {
+            check: false,
+            baseline: None,
+        };
+        write_evidence_summary_pair(&repo, &options)?;
+
+        let json_text = fs::read_to_string(repo.join(PR_EVIDENCE_SUMMARY_JSON))
+            .map_err(|err| format!("read JSON: {err}"))?;
+
+        // Non-zero proof: verify_failed_receipts must be 1.
+        assert!(
+            json_text.contains("\"verify_failed_receipts\": 1"),
+            "verify_failed_receipts must be 1 when attempt ledger has one failed entry: {json_text}"
+        );
+        // stale/orphan/gap_mismatch must remain not_available.
+        assert!(
+            json_text.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must stay not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must stay not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must stay not_available: {json_text}"
+        );
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 
     fn write_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {

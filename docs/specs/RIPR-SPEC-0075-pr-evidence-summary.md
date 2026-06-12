@@ -85,6 +85,7 @@ when no baseline is available.
 | `target/ripr/reports/repo-exposure.json` | `run_status` (fallback), `limitations[]` |
 | `target/ripr/reports/gap-decision-ledger.json` | `gaps.total_actionable`, `gaps.total_static_limitation`, `missing_receipts`, `receipt_status.receipts_present`, `receipt_status.missing_receipts` |
 | `target/ripr/reports/start-here.json` | `top_repair` (when `selected.state == "top_gap"`), `top_repair_state`, `local_reproduction_commands` verify command |
+| `target/ripr/reports/swarm-attempt-ledger.json` | `receipt_status.verify_failed_receipts` — count of `attempts[].verify_result` ∈ `{"fail","failed","error"}` (RIPR-SPEC-0057, PR7 of #1123); `not_available` when artifact absent |
 | `--baseline <path>` | gap delta computation (optional) |
 
 ### Static-language boundary
@@ -191,7 +192,7 @@ When there are no limitations, `top_limitation` is omitted entirely.
 | `receipt_status.orphan_receipts` | `"not_available"` | not yet derivable | Unlock: add receipts/ dir sweep to ledger. |
 | `receipt_status.stale_receipts` | `"not_available"` | not yet derivable | Unlock: wire the real staleness signal (`swarm_ingest.staleness_status`) into the gap-ledger build. Emitting 0 today would be a fake zero — no producer exists (#1130). |
 | `receipt_status.gap_mismatch_receipts` | `"not_available"` | not yet derivable | Unlock: read each receipt's own `canonical_gap_id` and compare. |
-| `receipt_status.verify_failed_receipts` | `"not_available"` | not yet derivable | Unlock: wire the real verify signal (`swarm_ingest.verify.passed/failed`) into the gap-ledger build. Emitting 0 today would be a fake zero — no producer exists (#1130). |
+| `receipt_status.verify_failed_receipts` | u64 or `"not_available"` | attempt-ledger `attempts[].verify_result` ∈ `{"fail","failed","error"}` | `"not_available"` when `swarm-attempt-ledger.json` is absent (honest-absent rule). Integer count when present. `0` is honest because a failed entry would have been counted (PR7 of #1123, RIPR-SPEC-0057). |
 | `top_repair` | object or null | start-here `selected` when `state == "top_gap"` | null when no actionable gap. |
 | `top_repair_state` | string or absent | start-here `selected.state` | Present only when `top_repair` is null. |
 | `top_limitation` | object or absent | first entry in `limitations[]` | Omitted when limitations empty. |
@@ -210,6 +211,10 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `claimed_repair_with_no_receipt_shows_in_missing_receipts`
   - `receipt_status_json_derived_fields_are_integers`
   - `receipt_status_deferred_fields_stay_not_available_even_with_ledger_summary` (#1130 honesty guard)
+  - `verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure` (non-zero proof, PR7 of #1123)
+  - `verify_failed_receipts_zero_when_attempt_ledger_all_passed` (honest-zero case)
+  - `verify_failed_receipts_not_available_when_no_attempt_ledger` (honest-absent case)
+  - `is_verify_failure_result_matches_expected_tokens`
 - Unit test in `crates/ripr/src/output/gap_decision_ledger.rs` (#1130 honesty guard):
   - `ledger_summary_does_not_emit_fabricated_receipt_state_counts`
 - Integration tests in `xtask/src/reports/pr_evidence_summary.rs`:
@@ -217,6 +222,7 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `parse_rejects_baseline_without_path`
   - `evidence_summary_pair_missing_all_shows_explicit_states`
   - `evidence_summary_pair_present_top_gap_is_copyable`
+  - `evidence_summary_pair_attempt_ledger_verify_failed_is_nonzero` (integration non-zero proof, PR7 of #1123)
 
 ## Non-Goals
 
@@ -264,12 +270,12 @@ integer values computed from the before/after snapshots.
 
 ## Implementation Mapping
 
-- `xtask/src/reports/pr_evidence_summary.rs` — top-level module: `SummaryOptions`, `parse_options`, `write_evidence_summary_pair`, `render_evidence_summary_md`.
-- `xtask/src/reports/pr_evidence_summary/json.rs` — `build_pr_evidence_summary`, `render_pr_evidence_summary_json`.
-- `xtask/src/reports/pr_evidence_summary/model.rs` — `PrEvidenceSummaryJson`, `GapCounts`, `LimitationEntry`, `TopRepair`, `TopLimitation`, `U64OrNotAvailable`, `NullableU64`.
+- `xtask/src/reports/pr_evidence_summary.rs` — top-level module: `SummaryOptions`, `parse_options`, `write_evidence_summary_pair` (loads attempt ledger), `render_evidence_summary_md`, `ATTEMPT_LEDGER_JSON` constant.
+- `xtask/src/reports/pr_evidence_summary/json.rs` — `build_pr_evidence_summary` (new `attempt_ledger_value` parameter), `count_verify_failed_from_attempt_ledger`, `is_verify_failure_result`, `render_pr_evidence_summary_json`.
+- `xtask/src/reports/pr_evidence_summary/model.rs` — `PrEvidenceSummaryJson`, `GapCounts`, `LimitationEntry`, `TopRepair`, `TopLimitation`, `U64OrNotAvailable`, `NullableU64`; updated `verify_failed_receipts` doc comment.
 - `xtask/src/reports/pr_evidence_summary/io.rs` — `load_json` (reused unchanged).
-- `xtask/src/reports/pr_evidence_summary/util.rs` — `value_path` helper (added).
-- `docs/OUTPUT_SCHEMA.md` — `## PR Evidence Summary` section.
+- `xtask/src/reports/pr_evidence_summary/util.rs` — `value_path` helper (reused unchanged).
+- `docs/OUTPUT_SCHEMA.md` — `## PR Evidence Summary` section: updated field source for `verify_failed_receipts`.
 - `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md` — this file.
 
 ## Metrics
