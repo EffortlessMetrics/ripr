@@ -658,3 +658,77 @@ Under branch protection requiring up-to-date branches, every merge forces all
 other open PRs behind, each needing `update-branch` + a full re-run on the slow
 self-hosted lane. Merge the higher-cost lane's PR first; a merge queue would
 remove the thrash but is a deliberate settings change.
+
+## 2026-06-11: The Evidence-to-Repair Campaign — Product/Process Isomorphism And Delegability
+
+Synthesis from the wave that built RIPR's PR/LSP/agent surfaces (pr-evidence
+summary, review repair cards, the four LSP cockpit commands + restrained
+diagnostics, the VS Code surface). The durable, transferable lessons — kept here
+because they outlive any single PR.
+
+### The product is the process; that is why it is agent-buildable
+
+RIPR's loop — raw signal -> canonical evidence -> actionability decision ->
+bounded repair packet OR named limitation -> verify -> receipt — is the same
+loop a competent agent runs to build it: scout -> spec -> build -> verify-self
+-> scoped PR -> CI gate -> merge. They are isomorphic. RIPR is not "a tool for
+agents"; it is an externalization of the discipline that makes work safe to
+delegate. The builder and the built share an architecture, which is exactly why
+a fleet could build it. When designing a new surface, design it as that same
+loop.
+
+### Legibility + bounded scope + fenced irreversibility = delegability
+
+The repair packet (edit-cage + verify + receipt + must_not_change), the
+operating model (scoped PR + facade gate + merge, with the crates.io publish as
+the only hard stop), and the repo's own authorship all reduce to one shape:
+bound the task, make the limits legible, fence the irreversible, verify rather
+than trust. Keep new work inside that shape; it is what lets non-authors (other
+agents, or a non-specialist human) own the result.
+
+### Honesty is the product; silence that reads as "clean" is the cardinal sin
+
+The most valuable fixes were all the same shape: a run that did not fully do its
+job *looking* like it did — a bounded full-repo run reporting `complete`, a
+cache hit serving a truncated result as complete, preview-language content
+yielding "no findings" when it was not really analyzed. Fail-closed means the
+tool must self-declare what it could not determine. The honesty primitives
+(`run_status`, `limitations[]`, `source_location_unresolved`,
+`not_actionable_or_incomplete`, `no_limitation`, `no_snapshot`) are one
+"evidence-state" word in different costumes — **unify them into one shared
+vocabulary** rather than re-inventing per surface (the highest-leverage refactor
+left).
+
+### Plausible-but-wrong is the dominant failure mode — verify the claim, not the symptom
+
+Subagent builders report "all green" while live IDE diagnostics show compile
+errors (almost always stale mid-edit snapshots — `cargo check` is ground truth).
+A `doctor` shipped recommending `ripr check --diff origin/main...HEAD`, which
+fails because `--diff` wants a file — the line was verified to *print*, not to
+*run* (textbook weak oracle). A "not fail-closed" bug was nearly filed that was
+actually a `| head` pipe masking the real exit code. The discipline: trust
+`cargo check` + a behavioral repro of the *effect*, never a self-report or an
+IDE diagnostic; mirror the whole CI gate set with
+`cargo test -p xtask policy_checker_facade_runs_current_repo_checks` before
+pushing (cherry-picking gates leaked `check-generated` and a forbidden word);
+and verify the claim, not the pipeline that measured it.
+
+### Adoption breakage is invisible to the people who built the tool
+
+The issue tracker was full of infra/CI/spec items. The genuinely user-facing
+break — the documented `check -> explain/context` drill-down dead in the default
+(human) output mode — had no issue, because maintainers already knew the magic
+incantation. The "easy to adopt" property cannot be assessed from inside; it can
+only be *walked*. Dogfooding the actual user/agent path found more real value
+than grinding the backlog. The unwalked path that matters most next: the full
+agent loop end-to-end (status -> packet -> edit-in-cage -> verify -> receipt ->
+re-status).
+
+### Constraints produced autonomy — the intuition inverts
+
+Conservative-language gates, the scoped-PR contract, traceability, and the
+facade test are what let many PRs ship without a human reading each line: the
+machine-checkable doctrine substitutes for human trust. For autonomous work,
+more well-designed constraints = more delegable autonomy, not less. The gates
+are a feature of the product (they are why it is buildable), not overhead — do
+not erode them to move faster; they are the load-bearing wall.
