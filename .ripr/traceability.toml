@@ -5027,3 +5027,17 @@ metrics = [
   "unit_test_pass_rate"
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0079"
+name = "Canonical receipt command contract"
+spec = "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
+]
+metrics = [
+  "unit_test_pass_rate"
+]
+
