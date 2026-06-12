@@ -176,6 +176,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
 status = "accepted"
 owner = "product-swarm"
+standalone_reason = "Product use-case spec under the evidence-to-repair use-case roadmap (RIPR-SPEC-0065 family); the roadmap spec is the umbrella, so there is no separate proposal artifact."
 
 [[artifact]]
 id = "RIPR-SPEC-0069"
@@ -225,6 +226,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0076-lsp-diagnostics-policy.md"
 status = "accepted"
 owner = "product-swarm"
+standalone_reason = "LSP diagnostics-restraint policy spec derived directly from the diagnostics honesty requirement; no separate proposal artifact preceded it."
 
 [[artifact]]
 id = "RIPR-SPEC-0077"

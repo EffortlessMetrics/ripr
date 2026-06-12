@@ -359,3 +359,7 @@ When picking up work:
 - update `docs/LEARNINGS.md` when repo knowledge or blockers should survive
 
 See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.
+
+See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
+agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
+for why constraints enable autonomy.
