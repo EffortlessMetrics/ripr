@@ -53,6 +53,7 @@ TypeScript preview card (advisory)
   related test: packages/auth/tests/token.test.ts:3 createToken returns prefixed token
   oracle: exact_value (strong)
   suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  verify: jest tests/token.test.ts
   repair packet ready: false
   why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
   repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior

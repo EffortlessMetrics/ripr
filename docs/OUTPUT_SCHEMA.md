@@ -510,9 +510,20 @@ The evidence-first fields are additive in schema `0.2`:
     evidence is absent. Current kinds:
     `typescript_package_root_unresolved` (no `package.json` found; value is
     never fabricated from the file extension alone),
-    `typescript_framework_hint_unresolved`, `typescript_runner_hint_unresolved`.
+    `typescript_framework_hint_unresolved`, `typescript_runner_hint_unresolved`,
+    `typescript_test_runner_unresolved` (neither framework nor runner could be
+    resolved to a bounded verify command; emitted when `verify_command_for_discovery`
+    returns `None`; fail-closed per RIPR-SPEC-0085 §"Fail-closed").
     When `typescript_package_root_unresolved` is present, no
     `typescript_package_root` line is emitted (fail-closed per RIPR-SPEC-0085).
+  - `typescript_verify_command: <cmd>` — evidence-backed verify command for the
+    strongest related test, expressed relative to `package_root`. Emitted only
+    when at least one of `framework_hint` or `runner_hint` is resolved. When
+    emitted, `typescript_preview_card.verify.command` reflects the same value.
+    Command forms (RIPR-SPEC-0085 PR 3):
+    `jest <file>`, `vitest run <file>`, `bun test <file>`,
+    `node --test <file>`, `npm test -- <file>`, `pnpm test -- <file>`,
+    `yarn test <file>`.
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1

@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+PR 3: add typescript_verify_command evidence line; jest tests/math.test.ts inferred from jest framework + npm runner
+
+Command:
+`cargo xtask goldens bless ts_pkg_discovery_single_package --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

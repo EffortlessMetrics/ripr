@@ -5217,7 +5217,20 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_jest",
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_vitest",
   "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_bun",
-  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_runner_from_scripts_bun"
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_runner_from_scripts_bun",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_jest_produces_jest_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_vitest_produces_vitest_run_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_bun_produces_bun_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_node_test_produces_node_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_framework_runner_npm_produces_npm_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_framework_runner_pnpm_produces_pnpm_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_framework_runner_yarn_produces_yarn_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_framework_runner_bun_produces_bun_test_command",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_framework_no_runner_returns_none_fail_closed",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_no_package_root_returns_none_fail_closed",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_monorepo_strips_package_root_prefix",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_framework_takes_priority_over_runner",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::verify_command_normalizes_backslash_separators"
 ]
 fixtures = [
   "fixtures/ts_pkg_discovery_single_package",
@@ -5225,7 +5238,9 @@ fixtures = [
   "fixtures/ts_pkg_discovery_no_package"
 ]
 code = [
-  "crates/ripr/src/analysis/language/typescript/package.rs"
+  "crates/ripr/src/analysis/language/typescript/package.rs",
+  "crates/ripr/src/analysis/language/typescript/mod.rs",
+  "crates/ripr/src/output/typescript_preview_card.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"

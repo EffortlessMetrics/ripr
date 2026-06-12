@@ -31,7 +31,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return a + b + 0;","line":2}
       ],
-      "evidence": ["owner: add", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/math.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_math.ts:typescript_preview:025f98d6;owner=add", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high"],
+      "evidence": ["owner: add", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/math.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_math.ts:typescript_preview:025f98d6;owner=add", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: jest tests/math.test.ts"],
       "missing": ["Related test reaches `add` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "assertion_texts": {
       },
@@ -84,7 +84,7 @@
         "static_limits": [],
         "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
         "verify": {
-          "command": null
+          "command": "jest tests/math.test.ts"
         },
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },

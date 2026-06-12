@@ -176,6 +176,31 @@ impl LanguageAdapter for TypeScriptAdapter {
                     &all_tests,
                 ) {
                     finding.evidence.extend(discovery_evidence.clone());
+                    // Inject verify-command evidence derived from the strongest
+                    // related test and the package-discovery facts already
+                    // resolved above. Fail-closed: when the runner is
+                    // unresolved the named limitation
+                    // `typescript_test_runner_unresolved` is emitted instead
+                    // so consumers know why no command is available.
+                    let inferred_cmd = finding
+                        .related_tests
+                        .iter()
+                        .max_by_key(|t| t.oracle_strength.rank())
+                        .and_then(|best_test| {
+                            verify_command_for_discovery(&pkg_discovery, &best_test.file)
+                        });
+                    if let Some(cmd) = inferred_cmd {
+                        finding
+                            .evidence
+                            .push(format!("typescript_verify_command: {cmd}"));
+                    } else {
+                        // No command resolved — emit the named limitation so
+                        // the card surface shows the correct gap.
+                        finding.evidence.push(
+                            "typescript_package_limitation: typescript_test_runner_unresolved"
+                                .to_string(),
+                        );
+                    }
                     findings.push(finding);
                 }
             }

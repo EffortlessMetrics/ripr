@@ -167,7 +167,7 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
             &static_limits,
         ),
         static_limits,
-        verify_command: evidence_value(finding, "suggested_verify_command: ")
+        verify_command: evidence_value(finding, "typescript_verify_command: ")
             .map(ToString::to_string),
         why_not_actionable: actionability.why_not_actionable,
         repair_route: actionability.repair_route,

@@ -430,6 +430,72 @@ fn json_has_workspaces_field(pkg_json: &str) -> bool {
     pkg_json.to_lowercase().contains("\"workspaces\"")
 }
 
+// ─── Verify-command inference ─────────────────────────────────────────────────
+
+/// Infer an evidence-backed verify command for `test_file` using the
+/// `PackageDiscovery` facts already resolved for the same package.
+///
+/// Command mapping (framework takes priority over runner):
+/// ```text
+/// framework Bun      -> bun test <file>
+/// framework Vitest   -> vitest run <file>
+/// framework Jest     -> jest <file>
+/// framework NodeTest -> node --test <file>
+/// (no framework) runner Bun  -> bun test <file>
+/// (no framework) runner Npm  -> npm test -- <file>
+/// (no framework) runner Pnpm -> pnpm test -- <file>
+/// (no framework) runner Yarn -> yarn test <file>
+/// ```
+///
+/// `<file>` is the test file path normalized (`\` → `/`) and expressed
+/// relative to `package_root` so the command is runnable from there.
+///
+/// Fail-closed: when neither a framework nor a runner resolves, returns
+/// `None` so the caller emits the named limitation
+/// `typescript_test_runner_unresolved` instead of an invented command.
+pub(crate) fn verify_command_for_discovery(
+    discovery: &PackageDiscovery,
+    test_file: &Path,
+) -> Option<String> {
+    // Must have a known package root; without one there is no runnable CWD.
+    let pkg_root = discovery.package_root.as_deref()?;
+
+    // Compute path relative to package_root so the command is runnable from
+    // that directory.  `test_file` may already be relative to the workspace
+    // root (which is what the diff-mode pipeline uses), and `pkg_root` is
+    // also relative to the workspace root.
+    let rel_file = test_file
+        .strip_prefix(pkg_root)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| test_file.to_path_buf());
+
+    // Normalize separators: CRITICAL for Windows-blessed goldens to pass
+    // Linux CI.
+    let file_str = normalized_path(&rel_file);
+
+    // Framework takes priority over runner.
+    let cmd = match discovery.framework_hint {
+        Some(TsFramework::Bun) => format!("bun test {file_str}"),
+        Some(TsFramework::Vitest) => format!("vitest run {file_str}"),
+        Some(TsFramework::Jest) => format!("jest {file_str}"),
+        Some(TsFramework::NodeTest) => format!("node --test {file_str}"),
+        // Mocha does not have a simple file-target form in the spec table;
+        // fall through to runner fallback.
+        Some(TsFramework::Mocha) | None => {
+            // No framework resolved: use runner fallback.
+            match discovery.runner_hint {
+                Some(TsRunner::Bun) => format!("bun test {file_str}"),
+                Some(TsRunner::Npm) => format!("npm test -- {file_str}"),
+                Some(TsRunner::Pnpm) => format!("pnpm test -- {file_str}"),
+                Some(TsRunner::Yarn) => format!("yarn test {file_str}"),
+                // Fail-closed: no evidence → no command.
+                None => return None,
+            }
+        }
+    };
+    Some(cmd)
+}
+
 /// Convert an absolute path back to a path relative to `base`.  If the
 /// conversion fails (e.g. cross-drive on Windows), keep the absolute path.
 fn to_relative(path: &Path, base: &Path) -> PathBuf {
@@ -786,6 +852,138 @@ mod tests {
             !limit_lines.is_empty(),
             "expected limitation lines: {:?}",
             lines
+        );
+    }
+
+    // ── Unit tests: verify_command_for_discovery ───────────────────────────────
+
+    fn make_discovery(
+        package_root: Option<&str>,
+        framework_hint: Option<TsFramework>,
+        runner_hint: Option<TsRunner>,
+    ) -> PackageDiscovery {
+        PackageDiscovery {
+            package_root: package_root.map(PathBuf::from),
+            workspace_root: package_root.map(PathBuf::from),
+            framework_hint,
+            runner_hint,
+            confidence: TsPackageConfidence::High,
+            limitations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn verify_command_framework_jest_produces_jest_command() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), Some(TsRunner::Npm));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("jest tests/math.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_framework_vitest_produces_vitest_run_command() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Pnpm));
+        let result = verify_command_for_discovery(&discovery, Path::new("src/util.test.ts"));
+        assert_eq!(result, Some("vitest run src/util.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_framework_bun_produces_bun_test_command() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Bun), Some(TsRunner::Bun));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/app.test.ts"));
+        assert_eq!(result, Some("bun test tests/app.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_framework_node_test_produces_node_test_command() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::NodeTest), Some(TsRunner::Npm));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/core.test.mjs"));
+        assert_eq!(result, Some("node --test tests/core.test.mjs".to_string()));
+    }
+
+    #[test]
+    fn verify_command_no_framework_runner_npm_produces_npm_test_command() {
+        let discovery = make_discovery(Some("."), None, Some(TsRunner::Npm));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("npm test -- tests/math.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_no_framework_runner_pnpm_produces_pnpm_test_command() {
+        let discovery = make_discovery(Some("."), None, Some(TsRunner::Pnpm));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("pnpm test -- tests/math.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_no_framework_runner_yarn_produces_yarn_test_command() {
+        let discovery = make_discovery(Some("."), None, Some(TsRunner::Yarn));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("yarn test tests/math.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_no_framework_runner_bun_produces_bun_test_command() {
+        let discovery = make_discovery(Some("."), None, Some(TsRunner::Bun));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("bun test tests/math.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_no_framework_no_runner_returns_none_fail_closed() {
+        let discovery = make_discovery(Some("."), None, None);
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(
+            result, None,
+            "fail-closed: no command when neither framework nor runner resolves"
+        );
+    }
+
+    #[test]
+    fn verify_command_no_package_root_returns_none_fail_closed() {
+        let discovery = make_discovery(None, Some(TsFramework::Jest), Some(TsRunner::Npm));
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(
+            result, None,
+            "fail-closed: no command when package_root is None"
+        );
+    }
+
+    #[test]
+    fn verify_command_monorepo_strips_package_root_prefix() {
+        // test file is relative to workspace root: packages/auth/tests/token.test.ts
+        // package_root is packages/auth, so the command should use tests/token.test.ts
+        let discovery = make_discovery(
+            Some("packages/auth"),
+            Some(TsFramework::Jest),
+            Some(TsRunner::Pnpm),
+        );
+        let result = verify_command_for_discovery(
+            &discovery,
+            Path::new("packages/auth/tests/token.test.ts"),
+        );
+        assert_eq!(result, Some("jest tests/token.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_framework_takes_priority_over_runner() {
+        // Vitest framework with Bun runner → vitest run (not bun test)
+        let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Bun));
+        let result = verify_command_for_discovery(&discovery, Path::new("src/foo.test.ts"));
+        assert_eq!(result, Some("vitest run src/foo.test.ts".to_string()));
+    }
+
+    #[test]
+    fn verify_command_normalizes_backslash_separators() {
+        // On Windows, paths may use backslashes; the command must normalize them.
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
+        let result =
+            verify_command_for_discovery(&discovery, Path::new("tests\\auth\\token.test.ts"));
+        assert!(result.is_some(), "expected a command");
+        let cmd = result.unwrap_or_default();
+        assert!(!cmd.contains('\\'), "backslashes must be normalized: {cmd}");
+        assert!(
+            cmd.contains("tests/auth/token.test.ts"),
+            "expected normalized path: {cmd}"
         );
     }
 }

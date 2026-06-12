@@ -42,6 +42,7 @@ Evidence
   - owner: thresholdLabel
   - typescript_package_confidence: none
   - typescript_package_limitation: typescript_package_root_unresolved
+  - typescript_package_limitation: typescript_test_runner_unresolved
 
 Weakness
   - No test references `thresholdLabel(` — add a test that calls the changed owner.
