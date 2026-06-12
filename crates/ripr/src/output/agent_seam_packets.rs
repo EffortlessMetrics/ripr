@@ -836,7 +836,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
     }
 }
 
-fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
+pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
     let projection = record
         .projection_eligibility
         .get("agent_packet")
@@ -903,7 +903,7 @@ fn recommended_test_reason(route: &GapRepairRoute) -> &'static str {
     }
 }
 
-fn allowed_edit_surface_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
+pub(crate) fn allowed_edit_surface_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
     route
         .target_file
         .as_deref()
@@ -1254,7 +1254,7 @@ fn gap_record_packet_receipt(record: &GapRecord) -> Vec<String> {
     receipt
 }
 
-fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
+pub(crate) fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
     let mut guidance = vec![
         "Do not edit production code unless the focused proof exposes a real product defect."
             .to_string(),

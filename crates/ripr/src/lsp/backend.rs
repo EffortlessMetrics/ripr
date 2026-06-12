@@ -11,8 +11,8 @@ use super::hover::{
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND,
-    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
@@ -20,7 +20,7 @@ use crate::domain::context_packet::ContextPacket;
 use crate::domain::{StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     render_agent_gap_record_packet_json, suggested_assertion_for_classified_seam,
-    targeted_test_brief_outline_for_classified_seam,
+    targeted_test_brief_outline_for_classified_seam, validate_agent_gap_record_packet,
 };
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::{
@@ -568,6 +568,9 @@ impl LanguageServer for Backend {
         if params.command == COLLECT_WORKSPACE_STATUS_COMMAND {
             return Ok(self.collect_workspace_status());
         }
+        if params.command == COLLECT_REPAIR_PACKET_COMMAND {
+            return Ok(self.collect_repair_packet(&params.arguments));
+        }
         Ok(None)
     }
 }
@@ -849,6 +852,288 @@ fn collect_gap_record_context_packet(
     let rendered =
         render_agent_gap_record_packet_json(&display_lsp_path(&ledger_path), record).ok()?;
     serde_json::from_str(&rendered).ok()
+}
+
+const DEFAULT_ACTIONABLE_GAPS_OUT: &str = "target/ripr/reports/actionable-gaps.json";
+
+impl Backend {
+    fn collect_repair_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+        let root = self.root.lock().ok()?.clone();
+        let gap_id_arg = arguments
+            .first()
+            .and_then(|v| v.as_object())
+            .and_then(|obj| obj.get("gap_id"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned);
+
+        // Try actionable-gaps.json first (preferred: projection-validated).
+        let actionable_path = absolute_context_path(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
+        if let Some(result) =
+            collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id_arg.as_deref())
+        {
+            return Some(result);
+        }
+
+        // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
+        let ledger_path = absolute_context_path(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
+        collect_repair_packet_from_ledger(&ledger_path, gap_id_arg.as_deref())
+    }
+}
+
+fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {
+    let contents = fs::read_to_string(path).ok()?;
+    let report: serde_json::Value = serde_json::from_str(&contents).ok()?;
+    let packets = report.get("packets").and_then(|v| v.as_array())?;
+    let packet = if let Some(id) = gap_id {
+        packets
+            .iter()
+            .find(|p| {
+                p.get("canonical_gap_id")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|cid| cid == id)
+            })
+            .or_else(|| packets.first())?
+    } else {
+        packets
+            .iter()
+            .find(|p| {
+                p.get("gap_state")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s == "actionable")
+            })
+            .or_else(|| packets.first())?
+    };
+
+    // Require the packet to be actionable to emit a complete repair packet.
+    if packet
+        .get("gap_state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        != "actionable"
+    {
+        return Some(repair_packet_sentinel(
+            "gap is not actionable in actionable-gaps.json",
+        ));
+    }
+
+    validate_and_render_actionable_gap_packet(packet)
+}
+
+fn validate_and_render_actionable_gap_packet(packet: &serde_json::Value) -> Option<LSPAny> {
+    let str_field = |key: &str| -> Option<String> {
+        packet
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned)
+    };
+
+    let canonical_gap_id = match str_field("canonical_gap_id") {
+        Some(v) => v,
+        None => {
+            return Some(repair_packet_sentinel(
+                "actionable packet is missing canonical_gap_id",
+            ));
+        }
+    };
+    let repair_kind = match str_field("repair_kind") {
+        Some(v) => v,
+        None => {
+            return Some(repair_packet_sentinel(
+                "actionable packet is missing repair_kind",
+            ));
+        }
+    };
+    let verify_command = match str_field("verify_command") {
+        Some(v) => v,
+        None => {
+            return Some(repair_packet_sentinel(
+                "actionable packet is missing verify_command",
+            ));
+        }
+    };
+    let receipt_command = match str_field("receipt_command") {
+        Some(v) => v,
+        None => {
+            return Some(repair_packet_sentinel(
+                "actionable packet is missing receipt_command",
+            ));
+        }
+    };
+
+    let allowed_edit_surface: Vec<serde_json::Value> = packet
+        .get("allowed_edit_surface")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if allowed_edit_surface.is_empty() {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing allowed_edit_surface",
+        ));
+    }
+
+    let must_not_change: Vec<serde_json::Value> = packet
+        .get("must_not_change")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if must_not_change.is_empty() {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing must_not_change",
+        ));
+    }
+
+    let raw_evidence_refs: Vec<serde_json::Value> = packet
+        .get("raw_evidence_refs")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if raw_evidence_refs.is_empty() {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing raw_evidence_refs",
+        ));
+    }
+
+    let confidence = packet
+        .get("confidence_basis")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("static_only")
+        .to_owned();
+
+    // Derive language from raw_evidence_refs or canonical_gap_id.
+    let language = raw_evidence_refs
+        .iter()
+        .find_map(|r| {
+            r.get("language")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_default();
+
+    // Resolve source location from primary_anchor — never fabricate.
+    let anchor = packet.get("primary_anchor");
+    let anchor_file = anchor
+        .and_then(|a| a.get("file"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+    let anchor_line = anchor
+        .and_then(|a| a.get("line"))
+        .and_then(|v| v.as_u64())
+        .filter(|&n| n > 0);
+
+    let source_location = match (anchor_file, anchor_line) {
+        (Some(file), Some(line)) => serde_json::json!({ "file": file, "line": line }),
+        (Some(file), None) => serde_json::json!({
+            "status": "source_location_unresolved",
+            "file": file,
+        }),
+        _ => serde_json::json!({ "status": "source_location_unresolved" }),
+    };
+
+    let result = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "repair_packet",
+        "canonical_gap_id": canonical_gap_id,
+        "language": language,
+        "repair_kind": repair_kind,
+        "source_location": source_location,
+        "allowed_edit_surface": allowed_edit_surface,
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+        "must_not_change": must_not_change,
+        "raw_evidence_refs": raw_evidence_refs,
+        "confidence": confidence,
+        "limits_note": "Static evidence only; advisory, not a gate decision.",
+    });
+    serde_json::from_value(result).ok()
+}
+
+fn collect_repair_packet_from_ledger(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {
+    let contents = fs::read_to_string(path).ok()?;
+    let records = parse_gap_records_json(&contents).ok()?;
+    let record = if let Some(id) = gap_id {
+        records
+            .iter()
+            .find(|r| r.gap_id == id || r.canonical_gap_id == id)?
+    } else {
+        records.iter().find(|r| r.gap_state == "actionable")?
+    };
+
+    // Use the existing validator for completeness gate.
+    if let Err(reason) = validate_agent_gap_record_packet(record) {
+        return Some(serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "repair_packet",
+            "status": "not_actionable_or_incomplete",
+            "reason": reason,
+        }));
+    }
+
+    let route = record.repair_route.as_ref()?;
+    let verify_command = record.verification_commands.first()?.clone();
+    let receipt_command = record.receipt_command.as_deref().map(ToOwned::to_owned)?;
+    let allowed_edit_surface =
+        crate::output::agent_seam_packets::allowed_edit_surface_for_gap_route(route);
+    let must_not_change: Vec<String> =
+        crate::output::agent_seam_packets::gap_record_packet_do_not_do(record);
+
+    let anchor = record.anchor.as_ref();
+    let anchor_file = anchor
+        .and_then(|a| a.file.as_deref())
+        .filter(|s| !s.is_empty())
+        .map(crate::output::path::display_path_text);
+    let anchor_line = anchor.and_then(|a| a.line).filter(|&n| n > 0);
+    let source_location = match (anchor_file, anchor_line) {
+        (Some(file), Some(line)) => serde_json::json!({ "file": file, "line": line }),
+        (Some(file), None) => serde_json::json!({
+            "status": "source_location_unresolved",
+            "file": file,
+        }),
+        _ => serde_json::json!({ "status": "source_location_unresolved" }),
+    };
+
+    let canonical_gap_id = if record.canonical_gap_id.trim().is_empty() {
+        &record.gap_id
+    } else {
+        &record.canonical_gap_id
+    };
+
+    let result = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "repair_packet",
+        "canonical_gap_id": canonical_gap_id,
+        "language": &record.language,
+        "repair_kind": route.route_kind.as_str(),
+        "source_location": source_location,
+        "allowed_edit_surface": allowed_edit_surface,
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+        "must_not_change": must_not_change,
+        "raw_evidence_refs": &record.evidence_ids,
+        "confidence": "static_only",
+        "limits_note": "Static evidence only; advisory, not a gate decision.",
+    });
+    serde_json::from_value(result).ok()
+}
+
+fn repair_packet_sentinel(reason: &str) -> LSPAny {
+    serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "repair_packet",
+        "status": "not_actionable_or_incomplete",
+        "reason": reason,
+    })
 }
 
 fn absolute_context_path(root: &Path, path: &Path) -> PathBuf {

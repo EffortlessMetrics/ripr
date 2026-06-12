@@ -1,7 +1,7 @@
 use super::uri::path_from_file_uri;
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND,
-    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
 };
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -22,6 +22,7 @@ pub(super) fn initialize_result() -> InitializeResult {
                     COLLECT_CONTEXT_COMMAND.to_string(),
                     COLLECT_EVIDENCE_CONTEXT_COMMAND.to_string(),
                     COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                    COLLECT_REPAIR_PACKET_COMMAND.to_string(),
                 ],
                 ..ExecuteCommandOptions::default()
             }),

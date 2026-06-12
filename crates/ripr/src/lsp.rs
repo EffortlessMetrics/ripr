@@ -25,6 +25,7 @@ const COPY_TARGETED_TEST_BRIEF_COMMAND: &str = "ripr.copyTargetedTestBrief";
 const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";
 const COLLECT_EVIDENCE_CONTEXT_COMMAND: &str = "ripr.collectEvidenceContext";
 const COLLECT_WORKSPACE_STATUS_COMMAND: &str = "ripr.collectWorkspaceStatus";
+const COLLECT_REPAIR_PACKET_COMMAND: &str = "ripr.collectRepairPacket";
 const OPEN_RELATED_TEST_COMMAND: &str = "ripr.openRelatedTest";
 const REFRESH_COMMAND: &str = "ripr.refresh";
 const HOVER_TEXT: &str = "ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings.";

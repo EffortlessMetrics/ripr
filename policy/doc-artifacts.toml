@@ -225,3 +225,10 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0076-lsp-diagnostics-policy.md"
 status = "accepted"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0077"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0077-lsp-repair-packet-command.md"
+status = "proposed"
+owner = "product-swarm"

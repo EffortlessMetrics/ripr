@@ -4980,3 +4980,28 @@ metrics = [
   "lsp_diagnostics_policy_warning_rate_advisory_zero",
   "unit_test_pass_rate"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0077"
+name = "LSP repair packet command"
+spec = "docs/specs/RIPR-SPEC-0077-lsp-repair-packet-command.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_null",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_incomplete_gap_returns_sentinel",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_complete_gap_returns_full_packet",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_registered_in_capabilities"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0077-lsp-repair-packet-command.md"
+]
+metrics = [
+  "unit_test_pass_rate"
+]
+

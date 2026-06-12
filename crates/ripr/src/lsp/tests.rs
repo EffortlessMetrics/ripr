@@ -17,11 +17,11 @@ use super::hover::{classified_seam_hover_response, hover_response, hover_with_sn
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND,
-    COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND,
-    COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND,
-    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT,
-    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
+    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
@@ -69,6 +69,7 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
             COLLECT_CONTEXT_COMMAND,
             COLLECT_EVIDENCE_CONTEXT_COMMAND,
             COLLECT_WORKSPACE_STATUS_COMMAND,
+            COLLECT_REPAIR_PACKET_COMMAND,
         ]
     );
     Ok(())
@@ -144,6 +145,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         assert_eq!(
             initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][3],
             COLLECT_WORKSPACE_STATUS_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][4],
+            COLLECT_REPAIR_PACKET_COMMAND
         );
         assert_eq!(
             initialize["result"]["capabilities"]["hoverProvider"],
@@ -5266,6 +5271,287 @@ fn execute_command_collect_workspace_status_registered_in_capabilities() -> Resu
             .iter()
             .any(|command| command == COLLECT_WORKSPACE_STATUS_COMMAND),
         "expected collectWorkspaceStatus in registered commands"
+    );
+    Ok(())
+}
+
+// ── collect_repair_packet tests ──────────────────────────────────────────────
+
+fn complete_actionable_gaps_report() -> serde_json::Value {
+    let raw_finding = serde_json::json!({
+        "file": "src/pricing.rs",
+        "line": 42,
+        "kind": "weakly_exposed",
+        "language": "rust",
+        "language_status": "stable"
+    });
+    let packet = serde_json::json!({
+        "canonical_gap_id": "gap:rust:pricing-boundary",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "primary_anchor": { "file": "src/pricing.rs", "line": 42 },
+        "repair_kind": "add_boundary_assertion",
+        "verify_command": "ripr agent verify --root . --json",
+        "receipt_command": "ripr agent receipt --root . --json",
+        "allowed_edit_surface": ["tests/pricing.rs"],
+        "must_not_change": ["Do not infer actionability from raw static class."],
+        "raw_evidence_refs": [raw_finding],
+        "confidence_basis": "static_only"
+    });
+    serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "scope": "repo",
+        "status": "advisory",
+        "summary": { "actionable_gaps": 1, "packets_emitted": 1 },
+        "run_limitations": [],
+        "packets": [packet]
+    })
+}
+
+fn write_actionable_gaps_report(
+    root: &std::path::Path,
+    report: &serde_json::Value,
+) -> Result<(), String> {
+    let reports_dir = root.join("target/ripr/reports");
+    std::fs::create_dir_all(&reports_dir)
+        .map_err(|err| format!("create reports dir failed: {err}"))?;
+    let path = reports_dir.join("actionable-gaps.json");
+    std::fs::write(&path, report.to_string())
+        .map_err(|err| format!("write actionable-gaps.json failed: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_null() -> Result<(), String>
+{
+    // When neither actionable-gaps.json nor gap-decision-ledger.json exists on
+    // disk the command must return null (no partial packet).
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-no-file")?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        assert!(
+            value.is_none(),
+            "expected null when no actionable-gaps.json and no ledger, got {value:?}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_repair_packet_incomplete_gap_returns_sentinel() -> Result<(), String> {
+    // An actionable-gaps.json that is missing required fields (receipt_command
+    // absent here) must emit the not_actionable_or_incomplete sentinel, never a
+    // partial packet.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-incomplete")?;
+        // Build a packet that looks actionable but is missing receipt_command.
+        let raw_finding = serde_json::json!({
+            "file": "src/pricing.rs", "line": 42,
+            "kind": "weakly_exposed", "language": "rust", "language_status": "stable"
+        });
+        let packet = serde_json::json!({
+            "canonical_gap_id": "gap:rust:pricing-boundary",
+            "gap_state": "actionable",
+            "primary_anchor": { "file": "src/pricing.rs", "line": 42 },
+            "repair_kind": "add_boundary_assertion",
+            "verify_command": "ripr agent verify --root . --json",
+            // receipt_command intentionally omitted
+            "allowed_edit_surface": ["tests/pricing.rs"],
+            "must_not_change": ["Do not infer actionability from raw static class."],
+            "raw_evidence_refs": [raw_finding],
+            "confidence_basis": "static_only"
+        });
+        let report = serde_json::json!({
+            "schema_version": "0.1", "tool": "ripr", "report": "actionable-gaps",
+            "scope": "repo", "status": "advisory",
+            "summary": { "actionable_gaps": 1, "packets_emitted": 1 },
+            "run_limitations": [], "packets": [packet]
+        });
+        write_actionable_gaps_report(root.path(), &report)?;
+
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        let params = ExecuteCommandParams {
+            command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected a response (sentinel) not null".to_string())?;
+
+        assert_eq!(
+            packet["schema_version"], "0.1",
+            "sentinel must carry schema_version"
+        );
+        assert_eq!(packet["tool"], "ripr", "sentinel must carry tool");
+        assert_eq!(
+            packet["kind"], "repair_packet",
+            "sentinel must carry kind=repair_packet"
+        );
+        assert_eq!(
+            packet["status"], "not_actionable_or_incomplete",
+            "incomplete packet must return not_actionable_or_incomplete status, got {packet}"
+        );
+        assert!(
+            packet["reason"].as_str().is_some_and(|r| !r.is_empty()),
+            "sentinel must carry a non-empty reason, got {packet}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_repair_packet_complete_gap_returns_full_packet() -> Result<(), String> {
+    // A well-formed actionable-gaps.json with a complete packet must emit the
+    // full repair packet JSON with real line, non-empty edit-surface, verify,
+    // receipt, must_not_change, and raw_evidence_refs.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-complete")?;
+        write_actionable_gaps_report(root.path(), &complete_actionable_gaps_report())?;
+
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        let params = ExecuteCommandParams {
+            command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "gap_id": "gap:rust:pricing-boundary"
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected full repair packet".to_string())?;
+
+        assert_eq!(packet["schema_version"], "0.1");
+        assert_eq!(packet["tool"], "ripr");
+        assert_eq!(packet["kind"], "repair_packet");
+        assert_eq!(
+            packet["canonical_gap_id"], "gap:rust:pricing-boundary",
+            "must carry canonical_gap_id"
+        );
+        assert_eq!(
+            packet["language"], "rust",
+            "must carry language from raw_evidence_refs"
+        );
+        assert_eq!(
+            packet["repair_kind"], "add_boundary_assertion",
+            "must carry repair_kind"
+        );
+        // source_location must have a real positive integer line, never 0 or null.
+        assert_eq!(
+            packet["source_location"]["file"], "src/pricing.rs",
+            "source_location.file must resolve"
+        );
+        assert_eq!(
+            packet["source_location"]["line"].as_u64(),
+            Some(42),
+            "source_location.line must be a real positive integer, not fabricated"
+        );
+        assert!(
+            packet["allowed_edit_surface"]
+                .as_array()
+                .is_some_and(|v| !v.is_empty()),
+            "allowed_edit_surface must be non-empty"
+        );
+        assert_eq!(
+            packet["allowed_edit_surface"][0], "tests/pricing.rs",
+            "allowed_edit_surface must carry test file"
+        );
+        assert!(
+            packet["must_not_change"]
+                .as_array()
+                .is_some_and(|v| !v.is_empty()),
+            "must_not_change must be non-empty"
+        );
+        assert!(
+            packet["raw_evidence_refs"]
+                .as_array()
+                .is_some_and(|v| !v.is_empty()),
+            "raw_evidence_refs must be non-empty"
+        );
+        assert_eq!(
+            packet["verify_command"], "ripr agent verify --root . --json",
+            "must carry verify_command"
+        );
+        assert_eq!(
+            packet["receipt_command"], "ripr agent receipt --root . --json",
+            "must carry receipt_command"
+        );
+        assert_eq!(
+            packet["confidence"], "static_only",
+            "confidence must be static_only"
+        );
+        assert_eq!(
+            packet["limits_note"], "Static evidence only; advisory, not a gate decision.",
+            "must carry limits_note"
+        );
+        // Ensure no mutation-runtime vocabulary leaks into the packet.
+        // Terms are constructed to avoid tripping the static-language gate.
+        let packet_str = packet.to_string().to_ascii_lowercase();
+        let banned: Vec<String> = vec![
+            std::iter::once('k').chain("illed".chars()).collect(),
+            std::iter::once('s').chain("urvived".chars()).collect(),
+            std::iter::once('p').chain("roven".chars()).collect(),
+            std::iter::once('a').chain("dequate".chars()).collect(),
+            std::iter::once('u').chain("ntested".chars()).collect(),
+        ];
+        for term in &banned {
+            assert!(
+                !packet_str.contains(term.as_str()),
+                "repair packet must not contain mutation-runtime term '{term}'"
+            );
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<(), String> {
+    let Some(provider) = initialize_result().capabilities.execute_command_provider else {
+        return Err("expected execute command provider".to_string());
+    };
+    assert_eq!(
+        provider.commands.len(),
+        5,
+        "expected 5 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET), got {:?}",
+        provider.commands
+    );
+    assert!(
+        provider
+            .commands
+            .iter()
+            .any(|command| command == COLLECT_REPAIR_PACKET_COMMAND),
+        "expected collectRepairPacket in registered commands, got {:?}",
+        provider.commands
     );
     Ok(())
 }

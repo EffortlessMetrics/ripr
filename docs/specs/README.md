@@ -87,3 +87,4 @@ observable behavior.
 | [RIPR-SPEC-0074](RIPR-SPEC-0074-repo-exposure-run-status.md) | proposed | Repo exposure run status |
 | [RIPR-SPEC-0075](RIPR-SPEC-0075-pr-evidence-summary.md) | proposed | PR evidence summary |
 | [RIPR-SPEC-0076](RIPR-SPEC-0076-lsp-diagnostics-policy.md) | accepted | LSP diagnostics severity policy |
+| [RIPR-SPEC-0077](RIPR-SPEC-0077-lsp-repair-packet-command.md) | proposed | LSP repair packet command |
