@@ -53,7 +53,12 @@
     "onCommand:ripr.copyFirstPrRepairPacket",
     "onCommand:ripr.copyFirstPrVerifyCommand",
     "onCommand:ripr.copyFirstPrReceiptCommand",
-    "onCommand:ripr.copyFirstPrRegenerationGuidance"
+    "onCommand:ripr.copyFirstPrRegenerationGuidance",
+    "onCommand:ripr.copyTopRepairPacket",
+    "onCommand:ripr.copyTopVerifyCommand",
+    "onCommand:ripr.copyTopReceiptCommand",
+    "onCommand:ripr.openReport",
+    "onCommand:ripr.showTopLimitation"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -245,6 +250,26 @@
       {
         "command": "ripr.openSettings",
         "title": "ripr: Open Settings"
+      },
+      {
+        "command": "ripr.copyTopRepairPacket",
+        "title": "ripr: Copy Top Repair Packet"
+      },
+      {
+        "command": "ripr.copyTopVerifyCommand",
+        "title": "ripr: Copy Verify Command"
+      },
+      {
+        "command": "ripr.copyTopReceiptCommand",
+        "title": "ripr: Copy Receipt Command"
+      },
+      {
+        "command": "ripr.openReport",
+        "title": "ripr: Open Report"
+      },
+      {
+        "command": "ripr.showTopLimitation",
+        "title": "ripr: Show Top Limitation"
       }
     ]
   }

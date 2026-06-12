@@ -944,8 +944,247 @@ export class RiprClientController {
     if (detail) {
       this.output.appendLine(detail);
     }
+    // Augment with live workspace status from the LSP server.
+    const client = this.client;
+    if (client) {
+      try {
+        const wsStatus = await client.sendRequest('workspace/executeCommand', {
+          command: 'ripr.collectWorkspaceStatus',
+          arguments: []
+        });
+        if (wsStatus === null || wsStatus === undefined) {
+          this.output.appendLine('ripr server did not respond to collectWorkspaceStatus.');
+        } else if (typeof wsStatus === 'object') {
+          const s = wsStatus as Record<string, unknown>;
+          const runStatus = typeof s['run_status'] === 'string' ? s['run_status'] : undefined;
+          if (runStatus === 'no_snapshot') {
+            this.output.appendLine('ripr workspace status: No analysis snapshot yet — save a Rust file to trigger analysis.');
+          } else if (runStatus) {
+            this.output.appendLine(`ripr workspace status: ${runStatus}`);
+          }
+          // Summarise top actionable packet if present.
+          const packet = s['top_actionable_packet'];
+          if (packet && typeof packet === 'object') {
+            const p = packet as Record<string, unknown>;
+            const gapId = typeof p['canonical_gap_id'] === 'string' ? p['canonical_gap_id'] : '';
+            const loc = typeof p['file'] === 'string' && typeof p['line'] === 'number'
+              ? `${p['file']}:${p['line']}`
+              : typeof p['file'] === 'string' ? p['file'] : '';
+            const repairKind = typeof p['repair_kind'] === 'string' ? p['repair_kind'] : '';
+            const parts = [gapId, loc, repairKind].filter(Boolean);
+            if (parts.length > 0) {
+              this.output.appendLine(`ripr top actionable packet: ${parts.join(' | ')}`);
+            }
+          }
+          // Summarise top limitation if present.
+          const limitation = s['top_limitation'];
+          if (limitation && typeof limitation === 'object') {
+            const l = limitation as Record<string, unknown>;
+            const cat = typeof l['limitation_category'] === 'string' ? l['limitation_category'] : '';
+            const route = typeof l['repair_route'] === 'string' ? l['repair_route'] : '';
+            const parts = [cat, route].filter(Boolean);
+            if (parts.length > 0) {
+              this.output.appendLine(`ripr top limitation: ${parts.join(' | ')}`);
+            }
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr collectWorkspaceStatus failed: ${message}`);
+      }
+    }
     this.output.show();
     this.runtime.showInformationMessage(statusSummary(this.status, this.firstUsefulAction));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cockpit commands (ripr.collectRepairPacket / collectTopLimitation)
+  // ---------------------------------------------------------------------------
+
+  /** Shared helper: calls ripr.collectRepairPacket (top packet, no args) once. */
+  private async fetchTopRepairPacket(): Promise<Record<string, unknown> | null> {
+    const client = this.client;
+    if (!client) {
+      return null;
+    }
+    try {
+      const response = await client.sendRequest('workspace/executeCommand', {
+        command: 'ripr.collectRepairPacket',
+        arguments: []
+      });
+      if (response === null || response === undefined) {
+        return null;
+      }
+      if (typeof response === 'object') {
+        return response as Record<string, unknown>;
+      }
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr collectRepairPacket failed: ${message}`);
+      return null;
+    }
+  }
+
+  async copyTopRepairPacket(): Promise<void> {
+    const response = await this.fetchTopRepairPacket();
+    if (response === null) {
+      this.runtime.showInformationMessage('ripr server did not respond — no repair packet available.');
+      return;
+    }
+    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
+      const reason = typeof response['reason'] === 'string' ? response['reason'] : undefined;
+      this.runtime.showInformationMessage(reason ?? 'No complete repair packet available.');
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(JSON.stringify(response, null, 2));
+      this.runtime.showInformationMessage('Copied top repair packet to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyTopRepairPacket clipboard write failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the repair packet. See ripr output for details.');
+    }
+  }
+
+  async copyTopVerifyCommand(): Promise<void> {
+    const response = await this.fetchTopRepairPacket();
+    if (response === null) {
+      this.runtime.showInformationMessage('No verify command available.');
+      return;
+    }
+    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
+      this.runtime.showInformationMessage('No verify command available.');
+      return;
+    }
+    const verifyCommand = typeof response['verify_command'] === 'string'
+      ? response['verify_command'].trim()
+      : '';
+    if (!verifyCommand) {
+      this.runtime.showInformationMessage('No verify command available.');
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(verifyCommand);
+      this.runtime.showInformationMessage('Copied verify command to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyTopVerifyCommand clipboard write failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the verify command. See ripr output for details.');
+    }
+  }
+
+  async copyTopReceiptCommand(): Promise<void> {
+    const response = await this.fetchTopRepairPacket();
+    if (response === null) {
+      this.runtime.showInformationMessage('No receipt command available.');
+      return;
+    }
+    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
+      this.runtime.showInformationMessage('No receipt command available.');
+      return;
+    }
+    const receiptCommand = typeof response['receipt_command'] === 'string'
+      ? response['receipt_command'].trim()
+      : '';
+    if (!receiptCommand) {
+      this.runtime.showInformationMessage('No receipt command available.');
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(receiptCommand);
+      this.runtime.showInformationMessage('Copied receipt command to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyTopReceiptCommand clipboard write failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+    }
+  }
+
+  async openReport(): Promise<void> {
+    const workspaceRoot = this.workspaceRoot;
+    if (!workspaceRoot) {
+      this.runtime.showInformationMessage('Open a workspace before using ripr: Open Report.');
+      return;
+    }
+    const primaryPath = path.join(workspaceRoot, 'target', 'ripr', 'reports', 'pr-evidence-summary.md');
+    const fallbackPath = path.join(workspaceRoot, 'target', 'ripr', 'reports', 'start-here.md');
+    let resolvedPath: string | undefined;
+    for (const candidate of [primaryPath, fallbackPath]) {
+      const content = await this.runtime.readFile(candidate);
+      if (content !== undefined) {
+        resolvedPath = candidate;
+        break;
+      }
+    }
+    if (!resolvedPath) {
+      this.runtime.showInformationMessage(
+        'No report yet — run `cargo xtask ripr-pr-summary` to generate one.'
+      );
+      return;
+    }
+    try {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(resolvedPath));
+      await vscode.window.showTextDocument(document);
+      this.runtime.showInformationMessage('Opened ripr report.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr open report failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not open the report. See ripr output for details.');
+    }
+  }
+
+  async showTopLimitation(): Promise<void> {
+    const client = this.client;
+    if (!client) {
+      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      return;
+    }
+    let response: Record<string, unknown> | null = null;
+    try {
+      const raw = await client.sendRequest('workspace/executeCommand', {
+        command: 'ripr.collectTopLimitation',
+        arguments: []
+      });
+      if (raw !== null && raw !== undefined && typeof raw === 'object') {
+        response = raw as Record<string, unknown>;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr collectTopLimitation failed: ${message}`);
+    }
+    if (response === null) {
+      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      return;
+    }
+    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
+    if (status === 'no_limitation') {
+      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      return;
+    }
+    const category = typeof response['limitation_category'] === 'string' ? response['limitation_category'] : '';
+    const repairRoute = typeof response['repair_route'] === 'string' ? response['repair_route'] : '';
+    const whyNot = typeof response['why_not_actionable'] === 'string' ? response['why_not_actionable'] : '';
+    const unlock = typeof response['unlock_condition'] === 'string' ? response['unlock_condition'] : '';
+    this.output.appendLine('ripr top limitation:');
+    if (category) {
+      this.output.appendLine(`  limitation_category: ${category}`);
+    }
+    if (repairRoute) {
+      this.output.appendLine(`  repair_route: ${repairRoute}`);
+    }
+    if (whyNot) {
+      this.output.appendLine(`  why_not_actionable: ${whyNot}`);
+    }
+    if (unlock) {
+      this.output.appendLine(`  unlock_condition: ${unlock}`);
+    }
+    this.output.show();
+    const summary = category || repairRoute || 'See ripr output for limitation details.';
+    this.runtime.showInformationMessage(`ripr top limitation: ${summary}`);
   }
 
   private async diagnoseSetupAsync(): Promise<void> {
