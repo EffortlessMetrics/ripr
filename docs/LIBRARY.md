@@ -28,6 +28,7 @@ these before planning any campaign or before opening a PR.
 | [Scoped PR Contract](SCOPED_PR_CONTRACT.md) | The evidence bar for one work item: one production delta, one acceptance criterion, required fields, and the spec-test-code chain every material change must preserve. |
 | [PR Automation](PR_AUTOMATION.md) | The `cargo xtask shape / fix-pr / check-pr` loop, current automation surface, and how deterministic cleanup is separated from judgment-based repair. |
 | [Learnings — agentic lessons](LEARNINGS.md) | Dated discoveries from real campaigns: verify-don't-trust; plausible-but-wrong is the dominant failure mode; mirror CI with the policy-checker facade (`cargo test -p xtask policy_checker_facade_runs_current_repo_checks`); adoption breakage is invisible to tool builders; constraints produce autonomy. See the `2026-06-11` entries especially. |
+| [LSP-First Repair/Receipt Workflow](LSP_AGENT_REPAIR_WORKFLOW.md) | The end-to-end programmatic agent loop via the LSP cockpit: Show Status → Copy Top Repair Packet → edit in cage → verify → receipt → Show Receipt Status → Show Route Quality → inspect guidance. Includes the limitation path (when no actionable packet is available) and the honesty bar (non-claims). Reach for this when driving a repair attempt programmatically. |
 
 **Convention:** new agentic *process* lessons → `docs/AGENT_OPERATING_MODEL.md`
 (durable operating rules) or a dated `## YYYY-MM-DD:` section in

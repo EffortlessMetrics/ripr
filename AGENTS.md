@@ -364,6 +364,10 @@ See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
 agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
 for why constraints enable autonomy.
 
+See `docs/LSP_AGENT_REPAIR_WORKFLOW.md` for the end-to-end LSP-first
+repair/receipt loop: Show Status → Copy Top Repair Packet → edit in cage →
+verify → receipt → Show Receipt Status → Show Route Quality.
+
 See `docs/LIBRARY.md` for the curated knowledge library: agentic learnings,
 repo domain learnings, and a dated timeline of major learning milestones across
 all campaigns.
