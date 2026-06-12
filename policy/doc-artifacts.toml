@@ -257,3 +257,11 @@ path = "docs/specs/RIPR-SPEC-0080-route-quality-standalone-report.md"
 status = "proposed"
 owner = "swarm"
 standalone_reason = "Standalone route-quality extraction under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0081"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0081-lsp-receipt-status-command.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "LSP receipt-status command under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."

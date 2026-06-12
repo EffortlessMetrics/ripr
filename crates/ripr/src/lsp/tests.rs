@@ -17,11 +17,12 @@ use super::hover::{classified_seam_hover_response, hover_response, hover_with_sn
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
-    COLLECT_TOP_LIMITATION_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND,
-    COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND,
-    COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
-    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
+    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
@@ -71,6 +72,7 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
             COLLECT_WORKSPACE_STATUS_COMMAND,
             COLLECT_REPAIR_PACKET_COMMAND,
             COLLECT_TOP_LIMITATION_COMMAND,
+            COLLECT_RECEIPT_STATUS_COMMAND,
         ]
     );
     Ok(())
@@ -5546,8 +5548,8 @@ fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<
     };
     assert_eq!(
         provider.commands.len(),
-        6,
-        "expected 6 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION), got {:?}",
+        7,
+        "expected 7 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION, COLLECT_RECEIPT_STATUS), got {:?}",
         provider.commands
     );
     assert!(
@@ -5694,8 +5696,8 @@ fn execute_command_collect_top_limitation_registered_in_capabilities() -> Result
     };
     assert_eq!(
         provider.commands.len(),
-        6,
-        "expected 6 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION), got {:?}",
+        7,
+        "expected 7 registered commands (REFRESH, COLLECT_CONTEXT, COLLECT_EVIDENCE_CONTEXT, COLLECT_WORKSPACE_STATUS, COLLECT_REPAIR_PACKET, COLLECT_TOP_LIMITATION, COLLECT_RECEIPT_STATUS), got {:?}",
         provider.commands
     );
     assert!(
@@ -5707,4 +5709,442 @@ fn execute_command_collect_top_limitation_registered_in_capabilities() -> Result
         provider.commands
     );
     Ok(())
+}
+
+// ---- RIPR-SPEC-0081: collectReceiptStatus tests ----
+
+#[test]
+fn execute_command_collect_receipt_status_no_snapshot_returns_not_available_fields()
+-> Result<(), String> {
+    // When no snapshot exists, all outcome/artifact fields must be
+    // "not_available" — never fabricated, never zero.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value) even without snapshot, got null".to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["tool"], "ripr");
+        assert_eq!(value["kind"], "receipt_status");
+        assert_eq!(value["status"], "no_snapshot");
+        assert_eq!(
+            value["latest_attempt_outcome"], "not_available",
+            "absent artifacts must yield not_available, not a fabricated value"
+        );
+        assert_eq!(
+            value["route_quality_summary"], "not_available",
+            "absent route-quality artifact must yield not_available"
+        );
+        assert_eq!(
+            value["receipt_status"], "not_available",
+            "absent snapshot must yield receipt_status=not_available"
+        );
+        assert_eq!(
+            value["copy_receipt_command"], "not_available",
+            "no snapshot must yield copy_receipt_command=not_available"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_absent_artifacts_yield_not_available()
+-> Result<(), String> {
+    // With a snapshot but NO attempt-ledger / route-quality artifacts on disk,
+    // latest_attempt_outcome and route_quality_summary must both be "not_available".
+    // Proves: absence != "no outcome" (honesty bar).
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        // No attempt-ledger or route-quality files written — they are absent.
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value), got null".to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["tool"], "ripr");
+        assert_eq!(value["kind"], "receipt_status");
+        assert_eq!(
+            value["latest_attempt_outcome"], "not_available",
+            "absent swarm-attempt-ledger must yield not_available, not zero"
+        );
+        assert_eq!(
+            value["route_quality_summary"], "not_available",
+            "absent route-quality.json must yield not_available, not zero"
+        );
+        // open_attempt_ledger must be not_available when file is absent.
+        assert_eq!(
+            value["open_attempt_ledger"], "not_available",
+            "absent swarm-attempt-ledger.json must yield open_attempt_ledger=not_available"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_with_attempt_ledger_returns_real_outcome()
+-> Result<(), String> {
+    // With a swarm-attempt-ledger.json fixture present, latest_attempt_outcome
+    // must surface the real outcome value — not a fabricated or default one.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        write_attempt_ledger(&root, "evidence_improved")?;
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value), got null".to_string())?;
+
+        assert_eq!(
+            value["latest_attempt_outcome"], "evidence_improved",
+            "real attempt ledger must surface real outcome, got {value}"
+        );
+        assert_ne!(
+            value["open_attempt_ledger"], "not_available",
+            "open_attempt_ledger must be a path when the file exists, got {value}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_with_route_quality_returns_summary() -> Result<(), String>
+{
+    // With a route-quality.json fixture with status="advisory" and rows present,
+    // route_quality_summary must be a structured summary object, not "not_available".
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        write_route_quality(&root)?;
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value), got null".to_string())?;
+
+        // Must be a structured summary, not the not_available sentinel.
+        assert!(
+            value["route_quality_summary"].is_object(),
+            "route_quality_summary must be an object when artifact is present, got {value}"
+        );
+        assert_eq!(
+            value["route_quality_summary"]["status"], "advisory",
+            "route_quality_summary.status must reflect artifact status"
+        );
+        assert!(
+            value["route_quality_summary"]["top_repair_kind_rows"].is_array(),
+            "route_quality_summary must include top_repair_kind_rows"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_blocked_route_quality_yields_not_available()
+-> Result<(), String> {
+    // route-quality.json with status="blocked" must yield not_available —
+    // blocked means no real data rows to surface.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        write_blocked_route_quality(&root)?;
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value), got null".to_string())?;
+
+        assert_eq!(
+            value["route_quality_summary"], "not_available",
+            "blocked route-quality must yield not_available, not a fake summary"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_limitation_hides_receipt_command() -> Result<(), String> {
+    // When there is a gap_artifact_rejection (limitation), copy_receipt_command
+    // must be "not_available" — limitations must never surface repair receipt commands
+    // (RIPR-SPEC-0076 harmonization).
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut diagnostics =
+            sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        // Inject a rejection so this snapshot has a limitation.
+        diagnostics
+            .snapshot
+            .gap_artifact_rejections
+            .push(GapArtifactRejection::DisabledLanguage(
+                "typescript".to_string(),
+            ));
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected Some(value), got null".to_string())?;
+
+        assert_eq!(
+            value["copy_receipt_command"], "not_available",
+            "limitation must suppress copy_receipt_command, got {value}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_receipt_status_registered_in_capabilities() -> Result<(), String> {
+    let Some(provider) = initialize_result().capabilities.execute_command_provider else {
+        return Err("expected execute command provider".to_string());
+    };
+    assert!(
+        provider
+            .commands
+            .iter()
+            .any(|command| command == COLLECT_RECEIPT_STATUS_COMMAND),
+        "expected collectReceiptStatus in registered commands, got {:?}",
+        provider.commands
+    );
+    Ok(())
+}
+
+#[test]
+fn execute_command_collect_workspace_status_includes_receipt_status_summary_field()
+-> Result<(), String> {
+    // Augmented collectWorkspaceStatus must include receipt_status_summary field.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = receipt_status_temp_root()?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let status = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status, got null".to_string())?;
+
+        // receipt_status_summary must be present (object or null, never missing).
+        assert!(
+            status.get("receipt_status_summary").is_some(),
+            "collectWorkspaceStatus must include receipt_status_summary field"
+        );
+        // When artifacts are absent, latest_attempt_outcome inside the summary
+        // must be not_available.
+        let summary = &status["receipt_status_summary"];
+        if summary.is_object() {
+            assert_eq!(
+                summary["latest_attempt_outcome"], "not_available",
+                "absent attempt-ledger must yield not_available in workspace summary"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup temp root failed: {err}"))?;
+        Ok(())
+    })
+}
+
+// ---- Test helpers for RIPR-SPEC-0081 ----
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static RECEIPT_STATUS_TEMP_ROOT_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+fn receipt_status_temp_root() -> Result<PathBuf, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|err| format!("system clock before UNIX_EPOCH: {err}"))?
+        .as_nanos();
+    let seq = RECEIPT_STATUS_TEMP_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let root = std::env::temp_dir().join(format!("ripr-lsp-receipt-status-{pid}-{stamp}-{seq}"));
+    std::fs::create_dir_all(root.join("target/ripr/reports"))
+        .map_err(|err| format!("create temp root failed: {err}"))?;
+    Ok(root)
+}
+
+fn write_attempt_ledger(root: &Path, outcome: &str) -> Result<(), String> {
+    let path = root.join("target/ripr/reports/swarm-attempt-ledger.json");
+    let json = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "swarm-attempt-ledger",
+        "status": "advisory",
+        "latest_attempts": [
+            {
+                "packet_id": "packet-001",
+                "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+                "attempt_id": "attempt-001",
+                "outcome": outcome,
+                "receipt_state": "present",
+                "reason": "evidence gap closed",
+            }
+        ]
+    });
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&json).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| format!("write attempt ledger failed: {err}"))
+}
+
+fn write_route_quality(root: &Path) -> Result<(), String> {
+    let path = root.join("target/ripr/reports/route-quality.json");
+    let json = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "route-quality",
+        "status": "advisory",
+        "repair_route_quality_latest": [
+            {
+                "repair_kind": "AddBoundaryAssertion",
+                "repair_kind_attempted": 2,
+                "repair_kind_improved": 1,
+                "repair_kind_success_rate": 0.5,
+            }
+        ]
+    });
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&json).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| format!("write route-quality failed: {err}"))
+}
+
+fn write_blocked_route_quality(root: &Path) -> Result<(), String> {
+    let path = root.join("target/ripr/reports/route-quality.json");
+    let json = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "route-quality",
+        "status": "blocked",
+        "repair_route_quality_latest": [],
+    });
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&json).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| format!("write blocked route-quality failed: {err}"))
 }

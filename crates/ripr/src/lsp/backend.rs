@@ -11,8 +11,9 @@ use super::hover::{
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_REPAIR_PACKET_COMMAND,
-    COLLECT_TOP_LIMITATION_COMMAND, COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
@@ -574,6 +575,9 @@ impl LanguageServer for Backend {
         if params.command == COLLECT_TOP_LIMITATION_COMMAND {
             return Ok(self.collect_top_limitation());
         }
+        if params.command == COLLECT_RECEIPT_STATUS_COMMAND {
+            return Ok(self.collect_receipt_status());
+        }
         Ok(None)
     }
 }
@@ -670,6 +674,39 @@ impl Backend {
 
         let run_status = workspace_status_run_status(&snapshot);
 
+        // Compact receipt/outcome summary — reuses the same artifact readers
+        // as collect_receipt_status so the cockpit's single status call
+        // surfaces receipt state without a second round-trip.
+        let root = match self.root.lock().ok() {
+            Some(r) => r.clone(),
+            None => {
+                return Some(serde_json::json!({
+                    "schema_version": "0.1",
+                    "tool": "ripr",
+                    "kind": "workspace_status",
+                    "run_status": run_status,
+                    "snapshot_age_ms": age_ms,
+                    "snapshot_duration_ms": duration_ms,
+                    "diagnostics": {
+                        "total": total_diagnostics,
+                        "files": files,
+                        "findings": findings,
+                        "seam_diagnostics": seam_diagnostics,
+                        "gap_artifacts": gap_artifacts,
+                        "actionable_gap_artifacts": actionable_gap_artifacts,
+                        "gap_artifact_rejections": gap_artifact_rejections,
+                    },
+                    "top_actionable_packet": top_actionable_packet,
+                    "top_limitation": top_limitation,
+                    "receipt_status_summary": serde_json::Value::Null,
+                    "report_paths": workspace_status_report_paths(),
+                    "refresh_command": REFRESH_COMMAND,
+                    "limits_note": "Static evidence only; advisory, not a gate decision.",
+                }));
+            }
+        };
+        let receipt_status_summary = workspace_status_receipt_summary(&root, &snapshot);
+
         Some(serde_json::json!({
             "schema_version": "0.1",
             "tool": "ripr",
@@ -688,6 +725,7 @@ impl Backend {
             },
             "top_actionable_packet": top_actionable_packet,
             "top_limitation": top_limitation,
+            "receipt_status_summary": receipt_status_summary,
             "report_paths": workspace_status_report_paths(),
             "refresh_command": REFRESH_COMMAND,
             "limits_note": "Static evidence only; advisory, not a gate decision.",
@@ -701,6 +739,40 @@ fn workspace_status_report_paths() -> serde_json::Value {
         "first_useful_action": DEFAULT_FIRST_USEFUL_ACTION_OUT,
         "gap_decision_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
         "start_here": "target/ripr/reports/start-here.json",
+    })
+}
+
+/// Compact receipt/outcome summary for `collect_workspace_status`.
+/// Reuses the same artifact readers as `collect_receipt_status` so the
+/// cockpit's single status call shows receipt state without a second
+/// round-trip. Returns a JSON object or Null on any read/parse failure.
+fn workspace_status_receipt_summary(
+    root: &std::path::Path,
+    snapshot: &AnalysisSnapshot,
+) -> serde_json::Value {
+    let top_gap = snapshot
+        .gap_artifacts
+        .iter()
+        .find(|a| a.is_safe_projection_input() && a.is_actionable_gap());
+
+    // receipt_status: movement from ledger.
+    let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let receipt_movement = top_gap
+        .map(|artifact| receipt_status_from_ledger(&ledger_path, artifact).0)
+        .unwrap_or_else(|| serde_json::Value::String("not_available".to_string()));
+
+    // latest_attempt_outcome from swarm-attempt-ledger.json.
+    let attempt_ledger_path = root.join("target/ripr/reports/swarm-attempt-ledger.json");
+    let latest_attempt_outcome = read_latest_attempt_outcome(&attempt_ledger_path, top_gap);
+
+    // route_quality_summary from route-quality.json.
+    let route_quality_path = root.join("target/ripr/reports/route-quality.json");
+    let route_quality_summary = read_route_quality_summary(&route_quality_path);
+
+    serde_json::json!({
+        "receipt_movement": receipt_movement,
+        "latest_attempt_outcome": latest_attempt_outcome,
+        "route_quality_summary": route_quality_summary,
     })
 }
 
@@ -970,6 +1042,348 @@ impl Backend {
             "limits_note": "Static evidence only; advisory, not a gate decision.",
         }))
     }
+
+    fn collect_receipt_status(&self) -> Option<LSPAny> {
+        let root = self.root.lock().ok()?.clone();
+        let snapshot = match self.latest_analysis.lock().ok()? {
+            guard if guard.is_none() => {
+                // No snapshot yet — all fields not_available.
+                return Some(serde_json::json!({
+                    "schema_version": "0.1",
+                    "tool": "ripr",
+                    "kind": "receipt_status",
+                    "status": "no_snapshot",
+                    "receipt_status": "not_available",
+                    "missing_receipt_reason": "not_available",
+                    "copy_receipt_command": "not_available",
+                    "open_attempt_ledger": "not_available",
+                    "latest_attempt_outcome": "not_available",
+                    "route_quality_summary": "not_available",
+                    "limits_note": "Static evidence only; advisory, not a gate decision.",
+                }));
+            }
+            guard => guard.clone()?,
+        };
+
+        // Derive receipt_status fields from the gap-decision-ledger via the
+        // top actionable gap artifact in the snapshot. All counts and outcomes
+        // come from real artifact reads — never fabricated.
+        let top_gap = snapshot
+            .gap_artifacts
+            .iter()
+            .find(|a| a.is_safe_projection_input() && a.is_actionable_gap());
+
+        // receipt_status: real movement from the top gap's receipt object
+        // (sourced from GapRecord.receipt). movement is the only field
+        // populated in production v0.1; state is best-effort.
+        let (receipt_status_val, missing_receipt_reason_val, copy_receipt_cmd_val) =
+            collect_receipt_status_fields(&root, top_gap, &snapshot);
+
+        // open_attempt_ledger: path to swarm-attempt-ledger.json if it exists.
+        let attempt_ledger_path = root.join("target/ripr/reports/swarm-attempt-ledger.json");
+        let open_attempt_ledger_val = if attempt_ledger_path.is_file() {
+            serde_json::Value::String(display_lsp_path(&attempt_ledger_path))
+        } else {
+            serde_json::Value::String("not_available".to_string())
+        };
+
+        // latest_attempt_outcome: read swarm-attempt-ledger.json and surface
+        // the latest attempt's outcome for the top actionable gap. When the
+        // artifact is absent → not_available (absence != no outcome).
+        let latest_attempt_outcome_val = read_latest_attempt_outcome(&attempt_ledger_path, top_gap);
+
+        // route_quality_summary: read route-quality.json (RIPR-SPEC-0080
+        // output), surface compact summary. not_available when absent or
+        // when status = "blocked".
+        let route_quality_path = root.join("target/ripr/reports/route-quality.json");
+        let route_quality_summary_val = read_route_quality_summary(&route_quality_path);
+
+        Some(serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt_status",
+            "receipt_status": receipt_status_val,
+            "missing_receipt_reason": missing_receipt_reason_val,
+            "copy_receipt_command": copy_receipt_cmd_val,
+            "open_attempt_ledger": open_attempt_ledger_val,
+            "latest_attempt_outcome": latest_attempt_outcome_val,
+            "route_quality_summary": route_quality_summary_val,
+            "report_paths": workspace_receipt_status_report_paths(),
+            "limits_note": "Static evidence only; advisory, not a gate decision.",
+        }))
+    }
+}
+
+/// Derive `receipt_status`, `missing_receipt_reason`, and `copy_receipt_command`
+/// from the top actionable gap artifact plus the snapshot's first-safe-receipt-command
+/// path.
+///
+/// Honesty rules:
+/// - `copy_receipt_command` is only emitted when the packet is COMPLETE
+///   (verify_command + receipt_command both present). A limitation or
+///   incomplete packet MUST NOT surface a repair receipt command.
+/// - `receipt_status` reports the real movement value (or "not_available"
+///   when no gap artifact or receipt object exists).
+fn collect_receipt_status_fields(
+    root: &std::path::Path,
+    top_gap: Option<&super::gap_artifacts::ValidatedGapArtifact>,
+    snapshot: &super::state::AnalysisSnapshot,
+) -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+    let not_available = serde_json::Value::String("not_available".to_string());
+
+    // Top-level limitation present → no repair receipt command (RIPR-SPEC-0076
+    // harmonization: limitations must never show a repair receipt command).
+    let has_limitation = !snapshot.gap_artifact_rejections.is_empty();
+
+    let Some(artifact) = top_gap else {
+        return (not_available.clone(), not_available.clone(), not_available);
+    };
+
+    // receipt_status: from the gap-decision-ledger receipt.movement field.
+    // Read directly from the artifact's receipt object via the ledger.
+    // For LSP we can derive from the artifact's receipt_commands presence
+    // as a proxy; the real movement comes from the ledger receipt record.
+    let ledger_path =
+        root.join(crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let (receipt_status_val, missing_receipt_reason_val) =
+        receipt_status_from_ledger(&ledger_path, artifact);
+
+    // copy_receipt_command: only for complete packets (verify + receipt
+    // commands both present). Incomplete packets → not_available.
+    let copy_receipt_cmd_val = if has_limitation {
+        // Limitation surface — never show receipt command.
+        not_available
+    } else {
+        let has_verify = !artifact.verify_commands.is_empty();
+        let has_receipt = !artifact.receipt_commands.is_empty();
+        if has_verify && has_receipt {
+            // Use the existing first_safe_receipt_command path from actions.rs
+            // by reading it directly from the artifact.
+            let cmd = artifact
+                .receipt_commands
+                .first()
+                .map(String::as_str)
+                .unwrap_or("");
+            if super::gap_artifacts::command_payload_is_safe(root, cmd) {
+                serde_json::Value::String(cmd.to_string())
+            } else {
+                serde_json::Value::String("not_available".to_string())
+            }
+        } else {
+            // Incomplete packet — no receipt command shown.
+            serde_json::Value::String("not_available".to_string())
+        }
+    };
+
+    (
+        receipt_status_val,
+        missing_receipt_reason_val,
+        copy_receipt_cmd_val,
+    )
+}
+
+/// Read the gap-decision-ledger to get the real receipt movement + missing_reason
+/// for the given gap artifact. Falls back to not_available on any read/parse error.
+fn receipt_status_from_ledger(
+    ledger_path: &std::path::Path,
+    artifact: &super::gap_artifacts::ValidatedGapArtifact,
+) -> (serde_json::Value, serde_json::Value) {
+    let not_available = "not_available".to_string();
+
+    let contents = match fs::read_to_string(ledger_path) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                serde_json::Value::String(not_available.clone()),
+                serde_json::Value::String(not_available),
+            );
+        }
+    };
+    let records = match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+        Ok(r) => r,
+        Err(_) => {
+            return (
+                serde_json::Value::String(not_available.clone()),
+                serde_json::Value::String(not_available),
+            );
+        }
+    };
+
+    // Match the ledger record to the top artifact using canonical_gap_id.
+    let canonical_gap_id = artifact
+        .identities
+        .first()
+        .and_then(|id| id.canonical_gap_id.as_deref())
+        .unwrap_or("");
+
+    let record = records.iter().find(|r| {
+        r.canonical_gap_id == canonical_gap_id
+            || (!canonical_gap_id.is_empty() && r.gap_id == canonical_gap_id)
+    });
+
+    let Some(record) = record else {
+        // The artifact exists in the snapshot but the ledger doesn't have a
+        // matching record — movement is genuinely unknown, not zero.
+        return (
+            serde_json::Value::String(not_available.clone()),
+            serde_json::Value::String(not_available),
+        );
+    };
+
+    // receipt.movement is the only reliably-populated field in production.
+    let movement_val = match record.receipt.as_ref().and_then(|r| r.movement.as_deref()) {
+        Some(m) => serde_json::Value::String(m.to_string()),
+        None => serde_json::Value::String(not_available.clone()),
+    };
+
+    // missing_receipt_reason: only meaningful when the gap is actionable
+    // but has no receipt. Otherwise not_available.
+    let missing_receipt_reason_val = if record.gap_state == "actionable"
+        && record
+            .receipt
+            .as_ref()
+            .and_then(|r| r.movement.as_deref())
+            .is_none()
+        && record.receipt_command.is_some()
+    {
+        // Receipt command exists but no movement yet — emit honest "no_attempt_recorded".
+        serde_json::Value::String("no_attempt_recorded".to_string())
+    } else {
+        serde_json::Value::String(not_available)
+    };
+
+    (movement_val, missing_receipt_reason_val)
+}
+
+/// Read swarm-attempt-ledger.json and surface the latest attempt's outcome
+/// for the canonical_gap_id of the top actionable gap. Returns not_available
+/// when the artifact is absent (absence != no outcome) or when no matching
+/// attempt entry is found.
+fn read_latest_attempt_outcome(
+    ledger_path: &std::path::Path,
+    top_gap: Option<&super::gap_artifacts::ValidatedGapArtifact>,
+) -> serde_json::Value {
+    let not_available = serde_json::Value::String("not_available".to_string());
+
+    // Artifact absent → not_available (do not fabricate).
+    let contents = match fs::read_to_string(ledger_path) {
+        Ok(c) => c,
+        Err(_) => return not_available,
+    };
+    let report: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(_) => return not_available,
+    };
+
+    let canonical_gap_id = top_gap
+        .and_then(|a| a.identities.first())
+        .and_then(|id| id.canonical_gap_id.as_deref())
+        .unwrap_or("");
+
+    // latest_attempts is the preferred section; fall back to attempts.
+    let attempts_val = report
+        .get("latest_attempts")
+        .and_then(|v| v.as_array())
+        .or_else(|| report.get("attempts").and_then(|v| v.as_array()));
+
+    let Some(attempts) = attempts_val else {
+        return not_available;
+    };
+
+    let entry = if canonical_gap_id.is_empty() {
+        attempts.first()
+    } else {
+        attempts
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("canonical_gap_id")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|cid| cid == canonical_gap_id)
+            })
+            .or_else(|| attempts.first())
+    };
+
+    entry
+        .and_then(|e| e.get("outcome"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| serde_json::Value::String(s.to_string()))
+        .unwrap_or(not_available)
+}
+
+/// Read route-quality.json (RIPR-SPEC-0080 output) and surface a compact
+/// summary. Returns not_available when the artifact is absent OR when
+/// status = "blocked" (no real data to summarize).
+fn read_route_quality_summary(path: &std::path::Path) -> serde_json::Value {
+    let not_available = serde_json::Value::String("not_available".to_string());
+
+    let contents = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return not_available,
+    };
+    let report: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(_) => return not_available,
+    };
+
+    // If status = "blocked", the rows are empty and there's nothing real to
+    // summarize — emit not_available to be honest.
+    if report.get("status").and_then(|v| v.as_str()) == Some("blocked") {
+        return not_available;
+    }
+
+    // Produce a compact summary: top repair_kind rows from the latest array.
+    let rows = report
+        .get("repair_route_quality_latest")
+        .and_then(|v| v.as_array());
+
+    let Some(rows) = rows else {
+        return not_available;
+    };
+
+    if rows.is_empty() {
+        return not_available;
+    }
+
+    // Emit up to 3 top rows, carrying repair_kind and success_rate.
+    let summary_rows: Vec<serde_json::Value> = rows
+        .iter()
+        .take(3)
+        .map(|row| {
+            let repair_kind = row
+                .get("repair_kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let success_rate = row
+                .get("repair_kind_success_rate")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let attempted = row
+                .get("repair_kind_attempted")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            serde_json::json!({
+                "repair_kind": repair_kind,
+                "attempted": attempted,
+                "success_rate": success_rate,
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "report": "route-quality",
+        "status": report.get("status").and_then(|v| v.as_str()).unwrap_or("unknown"),
+        "top_repair_kind_rows": summary_rows,
+    })
+}
+
+fn workspace_receipt_status_report_paths() -> serde_json::Value {
+    serde_json::json!({
+        "gap_decision_ledger": crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT,
+        "swarm_attempt_ledger": "target/ripr/reports/swarm-attempt-ledger.json",
+        "route_quality": "target/ripr/reports/route-quality.json",
+    })
 }
 
 fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {

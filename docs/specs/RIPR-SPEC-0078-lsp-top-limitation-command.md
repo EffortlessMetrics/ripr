@@ -158,7 +158,7 @@ command returns null.
    packet with `limitation_category == "disabled_language"`, non-empty
    `repair_route`, non-empty `why_not_actionable`, `non_claims` is array,
    `limits_note` present, no mutation-runtime vocabulary.
-3. Capabilities list contains exactly 6 commands including
+3. Capabilities list contains exactly 7 commands including
    `ripr.collectTopLimitation`.
 
 ## Test Mapping
@@ -170,7 +170,7 @@ command returns null.
 ## Implementation Mapping
 
 - `crates/ripr/src/lsp.rs` — `COLLECT_TOP_LIMITATION_COMMAND` constant.
-- `crates/ripr/src/lsp/capabilities.rs` — command registered (6 total).
+- `crates/ripr/src/lsp/capabilities.rs` — command registered (7 total after RIPR-SPEC-0081).
 - `crates/ripr/src/lsp/backend.rs` — `collect_top_limitation`,
   `limitation_sample_sources`, `limitation_non_claims`.
 
