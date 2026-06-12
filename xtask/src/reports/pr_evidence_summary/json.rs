@@ -176,14 +176,28 @@ fn derive_missing_receipts(gap_ledger_value: Option<&Value>) -> U64OrNotAvailabl
 
 /// Derive the six-count receipt-status object.
 ///
-/// `receipts_present` and `missing_receipts` are derivable from the existing
-/// gap-ledger summary fields today. The other four are `NotAvailable` because
-/// the ledger does not yet emit the per-record state signals required:
+/// `receipts_present` and `missing_receipts` are derivable from existing
+/// gap-ledger summary counts. The other four are `NotAvailable` because the
+/// gap-decision-ledger build path does not currently carry the per-record
+/// signals required to classify them, and emitting `0` would be a fake zero —
+/// a real condition cannot produce a non-zero count, so a `0` would falsely
+/// assert "we checked and found none" (see #1130 adversarial review):
 ///
-/// - `orphan_receipts`:        needs a sweep of receipts/ dir vs. ledger records.
-/// - `stale_receipts`:         needs per-record `receipt.state == "receipt_stale"`.
-/// - `gap_mismatch_receipts`:  needs per-record `receipt.state == "receipt_gap_mismatch"`.
-/// - `verify_failed_receipts`: needs a verify exit-code field in the receipt schema.
+/// - `orphan_receipts`: requires a sweep of `target/ripr/receipts/` vs. ledger
+///   records to find files that no record references. No filesystem scan is
+///   performed during summary derivation.
+/// - `stale_receipts`: requires a real staleness signal per receipt. The genuine
+///   staleness signal lives in `swarm_ingest` (`staleness_status`), a separate
+///   artifact that the gap-ledger build does not consume; the gap-ledger never
+///   writes `receipt.state == "receipt_stale"` in production.
+/// - `gap_mismatch_receipts`: requires reading the receipt file itself to compare
+///   its recorded `canonical_gap_id` against the attached gap record — the ledger
+///   ingest does not surface the receipt's own gap id field.
+/// - `verify_failed_receipts`: requires a real verify pass/fail signal per receipt.
+///   The genuine verify signal lives in `swarm_ingest` (`verify.passed`/`failed`),
+///   a separate artifact that the gap-ledger build does not consume; the
+///   gap-ledger never writes `receipt.state == "receipt_verify_failed"` in
+///   production.
 fn derive_receipt_status(
     gap_ledger_value: Option<&Value>,
     missing_receipts: &U64OrNotAvailable,
@@ -217,13 +231,18 @@ fn derive_receipt_status(
     ReceiptStatusCounts {
         receipts_present,
         missing_receipts: missing,
-        // NOT DERIVABLE YET: requires receipts/ dir sweep vs. ledger records.
+        // NOT DERIVABLE: requires receipts/ dir sweep vs. ledger records.
         orphan_receipts: U64OrNotAvailable::NotAvailable,
-        // NOT DERIVABLE YET: ledger lacks per-record receipt_stale count.
+        // NOT DERIVABLE: the real staleness signal lives in swarm_ingest
+        // (staleness_status), which the gap-ledger build does not consume.
+        // Emitting 0 would be a fake zero — no production producer exists.
         stale_receipts: U64OrNotAvailable::NotAvailable,
-        // NOT DERIVABLE YET: ledger lacks per-record receipt_gap_mismatch count.
+        // NOT DERIVABLE: requires reading each receipt file to compare its own
+        // canonical_gap_id against the attached gap record.
         gap_mismatch_receipts: U64OrNotAvailable::NotAvailable,
-        // NOT DERIVABLE YET: no verify pass/fail signal in current ledger schema.
+        // NOT DERIVABLE: the real verify pass/fail signal lives in swarm_ingest
+        // (verify.passed/failed), which the gap-ledger build does not consume.
+        // Emitting 0 would be a fake zero — no production producer exists.
         verify_failed_receipts: U64OrNotAvailable::NotAvailable,
     }
 }
@@ -711,6 +730,9 @@ mod tests {
 
     /// JSON output must contain a receipt_status object with the four
     /// not-yet-derivable fields set to "not_available", never "0".
+    /// All four stay not_available even when a ledger summary IS present,
+    /// because the gap-ledger build has no real producer for them
+    /// (see #1130 adversarial review — emitting 0 would be a fake zero).
     #[test]
     fn receipt_status_json_not_derivable_fields_are_not_available_not_zero() {
         let s = missing_all();
@@ -752,6 +774,56 @@ mod tests {
         assert!(
             !json.contains("\"verify_failed_receipts\": 0"),
             "verify_failed_receipts must NOT be 0: {json}"
+        );
+    }
+
+    /// Regression guard for #1130: even when a gap-ledger summary IS present
+    /// (and even if it carries receipt_stale_total / receipt_verify_failed_total
+    /// keys), the four deferred fields stay not_available. The gap-ledger build
+    /// has no production producer for these states, so a numeric value here
+    /// would be a fake zero / fabricated count.
+    #[test]
+    fn receipt_status_deferred_fields_stay_not_available_even_with_ledger_summary() {
+        let ledger = serde_json::json!({
+            "summary": {
+                "repairable_total": 3,
+                "receipt_improved_total": 1,
+                "receipt_unchanged_after_attempt_total": 0,
+                // These keys could appear if a future producer wrote them, but
+                // until a real producer exists the summary must NOT surface them
+                // as receipt_status counts.
+                "receipt_stale_total": 0,
+                "receipt_verify_failed_total": 0
+            }
+        });
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        assert!(
+            matches!(
+                s.receipt_status.stale_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "stale_receipts must stay not_available (no real producer in gap-ledger build)"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.verify_failed_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "verify_failed_receipts must stay not_available (no real producer in gap-ledger build)"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.orphan_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "orphan_receipts must stay not_available"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.gap_mismatch_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "gap_mismatch_receipts must stay not_available"
         );
     }
 
@@ -825,6 +897,8 @@ mod tests {
 
     /// JSON must contain receipt_status with receipts_present and
     /// missing_receipts as computed integers when the ledger is present.
+    /// The four not-yet-derivable fields stay not_available even when a ledger
+    /// summary is present (no real producer exists — see #1130).
     #[test]
     fn receipt_status_json_derived_fields_are_integers() {
         let ledger = serde_json::json!({
@@ -852,6 +926,18 @@ mod tests {
         assert!(
             json.contains("\"orphan_receipts\": \"not_available\""),
             "orphan_receipts must remain not_available even when ledger is present: {json}"
+        );
+        assert!(
+            json.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must remain not_available even when ledger is present: {json}"
+        );
+        assert!(
+            json.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must remain not_available even when ledger is present: {json}"
+        );
+        assert!(
+            json.contains("\"verify_failed_receipts\": \"not_available\""),
+            "verify_failed_receipts must remain not_available even when ledger is present: {json}"
         );
     }
 }

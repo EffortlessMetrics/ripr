@@ -4217,4 +4217,61 @@ mod tests {
         );
         Ok(())
     }
+
+    // ── #1130: gap-ledger does NOT fabricate stale/verify-failed counts ─────
+
+    /// Honesty guard for #1130: the gap-decision-ledger build path has no real
+    /// producer of verify-failed/stale receipt signals (those live in
+    /// swarm_ingest, a separate artifact). Even if a record carries a
+    /// `receipt.state` value, the ledger summary must NOT surface a
+    /// `receipt_stale_total` / `receipt_verify_failed_total` count — emitting one
+    /// would be a structurally-always-zero fake count. The summary JSON must not
+    /// contain those keys at all.
+    #[test]
+    fn ledger_summary_does_not_emit_fabricated_receipt_state_counts() -> Result<(), String> {
+        // Two records carrying receipt.state, exactly the shape that would have
+        // tripped the reverted detection.
+        let input = serde_json::json!([
+            {
+                "gap_id": "gap:stale-j",
+                "canonical_gap_id": "gap:stale-j",
+                "kind": "MissingValueAssertion",
+                "language": "rust",
+                "language_status": "stable",
+                "scope": "repo_scoped",
+                "evidence_class": "return_value",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "no_action",
+                "authority_boundary": "gate_decision_artifact_only",
+                "receipt": {"state": "receipt_stale", "movement": "unchanged"}
+            },
+            {
+                "gap_id": "gap:vf-j",
+                "canonical_gap_id": "gap:vf-j",
+                "kind": "MissingValueAssertion",
+                "language": "rust",
+                "language_status": "stable",
+                "scope": "repo_scoped",
+                "evidence_class": "return_value",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "no_action",
+                "authority_boundary": "gate_decision_artifact_only",
+                "receipt": {"state": "receipt_verify_failed"}
+            }
+        ]);
+        let report = report_from_json(input);
+        let json = render_gap_decision_ledger_json(&report)
+            .map_err(|err| format!("render failed: {err}"))?;
+        assert!(
+            !json.contains("receipt_stale_total"),
+            "ledger summary must NOT emit a fabricated receipt_stale_total: {json}"
+        );
+        assert!(
+            !json.contains("receipt_verify_failed_total"),
+            "ledger summary must NOT emit a fabricated receipt_verify_failed_total: {json}"
+        );
+        Ok(())
+    }
 }

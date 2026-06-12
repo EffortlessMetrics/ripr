@@ -13402,9 +13402,9 @@ Field sources:
 | `receipt_status.receipts_present` | gap-decision-ledger | `summary.receipt_improved_total + summary.receipt_unchanged_after_attempt_total` |
 | `receipt_status.missing_receipts` | gap-decision-ledger | mirrors top-level `missing_receipts` |
 | `receipt_status.orphan_receipts` | not yet derivable | `"not_available"` until receipts/ dir sweep added to ledger |
-| `receipt_status.stale_receipts` | not yet derivable | `"not_available"` until per-record `receipt.state == "receipt_stale"` count added |
-| `receipt_status.gap_mismatch_receipts` | not yet derivable | `"not_available"` until per-record `receipt.state == "receipt_gap_mismatch"` count added |
-| `receipt_status.verify_failed_receipts` | not yet derivable | `"not_available"` until verify exit-code recorded in receipt schema |
+| `receipt_status.stale_receipts` | not yet derivable | `"not_available"` until the real staleness signal (`swarm_ingest.staleness_status`) is wired into the gap-ledger build |
+| `receipt_status.gap_mismatch_receipts` | not yet derivable | `"not_available"` until each receipt's own `canonical_gap_id` is read and compared |
+| `receipt_status.verify_failed_receipts` | not yet derivable | `"not_available"` until the real verify signal (`swarm_ingest.verify.passed/failed`) is wired into the gap-ledger build |
 | `top_repair` | start-here | `selected` (when `state == "top_gap"`) |
 | `top_repair_state` | start-here | `selected.state` (when not `"top_gap"`) |
 | `top_limitation` | first entry in `limitations[]` | derived |
@@ -13415,6 +13415,10 @@ at the top level continue to work unchanged (`schema_version` stays `"0.1"`; add
 fields do not require a version bump per the stability rules above). The four
 `"not_available"` fields honestly signal "this signal is not yet computed" rather
 than claiming zero: emitting `0` would falsely assert that we checked and found none.
+The real verify-failed and staleness signals live in the `swarm_ingest` artifact
+(`verify.passed`/`failed`, `staleness_status`), which the gap-decision-ledger build
+path does not consume; until a real producer is wired in, surfacing a `0` here would
+be a fabricated count that no real condition can produce (see #1130 adversarial review).
 
 Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 

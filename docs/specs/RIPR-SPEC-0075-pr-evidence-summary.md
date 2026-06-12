@@ -189,9 +189,9 @@ When there are no limitations, `top_limitation` is omitted entirely.
 | `receipt_status.receipts_present` | u64 or `"not_available"` | `receipt_improved_total + receipt_unchanged_after_attempt_total` | Records carrying any receipt evidence. |
 | `receipt_status.missing_receipts` | u64 or `"not_available"` | mirrors top-level `missing_receipts` | Convenience mirror. |
 | `receipt_status.orphan_receipts` | `"not_available"` | not yet derivable | Unlock: add receipts/ dir sweep to ledger. |
-| `receipt_status.stale_receipts` | `"not_available"` | not yet derivable | Unlock: add per-record `receipt.state == "receipt_stale"` count to ledger. |
-| `receipt_status.gap_mismatch_receipts` | `"not_available"` | not yet derivable | Unlock: add per-record `receipt.state == "receipt_gap_mismatch"` count to ledger. |
-| `receipt_status.verify_failed_receipts` | `"not_available"` | not yet derivable | Unlock: record verify exit-code in receipt schema. |
+| `receipt_status.stale_receipts` | `"not_available"` | not yet derivable | Unlock: wire the real staleness signal (`swarm_ingest.staleness_status`) into the gap-ledger build. Emitting 0 today would be a fake zero — no producer exists (#1130). |
+| `receipt_status.gap_mismatch_receipts` | `"not_available"` | not yet derivable | Unlock: read each receipt's own `canonical_gap_id` and compare. |
+| `receipt_status.verify_failed_receipts` | `"not_available"` | not yet derivable | Unlock: wire the real verify signal (`swarm_ingest.verify.passed/failed`) into the gap-ledger build. Emitting 0 today would be a fake zero — no producer exists (#1130). |
 | `top_repair` | object or null | start-here `selected` when `state == "top_gap"` | null when no actionable gap. |
 | `top_repair_state` | string or absent | start-here `selected.state` | Present only when `top_repair` is null. |
 | `top_limitation` | object or absent | first entry in `limitations[]` | Omitted when limitations empty. |
@@ -209,6 +209,9 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `receipt_status_receipts_present_derived_from_ledger`
   - `claimed_repair_with_no_receipt_shows_in_missing_receipts`
   - `receipt_status_json_derived_fields_are_integers`
+  - `receipt_status_deferred_fields_stay_not_available_even_with_ledger_summary` (#1130 honesty guard)
+- Unit test in `crates/ripr/src/output/gap_decision_ledger.rs` (#1130 honesty guard):
+  - `ledger_summary_does_not_emit_fabricated_receipt_state_counts`
 - Integration tests in `xtask/src/reports/pr_evidence_summary.rs`:
   - `parse_accepts_baseline_path`
   - `parse_rejects_baseline_without_path`

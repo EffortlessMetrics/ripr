@@ -53,19 +53,26 @@ pub(super) struct PrEvidenceSummaryJson {
 /// Six-count receipt-status object surfaced in the PR evidence summary.
 ///
 /// Two fields are derivable from gap-ledger summary counts today.
-/// Four are `NotAvailable` because the ledger does not yet emit the
-/// per-record state signals needed to classify them:
+/// Four are `NotAvailable` because the gap-decision-ledger build path does not
+/// carry the per-record signals needed to classify them, and emitting `0` would
+/// be a fake zero — no real condition can produce a non-zero count, so a `0`
+/// would falsely claim "we checked and found none" (see #1130 adversarial review):
 ///
 /// - `orphan_receipts`: a receipt file exists but no matching gap record was found —
-///   requires a receipts/ dir sweep that the ledger does not currently do.
-/// - `stale_receipts`: a receipt exists but predates the gap's verify command —
-///   ledger emits `receipt.movement` but does not classify individual records as stale;
-///   unlock when the ledger adds a `receipt.state == "receipt_stale"` count.
-/// - `gap_mismatch_receipts`: a receipt references a different gap id than the ledger
-///   record — same blocker as stale.
-/// - `verify_failed_receipts`: the verify command in the receipt exited non-0 —
-///   there is no verify pass/fail signal in the current ledger schema;
-///   unlock when the receipt writer records exit code.
+///   requires a `target/ripr/receipts/` dir sweep that is not performed during
+///   summary derivation.
+/// - `stale_receipts`: a receipt is stale — the genuine staleness signal lives in
+///   `swarm_ingest` (`staleness_status`), a separate artifact the gap-ledger build
+///   does not consume; the gap-ledger never writes `receipt.state == "receipt_stale"`
+///   in production.
+/// - `gap_mismatch_receipts`: a receipt references a different gap id than the
+///   ledger record — requires reading each receipt file to compare its own
+///   recorded `canonical_gap_id` against the attached gap; the ledger ingest
+///   does not surface the receipt's own gap id field.
+/// - `verify_failed_receipts`: a receipt's verify failed — the genuine verify
+///   pass/fail signal lives in `swarm_ingest` (`verify.passed`/`failed`), a
+///   separate artifact the gap-ledger build does not consume; the gap-ledger
+///   never writes `receipt.state == "receipt_verify_failed"` in production.
 pub(super) struct ReceiptStatusCounts {
     /// Gap-ledger records that carry receipt evidence:
     /// `summary.receipt_improved_total + summary.receipt_unchanged_after_attempt_total`.
@@ -73,13 +80,16 @@ pub(super) struct ReceiptStatusCounts {
     /// Actionable gaps without a receipt:
     /// mirrors the top-level `missing_receipts` field.
     pub(super) missing_receipts: U64OrNotAvailable,
-    /// NOT DERIVABLE YET — requires a receipts/ sweep not in the current ledger.
+    /// NOT DERIVABLE — requires a `target/ripr/receipts/` dir sweep vs. ledger records.
     pub(super) orphan_receipts: U64OrNotAvailable,
-    /// NOT DERIVABLE YET — ledger lacks a per-record `receipt.state == "receipt_stale"` count.
+    /// NOT DERIVABLE — real staleness signal lives in `swarm_ingest`, not the
+    /// gap-ledger build; emitting 0 would be a fake zero (#1130).
     pub(super) stale_receipts: U64OrNotAvailable,
-    /// NOT DERIVABLE YET — ledger lacks a per-record `receipt.state == "receipt_gap_mismatch"` count.
+    /// NOT DERIVABLE — requires reading each receipt file to compare its own
+    /// `canonical_gap_id` against the attached gap record.
     pub(super) gap_mismatch_receipts: U64OrNotAvailable,
-    /// NOT DERIVABLE YET — no verify pass/fail signal in the current ledger schema.
+    /// NOT DERIVABLE — real verify pass/fail signal lives in `swarm_ingest`, not
+    /// the gap-ledger build; emitting 0 would be a fake zero (#1130).
     pub(super) verify_failed_receipts: U64OrNotAvailable,
 }
 
