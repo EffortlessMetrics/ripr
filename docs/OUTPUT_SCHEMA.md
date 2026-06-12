@@ -13258,6 +13258,95 @@ warnings. The TOML report uses schema `0.3` with `status = "proposal"` and is a
 copy aid only; reviewers must supply real ids, owners, expiries, and rationale
 before adopting any proposal.
 
+## PR Evidence Summary
+
+`cargo xtask ripr-pr-summary` writes two sibling files after the legacy
+`pr-summary.md`:
+
+```text
+target/ripr/reports/pr-evidence-summary.json
+target/ripr/reports/pr-evidence-summary.md
+```
+
+The JSON file carries a versioned, machine-readable evidence summary
+derived from the other report artifacts already present in
+`target/ripr/reports/`. Failure to load any artifact is fail-closed:
+the affected field is set to `"not_available"` or `null`.
+
+Pass `--baseline <before.json>` (a previous `pr-evidence-summary.json`)
+to unlock delta counts. Without a baseline, delta fields are `null`
+with an explanatory `gap_delta_note` (honest-baseline rule: never fake
+zeros).
+
+JSON shape (schema version `0.1`):
+
+```jsonc
+{
+  "schema_version": "0.1",
+  "kind": "pr_evidence_summary",
+  "tool": "ripr",
+  "run_status": "diff_complete_full_repo_limited",
+  "changed_surfaces": 3,
+  "gaps": {
+    "total_actionable": 2,
+    "total_static_limitation": 1,
+    "new_actionable": null,
+    "resolved": null,
+    "regressed": null,
+    "gap_delta_note": "no baseline snapshot provided; pass --baseline <before.json> for delta counts"
+  },
+  "limitations": [
+    {
+      "category": "repo_seam_limit_applied",
+      "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams."
+    }
+  ],
+  "missing_receipts": 2,
+  "top_repair": {
+    "canonical_gap_id": "gap:src/lib.rs:error_path:c1a03250",
+    "language": "rust",
+    "repair_kind": "AddTest",
+    "target": "src/lib.rs",
+    "verify_command": "cargo test -p ripr error_path",
+    "receipt_command": "cargo xtask receipts",
+    "receipt_state": "receipt_missing"
+  },
+  "top_limitation": {
+    "category": "repo_seam_limit_applied",
+    "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams.",
+    "why_not_actionable": "Seam inventory was capped; not all seams were analyzed in this run."
+  },
+  "local_reproduction_commands": [
+    "ripr check --base origin/main",
+    "ripr first-pr --root . --base origin/main --head HEAD",
+    "cargo test -p ripr error_path"
+  ]
+}
+```
+
+When `top_repair` is absent, `top_repair_state` appears in its place
+and `top_repair` is `null`. When `limitations` is empty, `top_limitation`
+is omitted entirely. When delta fields are computed (baseline supplied),
+`gap_delta_note` is absent.
+
+Field sources:
+
+| Field | Source artifact | Path |
+| --- | --- | --- |
+| `run_status` | diff-report (then repo-exposure fallback) | `run_status` |
+| `changed_surfaces` | diff-report | `summary.changed_files` |
+| `gaps.total_actionable` | gap-decision-ledger | `summary.repairable_total` |
+| `gaps.total_static_limitation` | gap-decision-ledger | `summary.static_limitation_total` |
+| `gaps.*` delta fields | computed from `--baseline` | before/after `gaps.total_actionable` |
+| `limitations[]` | repo-exposure | `limitations[]` |
+| `missing_receipts` | gap-decision-ledger | `summary.repairable_total - receipt_improved_total` |
+| `top_repair` | start-here | `selected` (when `state == "top_gap"`) |
+| `top_repair_state` | start-here | `selected.state` (when not `"top_gap"`) |
+| `top_limitation` | first entry in `limitations[]` | derived |
+| `local_reproduction_commands` | diff-report + start-here | base/head + `selected.verify_command` |
+
+Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

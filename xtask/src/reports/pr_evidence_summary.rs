@@ -1,10 +1,12 @@
 mod io;
+mod json;
 mod model;
 mod render;
 mod util;
 
 use super::write_parented_file;
 use io::load_json;
+use json::{build_pr_evidence_summary, render_pr_evidence_summary_json};
 use render::{SummaryRenderInput, render_pr_evidence_summary};
 use std::env;
 use std::fs;
@@ -17,10 +19,21 @@ const REVIEW_COMMENTS_MD: &str = "target/ripr/review/comments.md";
 const START_HERE_JSON: &str = "target/ripr/reports/start-here.json";
 const START_HERE_MD: &str = "target/ripr/reports/start-here.md";
 const PR_SUMMARY_MD: &str = "target/ripr/pr/summary.md";
+/// v1 JSON twin written alongside the Markdown summary.
+const PR_EVIDENCE_SUMMARY_JSON: &str = "target/ripr/reports/pr-evidence-summary.json";
+/// v1 Markdown panel (separate from the legacy `target/ripr/pr/summary.md`).
+const PR_EVIDENCE_SUMMARY_MD: &str = "target/ripr/reports/pr-evidence-summary.md";
+/// Gap-decision-ledger artifact (advisory gap counts and receipt state).
+const GAP_DECISION_LEDGER_JSON: &str = "target/ripr/reports/gap-decision-ledger.json";
+/// Repo-exposure artifact (run_status and limitations[]).
+const REPO_EXPOSURE_JSON: &str = "target/ripr/reports/repo-exposure.json";
+/// Diff-report artifact (run_status and changed_files from DiffReport).
+const DIFF_REPORT_JSON: &str = "target/ripr/reports/diff-report.json";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct SummaryOptions {
     check: bool,
+    baseline: Option<String>,
 }
 
 pub(crate) fn ripr_pr_summary(args: &[String]) -> Result<(), String> {
@@ -33,10 +46,167 @@ pub(crate) fn ripr_pr_summary(args: &[String]) -> Result<(), String> {
     let summary = summary_text(&repo);
     let path = repo.join(PR_SUMMARY_MD);
     if options.check {
-        check_summary(&path, &summary)
+        check_summary(&path, &summary)?;
     } else {
-        write_summary(&path, &summary)
+        write_summary(&path, &summary)?;
     }
+
+    // Also write the v1 JSON + MD pair.
+    write_evidence_summary_pair(&repo, &options)?;
+
+    Ok(())
+}
+
+fn write_evidence_summary_pair(repo: &Path, options: &SummaryOptions) -> Result<(), String> {
+    let start_here = load_json(repo, START_HERE_JSON);
+    let gap_ledger = load_json(repo, GAP_DECISION_LEDGER_JSON);
+    let repo_exposure = load_json(repo, REPO_EXPOSURE_JSON);
+    let diff_report = load_json(repo, DIFF_REPORT_JSON);
+    let baseline_loaded;
+    let baseline_value = if let Some(path) = options.baseline.as_deref() {
+        baseline_loaded = load_json(repo, path);
+        baseline_loaded.value.as_ref()
+    } else {
+        None
+    };
+
+    let summary_struct = build_pr_evidence_summary(
+        start_here.value.as_ref(),
+        gap_ledger.value.as_ref(),
+        repo_exposure.value.as_ref(),
+        diff_report.value.as_ref(),
+        baseline_value,
+    );
+
+    let json_text = render_pr_evidence_summary_json(&summary_struct);
+    let json_path = repo.join(PR_EVIDENCE_SUMMARY_JSON);
+    write_parented_file(&json_path, PR_EVIDENCE_SUMMARY_JSON, &json_text)?;
+    println!("Wrote {PR_EVIDENCE_SUMMARY_JSON}");
+
+    let md_text = render_evidence_summary_md(&summary_struct, &json_text);
+    let md_path = repo.join(PR_EVIDENCE_SUMMARY_MD);
+    write_parented_file(&md_path, PR_EVIDENCE_SUMMARY_MD, md_text.as_bytes())?;
+    println!("Wrote {PR_EVIDENCE_SUMMARY_MD}");
+
+    Ok(())
+}
+
+/// Render the compact Markdown panel from the already-serialized JSON struct.
+fn render_evidence_summary_md(s: &model::PrEvidenceSummaryJson, _json_text: &str) -> String {
+    let mut out = String::new();
+    out.push_str("# PR Evidence Summary v1\n\n");
+    out.push_str(&format!("**Run Status**: `{}`\n\n", s.run_status));
+
+    // Changed surfaces
+    let surfaces = match &s.changed_surfaces {
+        model::U64OrNotAvailable::Value(n) => n.to_string(),
+        model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
+    };
+    out.push_str(&format!("**Changed Surfaces**: {surfaces}\n\n"));
+
+    // Gaps
+    out.push_str("## Gaps\n\n");
+    let total_act = match &s.gaps.total_actionable {
+        model::U64OrNotAvailable::Value(n) => n.to_string(),
+        model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
+    };
+    let total_lim = match &s.gaps.total_static_limitation {
+        model::U64OrNotAvailable::Value(n) => n.to_string(),
+        model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
+    };
+    out.push_str(&format!("- total actionable: {total_act}\n"));
+    out.push_str(&format!("- total static limitations: {total_lim}\n"));
+    match &s.gaps.new_actionable {
+        model::NullableU64::Value(n) => {
+            out.push_str(&format!("- new actionable: {n}\n"));
+        }
+        model::NullableU64::Null => {
+            out.push_str("- new actionable: null\n");
+        }
+    }
+    match &s.gaps.resolved {
+        model::NullableU64::Value(n) => {
+            out.push_str(&format!("- resolved: {n}\n"));
+        }
+        model::NullableU64::Null => {
+            out.push_str("- resolved: null\n");
+        }
+    }
+    match &s.gaps.regressed {
+        model::NullableU64::Value(n) => {
+            out.push_str(&format!("- regressed: {n}\n"));
+        }
+        model::NullableU64::Null => {
+            out.push_str("- regressed: null\n");
+        }
+    }
+    if let Some(note) = &s.gaps.gap_delta_note {
+        out.push_str(&format!("- delta note: {note}\n"));
+    }
+    out.push('\n');
+
+    // Limitations
+    out.push_str("## Limitations\n\n");
+    if s.limitations.is_empty() {
+        out.push_str("- none\n");
+    } else {
+        for lim in &s.limitations {
+            out.push_str(&format!("- `{}`: {}\n", lim.category, lim.repair_route));
+        }
+    }
+    out.push('\n');
+
+    // Missing receipts
+    let missing_receipts = match &s.missing_receipts {
+        model::U64OrNotAvailable::Value(n) => n.to_string(),
+        model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
+    };
+    out.push_str(&format!("**Missing Receipts**: {missing_receipts}\n\n"));
+
+    // Top repair
+    out.push_str("## Top Repair\n\n");
+    if let Some(repair) = &s.top_repair {
+        out.push_str(&format!("- canonical gap: `{}`\n", repair.canonical_gap_id));
+        out.push_str(&format!("- language: `{}`\n", repair.language));
+        out.push_str(&format!("- repair kind: `{}`\n", repair.repair_kind));
+        out.push_str(&format!("- target: `{}`\n", repair.target));
+        out.push_str(&format!("- verify: `{}`\n", repair.verify_command));
+        out.push_str(&format!("- receipt: `{}`\n", repair.receipt_command));
+        out.push_str(&format!("- receipt state: `{}`\n", repair.receipt_state));
+    } else {
+        let state = s.top_repair_state.as_deref().unwrap_or("missing_artifact");
+        out.push_str(&format!("- state: `{state}`\n"));
+    }
+    out.push('\n');
+
+    // Top limitation
+    out.push_str("## Top Limitation\n\n");
+    if let Some(lim) = &s.top_limitation {
+        out.push_str(&format!("- category: `{}`\n", lim.category));
+        out.push_str(&format!("- repair route: `{}`\n", lim.repair_route));
+        out.push_str(&format!(
+            "- why not actionable: {}\n",
+            lim.why_not_actionable
+        ));
+    } else {
+        out.push_str("- none\n");
+    }
+    out.push('\n');
+
+    // Repro commands
+    out.push_str("## Local Reproduction Commands\n\n");
+    for cmd in &s.local_reproduction_commands {
+        out.push_str(&format!("```\n{cmd}\n```\n\n"));
+    }
+
+    out.push_str(
+        "_This summary composes existing RIPR artifacts. \
+        It is static advisory evidence only; \
+        run status, gap counts, and receipt state are read from repo artifacts, \
+        not computed by this command._\n",
+    );
+
+    out
 }
 
 fn summary_text(repo: &Path) -> String {
@@ -60,17 +230,34 @@ fn summary_text(repo: &Path) -> String {
 
 fn parse_options(args: &[String]) -> Result<SummaryOptions, String> {
     let mut check = false;
-    for arg in args {
+    let mut baseline: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--check" => check = true,
+            "--baseline" => {
+                let path = iter
+                    .next()
+                    .ok_or_else(|| "--baseline requires a path argument".to_string())?;
+                baseline = Some(path.clone());
+            }
             other => return Err(format!("unknown ripr-pr-summary argument {other:?}")),
         }
     }
-    Ok(SummaryOptions { check })
+    Ok(SummaryOptions { check, baseline })
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr-summary [--check]");
+    println!("usage: cargo xtask ripr-pr-summary [--check] [--baseline <before.json>]");
+    println!();
+    println!("Options:");
+    println!("  --check              Verify the existing summary is up to date.");
+    println!("  --baseline <path>    Provide a before-snapshot JSON for gap delta counts.");
+    println!();
+    println!("Outputs:");
+    println!("  {PR_SUMMARY_MD}  — legacy PR evidence summary (Markdown)");
+    println!("  {PR_EVIDENCE_SUMMARY_JSON}  — v1 evidence summary (JSON)");
+    println!("  {PR_EVIDENCE_SUMMARY_MD}  — v1 evidence summary (Markdown panel)");
 }
 
 fn check_summary(path: &Path, expected: &str) -> Result<(), String> {
@@ -112,12 +299,39 @@ mod tests {
     fn parse_accepts_check_only() {
         assert_eq!(
             parse_options(&["--check".to_string()]),
-            Ok(SummaryOptions { check: true })
+            Ok(SummaryOptions {
+                check: true,
+                baseline: None
+            })
         );
         assert_eq!(
             parse_options(&["--bad".to_string()]),
             Err("unknown ripr-pr-summary argument \"--bad\"".to_string())
         );
+    }
+
+    #[test]
+    fn parse_accepts_baseline_path() {
+        let result = parse_options(&["--baseline".to_string(), "target/before.json".to_string()]);
+        assert_eq!(
+            result,
+            Ok(SummaryOptions {
+                check: false,
+                baseline: Some("target/before.json".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_rejects_baseline_without_path() {
+        let result = parse_options(&["--baseline".to_string()]);
+        assert!(result.is_err());
+        if let Err(msg) = result {
+            assert!(
+                msg.contains("--baseline requires a path argument"),
+                "unexpected error: {msg}"
+            );
+        }
     }
 
     #[test]
@@ -269,6 +483,165 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("target/ripr/pr/summary.md is stale"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    /// Missing-all-artifacts case: all JSON fields show explicit "not_available"
+    /// or null-with-note, never fake zeros.
+    #[test]
+    fn evidence_summary_pair_missing_all_shows_explicit_states() -> Result<(), String> {
+        let repo = temp_repo("pr-evidence-summary-missing-all")?;
+        let options = SummaryOptions {
+            check: false,
+            baseline: None,
+        };
+        write_evidence_summary_pair(&repo, &options)?;
+
+        let json_text = fs::read_to_string(repo.join(PR_EVIDENCE_SUMMARY_JSON))
+            .map_err(|err| format!("read JSON: {err}"))?;
+        let md_text = fs::read_to_string(repo.join(PR_EVIDENCE_SUMMARY_MD))
+            .map_err(|err| format!("read MD: {err}"))?;
+
+        // JSON: run_status unknown, not_available for counts, null for deltas.
+        assert!(
+            json_text.contains("\"run_status\": \"unknown\""),
+            "run_status must be unknown: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"changed_surfaces\": \"not_available\""),
+            "changed_surfaces must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"total_actionable\": \"not_available\""),
+            "total_actionable must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"new_actionable\": null"),
+            "new_actionable must be null: {json_text}"
+        );
+        assert!(
+            json_text.contains("no baseline snapshot provided"),
+            "gap_delta_note must be present: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"missing_artifact\""),
+            "top_repair_state missing_artifact must be present: {json_text}"
+        );
+
+        // MD: explicit states surfaced.
+        assert!(
+            md_text.contains("not_available"),
+            "MD must show not_available: {md_text}"
+        );
+        assert!(
+            md_text.contains("missing_artifact"),
+            "MD must show missing_artifact: {md_text}"
+        );
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    /// Present-top-gap case: top_repair is populated and verify/receipt are
+    /// copyable from the JSON output.
+    #[test]
+    fn evidence_summary_pair_present_top_gap_is_copyable() -> Result<(), String> {
+        let repo = temp_repo("pr-evidence-summary-top-gap")?;
+
+        write_json(
+            &repo,
+            START_HERE_JSON,
+            &json!({
+                "status": "actionable",
+                "selected": {
+                    "state": "top_gap",
+                    "canonical_gap_id": "gap:rust:pricing:discount:boundary",
+                    "language": "rust",
+                    "repair": {
+                        "route": "AddBoundaryAssertion",
+                        "target_file": "tests/pricing.rs"
+                    },
+                    "verify_command": "cargo test discount_boundary",
+                    "receipt_command": "ripr agent receipt --gap gap:pr:pricing:discount",
+                    "receipt_state": "receipt_missing"
+                }
+            }),
+        )?;
+        write_json(
+            &repo,
+            DIFF_REPORT_JSON,
+            &json!({
+                "run_status": "diff_complete_full_repo_limited",
+                "base": "origin/main",
+                "head": "HEAD",
+                "summary": { "changed_files": 2 }
+            }),
+        )?;
+        write_json(
+            &repo,
+            GAP_DECISION_LEDGER_JSON,
+            &json!({
+                "summary": {
+                    "repairable_total": 1,
+                    "static_limitation_total": 0,
+                    "receipt_improved_total": 0
+                }
+            }),
+        )?;
+
+        let options = SummaryOptions {
+            check: false,
+            baseline: None,
+        };
+        write_evidence_summary_pair(&repo, &options)?;
+
+        let json_text = fs::read_to_string(repo.join(PR_EVIDENCE_SUMMARY_JSON))
+            .map_err(|err| format!("read JSON: {err}"))?;
+        let md_text = fs::read_to_string(repo.join(PR_EVIDENCE_SUMMARY_MD))
+            .map_err(|err| format!("read MD: {err}"))?;
+
+        // JSON top_repair present and copyable.
+        assert!(
+            json_text.contains("\"canonical_gap_id\": \"gap:rust:pricing:discount:boundary\""),
+            "canonical_gap_id missing: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"verify_command\": \"cargo test discount_boundary\""),
+            "verify_command missing: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"receipt_state\": \"receipt_missing\""),
+            "receipt_state missing: {json_text}"
+        );
+        // top_repair_state must be absent when top_repair is present.
+        assert!(
+            !json_text.contains("\"top_repair_state\""),
+            "top_repair_state must be absent when repair is present: {json_text}"
+        );
+        // run_status from diff-report.
+        assert!(
+            json_text.contains("\"run_status\": \"diff_complete_full_repo_limited\""),
+            "run_status missing: {json_text}"
+        );
+        // gap counts.
+        assert!(
+            json_text.contains("\"total_actionable\": 1"),
+            "total_actionable missing: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"missing_receipts\": 1"),
+            "missing_receipts missing: {json_text}"
+        );
+
+        // MD must contain the verify command and receipt state.
+        assert!(
+            md_text.contains("cargo test discount_boundary"),
+            "MD missing verify command: {md_text}"
+        );
+        assert!(
+            md_text.contains("receipt_missing"),
+            "MD missing receipt_state: {md_text}"
+        );
+
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 

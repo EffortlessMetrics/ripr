@@ -4868,6 +4868,37 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0075"
+name = "pr evidence summary"
+spec = "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md"
+tests = [
+  "xtask/src/reports/pr_evidence_summary/json.rs::tests::missing_all_artifacts_yields_unknown_run_status",
+  "xtask/src/reports/pr_evidence_summary/json.rs::tests::present_top_gap_populates_top_repair",
+  "xtask/src/reports/pr_evidence_summary/json.rs::tests::gap_ledger_counts_are_surfaced",
+  "xtask/src/reports/pr_evidence_summary/json.rs::tests::repo_exposure_limitations_are_aggregated",
+  "xtask/src/reports/pr_evidence_summary::tests::parse_accepts_baseline_path",
+  "xtask/src/reports/pr_evidence_summary::tests::parse_rejects_baseline_without_path",
+  "xtask/src/reports/pr_evidence_summary::tests::evidence_summary_pair_missing_all_shows_explicit_states",
+  "xtask/src/reports/pr_evidence_summary::tests::evidence_summary_pair_present_top_gap_is_copyable"
+]
+fixtures = []
+code = [
+  "xtask/src/reports/pr_evidence_summary.rs",
+  "xtask/src/reports/pr_evidence_summary/json.rs",
+  "xtask/src/reports/pr_evidence_summary/model.rs",
+  "xtask/src/reports/pr_evidence_summary/io.rs",
+  "xtask/src/reports/pr_evidence_summary/util.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "pr_evidence_summary_json_schema_version_present",
+  "unit_test_pass_rate"
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0074"
 name = "repo exposure run status"
 spec = "docs/specs/RIPR-SPEC-0074-repo-exposure-run-status.md"

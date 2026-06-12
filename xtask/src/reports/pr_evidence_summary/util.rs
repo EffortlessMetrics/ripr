@@ -1,5 +1,15 @@
 use serde_json::Value;
 
+/// Walk a JSON value along the given path segments.
+/// Returns `None` if any segment is missing or if `value` is `None`.
+pub(super) fn value_path<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value?;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    Some(current)
+}
+
 pub(super) fn string_field(value: Option<&Value>, key: &str) -> String {
     value
         .and_then(|value| value.get(key))
