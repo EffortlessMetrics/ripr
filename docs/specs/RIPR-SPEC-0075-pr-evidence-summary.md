@@ -83,7 +83,7 @@ when no baseline is available.
 | --- | --- |
 | `target/ripr/reports/diff-report.json` | `run_status`, `changed_surfaces`, `local_reproduction_commands` base/head |
 | `target/ripr/reports/repo-exposure.json` | `run_status` (fallback), `limitations[]` |
-| `target/ripr/reports/gap-decision-ledger.json` | `gaps.total_actionable`, `gaps.total_static_limitation`, `missing_receipts` |
+| `target/ripr/reports/gap-decision-ledger.json` | `gaps.total_actionable`, `gaps.total_static_limitation`, `missing_receipts`, `receipt_status.receipts_present`, `receipt_status.missing_receipts` |
 | `target/ripr/reports/start-here.json` | `top_repair` (when `selected.state == "top_gap"`), `top_repair_state`, `local_reproduction_commands` verify command |
 | `--baseline <path>` | gap delta computation (optional) |
 
@@ -124,6 +124,14 @@ Schema version `0.1`. Stable field order.
     }
   ],
   "missing_receipts": 2,
+  "receipt_status": {
+    "receipts_present": 1,
+    "missing_receipts": 2,
+    "orphan_receipts": "not_available",
+    "stale_receipts": "not_available",
+    "gap_mismatch_receipts": "not_available",
+    "verify_failed_receipts": "not_available"
+  },
   "top_repair": {
     "canonical_gap_id": "gap:src/lib.rs:error_path:c1a03250",
     "language": "rust",
@@ -177,6 +185,13 @@ When there are no limitations, `top_limitation` is omitted entirely.
 | `gaps.gap_delta_note` | string or absent | advisory | Present when delta fields are null. |
 | `limitations[]` | array | repo-exposure `limitations[]` | Empty when no limitations. |
 | `missing_receipts` | u64 or `"not_available"` | gap-ledger `summary.repairable_total - receipt_improved_total` | Proxy; exact field preferred when present. |
+| `receipt_status` | object | gap-decision-ledger summary | Six-count receipt status breakdown. See below. |
+| `receipt_status.receipts_present` | u64 or `"not_available"` | `receipt_improved_total + receipt_unchanged_after_attempt_total` | Records carrying any receipt evidence. |
+| `receipt_status.missing_receipts` | u64 or `"not_available"` | mirrors top-level `missing_receipts` | Convenience mirror. |
+| `receipt_status.orphan_receipts` | `"not_available"` | not yet derivable | Unlock: add receipts/ dir sweep to ledger. |
+| `receipt_status.stale_receipts` | `"not_available"` | not yet derivable | Unlock: add per-record `receipt.state == "receipt_stale"` count to ledger. |
+| `receipt_status.gap_mismatch_receipts` | `"not_available"` | not yet derivable | Unlock: add per-record `receipt.state == "receipt_gap_mismatch"` count to ledger. |
+| `receipt_status.verify_failed_receipts` | `"not_available"` | not yet derivable | Unlock: record verify exit-code in receipt schema. |
 | `top_repair` | object or null | start-here `selected` when `state == "top_gap"` | null when no actionable gap. |
 | `top_repair_state` | string or absent | start-here `selected.state` | Present only when `top_repair` is null. |
 | `top_limitation` | object or absent | first entry in `limitations[]` | Omitted when limitations empty. |
@@ -189,6 +204,11 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `present_top_gap_populates_top_repair`
   - `gap_ledger_counts_are_surfaced`
   - `repo_exposure_limitations_are_aggregated`
+  - `receipt_status_missing_all_artifacts_is_not_available`
+  - `receipt_status_json_not_derivable_fields_are_not_available_not_zero`
+  - `receipt_status_receipts_present_derived_from_ledger`
+  - `claimed_repair_with_no_receipt_shows_in_missing_receipts`
+  - `receipt_status_json_derived_fields_are_integers`
 - Integration tests in `xtask/src/reports/pr_evidence_summary.rs`:
   - `parse_accepts_baseline_path`
   - `parse_rejects_baseline_without_path`

@@ -42,11 +42,45 @@ pub(super) struct PrEvidenceSummaryJson {
     pub(super) gaps: GapCounts,
     pub(super) limitations: Vec<LimitationEntry>,
     pub(super) missing_receipts: U64OrNotAvailable,
+    pub(super) receipt_status: ReceiptStatusCounts,
     pub(super) top_repair: Option<TopRepair>,
     /// Human-readable state when top_repair is None.
     pub(super) top_repair_state: Option<String>,
     pub(super) top_limitation: Option<TopLimitation>,
     pub(super) local_reproduction_commands: Vec<String>,
+}
+
+/// Six-count receipt-status object surfaced in the PR evidence summary.
+///
+/// Two fields are derivable from gap-ledger summary counts today.
+/// Four are `NotAvailable` because the ledger does not yet emit the
+/// per-record state signals needed to classify them:
+///
+/// - `orphan_receipts`: a receipt file exists but no matching gap record was found —
+///   requires a receipts/ dir sweep that the ledger does not currently do.
+/// - `stale_receipts`: a receipt exists but predates the gap's verify command —
+///   ledger emits `receipt.movement` but does not classify individual records as stale;
+///   unlock when the ledger adds a `receipt.state == "receipt_stale"` count.
+/// - `gap_mismatch_receipts`: a receipt references a different gap id than the ledger
+///   record — same blocker as stale.
+/// - `verify_failed_receipts`: the verify command in the receipt exited non-0 —
+///   there is no verify pass/fail signal in the current ledger schema;
+///   unlock when the receipt writer records exit code.
+pub(super) struct ReceiptStatusCounts {
+    /// Gap-ledger records that carry receipt evidence:
+    /// `summary.receipt_improved_total + summary.receipt_unchanged_after_attempt_total`.
+    pub(super) receipts_present: U64OrNotAvailable,
+    /// Actionable gaps without a receipt:
+    /// mirrors the top-level `missing_receipts` field.
+    pub(super) missing_receipts: U64OrNotAvailable,
+    /// NOT DERIVABLE YET — requires a receipts/ sweep not in the current ledger.
+    pub(super) orphan_receipts: U64OrNotAvailable,
+    /// NOT DERIVABLE YET — ledger lacks a per-record `receipt.state == "receipt_stale"` count.
+    pub(super) stale_receipts: U64OrNotAvailable,
+    /// NOT DERIVABLE YET — ledger lacks a per-record `receipt.state == "receipt_gap_mismatch"` count.
+    pub(super) gap_mismatch_receipts: U64OrNotAvailable,
+    /// NOT DERIVABLE YET — no verify pass/fail signal in the current ledger schema.
+    pub(super) verify_failed_receipts: U64OrNotAvailable,
 }
 
 /// Gap counts. Delta fields are `null` when no `--baseline` is given.

@@ -156,12 +156,46 @@ fn render_evidence_summary_md(s: &model::PrEvidenceSummaryJson, _json_text: &str
     }
     out.push('\n');
 
-    // Missing receipts
+    // Missing receipts (top-level, kept for back-compat)
     let missing_receipts = match &s.missing_receipts {
         model::U64OrNotAvailable::Value(n) => n.to_string(),
         model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
     };
     out.push_str(&format!("**Missing Receipts**: {missing_receipts}\n\n"));
+
+    // Receipt status (six-count breakdown)
+    out.push_str("## Receipt Status\n\n");
+    let fmt_count = |v: &model::U64OrNotAvailable| -> String {
+        match v {
+            model::U64OrNotAvailable::Value(n) => n.to_string(),
+            model::U64OrNotAvailable::NotAvailable => "not_available".to_string(),
+        }
+    };
+    out.push_str(&format!(
+        "- receipts present: {}\n",
+        fmt_count(&s.receipt_status.receipts_present)
+    ));
+    out.push_str(&format!(
+        "- missing receipts: {}\n",
+        fmt_count(&s.receipt_status.missing_receipts)
+    ));
+    out.push_str(&format!(
+        "- orphan receipts: {}\n",
+        fmt_count(&s.receipt_status.orphan_receipts)
+    ));
+    out.push_str(&format!(
+        "- stale receipts: {}\n",
+        fmt_count(&s.receipt_status.stale_receipts)
+    ));
+    out.push_str(&format!(
+        "- gap mismatch receipts: {}\n",
+        fmt_count(&s.receipt_status.gap_mismatch_receipts)
+    ));
+    out.push_str(&format!(
+        "- verify failed receipts: {}\n",
+        fmt_count(&s.receipt_status.verify_failed_receipts)
+    ));
+    out.push('\n');
 
     // Top repair
     out.push_str("## Top Repair\n\n");
@@ -528,6 +562,32 @@ mod tests {
             "top_repair_state missing_artifact must be present: {json_text}"
         );
 
+        // receipt_status: all six fields must be not_available when ledger is absent.
+        assert!(
+            json_text.contains("\"receipt_status\""),
+            "receipt_status must be present in JSON: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"receipts_present\": \"not_available\""),
+            "receipts_present must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must be not_available (not 0): {json_text}"
+        );
+        assert!(
+            json_text.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must be not_available (not 0): {json_text}"
+        );
+        assert!(
+            json_text.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must be not_available (not 0): {json_text}"
+        );
+        assert!(
+            json_text.contains("\"verify_failed_receipts\": \"not_available\""),
+            "verify_failed_receipts must be not_available (not 0): {json_text}"
+        );
+
         // MD: explicit states surfaced.
         assert!(
             md_text.contains("not_available"),
@@ -536,6 +596,11 @@ mod tests {
         assert!(
             md_text.contains("missing_artifact"),
             "MD must show missing_artifact: {md_text}"
+        );
+        // MD: Receipt Status section must be present.
+        assert!(
+            md_text.contains("## Receipt Status"),
+            "MD must show Receipt Status section: {md_text}"
         );
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
@@ -632,6 +697,34 @@ mod tests {
             "missing_receipts missing: {json_text}"
         );
 
+        // receipt_status: receipts_present = improved(0)+unchanged(0) = 0;
+        // missing_receipts in receipt_status mirrors top-level = 1.
+        assert!(
+            json_text.contains("\"receipt_status\""),
+            "receipt_status must be present: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"receipts_present\": 0"),
+            "receipts_present must be 0 when no receipts found: {json_text}"
+        );
+        // The four not-yet-derivable fields must still be not_available.
+        assert!(
+            json_text.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must be not_available: {json_text}"
+        );
+        assert!(
+            json_text.contains("\"verify_failed_receipts\": \"not_available\""),
+            "verify_failed_receipts must be not_available: {json_text}"
+        );
+
         // MD must contain the verify command and receipt state.
         assert!(
             md_text.contains("cargo test discount_boundary"),
@@ -640,6 +733,11 @@ mod tests {
         assert!(
             md_text.contains("receipt_missing"),
             "MD missing receipt_state: {md_text}"
+        );
+        // MD must show Receipt Status section.
+        assert!(
+            md_text.contains("## Receipt Status"),
+            "MD must contain Receipt Status section: {md_text}"
         );
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))

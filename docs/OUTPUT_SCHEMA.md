@@ -13332,6 +13332,14 @@ JSON shape (schema version `0.1`):
     }
   ],
   "missing_receipts": 2,
+  "receipt_status": {
+    "receipts_present": 1,
+    "missing_receipts": 2,
+    "orphan_receipts": "not_available",
+    "stale_receipts": "not_available",
+    "gap_mismatch_receipts": "not_available",
+    "verify_failed_receipts": "not_available"
+  },
   "top_repair": {
     "canonical_gap_id": "gap:src/lib.rs:error_path:c1a03250",
     "language": "rust",
@@ -13370,10 +13378,22 @@ Field sources:
 | `gaps.*` delta fields | computed from `--baseline` | before/after `gaps.total_actionable` |
 | `limitations[]` | repo-exposure | `limitations[]` |
 | `missing_receipts` | gap-decision-ledger | `summary.repairable_total - receipt_improved_total` |
+| `receipt_status.receipts_present` | gap-decision-ledger | `summary.receipt_improved_total + summary.receipt_unchanged_after_attempt_total` |
+| `receipt_status.missing_receipts` | gap-decision-ledger | mirrors top-level `missing_receipts` |
+| `receipt_status.orphan_receipts` | not yet derivable | `"not_available"` until receipts/ dir sweep added to ledger |
+| `receipt_status.stale_receipts` | not yet derivable | `"not_available"` until per-record `receipt.state == "receipt_stale"` count added |
+| `receipt_status.gap_mismatch_receipts` | not yet derivable | `"not_available"` until per-record `receipt.state == "receipt_gap_mismatch"` count added |
+| `receipt_status.verify_failed_receipts` | not yet derivable | `"not_available"` until verify exit-code recorded in receipt schema |
 | `top_repair` | start-here | `selected` (when `state == "top_gap"`) |
 | `top_repair_state` | start-here | `selected.state` (when not `"top_gap"`) |
 | `top_limitation` | first entry in `limitations[]` | derived |
 | `local_reproduction_commands` | diff-report + start-here | base/head + `selected.verify_command` |
+
+The `receipt_status` object is additive — existing consumers reading `missing_receipts`
+at the top level continue to work unchanged (`schema_version` stays `"0.1"`; additive
+fields do not require a version bump per the stability rules above). The four
+`"not_available"` fields honestly signal "this signal is not yet computed" rather
+than claiming zero: emitting `0` would falsely assert that we checked and found none.
 
 Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 

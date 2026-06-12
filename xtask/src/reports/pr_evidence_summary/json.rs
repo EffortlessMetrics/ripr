@@ -1,6 +1,6 @@
 use crate::reports::pr_evidence_summary::model::{
-    GapCounts, LimitationEntry, NullableU64, PrEvidenceSummaryJson, TopLimitation, TopRepair,
-    U64OrNotAvailable,
+    GapCounts, LimitationEntry, NullableU64, PrEvidenceSummaryJson, ReceiptStatusCounts,
+    TopLimitation, TopRepair, U64OrNotAvailable,
 };
 use crate::reports::pr_evidence_summary::util::value_path;
 use serde_json::{Value, json};
@@ -24,6 +24,7 @@ pub(super) fn build_pr_evidence_summary(
     let gaps = derive_gaps(gap_ledger_value, baseline_value);
     let limitations = derive_limitations(repo_exposure_value);
     let missing_receipts = derive_missing_receipts(gap_ledger_value);
+    let receipt_status = derive_receipt_status(gap_ledger_value, &missing_receipts);
     let (top_repair, top_repair_state) = derive_top_repair(start_here_value);
     let top_limitation = limitations.first().map(|entry| TopLimitation {
         category: entry.category.clone(),
@@ -39,6 +40,7 @@ pub(super) fn build_pr_evidence_summary(
         gaps,
         limitations,
         missing_receipts,
+        receipt_status,
         top_repair,
         top_repair_state,
         top_limitation,
@@ -170,6 +172,60 @@ fn derive_missing_receipts(gap_ledger_value: Option<&Value>) -> U64OrNotAvailabl
         .and_then(Value::as_u64)
         .unwrap_or(0);
     U64OrNotAvailable::Value(repairable.saturating_sub(improved))
+}
+
+/// Derive the six-count receipt-status object.
+///
+/// `receipts_present` and `missing_receipts` are derivable from the existing
+/// gap-ledger summary fields today. The other four are `NotAvailable` because
+/// the ledger does not yet emit the per-record state signals required:
+///
+/// - `orphan_receipts`:        needs a sweep of receipts/ dir vs. ledger records.
+/// - `stale_receipts`:         needs per-record `receipt.state == "receipt_stale"`.
+/// - `gap_mismatch_receipts`:  needs per-record `receipt.state == "receipt_gap_mismatch"`.
+/// - `verify_failed_receipts`: needs a verify exit-code field in the receipt schema.
+fn derive_receipt_status(
+    gap_ledger_value: Option<&Value>,
+    missing_receipts: &U64OrNotAvailable,
+) -> ReceiptStatusCounts {
+    // receipts_present = receipt_improved_total + receipt_unchanged_after_attempt_total.
+    // Both are advisory counts; if the summary block is absent we emit NotAvailable.
+    let receipts_present = if let Some(summary) = value_path(gap_ledger_value, &["summary"]) {
+        let improved = summary
+            .get("receipt_improved_total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let unchanged = summary
+            .get("receipt_unchanged_after_attempt_total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        // If neither field is present at all, we have no evidence — NotAvailable.
+        // Both default to 0 when the key is absent but the summary block exists,
+        // so we check whether the block itself was present (which it was if we
+        // reached this branch).
+        U64OrNotAvailable::Value(improved.saturating_add(unchanged))
+    } else {
+        U64OrNotAvailable::NotAvailable
+    };
+
+    // missing_receipts mirrors the already-computed top-level field.
+    let missing = match missing_receipts {
+        U64OrNotAvailable::Value(n) => U64OrNotAvailable::Value(*n),
+        U64OrNotAvailable::NotAvailable => U64OrNotAvailable::NotAvailable,
+    };
+
+    ReceiptStatusCounts {
+        receipts_present,
+        missing_receipts: missing,
+        // NOT DERIVABLE YET: requires receipts/ dir sweep vs. ledger records.
+        orphan_receipts: U64OrNotAvailable::NotAvailable,
+        // NOT DERIVABLE YET: ledger lacks per-record receipt_stale count.
+        stale_receipts: U64OrNotAvailable::NotAvailable,
+        // NOT DERIVABLE YET: ledger lacks per-record receipt_gap_mismatch count.
+        gap_mismatch_receipts: U64OrNotAvailable::NotAvailable,
+        // NOT DERIVABLE YET: no verify pass/fail signal in current ledger schema.
+        verify_failed_receipts: U64OrNotAvailable::NotAvailable,
+    }
 }
 
 fn derive_top_repair(start_here_value: Option<&Value>) -> (Option<TopRepair>, Option<String>) {
@@ -356,6 +412,15 @@ pub(super) fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> Stri
         gaps["gap_delta_note"] = json!(note);
     }
 
+    let receipt_status = json!({
+        "receipts_present": u64_or_not_available(&s.receipt_status.receipts_present),
+        "missing_receipts": u64_or_not_available(&s.receipt_status.missing_receipts),
+        "orphan_receipts": u64_or_not_available(&s.receipt_status.orphan_receipts),
+        "stale_receipts": u64_or_not_available(&s.receipt_status.stale_receipts),
+        "gap_mismatch_receipts": u64_or_not_available(&s.receipt_status.gap_mismatch_receipts),
+        "verify_failed_receipts": u64_or_not_available(&s.receipt_status.verify_failed_receipts)
+    });
+
     let mut obj = json!({
         "schema_version": "0.1",
         "kind": "pr_evidence_summary",
@@ -365,6 +430,7 @@ pub(super) fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> Stri
         "gaps": gaps,
         "limitations": limitations,
         "missing_receipts": u64_or_not_available(&s.missing_receipts),
+        "receipt_status": receipt_status,
         "local_reproduction_commands": s.local_reproduction_commands
     });
 
@@ -589,5 +655,203 @@ mod tests {
             top_lim.why_not_actionable
         );
         Ok(())
+    }
+
+    // ── receipt_status six-count tests ───────────────────────────────────────
+
+    /// Without any artifacts, receipt_status fields should be not_available —
+    /// never fake zeros.
+    #[test]
+    fn receipt_status_missing_all_artifacts_is_not_available() {
+        let s = missing_all();
+        assert!(
+            matches!(
+                s.receipt_status.receipts_present,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "receipts_present must be not_available when ledger is missing"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.missing_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "receipt_status.missing_receipts must be not_available when ledger is missing"
+        );
+        // The four not-yet-derivable fields are always not_available.
+        assert!(
+            matches!(
+                s.receipt_status.orphan_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "orphan_receipts must be not_available (not 0)"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.stale_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "stale_receipts must be not_available (not 0)"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.gap_mismatch_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "gap_mismatch_receipts must be not_available (not 0)"
+        );
+        assert!(
+            matches!(
+                s.receipt_status.verify_failed_receipts,
+                U64OrNotAvailable::NotAvailable
+            ),
+            "verify_failed_receipts must be not_available (not 0)"
+        );
+    }
+
+    /// JSON output must contain a receipt_status object with the four
+    /// not-yet-derivable fields set to "not_available", never "0".
+    #[test]
+    fn receipt_status_json_not_derivable_fields_are_not_available_not_zero() {
+        let s = missing_all();
+        let json = render_pr_evidence_summary_json(&s);
+        assert!(
+            json.contains("\"receipt_status\""),
+            "receipt_status must be present in JSON: {json}"
+        );
+        assert!(
+            json.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must be not_available in JSON: {json}"
+        );
+        assert!(
+            json.contains("\"stale_receipts\": \"not_available\""),
+            "stale_receipts must be not_available in JSON: {json}"
+        );
+        assert!(
+            json.contains("\"gap_mismatch_receipts\": \"not_available\""),
+            "gap_mismatch_receipts must be not_available in JSON: {json}"
+        );
+        assert!(
+            json.contains("\"verify_failed_receipts\": \"not_available\""),
+            "verify_failed_receipts must be not_available in JSON: {json}"
+        );
+        // Confirm none of the four appear as a numeric 0.
+        // (If they were 0, json would contain e.g. `"orphan_receipts": 0`.)
+        assert!(
+            !json.contains("\"orphan_receipts\": 0"),
+            "orphan_receipts must NOT be 0: {json}"
+        );
+        assert!(
+            !json.contains("\"stale_receipts\": 0"),
+            "stale_receipts must NOT be 0: {json}"
+        );
+        assert!(
+            !json.contains("\"gap_mismatch_receipts\": 0"),
+            "gap_mismatch_receipts must NOT be 0: {json}"
+        );
+        assert!(
+            !json.contains("\"verify_failed_receipts\": 0"),
+            "verify_failed_receipts must NOT be 0: {json}"
+        );
+    }
+
+    /// receipts_present is derived as improved + unchanged_after_attempt.
+    #[test]
+    fn receipt_status_receipts_present_derived_from_ledger() {
+        let ledger = serde_json::json!({
+            "summary": {
+                "repairable_total": 5,
+                "receipt_improved_total": 2,
+                "receipt_unchanged_after_attempt_total": 1
+            }
+        });
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        // receipts_present = improved(2) + unchanged(1) = 3
+        assert!(
+            matches!(
+                s.receipt_status.receipts_present,
+                U64OrNotAvailable::Value(3)
+            ),
+            "receipts_present must be 3 (2+1)"
+        );
+        // missing_receipts mirrors top-level: repairable(5) - improved(2) = 3
+        assert!(
+            matches!(
+                s.receipt_status.missing_receipts,
+                U64OrNotAvailable::Value(3)
+            ),
+            "receipt_status.missing_receipts must be 3"
+        );
+    }
+
+    /// A repairable gap with no receipt evidence shows up as missing_receipts >= 1.
+    #[test]
+    fn claimed_repair_with_no_receipt_shows_in_missing_receipts() -> Result<(), String> {
+        // One repairable gap, no receipt_improved_total => missing = 1.
+        let ledger = serde_json::json!({
+            "summary": {
+                "repairable_total": 1,
+                "receipt_improved_total": 0,
+                "receipt_unchanged_after_attempt_total": 0
+            }
+        });
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        match s.receipt_status.missing_receipts {
+            U64OrNotAvailable::Value(n) => assert!(
+                n >= 1,
+                "missing_receipts must be >= 1 when repair claimed with no receipt"
+            ),
+            U64OrNotAvailable::NotAvailable => {
+                return Err(
+                    "missing_receipts must be a concrete value when ledger is present".to_string(),
+                );
+            }
+        }
+        // Top-level missing_receipts must agree.
+        match s.missing_receipts {
+            U64OrNotAvailable::Value(n) => assert!(
+                n >= 1,
+                "top-level missing_receipts must be >= 1 when repair claimed with no receipt"
+            ),
+            U64OrNotAvailable::NotAvailable => {
+                return Err(
+                    "top-level missing_receipts must be a concrete value when ledger is present"
+                        .to_string(),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// JSON must contain receipt_status with receipts_present and
+    /// missing_receipts as computed integers when the ledger is present.
+    #[test]
+    fn receipt_status_json_derived_fields_are_integers() {
+        let ledger = serde_json::json!({
+            "summary": {
+                "repairable_total": 4,
+                "receipt_improved_total": 1,
+                "receipt_unchanged_after_attempt_total": 1
+            }
+        });
+        let s = build_pr_evidence_summary(None, Some(&ledger), None, None, None);
+        let json = render_pr_evidence_summary_json(&s);
+        // receipts_present = 1+1 = 2
+        assert!(
+            json.contains("\"receipts_present\": 2"),
+            "receipts_present must be 2 in JSON: {json}"
+        );
+        // missing_receipts in receipt_status = repairable(4) - improved(1) = 3
+        // (Note: the JSON key appears twice — once at top level, once inside receipt_status.
+        //  We cannot distinguish them by plain contains, so we just confirm the value 3 appears.)
+        assert!(
+            json.contains("\"missing_receipts\": 3"),
+            "missing_receipts=3 must appear in JSON: {json}"
+        );
+        // The four not-yet-derivable fields must still be not_available.
+        assert!(
+            json.contains("\"orphan_receipts\": \"not_available\""),
+            "orphan_receipts must remain not_available even when ledger is present: {json}"
+        );
     }
 }
