@@ -817,4 +817,42 @@ mod tests {
             "not-enabled case must not claim analysis ran; got:\n{rendered}"
         );
     }
+
+    #[test]
+    fn render_finding_normalizes_backslash_location_path_to_forward_slash() {
+        // Proves sections.rs uses display_path: Windows-style .\\src\\pricing.ts
+        // must render as src/pricing.ts in the WARNING line.
+        let mut finding = sample_finding();
+        finding.probe.location = SourceLocation::new(PathBuf::from(r"src\pricing.ts"), 10, 1);
+
+        let rendered = render_finding(&finding);
+
+        assert!(
+            rendered.contains("src/pricing.ts:10"),
+            "expected forward-slash location path in human output; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r"src\pricing.ts"),
+            "backslash path must not appear in human output; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_finding_normalizes_backslash_related_test_path_to_forward_slash() {
+        // Proves evidence_lines.rs uses display_path: related test file with
+        // backslashes must appear as forward-slash in the evidence lines.
+        let mut finding = sample_finding();
+        finding.related_tests[0].file = PathBuf::from(r"tests\sample.rs");
+
+        let rendered = render_finding(&finding);
+
+        assert!(
+            rendered.contains("tests/sample.rs:"),
+            "expected forward-slash related-test path in human evidence; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r"tests\sample.rs"),
+            "backslash related-test path must not appear in human output; got:\n{rendered}"
+        );
+    }
 }

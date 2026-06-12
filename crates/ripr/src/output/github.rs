@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
+use crate::output::path::display_path;
 use crate::output::perl_preview_card::perl_preview_card;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
@@ -106,7 +107,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
-            finding.probe.location.file.display(),
+            display_path(&finding.probe.location.file),
             finding.probe.location.line,
             escape_cmd(&title),
             escape_cmd(&message)
@@ -790,5 +791,67 @@ mod tests {
             confidence: Confidence::Low,
             summary: reason.to_string(),
         }
+    }
+
+    #[test]
+    fn render_normalizes_backslash_location_path_to_forward_slash() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![Finding {
+                id: "probe:src_pricing_ts:5:predicate".to_string(),
+                canonical_gap: None,
+                probe: Probe {
+                    id: ProbeId("probe:src_pricing_ts:5:predicate".to_string()),
+                    location: SourceLocation::new(PathBuf::from(r"src\pricing.ts"), 5, 1),
+                    owner: None,
+                    family: ProbeFamily::Predicate,
+                    delta: DeltaKind::Control,
+                    before: None,
+                    after: None,
+                    expression: "x > 0".to_string(),
+                    expected_sinks: vec![],
+                    required_oracles: vec![],
+                },
+                class: ExposureClass::WeaklyExposed,
+                ripr: RiprEvidence {
+                    reach: stage(StageState::Yes, "reachable"),
+                    infect: stage(StageState::Yes, "infected"),
+                    propagate: stage(StageState::Yes, "propagated"),
+                    reveal: RevealEvidence {
+                        observe: stage(StageState::Yes, "observed"),
+                        discriminate: stage(StageState::No, "not discriminated"),
+                    },
+                },
+                confidence: 0.7,
+                evidence: vec![],
+                missing: vec![],
+                flow_sinks: vec![],
+                activation: crate::domain::ActivationEvidence::default(),
+                stop_reasons: vec![],
+                related_tests: vec![],
+                recommended_next_step: None,
+                language: None,
+                language_status: None,
+                owner_kind: None,
+                static_limit_kind: None,
+            }],
+            preview_language_advisories: Vec::new(),
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("file=src/pricing.ts,"),
+            "expected forward-slash path in github annotation; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r"src\pricing.ts"),
+            "backslash path must not appear in github annotation; got:\n{rendered}"
+        );
     }
 }

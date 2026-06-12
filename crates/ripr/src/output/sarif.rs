@@ -12,6 +12,7 @@ use crate::domain::{
     ExposureClass, Finding, LanguageId, LanguageStatus, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::path::display_path_text;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
@@ -217,7 +218,7 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
             json!({
                 "id": gap.id.as_str(),
                 "language": gap.language.as_str(),
-                "file": gap.file.as_str(),
+                "file": display_path_text(&gap.file),
                 "owner": gap.owner.as_str(),
                 "behavior_kind": gap.behavior_kind.as_str(),
                 "probe_kind": gap.probe_kind.as_str(),
@@ -836,6 +837,31 @@ mod tests {
         assert_eq!(
             result["properties"]["canonical_gap"]["normalized_discriminator"],
             "amount>=threshold"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_normalizes_backslash_canonical_gap_file_to_forward_slash() -> Result<(), String> {
+        // Proves gap.file backslash paths are normalized in SARIF properties.
+        let mut output = sample_output();
+        output.findings[0].canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:x>=0".to_string(),
+            language: "python".to_string(),
+            file: r"src\pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "x>=0".to_string(),
+        });
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+
+        assert_eq!(
+            result["properties"]["canonical_gap"]["file"], "src/pricing.py",
+            "canonical_gap file must use forward slashes in SARIF properties"
         );
         Ok(())
     }

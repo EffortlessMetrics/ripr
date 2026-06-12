@@ -1,5 +1,6 @@
 use crate::config::RiprConfig;
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::path::display_path;
 use crate::output::perl_preview_card::{PerlPreviewCard, PerlRawEvidenceRef, perl_preview_card};
 use crate::output::preview_actionability::{
     PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
@@ -18,7 +19,7 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     out.push_str(&format!(
         "{} {}:{}\n",
         severity.to_ascii_uppercase(),
-        finding.probe.location.file.display(),
+        display_path(&finding.probe.location.file),
         finding.probe.location.line
     ));
 
