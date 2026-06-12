@@ -5179,3 +5179,25 @@ outputs = [
 metrics = [
   "check_no_scope_disclosure_status_proposed"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0084"
+name = "default base resolution"
+spec = "docs/specs/RIPR-SPEC-0084-default-base-resolution.md"
+tests = [
+  "crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_uses_origin_master_when_symbolic_ref_points_there",
+  "crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_uses_local_main_when_no_remote",
+  "crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_returns_named_error_when_nothing_resolves",
+  "crates/ripr/src/analysis/diff/load.rs::tests::explicit_base_is_used_as_is_without_resolution"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/diff/load.rs",
+  "policy/process_allowlist.txt"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0084-default-base-resolution.md"
+]
+metrics = [
+  "default_base_resolution_status_proposed"
+]

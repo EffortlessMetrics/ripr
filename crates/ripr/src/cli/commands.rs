@@ -3338,6 +3338,11 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // is given. When still false at analysis time, the output discloses that
     // nothing was analyzed, preventing an empty result from being read as clean.
     let mut scope_explicitly_provided = false;
+    // RIPR-SPEC-0084: track whether --base was explicitly given by the user.
+    // When false, the CLI resolves the repo's real default branch before
+    // running analysis. An explicit bad --base keeps its error; only the
+    // default path triggers auto-resolution.
+    let mut base_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3349,6 +3354,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.base = Some(expect_value(args, i, "--base")?.to_string());
                 scope_explicitly_provided = true;
+                base_explicitly_provided = true;
             }
             "--diff" => {
                 i += 1;
@@ -3381,6 +3387,17 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
             other => return Err(format!("unknown check argument {other:?}")),
         }
         i += 1;
+    }
+    // RIPR-SPEC-0084: when no --base was explicitly given AND no --diff file
+    // was provided, resolve the repo's real default branch instead of
+    // hardcoding origin/main. Setting base to None here triggers
+    // `load_diff` → `resolve_default_base`, which tries (in order):
+    // symbolic-ref origin/HEAD → origin/main → origin/master → main → master.
+    // When --diff is given, input.base is kept as-is (it appears in output for
+    // informational purposes but is not used for the diff itself). When --base
+    // is explicitly given, base_explicitly_provided is true and we preserve it.
+    if !base_explicitly_provided && input.diff_file.is_none() {
+        input.base = None;
     }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);

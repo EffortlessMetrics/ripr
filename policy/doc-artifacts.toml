@@ -281,3 +281,11 @@ path = "docs/specs/RIPR-SPEC-0083-check-no-scope-disclosure.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Honesty disclosure when ripr check is run with no analysis scope; extends the #1111 honesty theme to the no-scope case; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0084"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0084-default-base-resolution.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Fix raw git error when origin/main is absent by resolving the repo's real default branch and failing closed with a named actionable message; addresses #1144; no separate proposal artifact."
