@@ -43,7 +43,7 @@
   },
   "commands": {
     "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json",
-    "receipt": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json",
+    "receipt": "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command \"cargo xtask fixtures boundary_gap\" --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json",
     "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
     "verify": "cargo xtask fixtures boundary_gap"
   },
@@ -85,8 +85,8 @@
     "language": "rust",
     "language_status": "stable",
     "missing_discriminator": "Equality-boundary assertion for the changed behavior.",
-    "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json",
-    "receipt_command_source": "first_pr.default_outcome_command",
+    "receipt_command": "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command \"cargo xtask fixtures boundary_gap\" --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json",
+    "receipt_command_source": "first_pr.default_receipt_write_command",
     "receipt_path": "target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json",
     "receipt_state": null,
     "repair": {

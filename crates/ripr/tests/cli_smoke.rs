@@ -593,7 +593,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         "Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
     ));
     assert!(stdout.contains("Verify command: `cargo xtask fixtures boundary_gap`"));
-    assert!(stdout.contains("Receipt command: `ripr outcome --before"));
+    assert!(stdout.contains("Receipt command: `ripr receipt write --gap "));
     assert!(stdout.contains("Receipt path: `target/ripr/receipts/"));
     assert!(stdout.contains("Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."));
 
@@ -644,7 +644,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         )
     );
     assert!(markdown.contains("- Missing discriminator: Equality-boundary assertion"));
-    assert!(markdown.contains("- Receipt command: `ripr outcome --before"));
+    assert!(markdown.contains("- Receipt command: `ripr receipt write --gap "));
     assert!(markdown.contains("- Receipt path: `target/ripr/receipts/"));
     assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
     let check_output = run_ripr_in_workspace(&[

@@ -15,7 +15,7 @@ State: actionable
 - Missing discriminator: Equality-boundary assertion for the changed behavior.
 - Focused proof intent: Add a focused boundary assertion in `tests/pricing.rs`: `assert_eq!(discount(100, 100), 90)`.
 - Verify command: `cargo xtask fixtures boundary_gap`
-- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
+- Receipt command: `ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command "cargo xtask fixtures boundary_gap" --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 - Receipt path: `target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
@@ -36,7 +36,7 @@ Verify command:
 `cargo xtask fixtures boundary_gap`
 
 Receipt command:
-`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
+`ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command "cargo xtask fixtures boundary_gap" --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 
 Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json`

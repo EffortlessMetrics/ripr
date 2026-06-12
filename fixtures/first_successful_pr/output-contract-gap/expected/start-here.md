@@ -15,7 +15,7 @@ State: actionable
 - Missing discriminator: Checked output or golden proof for the changed text.
 - Focused proof intent: Add or update the output proof in `fixtures/device-labels/expected/human.txt` so `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.
 - Verify command: `cargo xtask goldens check`
-- Receipt command: `ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
+- Receipt command: `ripr receipt write --gap gap:rust:output:device-label --verify-command "cargo xtask goldens check" --status not_run --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
 - Receipt path: `target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
@@ -36,7 +36,7 @@ Verify command:
 `cargo xtask goldens check`
 
 Receipt command:
-`ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --format json --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
+`ripr receipt write --gap gap:rust:output:device-label --verify-command "cargo xtask goldens check" --status not_run --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
 
 Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json`

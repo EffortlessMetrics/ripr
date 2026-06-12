@@ -1,4 +1,5 @@
-use crate::agent::loop_commands::{outcome_command, shell_arg};
+use crate::agent::loop_commands::shell_arg;
+use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -219,7 +220,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     };
 
     if input.source_kind == GapDecisionLedgerSourceKind::CheckOutput {
-        attach_check_output_python_receipt_routes(&mut records, &input.root, &input.records_path);
+        attach_check_output_python_receipt_routes(&mut records, &input.root);
     }
 
     for record in &records {
@@ -1152,11 +1153,7 @@ fn perl_route_kind(value: &str) -> &'static str {
     }
 }
 
-fn attach_check_output_python_receipt_routes(
-    records: &mut [GapRecord],
-    root: &str,
-    before_check_output: &str,
-) {
+fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &str) {
     let after_check_command = format!(
         "ripr check --root {} --json > {}",
         shell_arg(root),
@@ -1177,9 +1174,17 @@ fn attach_check_output_python_receipt_routes(
             .is_none()
         {
             let receipt_path = default_python_receipt_path(record);
-            record.receipt_command = Some(outcome_command(
-                before_check_output,
-                DEFAULT_CHECK_AFTER_OUTPUT,
+            let gap_id_for_receipt = non_empty(&record.canonical_gap_id)
+                .or_else(|| non_empty(&record.gap_id))
+                .unwrap_or("python-gap");
+            let verify_cmd = record
+                .verification_commands
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("ripr check --root . --json");
+            record.receipt_command = Some(receipt_write_command(
+                gap_id_for_receipt,
+                verify_cmd,
                 Some(&receipt_path),
             ));
         }
@@ -2795,11 +2800,14 @@ mod tests {
             record.regeneration_commands,
             vec!["ripr check --root . --json > target/ripr/reports/after-check.json".to_string()]
         );
-        assert_eq!(
-            record.receipt_command.as_deref(),
-            Some(
-                "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/gap-python-src-pricing.py-calculate_discount-predicate_boundary-predicate-amount-threshold.json"
-            )
+        let receipt_cmd = record.receipt_command.as_deref().unwrap_or("");
+        assert!(
+            receipt_cmd.starts_with("ripr receipt write --gap "),
+            "receipt_command must be canonical ripr receipt write per RIPR-SPEC-0079, got: {receipt_cmd}"
+        );
+        assert!(
+            !receipt_cmd.contains("ripr outcome"),
+            "receipt_command must not contain ripr outcome, got: {receipt_cmd}"
         );
         let packet = crate::output::agent_seam_packets::render_agent_gap_record_packet_json(
             "target/ripr/reports/gap-decision-ledger.json",

@@ -1,9 +1,7 @@
-use crate::agent::loop_commands::{
-    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-    check_repo_exposure_command, display_path, outcome_command, shell_arg,
-};
+use crate::agent::loop_commands::{check_repo_exposure_command, display_path, shell_arg};
 use crate::config::{CONFIG_FILE_NAME, detect_python_project};
 use crate::output::receipt_lifecycle::receipt_lifecycle_state;
+use crate::output::receipt_write::receipt_write_command;
 use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state, start_here_output_state_is_known,
 };
@@ -1471,18 +1469,20 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
         .unwrap_or_else(|| first_pr_receipt_path(&options.receipts_dir, &gap_id));
     let ledger_receipt_command = string_path(record, &["receipt_command"]);
     let ledger_receipt_or_path_command = command_like_path(record, &["receipt_command_or_path"]);
+    let canonical_gap_id_for_receipt =
+        string_path(record, &["canonical_gap_id"]).unwrap_or_else(|| gap_id.clone());
     let (receipt_command, receipt_command_source) = if let Some(command) = ledger_receipt_command {
         (command, "gap_ledger.receipt_command".to_string())
     } else if let Some(command) = ledger_receipt_or_path_command {
         (command, "gap_ledger.receipt_command_or_path".to_string())
     } else {
         (
-            outcome_command(
-                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            receipt_write_command(
+                &canonical_gap_id_for_receipt,
+                &verify_command,
                 Some(&receipt_path),
             ),
-            "first_pr.default_outcome_command".to_string(),
+            "first_pr.default_receipt_write_command".to_string(),
         )
     };
     let repair_route_kind = string_from_sources(&[(repair_route, &["route_kind"])])
@@ -2061,7 +2061,7 @@ mod tests {
         assert!(
             packet["commands"]["receipt"]
                 .as_str()
-                .is_some_and(|command| command.contains("ripr outcome --before"))
+                .is_some_and(|command| command.starts_with("ripr receipt write --gap "))
         );
         assert!(
             packet["commands"]["agent_packet"].as_str().is_some_and(
@@ -2928,9 +2928,16 @@ mod tests {
         let ledger = read_packet(&repo.join(DEFAULT_GAP_LEDGER))?;
         assert_eq!(ledger["inputs"]["source_kind"], "check_output");
         assert_eq!(ledger["inputs"]["records"], DEFAULT_CHECK_OUTPUT);
-        assert_eq!(
-            ledger["records"][0]["receipt_command"],
-            "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/gap-python-app-pricing.py-calculate_discount-predicate_boundary-amount-threshold.json"
+        let ledger_receipt_cmd = ledger["records"][0]["receipt_command"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            ledger_receipt_cmd.starts_with("ripr receipt write --gap "),
+            "ledger receipt_command must be canonical ripr receipt write, got: {ledger_receipt_cmd}"
+        );
+        assert!(
+            !ledger_receipt_cmd.contains("ripr outcome"),
+            "ledger receipt_command must not contain ripr outcome, got: {ledger_receipt_cmd}"
         );
 
         let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
@@ -2941,9 +2948,14 @@ mod tests {
             packet["selected"]["receipt_command_source"],
             "gap_ledger.receipt_command"
         );
-        assert_eq!(
-            packet["selected"]["receipt_command"],
-            "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/gap-python-app-pricing.py-calculate_discount-predicate_boundary-amount-threshold.json"
+        let packet_receipt_cmd = packet["selected"]["receipt_command"].as_str().unwrap_or("");
+        assert!(
+            packet_receipt_cmd.starts_with("ripr receipt write --gap "),
+            "packet receipt_command must be canonical ripr receipt write, got: {packet_receipt_cmd}"
+        );
+        assert!(
+            !packet_receipt_cmd.contains("ripr outcome"),
+            "packet receipt_command must not contain ripr outcome, got: {packet_receipt_cmd}"
         );
         assert_eq!(
             packet["selected"]["agent_packet_command"],
