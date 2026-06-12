@@ -484,6 +484,35 @@ The evidence-first fields are additive in schema `0.2`:
   Raw evidence refs carry the original raw string plus parsed `file`, `line`,
   `kind`, `source_id`, optional `owner`, optional graph `leg`, and optional
   source `sample` when present.
+- TypeScript preview findings may include additive package-discovery evidence
+  strings inside the existing `findings[].evidence[]` array. These strings are
+  produced by the `analysis/language/typescript/package.rs` manifest resolver
+  (RIPR-SPEC-0085 PR 2 — package-root and workspace discovery). They are
+  advisory and do not change `repair_packet_ready`, `preview_advisory_only`,
+  or `language_status`. New evidence strings are:
+  - `typescript_package_root: <path>` — nearest ancestor directory that
+    contains a `package.json` (relative to the repo root). Absent when no
+    `package.json` is found.
+  - `typescript_workspace_root: <path>` — nearest ancestor with a
+    `pnpm-workspace.yaml` or a `package.json` `"workspaces"` field; falls
+    back to `package_root`. Absent when `package_root` is unresolved.
+  - `typescript_framework_hint: <jest|vitest|bun|mocha|node_test>` — test
+    framework detected from `package.json` deps/devDeps. Absent when no
+    evidence-backed framework is found.
+  - `typescript_runner_hint: <bun|pnpm|yarn|npm>` — package runner detected
+    from lockfile presence or `scripts.test`. Absent when no evidence-backed
+    runner is found.
+  - `typescript_package_confidence: <high|medium|low|none>` — how much
+    manifest evidence backed the resolution. `high` = framework + runner,
+    `medium` = one of the two, `low` = package found but neither resolved,
+    `none` = no `package.json` found at all.
+  - `typescript_package_limitation: <kind>` — named limitation when required
+    evidence is absent. Current kinds:
+    `typescript_package_root_unresolved` (no `package.json` found; value is
+    never fabricated from the file extension alone),
+    `typescript_framework_hint_unresolved`, `typescript_runner_hint_unresolved`.
+    When `typescript_package_root_unresolved` is present, no
+    `typescript_package_root` line is emitted (fail-closed per RIPR-SPEC-0085).
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1

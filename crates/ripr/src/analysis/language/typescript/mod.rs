@@ -40,6 +40,7 @@ mod classifier;
 mod discovery;
 mod oracle;
 mod owners;
+mod package;
 mod parse;
 mod paths;
 mod probe_shape;
@@ -59,6 +60,7 @@ pub(crate) use classifier::*;
 pub(crate) use discovery::*;
 pub(crate) use oracle::*;
 pub(crate) use owners::*;
+pub(crate) use package::*;
 pub(crate) use parse::*;
 pub(crate) use paths::*;
 pub(crate) use probe_shape::*;
@@ -147,25 +149,33 @@ impl LanguageAdapter for TypeScriptAdapter {
             if is_test_file(&changed.path) {
                 continue;
             }
+
+            // Resolve package/workspace discovery facts for this changed file.
+            // Evidence lines are injected into every finding generated below
+            // so that the rendering layer (typescript_preview_card) and the
+            // next-PR runner-inference step can consume them without re-reading
+            // the filesystem.
+            let pkg_discovery = resolve_package_discovery(&changed.path, &options.root);
+            let discovery_evidence = pkg_discovery.evidence_lines();
+
             if let Some(limit) = parse_limit_for_file(&changed.path, &parse_limits) {
                 if let Some(added) = changed.added_lines.first() {
-                    findings.push(unsupported_syntax_finding(
-                        &changed.path,
-                        added.line,
-                        &added.text,
-                        limit,
-                    ));
+                    let mut finding =
+                        unsupported_syntax_finding(&changed.path, added.line, &added.text, limit);
+                    finding.evidence.extend(discovery_evidence.clone());
+                    findings.push(finding);
                 }
                 continue;
             }
             for added in &changed.added_lines {
-                if let Some(finding) = classify_change(
+                if let Some(mut finding) = classify_change(
                     &changed.path,
                     added.line,
                     &added.text,
                     &all_owners,
                     &all_tests,
                 ) {
+                    finding.evidence.extend(discovery_evidence.clone());
                     findings.push(finding);
                 }
             }

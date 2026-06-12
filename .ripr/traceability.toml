@@ -5206,9 +5206,27 @@ metrics = [
 id = "RIPR-SPEC-0085"
 name = "TypeScript evidence adapter contract"
 spec = "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_single_package_vitest_pnpm",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_single_package_jest_npm",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_monorepo_package_local_root",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_monorepo_workspaces_field_in_package_json",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_no_package_json_emits_unresolved_limitation",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_bun_lockfile_wins_over_script",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::ts_package_discovery_package_without_framework_emits_framework_hint_unresolved",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_jest",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_vitest",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_framework_bun",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::detect_runner_from_scripts_bun"
+]
+fixtures = [
+  "fixtures/ts_pkg_discovery_single_package",
+  "fixtures/ts_pkg_discovery_monorepo",
+  "fixtures/ts_pkg_discovery_no_package"
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/package.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
 ]

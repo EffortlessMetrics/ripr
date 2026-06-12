@@ -37,6 +37,8 @@ Evidence
   - observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
   - discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
   - static_limit unsupported_syntax: 1 parser error(s)
+  - typescript_package_confidence: none
+  - typescript_package_limitation: typescript_package_root_unresolved
 
 Weakness
   - Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.

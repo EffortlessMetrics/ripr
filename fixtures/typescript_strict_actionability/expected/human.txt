@@ -40,6 +40,8 @@ Evidence
   - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - owner: thresholdLabel
+  - typescript_package_confidence: none
+  - typescript_package_limitation: typescript_package_root_unresolved
 
 Weakness
   - No test references `thresholdLabel(` — add a test that calls the changed owner.

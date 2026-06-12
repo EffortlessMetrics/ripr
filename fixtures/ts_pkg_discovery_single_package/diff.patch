@@ -1,0 +1,9 @@
+diff --git a/src/math.ts b/src/math.ts
+index 0000000..1111111 100644
+--- a/src/math.ts
++++ b/src/math.ts
+@@ -1,3 +1,3 @@
+ export function add(a: number, b: number): number {
+-    return a + b;
++    return a + b + 0;
+ }

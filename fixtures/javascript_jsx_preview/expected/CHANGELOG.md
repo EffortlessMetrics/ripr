@@ -107,3 +107,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Additive: typescript package-discovery evidence lines appended (RIPR-SPEC-0085 PR 2). Existing fields unchanged. New lines: typescript_package_root/workspace_root/framework_hint/runner_hint/package_confidence/package_limitation.
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
