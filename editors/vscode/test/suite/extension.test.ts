@@ -3140,6 +3140,235 @@ suite('Extension Smoke', () => {
     });
     await vscode.commands.executeCommand('ripr.openRelatedTest');
   });
+
+  // ---- Receipt status / route-quality inspection command tests ----
+
+  test('showReceiptStatus shows real receipt_status when LSP returns live fields', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        receipt_status: 'improved',
+        latest_attempt_outcome: 'pass',
+        missing_receipt_reason: 'not_available'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showReceiptStatus();
+
+      assert.strictEqual(context.client.requests.length, 1);
+      assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
+      assert.deepStrictEqual((context.client.requests[0].params as Record<string, unknown>)['command'], 'ripr.collectReceiptStatus');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('improved'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showReceiptStatus must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showReceiptStatus shows not_available message when LSP returns not_available fields', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        receipt_status: 'not_available',
+        latest_attempt_outcome: 'not_available',
+        missing_receipt_reason: 'not_available'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showReceiptStatus();
+
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showReceiptStatus must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showReceiptStatus shows info message when no LSP client is running', async () => {
+    const context = createControllerTestContext({});
+    try {
+      // Do NOT start the controller — no client attached.
+      await context.controller.showReceiptStatus();
+
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('copyReceiptCommand writes real command to clipboard when LSP returns a real value', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        copy_receipt_command: 'ripr agent receipt --root . --json'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.copyReceiptCommand();
+
+      assert.strictEqual(context.client.requests.length, 1);
+      assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
+      assert.strictEqual(context.clipboardWrites.length, 1, 'expected clipboard write');
+      assert.strictEqual(context.clipboardWrites[0], 'ripr agent receipt --root . --json');
+      assert.ok(context.infoMessages.at(-1)?.includes('Copied receipt command to clipboard'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('copyReceiptCommand shows info message and does NOT write to clipboard when LSP returns not_available', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        copy_receipt_command: 'not_available'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.copyReceiptCommand();
+
+      assert.deepStrictEqual(context.clipboardWrites, [], 'HONESTY: must not write "not_available" to clipboard');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('No receipt command is available'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('copyReceiptCommand shows info message and does NOT write to clipboard when field is missing', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status'
+        // copy_receipt_command field deliberately absent
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.copyReceiptCommand();
+
+      assert.deepStrictEqual(context.clipboardWrites, [], 'HONESTY: missing field must not produce clipboard write');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('No receipt command is available'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('copyReceiptCommand shows info message and does NOT write to clipboard when no LSP client is running', async () => {
+    const context = createControllerTestContext({});
+    try {
+      // Do NOT start the controller — no client attached.
+      await context.controller.copyReceiptCommand();
+
+      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('openAttemptLedger shows info message when LSP returns not_available', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        open_attempt_ledger: 'not_available'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.openAttemptLedger();
+
+      assert.deepStrictEqual(context.clipboardWrites, [], 'openAttemptLedger must not write to clipboard');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('No attempt ledger is available'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('openAttemptLedger shows info message when no LSP client is running', async () => {
+    const context = createControllerTestContext({});
+    try {
+      // Do NOT start the controller — no client attached.
+      await context.controller.openAttemptLedger();
+
+      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality shows real summary when LSP returns a real value', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        route_quality_summary: 'coverage: 3/5 routes; top gap: gap:rust:pricing:discount:threshold-boundary'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showRouteQuality();
+
+      assert.strictEqual(context.client.requests.length, 1);
+      assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('coverage: 3/5 routes'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality shows not_available message when LSP returns not_available', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        route_quality_summary: 'not_available'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showRouteQuality();
+
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality shows info message when no LSP client is running', async () => {
+    const context = createControllerTestContext({});
+    try {
+      // Do NOT start the controller — no client attached.
+      await context.controller.showRouteQuality();
+
+      assert.ok(context.infoMessages.length > 0, 'expected an info message');
+      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('receipt inspection commands are registered', async () => {
+    const commands = await vscode.commands.getCommands(true);
+    assert.ok(commands.includes('ripr.showReceiptStatus'));
+    assert.ok(commands.includes('ripr.copyReceiptCommand'));
+    assert.ok(commands.includes('ripr.openAttemptLedger'));
+    assert.ok(commands.includes('ripr.showRouteQuality'));
+  });
 });
 
 interface ControllerTestOptions {

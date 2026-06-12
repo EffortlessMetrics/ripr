@@ -58,7 +58,11 @@
     "onCommand:ripr.copyTopVerifyCommand",
     "onCommand:ripr.copyTopReceiptCommand",
     "onCommand:ripr.openReport",
-    "onCommand:ripr.showTopLimitation"
+    "onCommand:ripr.showTopLimitation",
+    "onCommand:ripr.showReceiptStatus",
+    "onCommand:ripr.copyReceiptCommand",
+    "onCommand:ripr.openAttemptLedger",
+    "onCommand:ripr.showRouteQuality"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -270,6 +274,22 @@
       {
         "command": "ripr.showTopLimitation",
         "title": "ripr: Show Top Limitation"
+      },
+      {
+        "command": "ripr.showReceiptStatus",
+        "title": "RIPR: Show Receipt Status"
+      },
+      {
+        "command": "ripr.copyReceiptCommand",
+        "title": "RIPR: Copy Receipt Command"
+      },
+      {
+        "command": "ripr.openAttemptLedger",
+        "title": "RIPR: Open Attempt Ledger"
+      },
+      {
+        "command": "ripr.showRouteQuality",
+        "title": "RIPR: Show Route Quality"
       }
     ]
   }

@@ -1187,6 +1187,134 @@ export class RiprClientController {
     this.runtime.showInformationMessage(`ripr top limitation: ${summary}`);
   }
 
+  // ---------------------------------------------------------------------------
+  // Receipt status / route-quality inspection commands (ripr.collectReceiptStatus)
+  // ---------------------------------------------------------------------------
+
+  /** Shared helper: calls ripr.collectReceiptStatus once and returns the response. */
+  private async fetchReceiptStatus(): Promise<Record<string, unknown> | null> {
+    const client = this.client;
+    if (!client) {
+      return null;
+    }
+    try {
+      const response = await client.sendRequest('workspace/executeCommand', {
+        command: 'ripr.collectReceiptStatus',
+        arguments: []
+      });
+      if (response === null || response === undefined) {
+        return null;
+      }
+      if (typeof response === 'object') {
+        return response as Record<string, unknown>;
+      }
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr collectReceiptStatus failed: ${message}`);
+      return null;
+    }
+  }
+
+  async showReceiptStatus(): Promise<void> {
+    const response = await this.fetchReceiptStatus();
+    if (response === null) {
+      this.runtime.showInformationMessage('No receipt status available — server not responding.');
+      return;
+    }
+    const receiptStatus = typeof response['receipt_status'] === 'string'
+      ? response['receipt_status']
+      : 'not_available';
+    const latestOutcome = typeof response['latest_attempt_outcome'] === 'string'
+      ? response['latest_attempt_outcome']
+      : 'not_available';
+    const missingReason = typeof response['missing_receipt_reason'] === 'string'
+      ? response['missing_receipt_reason']
+      : 'not_available';
+
+    this.output.appendLine('ripr receipt status:');
+    this.output.appendLine(`  receipt_status: ${receiptStatus}`);
+    this.output.appendLine(`  latest_attempt_outcome: ${latestOutcome}`);
+    this.output.appendLine(`  missing_receipt_reason: ${missingReason}`);
+    this.output.show();
+
+    const summary = receiptStatus !== 'not_available'
+      ? `ripr receipt status: ${receiptStatus}`
+      : latestOutcome !== 'not_available'
+        ? `ripr receipt status: not_available; latest outcome: ${latestOutcome}`
+        : missingReason !== 'not_available'
+          ? `ripr receipt status: not_available; reason: ${missingReason}`
+          : 'ripr receipt status: not_available — no receipt artifact found.';
+    this.runtime.showInformationMessage(summary);
+  }
+
+  async copyReceiptCommand(): Promise<void> {
+    const response = await this.fetchReceiptStatus();
+    if (response === null) {
+      this.runtime.showInformationMessage('No receipt command is available — server not responding.');
+      return;
+    }
+    const copyReceiptCommand = typeof response['copy_receipt_command'] === 'string'
+      ? response['copy_receipt_command'].trim()
+      : '';
+    if (!copyReceiptCommand || copyReceiptCommand === 'not_available') {
+      this.runtime.showInformationMessage('No receipt command is available for the current state.');
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(copyReceiptCommand);
+      this.runtime.showInformationMessage('Copied receipt command to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyReceiptCommand clipboard write failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+    }
+  }
+
+  async openAttemptLedger(): Promise<void> {
+    const response = await this.fetchReceiptStatus();
+    if (response === null) {
+      this.runtime.showInformationMessage('No attempt ledger available — server not responding.');
+      return;
+    }
+    const openAttemptLedger = typeof response['open_attempt_ledger'] === 'string'
+      ? response['open_attempt_ledger'].trim()
+      : '';
+    if (!openAttemptLedger || openAttemptLedger === 'not_available') {
+      this.runtime.showInformationMessage('No attempt ledger is available — run an agent loop first.');
+      return;
+    }
+    try {
+      const uri = vscode.Uri.file(openAttemptLedger);
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      this.runtime.showInformationMessage('Opened attempt ledger.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr openAttemptLedger failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not open the attempt ledger. See ripr output for details.');
+    }
+  }
+
+  async showRouteQuality(): Promise<void> {
+    const response = await this.fetchReceiptStatus();
+    if (response === null) {
+      this.runtime.showInformationMessage('No route quality available — server not responding.');
+      return;
+    }
+    const routeQualitySummary = typeof response['route_quality_summary'] === 'string'
+      ? response['route_quality_summary']
+      : 'not_available';
+
+    this.output.appendLine(`ripr route quality: ${routeQualitySummary}`);
+    this.output.show();
+
+    const summary = routeQualitySummary !== 'not_available'
+      ? `ripr route quality: ${routeQualitySummary}`
+      : 'ripr route quality: not_available — no route quality report found.';
+    this.runtime.showInformationMessage(summary);
+  }
+
   private async diagnoseSetupAsync(): Promise<void> {
     await this.refreshSetupStatusFiles();
     await this.refreshFirstUsefulActionStatus();
