@@ -732,3 +732,61 @@ machine-checkable doctrine substitutes for human trust. For autonomous work,
 more well-designed constraints = more delegable autonomy, not less. The gates
 are a feature of the product (they are why it is buildable), not overhead — do
 not erode them to move faster; they are the load-bearing wall.
+
+## 2026-06-12: Closing the receipt → outcome → route-quality loop — the honesty-detection discipline
+
+The "unwalked path that matters most next" from the prior entry — the full agent
+loop `status -> packet -> edit-in-cage -> verify -> receipt -> outcome ->
+route-quality` — was built and closed across ten PRs (#1130–#1139, then surfaced
+through CLI, PR summary, LSP, VS Code, and an agent flow doc). The durable
+lessons are not about the features; they are about how to add a *number* to an
+honest tool without lying.
+
+### `not_available` is better than a fake zero — and a fake zero is the cardinal sin in numeric form
+
+A count reported as a number — *even `0`* — asserts "we inspected this condition
+and here is the result." That assertion is only honest if a real production
+condition can produce a non-zero value. A `verify_failed_receipts: 0` computed
+over a field that no production path ever populates reads as "no receipts failed
+verify" when the truth is "nothing can make this non-zero." That is strictly
+worse than `not_available`, which honestly says "not derivable yet." This bit us
+once for real (#1130: counted `gap-ledger receipt.state`, which the build never
+sets — reverted to `not_available` with regression guards), and the rule then
+caught two later attempts before they shipped.
+
+### Trace the *producer*, not the consumer — and demand an end-to-end proof
+
+For any `not_available -> count` flip, the question is never "does the field
+exist?" but "what *writes* this field in non-test code, and can a real condition
+make it non-zero?" `verify_failed_receipts` became real (#1131) only because
+`verify_result` is genuinely populated by the swarm-ingest verify flow and `fail`
+is a validated, supported value — proven by a fixture flowing a real failed
+verify end-to-end, not a unit test that hand-sets the field. `stale_receipts`
+stayed `not_available` because the honest investigation found the staleness
+signal lives in `swarm-ingest.json`, which the attempt-ledger build never
+consumes — so a non-zero is not producible, and declining to ship a count was
+the correct result. The negative finding is a feature, not a failure.
+
+### Verify the *claim* against the *real* repro, on a *fresh* binary
+
+A builder's green test suite proves the cases it chose to test, which can be
+exactly the cases that miss the bug. #1140's first pass disclosed preview-language
+files only when the adapter was *enabled* — its tests passed, but the issue's
+actual repro (`ripr check --diff ts.diff` with no config) was still silently
+empty, and the builder's own "proof" had run a stale binary built from `main`.
+Only a behavioral repro of the *reported* repro, against a freshly-built binary,
+caught it. Stale IDE/editor diagnostics flagged phantom compile errors ~11 times
+across this campaign; the committed `RUSTFLAGS="-D warnings"` build was clean
+every time. The discipline that held the line: never merge on a report — merge on
+the compiler and a fresh-binary repro of the real thing.
+
+### The analysis usually already exists; the work is honestly *surfacing* it
+
+Route-quality metrics, the attempt ledger, receipt lifecycle states — most were
+already computed deep in the codebase. Each loop-close PR was a *surfacing*
+exercise (a standalone report, an LSP field, a VS Code command), and the only
+real risk at each step was fabricating a field whose producer wasn't actually
+reachable. Cheap adversarial validation caught two such gaps on paper (a VS Code
+command with no LSP producer; an agent doc describing commands that didn't exist
+yet) before any code was written. Plan with cheap agents, surface with stronger
+ones, and put the verification budget on the producer-reachability question.
