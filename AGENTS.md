@@ -279,6 +279,24 @@ A PR is ready when the branch is current, required checks pass, real review
 findings are addressed, the diff matches the stated scope, and repo policy does
 not require a different sequence.
 
+Merge-safety rules, learned the hard way:
+
+- Treat CI checks like oracles. A check that *runs* but is not *required* is not
+  a discriminator for merge safety — an advisory red can still merge. Before
+  saying a policy is protected by a gate, verify the required check actually
+  depends on it
+  (`gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`).
+- Do not treat `mergeStateStatus=UNSTABLE` as a merge decision by itself. Inspect
+  required checks, advisory checks, and branch protection separately; merge only
+  when the required discriminator is green, and explain advisory failures rather
+  than waving them through.
+- When a PR fails on a file or spec it did not touch, reproduce against
+  `origin/main`. If `main` is already broken, fix `main` in a tiny unblock PR
+  first, then rebase the dependent work — do not debug your own diff for an
+  inherited failure.
+- A pass with zero analyzed subjects is `not_run`, not evidence. Preserve
+  denominators in reports; a green state with an empty denominator proves nothing.
+
 `stackable = false` means do not build the next dependent work item on top of
 the current branch. It does not create an approval gate.
 

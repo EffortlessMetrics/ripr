@@ -981,6 +981,35 @@ panel needs deliberately-constructed should-stay-quiet cases (direct-boundary
 assertions that must read `exposed`) alongside should-gap cases — otherwise the
 eval itself has a weak oracle.
 
+## 2026-06-13: A CI gate that runs but does not block over-credits itself
+
+The `source-of-truth` job runs the policy gates — `check-support-tiers`,
+`check-static-language`, `check-doc-index`, `check-campaign`, and the rest — but
+branch protection on `main` requires only one status check (`Ripr Rust Small
+Result`). Every policy gate is therefore *advisory at merge time*: it appears on
+the PR, but a red result does not block the merge button. A PR merged with its
+`source-of-truth` red (RIPR-SPEC-0088 landing without a `SUPPORT_TIERS.md`
+reference), which silently broke `check-support-tiers` on `main` for every
+subsequent PR until a one-line fix repaired it.
+
+This is the product thesis turned inward. A gate that runs but does not block is
+exactly a test that *reaches* the behavior but does not *discriminate* it: it
+looks green, the run happened, but nothing actually caught the regression — the
+gate over-credited itself the same way `reach + strong oracle` over-credits
+`exposed`. The check executing is not the signal; the check *being able to stop a
+bad merge* is. Verify which checks are genuinely required
+(`gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`),
+not which checks appear to run. Making `source-of-truth` a required check is the
+fix; tracked as hardening issue #1181. This is distinct from the deliberate
+`strict=false` choice recorded in the concurrency entry below — dropping the
+*up-to-date* requirement is orthogonal to requiring `source-of-truth` *to pass*;
+a check can be required-to-pass without being required-to-be-current. Until then,
+every agent and reviewer must read the `source-of-truth` result themselves and
+refuse to merge on red — the self-gate the watcher already enforces. Same
+weak-oracle shape as the adjacent "all gates pass" entry, a different axis: this
+one is about *merge authority* (an advisory gate cannot block), that one is about
+*output honesty* (a well-formed artifact can pass every gate while lying).
+
 ## 2026-06-13: Gates and a builder's "all gates pass" are weak oracles — run + read the artifact
 
 The TypeScript actionable wave shipped its sharpest dishonesty bug, the §PR8
@@ -1080,3 +1109,35 @@ structural fix (config, branch protection, serialization policy). Distinguish
 this from a genuinely transient tempfail (e.g. CX43 GC-age races), which *is*
 fixed by an age-aware re-run — the test is whether the failure cause lives inside
 or outside your PR.
+
+## 2026-06-13: Watch for vacuous pass states
+
+The same shape recurred four times this campaign, in four different subsystems:
+
+```text
+eval-sweep with repos_run == 0        -> a green-looking "pass" proving nothing
+a CI gate that runs but isn't required -> green-looking branch protection
+a strong-but-orthogonal oracle         -> exposed-looking discrimination
+a README gate enforcing the old shape  -> docs-looking compliance
+```
+
+All four are one failure: **a system reports success without a discriminator for
+the claim being made.** A pass needs both a denominator (something was actually
+checked) and a discriminator (the check could have failed on the real condition).
+Whenever a state can read "pass" with an empty denominator or a misaligned
+discriminator, give it an explicit honest state instead — `not_run`, `advisory`,
+`weakly_exposed`, or a typed `limitation` — never a silent green. This is the
+unifying name for the eval-sweep `not_run` gate, the required-check gap, the
+`exposed` sink-alignment rule, and the README gate retarget below; treat a new
+"it passed" the way `ripr` treats a strong oracle: ask what it would have caught.
+
+## 2026-06-13: Move the gate when the contract changes
+
+A docs/artifact rewrite is only half-done if the validator still enforces the old
+shape. The README could not actually become a front door while `check_readme_state`
+still required `## Current Scope` / `## Current Capability Snapshot` — the repo's
+own gate was pinning the stale capability-ledger model in place, and any future
+edit would be dragged back to it. The gate is part of the product model: a stale
+gate is a fossilized old decision that outvotes the new one. When changing a
+governed contract, change the artifact, the gate that preserves it, and the docs
+together in the same PR; otherwise the gate quietly wins.

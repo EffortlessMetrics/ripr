@@ -147,6 +147,19 @@ never inspects the value). Every line is covered; nothing is discriminated. So
 a strong, aligned discriminator) is higher still. Most repositories at 100%
 coverage sit well below `ripr+ 0`.
 
+The bars form a ladder, not a synonym set:
+
+```text
+100% coverage     every changed line executed under test
+   <  ripr 0      every changed behavior reached by *some* discriminator
+   <  ripr+ 0     every changed behavior under a *strong, aligned* discriminator
+                  (no exposure gaps and no weak oracles)
+```
+
+A repository can stand on the bottom rung and fail the top two: full coverage,
+yet changed behavior that no test would notice breaking. That gap between
+"executed" and "discriminated" is the whole surface `ripr` reports on.
+
 ### The alignment invariant
 
 The standing danger for a static analyzer is to drift back into coverage by
