@@ -980,3 +980,103 @@ maximally over-eager analyzer scores perfectly on them. A trustworthy judged
 panel needs deliberately-constructed should-stay-quiet cases (direct-boundary
 assertions that must read `exposed`) alongside should-gap cases — otherwise the
 eval itself has a weak oracle.
+
+## 2026-06-13: Gates and a builder's "all gates pass" are weak oracles — run + read the artifact
+
+The TypeScript actionable wave shipped its sharpest dishonesty bug, the §PR8
+honesty contradiction, *through* a fully green pipeline: `repair_packet_ready:
+true` and "category: complete_repair_packet" were emitted right next to "why not
+actionable: ... / evidence needed: [the very fields it already had]". That output
+passed `cargo fmt`, clippy `-D warnings`, every `check-*` policy gate, and the
+full test suite. Nothing flagged it — a self-contradicting string pair is still
+well-formed Rust that serializes to valid JSON. It was only caught by **running
+`ripr check` on a real TypeScript finding and reading the emitted block**. Tests,
+gates, and a sub-builder's "all gates pass" report are proxies for the artifact,
+not the artifact — exactly the proxy-for-artifact substitution `ripr` exists to
+catch, here turned inward. For any output-shape change: run the binary on a
+finding that reaches the new branch and read the human + JSON output with your
+own eyes before declaring done. The fix lived at the render seam
+(`crates/ripr/src/output/preview_actionability.rs:60-125` makes the flip atomic;
+`crates/ripr/src/output/human/sections.rs:167-209` relabels "why not actionable"
+to "why actionable" and drops the "evidence needed" line only when the packet is
+complete).
+
+### Builders also miss the gates outside their assigned subset
+
+A second failure mode of "all gates pass": a builder runs the gates *it knows
+about* for *its* slice and reports green, while a different `check-*` gate it
+never invoked is red. This wave hit it twice — a goldens slice left
+`check-generated` and `check-dependencies` failing (re-blessed goldens and
+fixture `package.json` / `pnpm-lock.yaml` manifests were not reconciled into
+`policy/generated_allowlist.toml` and `policy/dependency_allowlist.txt`), and the
+projection slice left `check-network-policy` failing (new `curl`/`http`
+references in `typescript_packet_projection.rs` needed allowlisting in
+`policy/network_allowlist.txt`, even though they are comments and
+absence-assertions that never touch the network). The CI definition of done is
+the **full routed-rust `check-*` list**, not the builder's mental subset. Before
+handoff, run every `cargo xtask check-*` gate the route runs, not just the ones
+touched by the diff.
+
+## 2026-06-13: Reuse the shared validator/renderer — a fork is caught by parity, not by review
+
+The TypeScript `repair_packet_ready` flip does not introduce a TypeScript
+validator: it projects a `GapRecord` and calls the same
+`validate_agent_gap_record_packet` that owns the Rust flip
+(`crates/ripr/src/output/preview_actionability.rs:66-68`,
+`crates/ripr/src/output/agent_seam_packets.rs:839`). This is load-bearing and is
+*enforced*, not merely a convention — the `validator_parity_*` tests in
+`crates/ripr/src/output/typescript_packet_projection.rs:382-494` fail the moment
+a fork drifts the TypeScript decision away from the shared authority. If you find
+yourself writing a second validator or a second renderer for a new
+language/surface, stop: wire it to `typescript_gap_record_for` plus the shared
+validator and the shared helpers (`allowed_edit_surface_for_gap_route`,
+`gap_record_packet_do_not_do`) instead. The corollary, learned from §PR8:
+**reconcile derived/relabelled messaging in the layer that owns the final
+decision.** The honesty contradiction happened because the flip lived in
+`output/` but the contradicting strings were authored upstream and rode through
+unchanged. The fix belonged at the output seam (the renderer that can see the
+flip), never by teaching the upstream layer about an output-only status it cannot
+observe. This ADR-anchored rule is recorded in
+`docs/adr/0019-language-adapters-reuse-shared-packet-contract.md`.
+
+## 2026-06-13: Concurrent N-wide campaigns collide on single-writer registries
+
+Running the TypeScript wave alongside the Python eval-sweep campaign, both
+4-wide, both grabbed `RIPR-SPEC-0086` from the single-writer spec registry
+(`policy/doc-artifacts.toml` + `docs/specs/README.md`). The resolution that held:
+**renumber-the-later-claimant** (the TypeScript specs advanced to `0087` and
+`0088`) while keeping *both* registrations intact — do not delete the loser's
+row, advance it. Registries with a single next-free slot (spec numbers, ADR
+numbers, golden bless ledgers) are contention points that no per-PR gate detects
+until merge. When launching concurrent N-wide campaigns, partition or pre-reserve
+the shared-counter ranges up front; treat `check-spec-numbering` as the late net,
+not the plan.
+
+### Branch-protection `strict=true` is a merge livelock under N-wide concurrency
+
+Under 4-wide concurrency, GitHub's "require branches to be up to date before
+merging" (`strict=true`) is a livelock: every merge invalidates the other three
+branches' up-to-date status, forcing a rebase + full re-run, during which another
+merge lands and re-invalidates. With auto-merge already disabled (manual
+`gh pr merge` after CI), `strict=true` adds no safety it does not already have —
+it only serializes the queue into starvation. The fix was a **config change**
+(`strict=false`), not a workflow change. The required check ("Ripr Rust Small
+Result") still gates correctness; dropping strict only drops the up-to-date
+*ordering* requirement that concurrency cannot satisfy.
+
+## 2026-06-13: Escalate when the obstacle is structural, not after N grinds
+
+The `strict=true` livelock above cost **three futile rebase-and-rerun cycles**
+before it was recognized as a configuration property of branch protection rather
+than a transient CI flake or a workflow bug to grind through. The signal that
+should have triggered escalation immediately: the same operation succeeds in
+isolation and fails *only* under concurrency, and each retry is invalidated by an
+event outside the PR (another merge), not by anything in the PR. That is
+structural — a property of the system's configuration — and no number of retries
+fixes a structural obstacle; it is changed by editing the config or the topology.
+Rule: when a retry's failure is caused by state outside the unit you control,
+stop retrying after the first confirmation of the pattern and escalate to the
+structural fix (config, branch protection, serialization policy). Distinguish
+this from a genuinely transient tempfail (e.g. CX43 GC-age races), which *is*
+fixed by an age-aware re-run — the test is whether the failure cause lives inside
+or outside your PR.

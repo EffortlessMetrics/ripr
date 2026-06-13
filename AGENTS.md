@@ -207,6 +207,19 @@ Prefer small, high-signal changes:
 - Do not credit reach-plus-a-strong-oracle as `exposed`: a strong oracle must
   observe the changed sink (see `docs/STATIC_EXPOSURE_MODEL.md` § Discrimination
   vs Coverage). Crediting proximity as discrimination is the coverage mistake.
+- Real producers only: do not flip a not-available field to a fabricated
+  taxonomy or a fake-zero. Until a real production condition populates the
+  inspected field, defer the named limitation to a code comment rather than
+  emit invented evidence (see `docs/LEARNINGS.md` § Detection needs a real
+  producer).
+- The actionability flip is the cardinal-sin seam: a wrong
+  `repair_packet_ready: true` is worse than ten advisory findings. Under-emit
+  before you over-emit — keep the flip fail-closed and let the shared validator
+  be the only authority.
+- Reuse the shared enforcement layer (validators, renderers, route helpers)
+  across every surface; do not fork a parallel validator. Reconcile derived
+  messaging in the layer that owns the final decision so all surfaces agree
+  (see `docs/adr/0019-language-adapters-reuse-shared-packet-contract.md`).
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
@@ -223,6 +236,14 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   dogfood`) before finalizing. The golden corpus is the regression net and will
   catch an over-corrected heuristic; an in-repo corpus that already passes is not
   evidence the change is accurate on external code.
+- Verify the artifact, not the report: every PR, RUN the command and READ the
+  output before claiming it works. Gates passing, tests passing, and a builder's
+  own "all gates pass" are weak oracles for behavior. Never merge on a
+  sub-agent's or builder's self-report.
+- Run the full `routed-rust.yml` `cargo xtask check-*` list, not `precommit` and
+  not a hand-picked subset. A partial list silently skips `check-network-policy`,
+  `check-dependencies`, and `check-generated`; CI will fail what local guessing
+  missed.
 
 ## PR Scope Doctrine
 

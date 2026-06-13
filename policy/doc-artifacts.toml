@@ -321,3 +321,11 @@ path = "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "PR 8 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: projects the actionable GapRecord computed in PR 7 into human (field-note), JSON (typescript_repair_packet field), LSP hover (Repair packet section), and LSP code-action (Copy TypeScript repair packet) surfaces via the shared renderer; no new public symbols; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-ADR-0019"
+kind = "adr"
+path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+standalone_reason = "Cross-language architectural constraint that every actionable-packet adapter reuses the single validate_agent_gap_record_packet authority and shared agent-seam renderers, enforced by validator_parity_* tests; generalizes the pattern established in the RIPR-SPEC-0087/0088 TypeScript wave; no separate proposal artifact preceded it."

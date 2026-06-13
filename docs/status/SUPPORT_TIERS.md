@@ -99,6 +99,62 @@ stable building block + source-of-truth artifact graph:
   stronger gate, baseline, RIPR Zero, or badge role.
 - Source-of-truth artifact validation proves the registered document graph,
   not the correctness of product behavior beyond the named proof commands.
+- A preview finding that is `repair_packet_ready: true` is a delegatable
+  advisory repair packet, not a tier promotion: it never carries gate, badge,
+  baseline, or RIPR Zero authority, and `authority_boundary` stays
+  `preview_advisory_only`. When a preview finding is not actionable, RIPR emits
+  a named limitation identifying the missing analyzer capability, never a vague
+  failure.
+
+## Preview But Actionable
+
+`preview` and `actionable` are independent axes. A preview-language finding can
+carry a delegatable advisory repair packet without ever changing tier.
+
+For a TypeScript or JavaScript finding, `repair_packet_ready: true` means RIPR
+has projected a complete, bounded work-packet — canonical gap id, repair route,
+verify command, receipt command, allowed edit surface, and must-not-change
+boundaries — that a developer or coding agent can act on directly. It does
+**not** promote the language. The packet stays preview, and its
+`authority_boundary` stays `preview_advisory_only`:
+
+- `repair_packet_ready: true` is a **delegatable advisory**, not a gate input,
+  not a badge input, not a baseline or RIPR Zero input, and not a merge or
+  pass/fail signal.
+- The packet authorizes a bounded **test** edit only. It never authorizes a
+  production-code edit, never runs the test, never generates the test, and
+  never calls a provider.
+- The flip is **fail-closed**: it is `true` only when the shared validator
+  accepts the full packet, and `false` by default otherwise.
+
+When a preview finding is **not** actionable, RIPR does not emit a vague
+failure. It emits a **named limitation** that states precisely why the packet
+was withheld and which analyzer capability is missing — for example a dynamic
+oracle, a heuristic-only related-test link, a cross-package test, a missing
+verify command, a static limit such as a mocked module, or a cross-language
+bridge limit. The limitation is the honest, reviewable output; an absent or
+generic "could not analyze" is a bug, not an acceptable state.
+
+```text
+preview + TypeScript, repair_packet_ready: true:
+  safe to delegate the bounded test packet to a developer or agent, run the
+  verify command, and keep the receipt. Still advisory only — not a gate,
+  badge, baseline, or RIPR Zero input, and not a Rust-parity claim.
+
+preview + TypeScript, repair_packet_ready: false:
+  read the named limitation. It says exactly which analyzer capability is
+  missing, so you know what to wait for rather than over-trusting a quiet
+  result.
+```
+
+This posture is implemented per
+[RIPR-SPEC-0087](../specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md)
+§PR7 (the `repair_packet_ready` flip authority) and
+[RIPR-SPEC-0088](../specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md)
+§PR8 (the four-surface packet and named-limitation projection: human field-note,
+JSON `typescript_repair_packet`, LSP hover section, LSP copy action). The
+single-validator constraint behind the flip is recorded in
+[ADR 0019](../adr/0019-language-adapters-reuse-shared-packet-contract.md).
 
 ## Next Adoption Steps
 
