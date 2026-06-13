@@ -1219,3 +1219,50 @@ paid off; the two times a proxy was trusted (an "infra" failure that was a real
 golden drift; a plan that assumed a non-existent oracle) it cost a cycle. The
 full narrative lives in `docs/STATIC_EXPOSURE_MODEL.md`
 ("The discriminator test, turned inward").
+
+## 2026-06-13: Dogfood Honesty-Audit Method — a repeatable playbook
+
+This multi-wave method surfaced and fixed approximately ten real honesty bugs across a single campaign. Record it here so a future agent can re-run it cold.
+
+### The audit question
+
+For every surface and every pipeline stage, ask: can `ripr` emit a **fake-clean** (silence or under-report a real gap) or a **false-actionable** (claim `exposed`/covered when it is not)? Fail-open is the dangerous direction; fail-closed (`*_unknown` / `weakly_exposed` / named limitation) is safe. The product question under audit is the same one `ripr` answers on user diffs: "do the current tests appear to contain a discriminator that would notice if THIS changed behavior were wrong?"
+
+### Two audit axes
+
+**(a) Rendering surfaces.** Every surface that emits a finding — human, JSON, SARIF, GitHub annotation, LSP diagnostic, LSP hover, badge, repo-md, repo-SARIF, `explain`, `context` — must AGREE and must each carry the relevant disclosure. A fix applied on one surface (e.g. `reconcile_next_step`) must reach ALL surfaces via a shared helper plus an all-surface parity test; never fork a per-surface copy of the logic. See the "Reuse the shared validator/renderer" entry above for the parity-test pattern.
+
+**(b) RIPR pipeline stages.** At each stage — Reach → Infect → Propagate → Observe → Discriminate — the classifier must fail-closed to `*_unknown` when it cannot prove its answer. A single fail-open default at any stage inflates the whole finding to `exposed`. Check every stage independently; an `exposed` rating that cannot be traced to a confirmed discriminator at the Discriminate stage is the silent over-credit this audit exists to catch.
+
+### Per-gap discipline (non-negotiable sequence)
+
+1. **Dogfood with adversarial fixtures.** Run `cargo xtask dogfood` and `cargo xtask fixtures`. If a new fix candidate is unclear, add a should-gap fixture and a should-stay-quiet fixture before writing any code.
+2. **Producer-trace first.** For any classification or count change, identify the real production code path that would drive the field. A wrong flip — crediting a heuristic or a hand-set field — creates the inverse bug (a fake-zero or false-`exposed`). See the "not_available is better than a fake zero" and "Detection needs a real producer" entries.
+3. **Fail-closed slice with BEFORE/AFTER fixtures.** The fix must: (a) downgrade the over-claim, AND (b) leave a correctly-discriminated case at `exposed`, proving no over-correction.
+4. **Verify the artifact yourself.** Run the real command on a real finding and read the output. Gates, tests, and a builder's "all gates pass" are weak oracles — this campaign's sharpest honesty contradiction (`repair_packet_ready: true` next to "evidence needed: [the fields it already has]") passed every gate. The required discipline: `cargo check` for compilation, a fresh-binary behavioral repro of the exact reported scenario, and the full `cargo xtask check-*` gate list (not a hand-picked subset) before declaring done.
+
+### Cross-references
+
+This playbook generalizes several earlier entries: the "Detection needs a real producer" rule (fake-zero anti-pattern), the "any hash over a path must normalize separators" rule (content-addressed ids), the "full routed-rust gate list" rule (partial-gate leakage), the "register before launch" rule (spec-number collision under N-wide concurrency), and the "fail-open is the cardinal sin" principle throughout.
+
+## 2026-06-13: The Single-Assertion Escape Hatch — method-level reach is not sub-expression discrimination
+
+### The bug (first fixed in #1200, generalized in #1216)
+
+`analysis/classify/reveal.rs` contained an escape hatch: when `assertion_count == 1`, the classifier credited the test with discriminating the changed sub-expression even when the assertion text referenced **none of the changed tokens**. A test that merely reached the owner method was being credited as observing the specific change, inflating the finding to `exposed` / confidence 1.00.
+
+The fix for `MatchArm` (#1200) revealed the same pattern in `ReturnValue`, `FieldConstruction`, `SideEffect`, and `CallPresence` (#1216). A further variant — the type-blind-token hole — was found where a sibling-arm assertion could clear a guard via a shared enum qualifier without naming the discriminating arm's tokens.
+
+### The durable rule
+
+**Method-level reach must never be credited as sub-expression-level discrimination.** When the only basis for `exposed` is the single-assertion escape hatch with no token match between the assertion text and the changed sub-expression's tokens, downgrade `exposed` → `weakly_exposed`:
+
+- Reach, Infect, and Propagate hold (the test reaches the owner and the change can infect the execution path).
+- Observe and Discriminate are unconfirmed (the single assertion does not reference the specific changed token, so the oracle's discriminating power for this sub-expression is unknown).
+- Emit `arm_observation_unverified` (or the analogous typed reason for the probe family) as the downgrade reason so consumers understand what evidence is missing.
+
+### Why this matters
+
+This is the Observe/Discriminate-stage instance of the general fail-closed rule (see "Discrimination vs Coverage" and "Two error rates" entries above). The escape hatch was intended for the case where a single comprehensive assertion covers the entire changed expression, but it over-fired whenever any assertion existed at all. Because the over-credit is silent — `ripr` emits a clean `exposed` with no caveat — it is the dangerous direction. The fix is to require at least one assertion token to match a changed token before the escape hatch fires; absent that match, `weakly_exposed` with a named reason is the honest answer.
+
+Any future work on `reveal.rs` or the classification heuristics must apply this check per probe family and must be backed by both a should-gap fixture (where the single assertion genuinely does not observe the changed token, producing `weakly_exposed`) and a should-stay-`exposed` fixture (where a direct-token assertion keeps the finding at `exposed`, proving no over-correction).
