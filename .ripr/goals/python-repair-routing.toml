@@ -72,9 +72,52 @@ commands = [
 
 [[work_item]]
 id = "eval/python-eval-sweep-runtime-fidelity"
-status = "next"
+status = "done"
 branch = "dogfood/eval-sweep-runtime-fidelity"
-acceptance = "Invoke the built `ripr` binary directly so runtime measures analysis time, not `cargo run` overhead."
+acceptance = "Invoke the built `ripr` binary directly so runtime measures analysis time, not `cargo run` overhead. (PR #1166)"
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-per-repo-diffs"
+status = "done"
+branch = "dogfood/eval-sweep-per-repo-diffs"
+acceptance = "Per-repo real diffs so the sweep produces real canonical gaps and gap-ID stability becomes a meaningful signal. (PR #1167)"
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-discriminate-sink-alignment"
+status = "done"
+branch = "analysis/py-discriminate-sink-alignment"
+acceptance = "Require oracle-to-changed-sink alignment before crediting `exposed`; downgrade strong-but-orthogonal oracles to `weakly_exposed` with a typed reason. (PR #1172; RIPR-SPEC-0028 revealability)"
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-output-alignment-fields"
+status = "next"
+branch = "output/py-oracle-alignment-fields"
+acceptance = "Surface changed_sink, observed_sink, oracle_alignment, and alignment_reason on Python findings so a user can see why a strong-but-orthogonal oracle did not credit `exposed`."
+commands = [
+  "cargo xtask check-output-contracts",
+  "cargo xtask goldens check",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-classification-distribution"
+status = "ready"
+branch = "dogfood/eval-sweep-classification-distribution"
+acceptance = "Eval-sweep records the exposed / weakly_exposed / no_static_path / limitation distribution with confidence, not only gap-ID stability, so Tier A surfaces false-`exposed` risk before Tier B judging."
 commands = [
   "cargo xtask eval-sweep",
   "cargo xtask check-pr",
