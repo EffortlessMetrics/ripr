@@ -1,0 +1,12 @@
+diff --git a/src/flask/config.py b/src/flask/config.py
+--- a/src/flask/config.py
++++ b/src/flask/config.py
+@@ -112,7 +112,7 @@
+         :return: ``True`` if the file was loaded successfully.
+         """
+         rv = os.environ.get(variable_name)
+-        if not rv:
++        if rv is None:
+             if silent:
+                 return False
+             raise RuntimeError(

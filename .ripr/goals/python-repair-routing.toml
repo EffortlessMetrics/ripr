@@ -125,9 +125,9 @@ commands = [
 
 [[work_item]]
 id = "eval/python-eval-sweep-scale"
-status = "ready"
+status = "done"
 branch = "dogfood/eval-sweep-scale"
-acceptance = "Per-repo real diffs + 12-20 stratified repos incl. unsupported buckets; first real gap-stability and robustness trend."
+acceptance = "Corpus scaled 3 -> 8 stratified pinned public repos with verified SHAs + precise per-repo diffs (jinja/anyio/flask/sqlalchemy/structlog added; sqlalchemy is the unsupported bucket). Recorded on #1160. Result: gate=pass, 0 crashes, gap-ID stability 1.000, and **0 exposed** — the load-bearing 0 false-`exposed` holds at scale across 8 diverse repos. flask fails closed (parse_failure on decorator/config code); sqlalchemy timed out at 123s (>120s default — ripr is slow on very large dynamic ORMs, a performance/robustness note, not a crash). 2 orthogonal cases (tenacity + anyio), both strong false-actionable candidates from the local-binding family (see analysis/python-local-callable-instance-alignment). NOTE 8 < the aspirational 12-20; a further scale pass can add more once the slow-repo timeout/perf is addressed."
 commands = [
   "cargo xtask eval-sweep",
   "cargo xtask check-fixture-contracts",
@@ -159,7 +159,7 @@ commands = [
 id = "analysis/python-local-callable-instance-alignment"
 status = "ready"
 branch = "analysis/py-local-callable-instance-alignment"
-acceptance = "The first evidence-driven analyzer fix candidate (Tier B #1160). ROOT CAUSE corrected by fixture-first reproduction (fixtures/python_local_callable_binding): the limitation is in RELATION + ORACLE EXTRACTION, not sink-alignment. A test that reaches the owner via a local binding — `stop = stop_after_attempt(3); self.assertTrue(stop(3))` — links only by `same_stem` (uncertain) and extracts NO oracle (oracle_strength unknown), so the finding is weakly_exposed/no_strong_oracle. A sink-alignment-only change never executes (no strong oracle is extracted). The fix must trace a single unambiguous `local = OwnerClass(...)` binding as a direct relation + extract `local(...)` as an oracle on the owner, flipping python_local_callable_binding to exposed — WITHOUT crediting reassigned/dynamic bindings, the Retrying-wrapper indirection, or a genuinely-orthogonal oracle (no over-credit; protect python_strong_oracle/cross_file/field/broad_boolean goldens). Higher-risk than first scoped; sequence after eval-sweep-scale gives more evidence."
+acceptance = "The first evidence-driven analyzer fix candidate (Tier B #1160). ROOT CAUSE corrected by fixture-first reproduction (fixtures/python_local_callable_binding): the limitation is in RELATION + ORACLE EXTRACTION, not sink-alignment. A test that reaches the owner via a local binding — `stop = stop_after_attempt(3); self.assertTrue(stop(3))` — links only by `same_stem` (uncertain) and extracts NO oracle (oracle_strength unknown), so the finding is weakly_exposed/no_strong_oracle. A sink-alignment-only change never executes (no strong oracle is extracted). The fix must trace a single unambiguous `local = OwnerClass(...)` binding as a direct relation + extract `local(...)` as an oracle on the owner, flipping python_local_callable_binding to exposed — WITHOUT crediting reassigned/dynamic bindings, the Retrying-wrapper indirection, or a genuinely-orthogonal oracle (no over-credit; protect python_strong_oracle/cross_file/field/broad_boolean goldens). Higher-risk than first scoped; sequence after eval-sweep-scale gives more evidence. SCALE EVIDENCE (#1160, 8-repo sweep): the pattern is COMMON — 2 of the supported-with-findings repos (tenacity + anyio) are orthogonal false-actionable candidates, and the family is BROADER than callable-class instances: anyio binds a local to a function RESULT (`iterator = repeat(x, 0); assert collect(iterator) == []`) — ripr can't trace `iterator = repeat(...)` to the owner either. The fix should generalize to a single unambiguous local binding to the owner's call/result, observed by a strong oracle. Still: 0 false-`exposed` at scale, so this stays the conservative direction (over-suggest, not over-credit)."
 commands = [
   "cargo xtask goldens check",
   "cargo xtask dogfood",

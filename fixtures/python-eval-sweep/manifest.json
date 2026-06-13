@@ -3,7 +3,7 @@
   "kind": "python_eval_sweep_manifest",
   "spec": "RIPR-SPEC-0086",
   "tier": "A",
-  "description": "Pinned Tier A external Python repos for the ripr crash / parse-failure / runtime / gap-ID-stability sweep. Starter set across supported shapes; scaled in a follow-up PR. Clone is opt-in (--clone) and off the default CI path.",
+  "description": "Pinned Tier A external Python repos for the ripr crash / parse-failure / runtime / gap-ID-stability sweep. Scaled set across supported shapes plus an unsupported bucket (sqlalchemy, expected fail-closed). Clone is opt-in (--clone) and off the default CI path.",
   "limits": [
     "static preview evidence only",
     "no provider calls",
@@ -39,6 +39,51 @@
       "shape": "pytest_library",
       "synthetic_diff": "fixtures/python-eval-sweep/diffs/tenacity.diff",
       "why": "Retry library; compact pytest suite. Diff flips the stop_after_attempt boundary (>= -> >) -> return_value gap."
+    },
+    {
+      "id": "jinja",
+      "url": "https://github.com/pallets/jinja",
+      "sha": "5ef70112a1ff19c05324ff889dd30405b1002044",
+      "license": "BSD-3-Clause",
+      "shape": "pytest_library",
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/jinja.diff",
+      "why": "Jinja templating; pytest suite. Diff flips a method-validation predicate (not in -> in) in do_round -> predicate gap."
+    },
+    {
+      "id": "anyio",
+      "url": "https://github.com/agronholm/anyio",
+      "sha": "85f7e8eada1ed4f077e4760f0c3d20d67452dcb8",
+      "license": "MIT",
+      "shape": "pytest_library",
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/anyio.diff",
+      "why": "Async concurrency library; pytest suite. Diff flips a boundary (<= 0 -> < 0) in repeat() -> boundary gap."
+    },
+    {
+      "id": "flask",
+      "url": "https://github.com/pallets/flask",
+      "sha": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "license": "BSD-3-Clause",
+      "shape": "pytest_library",
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/flask.diff",
+      "why": "Flask web framework; decorator-heavy; pytest suite. Diff changes a config-load predicate (not rv -> rv is None) in Config.from_envvar -> predicate gap."
+    },
+    {
+      "id": "sqlalchemy",
+      "url": "https://github.com/sqlalchemy/sqlalchemy",
+      "sha": "bfe559a7e4d69e5699c390ac9cafd2a5a2d38078",
+      "license": "MIT",
+      "shape": "pytest_library",
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/sqlalchemy.diff",
+      "why": "SQLAlchemy ORM; metaclass/dynamic mapping (unsupported bucket); expected to fail closed. Diff flips a negative-index boundary (== -1 -> != -1) in _getitem."
+    },
+    {
+      "id": "structlog",
+      "url": "https://github.com/hynek/structlog",
+      "sha": "025edaf799c6d6d511ab672d14c2ba8e885c4c36",
+      "license": "MIT OR Apache-2.0",
+      "shape": "pytest_library",
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/structlog.diff",
+      "why": "structlog logging; pytest suite. Diff flips a key-validation boundary (<= space -> < space) in LogfmtRenderer.__call__ -> boundary gap."
     }
   ]
 }

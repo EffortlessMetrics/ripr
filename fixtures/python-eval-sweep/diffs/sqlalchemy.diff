@@ -1,0 +1,12 @@
+diff --git a/lib/sqlalchemy/orm/util.py b/lib/sqlalchemy/orm/util.py
+--- a/lib/sqlalchemy/orm/util.py
++++ b/lib/sqlalchemy/orm/util.py
+@@ -2213,7 +2213,7 @@
+         else:
+             return list(res)
+     else:
+-        if item == -1:
++        if item != -1:
+             _no_negative_indexes()
+         else:
+             return list(iterable_query[item : item + 1])[0]

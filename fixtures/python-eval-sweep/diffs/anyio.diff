@@ -1,0 +1,12 @@
+diff --git a/src/anyio/itertools.py b/src/anyio/itertools.py
+--- a/src/anyio/itertools.py
++++ b/src/anyio/itertools.py
+@@ -523,7 +523,7 @@
+             yield element
+ 
+     remaining = operator.index(cast(Any, times))
+-    if remaining <= 0:
++    if remaining < 0:
+         await checkpoint()
+         return
+ 
