@@ -14,6 +14,7 @@ use crate::domain::{Finding, LanguageId, LanguageStatus, RelatedTest};
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
 };
+use crate::output::next_step::reconcile_next_step;
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
@@ -751,10 +752,12 @@ fn lsp_severity(severity: ConfigSeverity) -> Option<DiagnosticSeverity> {
 }
 
 fn lsp_message(finding: &Finding) -> String {
-    let base = finding
-        .recommended_next_step
-        .clone()
-        .unwrap_or_else(|| format!("{} static RIPR exposure", finding.class.as_str()));
+    let reconciled = reconcile_next_step(finding);
+    let base = if reconciled.is_empty() {
+        format!("{} static RIPR exposure", finding.class.as_str())
+    } else {
+        reconciled
+    };
     if finding
         .language_status
         .as_ref()
@@ -1673,5 +1676,162 @@ mod diagnostic_policy_tests {
             return Err("gap records must not be emitted for non-full run".to_string());
         }
         Ok(())
+    }
+}
+
+/// PARITY TEST (#1209): LSP diagnostic surface must route `recommended_next_step`
+/// through `reconcile_next_step` — a complete TypeScript repair packet must NOT
+/// emit the blocked-state disclosure string, and a blocked packet MUST still
+/// emit it.
+///
+/// `lsp_message` is private, so this test must live inside the diagnostics module
+/// where it has direct access.
+#[cfg(test)]
+mod lsp_next_step_parity_tests {
+    use super::lsp_message;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, LanguageId,
+        LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, OwnerKind, Probe,
+        ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
+        StageEvidence, StageState, SymbolId,
+    };
+    use std::path::PathBuf;
+
+    fn complete_ts_finding() -> Finding {
+        Finding {
+            id: "probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:src_discount.ts:typescript_preview:2396aec1".to_string()),
+                location: SourceLocation::new("src/discount.ts", 2, 1),
+                owner: Some(SymbolId(
+                    "typescript:src/discount.ts::applyDiscount".to_string(),
+                )),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: None,
+                after: Some("if (amount >= threshold) {".to_string()),
+                expression: "if (amount >= threshold) {".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::Low, "1 related test"),
+                infect: StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "TypeScript preview adapter does not yet model infection.",
+                ),
+                propagate: StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "TypeScript preview adapter does not yet model propagation.",
+                ),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Weak, Confidence::Low, "weak oracle"),
+                    discriminate: StageEvidence::new(
+                        StageState::Weak,
+                        Confidence::Low,
+                        "weak discriminator",
+                    ),
+                },
+            },
+            confidence: 0.4,
+            evidence: vec![
+                "owner: applyDiscount".to_string(),
+                "gap_state: advisory".to_string(),
+                "actionability_category: incomplete_repair_packet".to_string(),
+                "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract".to_string(),
+                "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available".to_string(),
+                "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints".to_string(),
+                "raw_evidence_ref: leg=rust_seam;file=src/discount.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_discount.ts:typescript_preview:2396aec1;owner=applyDiscount".to_string(),
+                "typescript_package_root: .".to_string(),
+                "typescript_workspace_root: .".to_string(),
+                "typescript_framework_hint: jest".to_string(),
+                "typescript_runner_hint: npm".to_string(),
+                "typescript_package_confidence: high".to_string(),
+                "typescript_verify_command: jest tests/discount.test.ts".to_string(),
+                "typescript_oracle_observed: applyDiscount(100, 100)".to_string(),
+                "typescript_oracle_expected: 50".to_string(),
+                "typescript_oracle_confidence: high".to_string(),
+                "typescript_oracle_evidence_ref: tests/discount.test.ts:3".to_string(),
+                "missing_discriminator: amount == threshold".to_string(),
+            ],
+            missing: Vec::new(),
+            flow_sinks: Vec::new(),
+            activation: ActivationEvidence {
+                observed_values: Vec::new(),
+                missing_discriminators: vec![MissingDiscriminatorFact {
+                    value: "amount == threshold".to_string(),
+                    reason: "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator".to_string(),
+                    flow_sink: None,
+                }],
+            },
+            stop_reasons: Vec::new(),
+            related_tests: vec![RelatedTest {
+                name: "applyDiscount applies discount when amount meets threshold".to_string(),
+                file: PathBuf::from("tests/discount.test.ts"),
+                line: 3,
+                oracle_strength: OracleStrength::Weak,
+                oracle_kind: OracleKind::RelationalCheck,
+                oracle: Some("expect(result).toBeGreaterThan(50)".to_string()),
+                relation_reason: None,
+                relation_confidence: None,
+            }],
+            recommended_next_step: Some(
+                "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
+            ),
+            language: Some(LanguageId::TypeScript),
+            language_status: Some(LanguageStatus::Preview),
+            owner_kind: Some(OwnerKind::Function),
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+        }
+    }
+
+    fn incomplete_ts_finding() -> Finding {
+        let mut f = complete_ts_finding();
+        f.evidence
+            .retain(|l| !l.starts_with("typescript_verify_command:"));
+        f.recommended_next_step = Some(
+            "TypeScript preview advisory: add or strengthen a focused assertion; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
+        );
+        f
+    }
+
+    /// PARITY: complete packet → LSP diagnostic message must NOT contain the
+    /// blocked-state disclosure string (the contradiction that #1209 fixes).
+    #[test]
+    fn lsp_diagnostic_complete_packet_strips_blocked_tail() {
+        let finding = complete_ts_finding();
+        let message = lsp_message(&finding);
+        assert!(
+            message.contains("the repair packet is complete and delegatable (advisory)"),
+            "LSP diagnostic must contain reconciled next-step for complete packet; got: {message}"
+        );
+        assert!(
+            !message.contains("no actionable repair packet is emitted until"),
+            "LSP diagnostic must NOT contain blocked-case tail for complete packet; got: {message}"
+        );
+    }
+
+    /// PARITY: blocked packet → LSP diagnostic message must STILL contain the
+    /// blocked-state disclosure (fail-closed: real disclosures must not be silenced).
+    #[test]
+    fn lsp_diagnostic_blocked_packet_preserves_disclosure() {
+        let finding = incomplete_ts_finding();
+        let message = lsp_message(&finding);
+        assert!(
+            message.contains("no actionable repair packet is emitted"),
+            "LSP diagnostic must preserve blocked-case disclosure for incomplete packet; got: {message}"
+        );
+        assert!(
+            !message.contains("the repair packet is complete and delegatable"),
+            "LSP diagnostic must NOT say actionable for blocked packet; got: {message}"
+        );
     }
 }

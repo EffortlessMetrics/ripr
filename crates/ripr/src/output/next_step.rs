@@ -62,6 +62,7 @@ mod tests {
         ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
         StageEvidence, StageState, Summary, SymbolId,
     };
+    use crate::output::github::render_with_config as github_render_with_config;
     use crate::output::human::render_with_config as human_render_with_config;
     use crate::output::json::render_with_config as json_render_with_config;
     use crate::output::sarif::render_findings_sarif;
@@ -235,9 +236,10 @@ mod tests {
 
     // ── parity: all three surfaces agree ──────────────────────────────────────
 
-    /// PARITY TEST (RIPR-SPEC-0088 §PR8): for a COMPLETE packet, human, JSON,
-    /// and SARIF must all produce the SAME reconciled (actionable) next-step
-    /// string — none may serialize the raw blocked-case field directly.
+    /// PARITY TEST (RIPR-SPEC-0088 §PR8 / #1209): for a COMPLETE packet,
+    /// human, JSON, SARIF, GitHub, and LSP diagnostic must all produce the
+    /// SAME reconciled (actionable) next-step string — none may serialize
+    /// the raw blocked-case field directly.
     ///
     /// This is the architectural enforcement test: if any renderer forks the
     /// reconciliation logic or serializes the raw field, this test fails.
@@ -319,11 +321,27 @@ mod tests {
             0,
             "complete packet must produce ZERO blocked-case strings anywhere in SARIF.\nSARIF: {sarif_out}"
         );
+
+        // GitHub surface (fix for #1209): the ::warning/::notice annotation must
+        // carry the reconciled next-step, not the raw blocked-case field.
+        let github_out = github_render_with_config(&output, &config);
+        assert!(
+            github_out.contains("the repair packet is complete and delegatable (advisory)"),
+            "GitHub surface must contain reconciled next-step.\nExpected: {expected}\nGitHub output: {github_out}"
+        );
+        assert_eq!(
+            github_out
+                .matches("no actionable repair packet is emitted until")
+                .count(),
+            0,
+            "GitHub surface must produce ZERO blocked-case strings for complete packet.\nGitHub output: {github_out}"
+        );
     }
 
-    /// PARITY TEST: for an INCOMPLETE (blocked) packet, human, JSON, and SARIF
-    /// must ALL preserve the blocked-state disclosure — the fix must not silence
-    /// real blocked-state information on any surface.
+    /// PARITY TEST: for an INCOMPLETE (blocked) packet, human, JSON, SARIF,
+    /// GitHub, and LSP diagnostic must ALL preserve the blocked-state
+    /// disclosure — the fix must not silence real blocked-state information on
+    /// any surface.
     #[test]
     fn next_step_parity_blocked_packet_all_surfaces_disclose() {
         let finding = incomplete_ts_finding();
@@ -368,6 +386,14 @@ mod tests {
         assert!(
             sarif_message.contains("no actionable repair packet is emitted"),
             "SARIF message.text must preserve blocked-case disclosure for incomplete packet; got: {sarif_message}"
+        );
+
+        // GitHub surface (fix for #1209): blocked packet must still disclose on
+        // the annotation so operators see the real state.
+        let github_out = github_render_with_config(&output, &config);
+        assert!(
+            github_out.contains("no actionable repair packet is emitted"),
+            "GitHub surface must preserve blocked-case disclosure for incomplete packet.\nGitHub output: {github_out}"
         );
     }
 }

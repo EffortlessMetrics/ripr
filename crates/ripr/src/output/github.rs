@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
+use crate::output::next_step::reconcile_next_step;
 use crate::output::path::display_path;
 use crate::output::perl_preview_card::perl_preview_card;
 use crate::output::preview_actionability::preview_actionability_for;
@@ -26,11 +27,12 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             continue;
         };
         let title = format!("ripr {}", finding.class.as_str());
-        let mut message = finding
-            .recommended_next_step
-            .as_deref()
-            .unwrap_or("Static RIPR exposure finding")
-            .to_string();
+        let reconciled = reconcile_next_step(finding);
+        let mut message = if reconciled.is_empty() {
+            "Static RIPR exposure finding".to_string()
+        } else {
+            reconciled
+        };
         let stop_reasons = finding.effective_stop_reasons();
         if !stop_reasons.is_empty() {
             let reasons = stop_reasons
