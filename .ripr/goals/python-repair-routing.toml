@@ -147,11 +147,22 @@ commands = [
 
 [[work_item]]
 id = "eval/python-tier-b-judged-panel"
-status = "next"
-branch = "dogfood/python-tier-b-judged-panel-judging"
-acceptance = "Populate the RIPR-SPEC-0092 panel labels by judging real diffs (run ripr check, record the verdict against expected_direction): the first measured false-actionable AND false-`exposed` rates — the number that gates `usable`. Must include should_stay_quiet and should_limit items, not only should_gap."
+status = "done"
+branch = "dogfood/python-tier-b-judging"
+acceptance = "First populated RIPR-SPEC-0092 panel: the 3 real Tier A starter-sweep diffs (click/six/tenacity) judged by manual review against each repo's tests (fixtures/python-judged-pr-panel/starter-judged.json). Result: 0 false-`exposed` (no over-credit on real external code) and 1 false-actionable (tenacity — ripr over-suggested where test_stop_after_attempt already discriminates the `__call__` boundary via `r.stop(make_retry_state(3, ...))`; the documented #1172 local-callable-instance limitation). ripr errs conservative, the safe direction. Small judged set — directional, not a robust rate; scale before claiming `usable`."
 commands = [
-  "cargo xtask metrics",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-local-callable-instance-alignment"
+status = "ready"
+branch = "analysis/py-local-callable-instance-alignment"
+acceptance = "The first evidence-driven analyzer fix candidate, confirmed by Tier B judging (#1160). Resolve simple local callable instances so a direct boundary assertion via a local binding — e.g. `stop = stop_after_attempt(3); assert stop(make_state(3)) is True` or tenacity's `r.stop(make_retry_state(3, ...))` — credits `exposed` instead of weakly_exposed/orthogonal, WITHOUT weakening sink alignment (dynamic/reassigned bindings and strong-but-orthogonal oracles must stay conservative). Closes the one measured false-actionable in the starter panel."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
   "cargo xtask check-pr",
 ]
 

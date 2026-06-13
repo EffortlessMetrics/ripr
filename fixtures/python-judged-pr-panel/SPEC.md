@@ -10,10 +10,15 @@ and no large corpus. Labels are `null` (unjudged) in this seed.
 
 ## Files
 
-- `manifest.json` — the panel. Top-level envelope mirrors the Tier A manifest
-  (`schema_version`, `kind`, `spec`, `tier`, `description`, `limits`), with an
-  `items[]` array instead of `repos[]`.
-- `diffs/*.diff` — the unified diff for each panel item.
+- `manifest.json` — the seed panel (labels `null`, unjudged). Top-level envelope
+  mirrors the Tier A manifest (`schema_version`, `kind`, `spec`, `tier`,
+  `description`, `limits`), with an `items[]` array instead of `repos[]`.
+- `starter-judged.json` — the first **populated** panel: the three real Tier A
+  starter-sweep diffs (click/six/tenacity), judged by manual review against each
+  repo's tests. Adds `actual_classification` / `actual_oracle_alignment` per item
+  and an envelope `measurement_summary`. Result: 0 false-`exposed`, 1
+  false-actionable (tenacity, the `__call__`-via-local-instance limitation).
+- `diffs/*.diff` — the unified diff for each seed panel item.
 
 ## Panel item
 

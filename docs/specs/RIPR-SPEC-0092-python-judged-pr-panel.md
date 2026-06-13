@@ -114,11 +114,29 @@ analyzer is already tuned for. The panel MUST be able to record both "`ripr` was
 quiet and that was correct" (a `should_stay_quiet` true negative) and "`ripr`
 was quiet and that was wrong" (a `should_gap` item with `false_exposed: true`).
 
-### This PR is schema + seed only
+### Judged panels
 
-No `cargo xtask` judging command, no analyzer change, no large corpus. The seed
-ships labels as `null` (unjudged). A later spec/PR adds the judging surface and
-scales the corpus.
+A *populated* panel (labels filled, `judgment_source` set) additionally records,
+per item, the observed verdict alongside the expectation — `actual_classification`
+and `actual_oracle_alignment` — and an envelope-level `measurement_summary`
+(`items_judged`, `false_exposed_count`, `false_actionable_count`, and a note).
+Judging may be `manual_review` until an automated judging surface exists. A
+populated panel is descriptive evidence and is **advisory only**: a small judged
+set is directional, not a statistically robust rate, and never gates anything.
+
+`fixtures/python-judged-pr-panel/starter-judged.json` is the first populated
+panel — the three real Tier A starter-sweep diffs (click/six/tenacity), judged
+by manual review against each repo's tests: 0 false-`exposed` and 1
+false-actionable (tenacity, mapping to the documented `__call__`-via-local-instance
+limitation). It confirms `ripr` errs conservative (over-suggest, never
+over-credit) on real external code.
+
+### Schema is additive; judging populates it
+
+The seed ships labels as `null` (unjudged); a judged panel fills them. No
+`cargo xtask` judging command and no analyzer change are required to record a
+manual judgment. A later PR may add an automated judging surface and scale the
+corpus.
 
 ## Required Evidence
 
