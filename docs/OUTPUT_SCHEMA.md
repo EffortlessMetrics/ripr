@@ -477,10 +477,30 @@ The evidence-first fields are additive in schema `0.2`:
   `findings[].evidence` strings for compatibility. It is not a repair packet
   and is not gate, badge, baseline, RIPR Zero, or agent-packet authority.
   Current fields are `authority_boundary` (`"preview_advisory_only"`),
-  `repair_packet_ready` (`false` for this preview slice), `gap_state`,
-  `actionability_category`, `why_not_actionable`, `repair_route`,
-  `missing_actionability_fields[]`, `missing_graph_legs[]`, nullable
-  `unlock_condition`, `evidence_needed_to_promote`, and `raw_evidence_refs[]`.
+  `repair_packet_ready` (boolean; `false` for most preview findings; flips to
+  `true` only for TypeScript findings satisfying the RIPR-SPEC-0087 complete
+  contract — see the flip condition below), `gap_state`, `actionability_category`,
+  `why_not_actionable`, `repair_route`, `missing_actionability_fields[]`,
+  `missing_graph_legs[]`, nullable `unlock_condition`,
+  `evidence_needed_to_promote`, and `raw_evidence_refs[]`.
+  `repair_packet_ready` flip condition (RIPR-SPEC-0087 §PR7): a TypeScript
+  finding flips `repair_packet_ready: true` iff ALL of the following hold:
+  (a) `actionability_category == "incomplete_repair_packet"` (G-A);
+  (b) `language_status == "preview"` and `language ∈ {typescript, javascript}`;
+  (c) `typescript_oracle_expected` is a concrete literal AND
+    `typescript_dynamic_assertion_unresolved` limitation is absent (G-C);
+  (d) related test is oracle-eligible (import-aware/owner-call, not
+    heuristic-only) — guaranteed by G-A (G-D);
+  (e) at least one named missing discriminator exists in `missing_discriminators`
+    (G-E);
+  (f) no `route_cross_language_oracle_visibility_limitation` or
+    `typescript_bun_bridge_verdict` evidence present (G-F);
+  AND the shared `validate_agent_gap_record_packet` validator returns `Ok(())`.
+  When flipped: `actionability_category` becomes `"complete_repair_packet"`,
+  `gap_state` becomes `"actionable"`, `missing_actionability_fields` becomes
+  `[]`, and `authority_boundary` stays `"preview_advisory_only"` (TypeScript
+  remains preview). Only `incomplete_repair_packet` is eligible to flip; all
+  other categories stay non-actionable. `schema_version` is unchanged.
   Raw evidence refs carry the original raw string plus parsed `file`, `line`,
   `kind`, `source_id`, optional `owner`, optional graph `leg`, and optional
   source `sample` when present.

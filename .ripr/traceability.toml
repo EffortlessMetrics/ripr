@@ -5309,3 +5309,47 @@ metrics = [
   "crash_rate",
   "gap_id_stability_rate"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0087"
+name = "TypeScript preview actionable repair-packet contract"
+spec = "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md"
+tests = [
+  # §7.4 validator-parity tests
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_complete_finding_passes_shared_validator",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_missing_verify_command_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_missing_oracle_expected_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_dynamic_oracle_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_wrong_category_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_no_related_tests_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_no_missing_discriminators_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_cross_language_bridge_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::canonical_gap_id_derives_from_finding_id",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::canonical_gap_id_normalizes_backslashes",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::receipt_command_is_ripr_outcome_shape",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::must_not_change_includes_preview_clause_via_shared_function"
+]
+fixtures = [
+  # Complete-contract fixture (flips repair_packet_ready: true)
+  "fixtures/ts_repair_packet_complete",
+  # Non-actionable fixtures (each pins a named failure family)
+  "fixtures/ts_dynamic_oracle",
+  "fixtures/ts_heuristic_relation",
+  "fixtures/ts_cross_package_test",
+  "fixtures/ts_no_verify_command",
+  "fixtures/ts_static_limit",
+  "fixtures/ts_cross_language_bridge_limit",
+  "fixtures/ts_already_observed"
+]
+code = [
+  "crates/ripr/src/output/typescript_packet_projection.rs",
+  "crates/ripr/src/output/preview_actionability.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md"
+]
+metrics = [
+  "typescript_actionable_repair_packet_contract_status_proposed"
+]

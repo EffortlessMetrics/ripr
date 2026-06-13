@@ -1,0 +1,138 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/ts_cross_language_bridge_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_bridge.ts:typescript_preview:d73aaece",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_bridge.ts:typescript_preview:d73aaece",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/bridge.ts",
+        "line": 2,
+        "expression": "    if (input.length >= 0) {",
+        "owner": "typescript:src/bridge.ts::processData"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `processData`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `processData`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/bridge.test.ts:6 processData trims and lowercases uses strong exact value oracle: expect(...).toBe(...)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: processData", "static_limit mocked_module: `../src/nativeModule`", "typescript_limitation: typescript_mock_only_observer", "typescript_limitation_sample: typescript_mock_only_observer at src/bridge.ts:2", "typescript_limitation_why: typescript_mock_only_observer — the related test file uses jest.mock/vi.mock; the adapter cannot resolve what the mock substitutes so the observed behavior is opaque", "typescript_limitation_repair_route: typescript_mock_only_observer → analysis/typescript-mock-shape-resolution", "typescript_oracle_observed: processData('Hello')", "typescript_oracle_expected: 'hello'", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/bridge.test.ts:7", "gap_state: static_limitation", "actionability_category: mocked_module", "why_not_actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance", "repair_route: add mock-shape support or validate the real substitution under test before issuing a repair packet", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/bridge.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_bridge.ts:typescript_preview:d73aaece;owner=processData", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Related test reaches `processData` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "Static limit `mocked_module`: related test file mocks `../src/nativeModule` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.", "TypeScript preview actionability `static_limitation` / `mocked_module`: static limit `mocked_module` prevents bounded TypeScript repair guidance. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "processData trims and lowercases",
+          "file": "tests/bridge.test.ts",
+          "line": 6,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(...).toBe(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/bridge.ts:2: `if (input.length >= 0) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "processData",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/bridge.test.ts",
+          "line": 6,
+          "name": "processData trims and lowercases"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [
+          "mocked_module"
+        ],
+        "suggested_assertion_shape": "Resolve the named static limitation before selecting an assertion shape.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
+      },
+      "preview_actionability": {
+        "actionability_category": "mocked_module",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "resolve the named static limit and re-run TypeScript preview evidence extraction",
+        "gap_state": "static_limitation",
+        "missing_actionability_fields": [],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/bridge.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 2,
+            "owner": "processData",
+            "raw": "file=src/bridge.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_bridge.ts:typescript_preview:d73aaece;owner=processData",
+            "sample": null,
+            "source_id": "probe:src_bridge.ts:typescript_preview:d73aaece"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add mock-shape support or validate the real substitution under test before issuing a repair packet",
+        "unlock_condition": null,
+        "why_not_actionable": "static limit `mocked_module` prevents bounded TypeScript repair guidance"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "mocked_module"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 1,
+      "sample_paths": ["src/bridge.ts"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

@@ -846,3 +846,26 @@ User-Agent was sent). That is the exact proxy-for-artifact failure the tool
 exists to catch, aimed at the operating environment instead of the code. Read the
 error the artifact actually returned; do not round it off to the nearest
 convenient cause.
+
+## 2026-06-12: TypeScript repair-packet flip reuses the Rust validator, never a parallel path (RIPR-SPEC-0087)
+
+The TypeScript `repair_packet_ready: false → true` flip (RIPR-SPEC-0087 §PR7)
+calls the **existing shared** `validate_agent_gap_record_packet` in
+`output/agent_seam_packets.rs`. It does NOT introduce a parallel TypeScript
+completeness validator, mirror, or inline re-implementation.
+
+The projection lives in `output/typescript_packet_projection.rs::typescript_gap_record_for`,
+which builds a `GapRecord` from preview evidence. If the shared validator returns
+`Ok(())`, the finding flips; otherwise it stays preview. This architecture means
+there is exactly one source of truth for "what counts as a complete repair packet".
+
+Key constraints for any future change:
+- `analysis/**` must NOT import `crate::output` (architecture gate enforces this).
+- The projection is in `output/`, not `analysis/`, to satisfy this constraint.
+- G-A (category must be `incomplete_repair_packet`) is the most important precondition —
+  it prevents static_limitation, strong_oracle_observed, ambiguous_related_test, and
+  missing_context findings from accidentally flipping.
+- The only flip condition: G-A through G-F ALL hold AND `validate_agent_gap_record_packet`
+  returns `Ok(())`. There is no shortcut.
+- `authority_boundary` stays `"preview_advisory_only"` even when flipped. TypeScript
+  remains preview; the flipped finding is delegatable but not gate authority.

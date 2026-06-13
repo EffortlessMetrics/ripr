@@ -11,3 +11,5 @@
 .github/workflows/droid.yml|curl|1|ci/droid|Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.
 .github/workflows/publish-extension.yml|curl|1|release/ci|Release workflow polls GitHub Releases for the server manifest before publishing extension packages.
 editors/vscode/src/downloader.ts|https.get|1|lsp/editor|VS Code extension downloads verified server assets from the configured release source.
+crates/ripr/src/output/typescript_packet_projection.rs|curl|4|analysis-typescript|F7 absence-assertions: comments + unit tests verifying the TS receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent.
+crates/ripr/src/output/typescript_packet_projection.rs|http|3|analysis-typescript|F7 absence-assertions: comments + unit tests verifying the TS receipt_command never contains an http request. No network behavior; the term appears only to assert its absence.

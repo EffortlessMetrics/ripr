@@ -1,4 +1,6 @@
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use serde_json::{Value, json};
 
 const AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
@@ -41,12 +43,8 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
 
     let gap_state = evidence_value(finding, "gap_state: ")?;
     let actionability_category = evidence_value(finding, "actionability_category: ")?;
-    let why_not_actionable = evidence_value(finding, "why_not_actionable: ")?;
     let repair_route = evidence_value(finding, "repair_route: ")?;
     let evidence_needed_to_promote = evidence_value(finding, "evidence_needed_to_promote: ")?;
-    let missing_actionability_fields = evidence_value(finding, "missing_actionability_fields: ")
-        .map(split_csv)
-        .unwrap_or_default();
     let missing_graph_legs = evidence_value(finding, "missing_graph_legs: ")
         .map(split_csv)
         .unwrap_or_default();
@@ -58,14 +56,63 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
         .map(parse_raw_evidence_ref)
         .collect::<Vec<_>>();
 
+    // §1 / §2 (RIPR-SPEC-0087 §PR7): compute repair_packet_ready by projecting
+    // a GapRecord from the finding and calling the SHARED Rust validator.
+    // `None` packet ⇒ `false` automatically (fail-closed default).
+    // No parallel TypeScript validator is introduced: the only flip authority
+    // is `validate_agent_gap_record_packet`.
+    let packet = typescript_gap_record_for(finding);
+    let repair_packet_ready = packet
+        .as_ref()
+        .is_some_and(|record| validate_agent_gap_record_packet(record).is_ok());
+
+    // If the validator rejected the packet, surface why so the missing field
+    // is visible to the operator (§1.3).
+    let why_not_actionable_computed = if let Some(record) = packet.as_ref() {
+        match validate_agent_gap_record_packet(record) {
+            Ok(()) => {
+                // actionable — why_not_actionable is superseded by the category
+                "complete repair packet — TypeScript finding is delegatable (advisory)".to_string()
+            }
+            Err(reason) => {
+                // Surface the validator's reason alongside the evidence reason
+                let base = evidence_value(finding, "why_not_actionable: ")
+                    .unwrap_or("incomplete repair packet")
+                    .to_string();
+                format!("{base}; validator: {reason}")
+            }
+        }
+    } else {
+        evidence_value(finding, "why_not_actionable: ")
+            .unwrap_or("TypeScript preview lacks a complete repair packet contract")
+            .to_string()
+    };
+
+    // §1.3: flip gap_state + actionability_category when repair_packet_ready.
+    let (resolved_gap_state, resolved_category, resolved_missing_fields) = if repair_packet_ready {
+        (
+            "actionable".to_string(),
+            "complete_repair_packet".to_string(),
+            Vec::new(),
+        )
+    } else {
+        (
+            gap_state.to_string(),
+            actionability_category.to_string(),
+            evidence_value(finding, "missing_actionability_fields: ")
+                .map(split_csv)
+                .unwrap_or_default(),
+        )
+    };
+
     Some(PreviewActionability {
         authority_boundary: AUTHORITY_BOUNDARY.to_string(),
-        repair_packet_ready: false,
-        gap_state: gap_state.to_string(),
-        actionability_category: actionability_category.to_string(),
-        why_not_actionable: why_not_actionable.to_string(),
+        repair_packet_ready,
+        gap_state: resolved_gap_state,
+        actionability_category: resolved_category,
+        why_not_actionable: why_not_actionable_computed,
         repair_route: repair_route.to_string(),
-        missing_actionability_fields,
+        missing_actionability_fields: resolved_missing_fields,
         missing_graph_legs,
         unlock_condition,
         evidence_needed_to_promote: evidence_needed_to_promote.to_string(),

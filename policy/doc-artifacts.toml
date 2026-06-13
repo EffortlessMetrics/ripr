@@ -305,3 +305,11 @@ path = "docs/specs/RIPR-SPEC-0086-python-eval-sweep.md"
 status = "proposed"
 owner = "language-adapter-swarm"
 standalone_reason = "Standalone evidence-tooling contract for the Tier A external-repo eval sweep (cargo xtask eval-sweep); adds no product library behavior or public API; anchors the eval-sweep-driven Python reliability campaign; references ADR 0009; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0087"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "PR 7 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: closes the repair_packet_ready false→true flip for TypeScript findings with provably complete, evidence-backed, non-dynamic repair packets; reuses the shared validate_agent_gap_record_packet validator; no separate proposal artifact."
