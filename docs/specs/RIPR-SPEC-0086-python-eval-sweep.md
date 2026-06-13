@@ -78,9 +78,15 @@ existing `ripr check` surface and aggregates results.
 ### Metrics
 
 Across non-skipped entries: `crash_rate`, `parse_failure_rate`, `timed_out_count`,
-runtime min/median/max/total, and `gap_id_stability_rate`. A `gate_status` of
-`pass` requires `crash_rate == 0` and `gap_id_stability_rate == 1.0`; otherwise
-`review`, with a recorded reason. Empty `repos_run` guards division (rates default
+runtime min/median/max/total, and `gap_id_stability_rate`. The `gate_status` is:
+
+- `not_run` when `repos_run == 0` (zero repos analyzed — e.g. a default no-clone
+  run with no pre-placed checkouts). A pass/review verdict is only meaningful once
+  at least one repo was analyzed, so an empty run is **never** a vacuous `pass`.
+- `pass` when `repos_run >= 1`, `crash_rate == 0`, and `gap_id_stability_rate == 1.0`.
+- `review` when `repos_run >= 1` and the crash/stability gate failed.
+
+Each carries a recorded reason. Empty `repos_run` guards division (rates default
 to `0.0` crash / `1.0` stability).
 
 ### Policy boundary (load-bearing)
@@ -135,6 +141,13 @@ repo skipped, outcome = "skipped_missing_checkout"  ->  excluded from rates,
 never fails the command
 ```
 
+### A default no-clone run analyzes nothing
+
+```text
+repos_total = 3, repos_run = 0 (all skipped_missing_checkout)
+  ->  gate_status = "not_run"  (never a vacuous "pass")
+```
+
 ## Test Mapping
 
 - `eval_sweep::manifest_load_rejects_invalid` -> manifest validation contract.
@@ -163,5 +176,5 @@ never fails the command
 | `timed_out_count` | repos exceeding the wall-clock timeout |
 | `runtime_ms_median` | median run-1 `ripr check` wall-clock per repo |
 | `gap_id_stability_rate` | fraction with identical canonical gap-ID sets across a re-run |
-| `gate_status` | `pass` iff `crash_rate == 0` and `gap_id_stability_rate == 1.0`, else `review` |
+| `gate_status` | `not_run` if `repos_run == 0`; else `pass` iff `crash_rate == 0` and `gap_id_stability_rate == 1.0`; else `review` |
 

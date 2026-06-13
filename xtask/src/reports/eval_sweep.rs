@@ -499,13 +499,28 @@ fn compute_metrics(runs: &[RepoRun]) -> Metrics {
         gap_id_stable_count as f64 / repos_run as f64
     };
 
-    let passed = crash_count == 0 && gap_id_unstable_count == 0;
-    let gate_status = if passed { "pass" } else { "review" };
-    let gate_reason = if passed {
-        "no crashes; canonical gap IDs stable across the re-run".to_string()
+    // A pass/fail gate is only meaningful once at least one repo was analyzed.
+    // Zero analyzed repos is `not_run`, never a vacuous `pass`.
+    let (gate_status, gate_reason) = if repos_run == 0 {
+        (
+            "not_run",
+            format!(
+                "no repos analyzed ({repos_total} total, {repos_skipped} skipped, {repos_clone_failed} clone-failed); pass/review requires at least one analyzed repo (use --clone or pre-place checkouts)"
+            ),
+        )
+    } else if crash_count == 0 && gap_id_unstable_count == 0 {
+        (
+            "pass",
+            format!(
+                "{repos_run} repo(s) analyzed; no crashes; canonical gap IDs stable across the re-run"
+            ),
+        )
     } else {
-        format!(
-            "{crash_count} crash(es) and {gap_id_unstable_count} unstable gap-ID set(s) over {repos_run} repo(s); investigate before promotion"
+        (
+            "review",
+            format!(
+                "{crash_count} crash(es) and {gap_id_unstable_count} unstable gap-ID set(s) over {repos_run} repo(s); investigate before promotion"
+            ),
         )
     };
 
@@ -772,7 +787,20 @@ mod tests {
         assert_eq!(metrics.repos_run, 0);
         assert!((metrics.crash_rate - 0.0).abs() < f64::EPSILON);
         assert!((metrics.gap_id_stability_rate - 1.0).abs() < f64::EPSILON);
-        assert_eq!(metrics.gate_status, "pass");
+        // Zero analyzed repos must never read as a vacuous pass.
+        assert_eq!(metrics.gate_status, "not_run");
+    }
+
+    #[test]
+    fn metrics_all_skipped_is_not_run() {
+        let runs = vec![
+            run_with(Outcome::SkippedMissingCheckout, 0, true),
+            run_with(Outcome::SkippedMissingCheckout, 0, true),
+        ];
+        let metrics = compute_metrics(&runs);
+        assert_eq!(metrics.repos_total, 2);
+        assert_eq!(metrics.repos_run, 0);
+        assert_eq!(metrics.gate_status, "not_run");
     }
 
     #[test]
