@@ -2288,3 +2288,129 @@ fn analyze_diff_counts_python_file_but_skips_unreadable_workspace_source() -> Re
     }
     Ok(())
 }
+
+#[test]
+fn significant_change_tokens_extracts_sink_identifiers_and_literals() {
+    let attr = significant_change_tokens("self.status = \"paid\"");
+    assert!(attr.iter().any(|t| t == "status"));
+    assert!(attr.iter().any(|t| t == "paid"));
+
+    let pred =
+        significant_change_tokens("return retry_state.attempt_number > self.max_attempt_number");
+    assert!(pred.iter().any(|t| t == "attempt_number"));
+    assert!(pred.iter().any(|t| t == "max_attempt_number"));
+    assert!(!pred.iter().any(|t| t == "self"));
+    assert!(!pred.iter().any(|t| t == "return"));
+}
+
+#[test]
+fn strong_oracle_observes_owner_distinguishes_aligned_from_orthogonal() {
+    let owner = PythonOwner {
+        name: "__call__".to_string(),
+        qualified_name: "stop_after_attempt.__call__".to_string(),
+        file: PathBuf::from("stop.py"),
+        start_line: 1,
+        end_line: 2,
+        owner_kind: None,
+        decorators: Vec::new(),
+        imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
+        route_paths: Vec::new(),
+        dynamic_route_decorators: Vec::new(),
+    };
+    let line = "return retry_state.attempt_number > self.max_attempt_number";
+    let strong = |oracle: &str| RelatedTest {
+        name: "t".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        oracle: Some(oracle.to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+    };
+
+    // Strong oracle on a wrapper's return value -> does not observe the owner.
+    let orthogonal = [strong("assert run_retry(lambda: \"Hello\") == \"Hello\"")];
+    assert!(!strong_oracle_observes_owner(
+        &owner,
+        line,
+        &orthogonal,
+        &[]
+    ));
+
+    // Strong oracle that references a changed-sink identifier -> aligned.
+    let aligned_sink = [strong("assert stop(make_state(attempt_number=3)) is True")];
+    assert!(strong_oracle_observes_owner(
+        &owner,
+        line,
+        &aligned_sink,
+        &[]
+    ));
+
+    // Strong oracle that names the owner class -> aligned.
+    let aligned_name = [strong("assert stop_after_attempt(3) is not None")];
+    assert!(strong_oracle_observes_owner(
+        &owner,
+        line,
+        &aligned_name,
+        &[]
+    ));
+
+    // Only a weak oracle is present -> nothing strong to credit.
+    let weak = [RelatedTest {
+        oracle_strength: OracleStrength::Weak,
+        ..strong("assert stop(make_state(attempt_number=3))")
+    }];
+    assert!(!strong_oracle_observes_owner(&owner, line, &weak, &[]));
+}
+
+#[test]
+fn strong_oracle_observes_owner_resolves_import_alias() {
+    let owner = PythonOwner {
+        name: "apply_tax".to_string(),
+        qualified_name: "apply_tax".to_string(),
+        file: PathBuf::from("tax.py"),
+        start_line: 1,
+        end_line: 2,
+        owner_kind: None,
+        decorators: Vec::new(),
+        imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
+        route_paths: Vec::new(),
+        dynamic_route_decorators: Vec::new(),
+    };
+    let line = "return amount + 2";
+    let related = [RelatedTest {
+        name: "test_alias".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        oracle: Some("assert taxed(10) == 12".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+    }];
+    // Without the alias import, the oracle names neither owner nor sink.
+    assert!(!strong_oracle_observes_owner(&owner, line, &related, &[]));
+
+    // With `apply_tax as taxed`, the oracle's `taxed(...)` observes the owner.
+    let alias_test = PythonTest {
+        name: "test_alias".to_string(),
+        qualified_name: "test_alias".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        body_text: String::new(),
+        imports: vec![PythonImport {
+            imported: "apply_tax".to_string(),
+            alias: "taxed".to_string(),
+        }],
+        decorators: Vec::new(),
+        fixtures: Vec::new(),
+        parametrized: false,
+        framework: "pytest",
+        assertions: Vec::new(),
+    };
+    assert!(strong_oracle_observes_owner(
+        &owner,
+        line,
+        &related,
+        std::slice::from_ref(&alias_test)
+    ));
+}

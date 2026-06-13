@@ -3909,6 +3909,97 @@ fn python_recommended_next_step(
     }
 }
 
+/// Significant identifier and string-literal tokens from a changed source line.
+/// These approximate the *changed sink* — the attribute/field/value the change
+/// touches — so an oracle that asserts on them is observing the change.
+fn significant_change_tokens(line_text: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "self", "cls", "return", "if", "elif", "else", "while", "for", "def", "none", "true",
+        "false", "and", "or", "not", "in", "is", "raise", "assert", "yield", "await", "async",
+        "class", "import", "from", "as", "with", "try", "except", "lambda",
+    ];
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for ch in line_text.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            current.push(ch);
+        } else {
+            push_identifier(&mut out, &mut current, STOP);
+        }
+    }
+    push_identifier(&mut out, &mut current, STOP);
+    for quote in ['"', '\''] {
+        for (index, part) in line_text.split(quote).enumerate() {
+            if index % 2 == 1 && part.len() >= 2 {
+                out.push(part.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn push_identifier(out: &mut Vec<String>, current: &mut String, stop: &[&str]) {
+    if current.len() >= 3
+        && !stop.contains(&current.to_ascii_lowercase().as_str())
+        && !current.chars().all(|c| c.is_ascii_digit())
+    {
+        out.push(current.clone());
+    }
+    current.clear();
+}
+
+/// Whether a strong related-test oracle actually observes the changed behavior's
+/// sink — not merely reaches the owner. Reach-plus-strong-oracle is not enough:
+/// a strong oracle that asserts a *different* value (e.g. a wrapper's return)
+/// does not discriminate the change. Alignment is accepted when a strong
+/// oracle's assertion references the owner (by name or import alias) or the
+/// changed sink (identifiers/literals from the changed line). Module owners and
+/// owners with no usable token keep prior behavior.
+fn strong_oracle_observes_owner(
+    owner: &PythonOwner,
+    line_text: &str,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> bool {
+    let mut tokens: Vec<String> = owner
+        .qualified_name
+        .split('.')
+        .filter(|token| !token.is_empty() && *token != "<module>")
+        .map(str::to_string)
+        .collect();
+    if !owner.name.is_empty() && owner.name != "<module>" {
+        tokens.push(owner.name.clone());
+    }
+    // Import aliases of the owner: `from m import owner as alias` makes the test
+    // assert on `alias(...)`, which still observes the owner's output.
+    let owner_simple = owner
+        .qualified_name
+        .rsplit('.')
+        .next()
+        .unwrap_or(owner.name.as_str());
+    for test in all_tests {
+        for import in &test.imports {
+            if (import.imported == owner_simple || import.imported == owner.name)
+                && !import.alias.is_empty()
+            {
+                tokens.push(import.alias.clone());
+            }
+        }
+    }
+    tokens.extend(significant_change_tokens(line_text));
+    tokens.retain(|token| token.len() >= 2);
+    if tokens.is_empty() {
+        return true;
+    }
+    related.iter().any(|test| {
+        test.oracle_strength.rank() >= OracleStrength::Strong.rank()
+            && test
+                .oracle
+                .as_deref()
+                .is_some_and(|text| tokens.iter().any(|token| text.contains(token.as_str())))
+    })
+}
+
 fn classify_change(
     file: &Path,
     line: usize,
@@ -3983,7 +4074,9 @@ fn classify_change(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank() {
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && strong_oracle_observes_owner(owner, line_text, &related, all_tests)
+    {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -3993,6 +4086,22 @@ fn classify_change(
                 "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
                 owner.name,
                 strongest_kind.as_str()
+            )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        // A strong oracle reaches the owner, but its assertion observes a value
+        // other than the changed owner's output, so static evidence cannot
+        // confirm the changed behavior is discriminated. Fail closed to
+        // weakly_exposed rather than crediting reach-plus-strong-oracle as
+        // discrimination (which would degrade `exposed` back into coverage).
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![format!(
+                "A strong Python oracle reaches `{}`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.",
+                owner.name
             )],
         )
     } else {
