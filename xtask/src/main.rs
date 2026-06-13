@@ -5453,6 +5453,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "perl_lsp_facts_exporter"
                     | "python"
                     | "python-eval-sweep"
+                    | "python-judged-pr-panel"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
                     | "surface-projection-alignment"

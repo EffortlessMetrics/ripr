@@ -347,6 +347,14 @@ owner = "product-swarm"
 standalone_reason = "Bounds ripr pilot artifact size (repo-exposure.json + agent-seam-packets.json) to DEFAULT_PILOT_SEAM_BUDGET=2000 seams; fail-closed with limitations[] disclosure in both artifacts naming RIPR_PILOT_SEAM_BUDGET and a repair route; mirrors RIPR-SPEC-0074 run_status pattern; fixes #1170 (400 MB artifacts for one-file change)."
 
 [[artifact]]
+id = "RIPR-SPEC-0092"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0092-python-judged-pr-panel.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+standalone_reason = "Standalone evidence-schema contract for the Tier B judged-diff panel that extends the RIPR-SPEC-0086 Tier A sweep with judgment (false-actionable + false-exposed); ships schema plus a hand-vetted seed manifest only, no judging engine and no analyzer change; references ADR 0009; no separate proposal artifact."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

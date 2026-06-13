@@ -5489,3 +5489,27 @@ metrics = [
   "pilot_seam_budget_default_2000",
   "pilot_artifact_bound_disclosure_present"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0092"
+name = "python tier b judged-diff panel schema"
+spec = "docs/specs/RIPR-SPEC-0092-python-judged-pr-panel.md"
+tests = [
+  "xtask/src/main.rs"
+]
+fixtures = [
+  "fixtures/python-judged-pr-panel"
+]
+code = [
+  "xtask/src/main.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0092-python-judged-pr-panel.md",
+  "fixtures/python-judged-pr-panel/manifest.json",
+  "fixtures/python-judged-pr-panel/SPEC.md"
+]
+metrics = [
+  "false_actionable_rate",
+  "false_exposed_rate",
+  "directional_coverage"
+]
