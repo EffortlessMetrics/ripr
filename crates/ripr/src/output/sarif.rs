@@ -5,6 +5,7 @@
 //! analysis, config/suppression loading, and future CI policy code.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::SeamLimitInfo;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::CheckOutput;
 use crate::config::{ConfigSeverity, RiprConfig};
@@ -53,6 +54,7 @@ pub(crate) fn render_findings_sarif(
 /// Render repo-scoped classified seams as SARIF.
 pub(crate) fn render_repo_seams_sarif(
     classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
     config: &RiprConfig,
 ) -> String {
     let rules = seam_rules();
@@ -60,7 +62,56 @@ pub(crate) fn render_repo_seams_sarif(
         .iter()
         .filter_map(|entry| seam_result(entry, config))
         .collect::<Vec<_>>();
-    sarif_document("repo_seam", rules, results)
+    sarif_document_repo_seam(rules, results, limit_info)
+}
+
+fn sarif_document_repo_seam(
+    rules: Vec<Value>,
+    results: Vec<Value>,
+    limit_info: Option<&SeamLimitInfo>,
+) -> String {
+    let mut props = Map::new();
+    props.insert("tool".to_string(), json!("ripr"));
+    props.insert(
+        "schema_version".to_string(),
+        json!(RIPR_SARIF_SCHEMA_VERSION),
+    );
+    props.insert("scope".to_string(), json!("repo_seam"));
+    match limit_info {
+        None => {
+            props.insert("run_status".to_string(), json!("complete"));
+        }
+        Some(info) => {
+            props.insert("run_status".to_string(), json!("seam_limit_applied"));
+            let limitation = json!({
+                "category": "repo_seam_limit_applied",
+                "seams_analyzed": info.analyzed,
+                "seams_total": info.total,
+                "limit_source": info.source.as_str(),
+                "control": "RIPR_REPO_EXPOSURE_SEAM_LIMIT"
+            });
+            props.insert("limitations".to_string(), json!([limitation]));
+        }
+    }
+    let document = json!({
+        "$schema": SARIF_SCHEMA,
+        "version": SARIF_VERSION,
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "ripr",
+                        "semanticVersion": env!("CARGO_PKG_VERSION"),
+                        "informationUri": "https://github.com/EffortlessMetrics/ripr",
+                        "rules": rules
+                    }
+                },
+                "results": results,
+                "properties": props
+            }
+        ]
+    });
+    json_pretty(document)
 }
 
 fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String {
@@ -803,7 +854,7 @@ mod tests {
     #[test]
     fn sarif_renders_seams_with_stable_rule_ids() -> Result<(), String> {
         let rendered =
-            render_repo_seams_sarif(&[weakly_gripped_classified()], &RiprConfig::default());
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
         let sarif = parse_json(&rendered)?;
         let rule_ids = rule_ids(&sarif)?;
         let result = first_result(&sarif)?;
@@ -1281,7 +1332,7 @@ weakly_exposed = "note"
 weakly_gripped = "note"
 "#,
         )?;
-        let rendered = render_repo_seams_sarif(&[weakly_gripped_classified()], &config);
+        let rendered = render_repo_seams_sarif(&[weakly_gripped_classified()], None, &config);
         let sarif = parse_json(&rendered)?;
         let result = first_result(&sarif)?;
 
@@ -1292,8 +1343,11 @@ weakly_gripped = "note"
 
     #[test]
     fn sarif_omits_off_seam_class() -> Result<(), String> {
-        let rendered =
-            render_repo_seams_sarif(&[strongly_gripped_classified()], &RiprConfig::default());
+        let rendered = render_repo_seams_sarif(
+            &[strongly_gripped_classified()],
+            None,
+            &RiprConfig::default(),
+        );
         let sarif = parse_json(&rendered)?;
         let results = results(&sarif)?;
 
@@ -1341,7 +1395,8 @@ weakly_gripped = "note"
     #[test]
     fn sarif_output_is_valid_json() -> Result<(), String> {
         let findings = render_findings_sarif(&sample_output(), &RiprConfig::default(), &[]);
-        let seams = render_repo_seams_sarif(&[weakly_gripped_classified()], &RiprConfig::default());
+        let seams =
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
 
         let _ = parse_json(&findings)?;
         let _ = parse_json(&seams)?;
@@ -1354,6 +1409,53 @@ weakly_gripped = "note"
         assert!(rendered.contains("weakly_exposed"));
         assert!(rendered.contains("static exposure"));
         assert!(rendered.contains("equality boundary is absent"));
+    }
+
+    #[test]
+    fn sarif_repo_seams_discloses_seam_limit_in_run_properties() -> Result<(), String> {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let info = SeamLimitInfo {
+            analyzed: 7,
+            total: 2000,
+            source: SeamLimitSource::Default,
+        };
+        let rendered = render_repo_seams_sarif(
+            &[weakly_gripped_classified()],
+            Some(&info),
+            &RiprConfig::default(),
+        );
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+        assert_eq!(
+            props["run_status"], "seam_limit_applied",
+            "run_status missing in properties:\n{sarif}"
+        );
+        let limitations = props["limitations"]
+            .as_array()
+            .ok_or("limitations array missing")?;
+        assert_eq!(limitations.len(), 1);
+        assert_eq!(limitations[0]["category"], "repo_seam_limit_applied");
+        assert_eq!(limitations[0]["seams_analyzed"], 7);
+        assert_eq!(limitations[0]["seams_total"], 2000);
+        assert_eq!(limitations[0]["control"], "RIPR_REPO_EXPOSURE_SEAM_LIMIT");
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_repo_seams_shows_complete_run_status_when_no_cap() -> Result<(), String> {
+        let rendered =
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+        assert_eq!(
+            props["run_status"], "complete",
+            "run_status complete missing in:\n{sarif}"
+        );
+        assert!(
+            props["limitations"].is_null(),
+            "limitations must be absent when no cap fired:\n{sarif}"
+        );
+        Ok(())
     }
 
     fn parse_config(text: &str) -> Result<RiprConfig, String> {

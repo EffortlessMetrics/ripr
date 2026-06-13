@@ -525,6 +525,7 @@ fn push_classified_json(
 /// words per RIPR-SPEC-0005 § Static-Language Boundaries.
 pub(crate) fn render_repo_exposure_md(
     classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
     ts_guidance: Option<&TsFullRepoGuidance>,
 ) -> String {
     let metrics = ExposureMetrics::from(classified);
@@ -551,17 +552,35 @@ pub(crate) fn render_repo_exposure_md(
         ));
     }
 
-    // Emit TypeScript diff-first guidance before the empty-seams bail-out
-    // so the disclosure is visible even when the inventory is empty.
-    if let Some(guidance) = ts_guidance {
+    let has_limitations = limit_info.is_some() || ts_guidance.is_some();
+    if has_limitations {
         out.push_str("\n## Limitations\n\n");
-        out.push_str(&format!(
-            "**{}** (ts_file_count: {})\n\n",
-            TsFullRepoGuidance::CATEGORY,
-            guidance.ts_file_count,
-        ));
-        out.push_str(TsFullRepoGuidance::REPAIR_ROUTE);
-        out.push('\n');
+        // Seam-limit disclosure: emit only when a real cap fired.
+        if let Some(info) = limit_info {
+            let control = match info.source {
+                SeamLimitSource::Default => {
+                    "set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or use `ripr check --diff` to scope the run"
+                }
+                SeamLimitSource::Configured => {
+                    "remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or use `ripr check --diff`"
+                }
+            };
+            out.push_str(&format!(
+                "> Partial scan: analyzed {} of {} seams (seam_limit_applied; {}).\n\n",
+                info.analyzed, info.total, control,
+            ));
+        }
+        // Emit TypeScript diff-first guidance before the empty-seams bail-out
+        // so the disclosure is visible even when the inventory is empty.
+        if let Some(guidance) = ts_guidance {
+            out.push_str(&format!(
+                "**{}** (ts_file_count: {})\n\n",
+                TsFullRepoGuidance::CATEGORY,
+                guidance.ts_file_count,
+            ));
+            out.push_str(TsFullRepoGuidance::REPAIR_ROUTE);
+            out.push('\n');
+        }
     }
 
     if classified.is_empty() {
@@ -1059,7 +1078,7 @@ mod tests {
 
     #[test]
     fn markdown_renders_summary_table_and_top_gaps() {
-        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None);
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None);
         assert!(md.contains("# ripr repo exposure report"));
         assert!(md.contains("## Summary"));
         assert!(md.contains("| seams_total | 1 |"));
@@ -1072,7 +1091,7 @@ mod tests {
 
     #[test]
     fn markdown_explains_when_inventory_is_empty() {
-        let md = render_repo_exposure_md(&[], None);
+        let md = render_repo_exposure_md(&[], None, None);
         assert!(md.contains("repo seam inventory is empty"));
     }
 
@@ -1082,7 +1101,7 @@ mod tests {
         // the Top gaps section empty.
         let mut entry = weakly_gripped_classified();
         entry.class = SeamGripClass::StronglyGripped;
-        let md = render_repo_exposure_md(&[entry], None);
+        let md = render_repo_exposure_md(&[entry], None, None);
         assert!(md.contains("No headline-eligible seams"));
     }
 
@@ -1090,7 +1109,7 @@ mod tests {
     fn markdown_uses_static_exposure_vocabulary() {
         // Pin seam evidence framing strings; the repo-wide
         // check-static-language gate enforces forbidden-token absence.
-        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None);
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None);
         assert!(md.contains("ripr repo exposure report"));
         assert!(md.contains("Runtime confirmation"));
         assert!(md.contains("cargo-mutants"));
@@ -1099,7 +1118,7 @@ mod tests {
     #[test]
     fn markdown_emits_ts_guidance_section_when_ts_workspace_and_empty_seams() {
         let guidance = TsFullRepoGuidance { ts_file_count: 5 };
-        let md = render_repo_exposure_md(&[], Some(&guidance));
+        let md = render_repo_exposure_md(&[], None, Some(&guidance));
         assert!(
             md.contains("typescript_diff_first"),
             "guidance category missing in:\n{md}"
@@ -1127,10 +1146,74 @@ mod tests {
     #[test]
     fn markdown_does_not_emit_ts_guidance_when_rust_seams_present() {
         // When seams exist (Rust workspace), guidance must not fire.
-        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None);
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None);
         assert!(
             !md.contains("typescript_diff_first"),
             "guidance must not appear for Rust workspace: {md}"
+        );
+    }
+
+    #[test]
+    fn markdown_discloses_seam_limit_when_cap_fires() {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let info = SeamLimitInfo {
+            analyzed: 5,
+            total: 1000,
+            source: SeamLimitSource::Default,
+        };
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], Some(&info), None);
+        assert!(
+            md.contains("Partial scan"),
+            "partial scan disclosure missing in:\n{md}"
+        );
+        assert!(
+            md.contains("analyzed 5 of 1000 seams"),
+            "seam counts missing in:\n{md}"
+        );
+        assert!(
+            md.contains("seam_limit_applied"),
+            "seam_limit_applied token missing in:\n{md}"
+        );
+        assert!(
+            md.contains("RIPR_REPO_EXPOSURE_SEAM_LIMIT"),
+            "control env var missing in:\n{md}"
+        );
+        assert!(
+            md.contains("## Limitations"),
+            "Limitations section header missing in:\n{md}"
+        );
+    }
+
+    #[test]
+    fn markdown_does_not_disclose_seam_limit_when_no_cap_fires() {
+        // Fail-closed: no limit_info → no partial-scan line.
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None);
+        assert!(
+            !md.contains("Partial scan"),
+            "partial scan must not appear without a real cap: {md}"
+        );
+        assert!(
+            !md.contains("seam_limit_applied"),
+            "seam_limit_applied must not appear without a real cap: {md}"
+        );
+    }
+
+    #[test]
+    fn markdown_discloses_seam_limit_configured_source() {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let info = SeamLimitInfo {
+            analyzed: 3,
+            total: 500,
+            source: SeamLimitSource::Configured,
+        };
+        let md = render_repo_exposure_md(&[], Some(&info), None);
+        assert!(
+            md.contains("Partial scan"),
+            "partial scan disclosure missing in:\n{md}"
+        );
+        assert!(
+            md.contains("analyzed 3 of 500 seams"),
+            "seam counts missing in:\n{md}"
         );
     }
 
@@ -1150,7 +1233,7 @@ mod tests {
             "JSON missing relation_confidence: {json}"
         );
 
-        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None);
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None);
         assert!(
             md.contains("direct_owner_call"),
             "Markdown missing direct_owner_call tag: {md}"
@@ -1170,7 +1253,7 @@ mod tests {
             "JSON missing helper_owner_call relation_reason: {json}"
         );
 
-        let md = render_repo_exposure_md(&[classified], None);
+        let md = render_repo_exposure_md(&[classified], None, None);
         assert!(
             md.contains("helper_owner_call"),
             "Markdown missing helper_owner_call tag: {md}"

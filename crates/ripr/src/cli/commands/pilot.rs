@@ -114,7 +114,11 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     })?;
     std::fs::write(
         &artifacts.repo_exposure_md,
-        output::repo_exposure::render_repo_exposure_md(&classified, ts_guidance.as_ref()),
+        output::repo_exposure::render_repo_exposure_md(
+            &classified,
+            limit_info.as_ref(),
+            ts_guidance.as_ref(),
+        ),
     )
     .map_err(|err| {
         format!(
