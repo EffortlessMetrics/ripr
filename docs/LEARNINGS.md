@@ -1172,3 +1172,50 @@ reads another component's output by key, pin the key against a real emitted
 sample (a committed golden `check.json`), not a hand-written fixture — and when a
 new consumer is added (the classification-distribution counter), make it read the
 *verified* key even if a sibling reads a legacy one. Tracked as a fix in #1191.
+
+## 2026-06-13: Measured on real code — `ripr` is safe, and noisy for one reason
+
+The Tier A sweep and Tier B judging across eight real external Python repos
+(recorded on issue #1160) gave the first numbers on the two error directions, and
+they are decisive about where `ripr` actually stands:
+
+- **false-`exposed` (silent over-credit): zero**, on every repo. The conservative
+  `exposed` rule — credit only a strong oracle that observes the changed sink —
+  holds on code we did not author. This is the load-bearing result: `ripr` does
+  not give false confidence.
+- **false-actionable (over-suggestion): common**, and from a single cause. Every
+  one (tenacity, anyio, structlog) was an oracle that *does* discriminate the
+  change but reaches the owner through an **indirect call** the syntax-first
+  analysis cannot trace: a local binding (`r.stop = stop_after_attempt(3)`), a
+  function-result binding (`iterator = repeat(x, 0)`), an inline construct-call
+  (`LogfmtRenderer()(...)`), or framework dispatch (a jinja template filter). The
+  jinja case is genuinely opaque and a defensible limitation; the others are
+  tractable.
+
+So the honest support-tier verdict is **safe but imprecise**: trustworthy not to
+over-credit, but currently low signal-to-noise on idiomatic real-world code. The
+single precision lever is tracing indirect calls in **relation + oracle
+extraction** (not sink-alignment). A `usable` claim must caveat this; the safety
+half — the harder half — is already in hand. The error *shape* is what matters:
+`ripr` errs visible-and-conservative (over-suggest), never silent-and-dangerous
+(over-credit).
+
+## 2026-06-13: Every layer of `ripr` can fail the way `ripr` exists to catch
+
+`ripr` catches "a test that reaches the behavior but does not discriminate it."
+This session that exact shape appeared at every layer of *building* `ripr`: a CI
+gate that runs but is not required (reaches, does not block); a parser keyed on
+`class` while the artifact emits `classification` (green, checks nothing); a
+sweep over zero repos reporting a vacuous pass (no denominator); a worktree-
+isolated implementation plan rated "go" that *assumed* a strong oracle running
+the binary disproved (reached the files, discriminated nothing); and `ripr`'s own
+indirect-call false-actionable. One failure: **a pass without both a denominator
+and a discriminator** — the "vacuous pass" family already in this log. The
+counter-discipline is one rule applied everywhere: **verify the artifact, not the
+proxy.** Run the binary, not the code-reading. Read the required check's result,
+not the merge button. Diff the golden, not "it passed." Treat an agent plan,
+SHA, or diff as a lead, not a fact. Every time it was honored this session it
+paid off; the two times a proxy was trusted (an "infra" failure that was a real
+golden drift; a plan that assumed a non-existent oracle) it cost a cycle. The
+full narrative lives in `docs/STATIC_EXPOSURE_MODEL.md`
+("The discriminator test, turned inward").

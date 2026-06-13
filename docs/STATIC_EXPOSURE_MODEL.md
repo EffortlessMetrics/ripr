@@ -215,3 +215,54 @@ Escalate to real mutation testing when:
 - external state is involved
 - static evidence and human intuition disagree
 - the finding would block a release decision
+
+## The discriminator test, turned inward
+
+`ripr` exists to catch one failure shape: a test that *reaches* the changed
+behavior but does not *discriminate* it — a green signal that says nothing about
+whether the behavior is actually checked. Building `ripr` against real external
+code surfaced that same shape at every other layer of the system, which is the
+sharpest thing the project has learned about itself:
+
+- A CI gate that *runs* but is not *required* reaches the regression without
+  blocking the merge — a green-looking gate that discriminates nothing.
+- A consumer that reads the wrong output key (a parser keyed on `class` when the
+  artifact emits `classification`) stays green against its own fixture while
+  blind to the live output.
+- A sweep that analyzed zero repositories reports a vacuous pass — a success
+  state with no denominator.
+- A validated implementation plan can *assume* a strong oracle that running the
+  binary shows does not exist — a plan that reaches the right files and
+  discriminates nothing.
+- And `ripr` itself under-credits a discriminating test when the oracle reaches
+  the owner only through an indirect call (a local binding, an inline
+  construct-call, framework dispatch) that syntax-first analysis cannot trace.
+
+These are one failure: **a pass without both a denominator and a discriminator.**
+The discipline that counters it is identical everywhere — verify the *artifact*,
+not the proxy for it. Run the binary; do not trust the code-reading. Read the
+required check's result; do not trust the merge button. Diff the golden; do not
+trust "it passed." The report, the plan, the gate, and the green check are all
+proxies; the artifact is ground truth.
+
+### Two error rates, measured on real code
+
+The Tier A sweep and Tier B judging across eight real external Python
+repositories put numbers on the two error directions from
+[Two error rates](#two-error-rates):
+
+- **false-`exposed`** (silent over-credit — calling a behavior covered when no
+  oracle discriminates it): **zero** across the corpus. `ripr` does not hand out
+  false confidence; the conservative `exposed` rule held on code it did not
+  author.
+- **false-actionable** (over-suggestion — routing a repair for a behavior that a
+  test already discriminates): common, and traced to one cause — `ripr` cannot
+  follow a discriminating oracle back to its owner through an indirect call. The
+  discriminating test exists; the syntax-first analysis cannot see it.
+
+The *shape* of the error is load-bearing: `ripr` errs toward the visible,
+conservative side (over-suggest) and away from the silent, dangerous side
+(over-credit). It is **safe** — and currently **imprecise** on idiomatic code, a
+precision ceiling set by indirect-call blindness in relation and oracle
+extraction, not by the exposure model. Safety is the harder half and it is in
+hand; precision is the tractable, bounded next step.
