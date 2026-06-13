@@ -35,7 +35,8 @@ Support-tier impact:
 
 - **No tier change.** TypeScript stays `preview_advisory_only`. Projecting the
   full work-packet does not promote the language. The packet carries
-  `authority_boundary: "preview_advisory_only"` throughout.
+  `authority_boundary: "preview_advisory_only"` throughout. TypeScript's support
+  tier remains governed by [Support tiers](../status/SUPPORT_TIERS.md).
 
 Policy impact:
 
