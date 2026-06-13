@@ -269,7 +269,34 @@ pub struct Finding {
     /// Structured static limitation kind for preview evidence when the
     /// adapter can name one. Omitted when no static limit is known.
     pub static_limit_kind: Option<crate::domain::StaticLimitKind>,
+    /// Significant tokens of the changed line — the *changed sink* the change
+    /// touches. Additive optional per RIPR-SPEC-0028; populated by the Python
+    /// preview adapter so a consumer can see what an oracle would need to
+    /// observe. Omitted by adapters that do not compute it.
+    pub changed_sink: Option<String>,
+    /// Assertion text of the strongest related-test oracle the adapter
+    /// inspected when deciding sink alignment. Additive optional per
+    /// RIPR-SPEC-0028; omitted when no strong oracle was observed.
+    pub observed_sink: Option<String>,
+    /// Which token category the strongest oracle matched, surfacing *why* a
+    /// strong oracle did or did not credit `exposed`. One of
+    /// [`ORACLE_ALIGNMENT_VALUES`]. Additive optional per RIPR-SPEC-0028;
+    /// omitted by adapters that do not compute sink alignment.
+    pub oracle_alignment: Option<String>,
+    /// Stable snake_case reason token explaining the `oracle_alignment` value.
+    /// Additive optional per RIPR-SPEC-0028.
+    pub alignment_reason: Option<String>,
 }
+
+/// Controlled enum values for [`Finding::oracle_alignment`]. Registered in
+/// `policy/output_contracts.txt` and documented in `docs/OUTPUT_SCHEMA.md`.
+pub const ORACLE_ALIGNMENT_VALUES: [&str; 5] = [
+    "direct",
+    "alias",
+    "changed_sink_token",
+    "orthogonal",
+    "unknown",
+];
 
 impl Finding {
     pub fn unknown_has_stop_reason(&self) -> bool {

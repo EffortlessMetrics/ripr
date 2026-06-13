@@ -34,6 +34,11 @@ ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit
 ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
 ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
 ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+oracle_alignment|alias|Python oracle observes an import alias of the changed owner.
+oracle_alignment|changed_sink_token|Python oracle observes a changed-sink token from the changed line.
+oracle_alignment|direct|Python oracle observes the changed owner by name.
+oracle_alignment|orthogonal|Python strong oracle observes a different sink than the change.
+oracle_alignment|unknown|No strong Python oracle observed the changed sink.
 oracle_kind|broad_error|Oracle kind value.
 oracle_kind|exact_error_variant|Oracle kind value.
 oracle_kind|exact_value|Oracle kind value.

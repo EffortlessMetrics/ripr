@@ -62,7 +62,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "unresolved_pytest_fixture"
+      "static_limit_kind": "unresolved_pytest_fixture",
+      "changed_sink": "amount, threshold",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

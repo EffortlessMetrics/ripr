@@ -2414,3 +2414,140 @@ fn strong_oracle_observes_owner_resolves_import_alias() {
         std::slice::from_ref(&alias_test)
     ));
 }
+
+fn align_owner(name: &str, qualified: &str) -> PythonOwner {
+    PythonOwner {
+        name: name.to_string(),
+        qualified_name: qualified.to_string(),
+        file: PathBuf::from("owner.py"),
+        start_line: 1,
+        end_line: 2,
+        owner_kind: None,
+        decorators: Vec::new(),
+        imports: Vec::new(),
+        cli_receiver_names: Vec::new(),
+        route_paths: Vec::new(),
+        dynamic_route_decorators: Vec::new(),
+    }
+}
+
+fn align_strong(oracle: &str) -> RelatedTest {
+    RelatedTest {
+        name: "t".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        oracle: Some(oracle.to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+    }
+}
+
+#[test]
+fn sink_alignment_is_direct_when_oracle_names_owner() {
+    let owner = align_owner("apply_discount", "apply_discount");
+    let line = "return price * (1 - rate)";
+    let related = [align_strong("assert apply_discount(100, 0.1) == 90")];
+    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    assert_eq!(a.oracle_alignment, "direct");
+    assert_eq!(a.alignment_reason, "strong_oracle_observes_owner_name");
+    assert_eq!(
+        a.observed_sink.as_deref(),
+        Some("assert apply_discount(100, 0.1) == 90")
+    );
+    assert!(a.observes());
+}
+
+#[test]
+fn sink_alignment_is_alias_when_oracle_uses_import_alias() {
+    let owner = align_owner("apply_tax", "apply_tax");
+    let line = "return amount + 2";
+    let related = [align_strong("assert taxed(10) == 12")];
+    let alias_test = PythonTest {
+        name: "test_alias".to_string(),
+        qualified_name: "test_alias".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        body_text: String::new(),
+        imports: vec![PythonImport {
+            imported: "apply_tax".to_string(),
+            alias: "taxed".to_string(),
+        }],
+        decorators: Vec::new(),
+        fixtures: Vec::new(),
+        parametrized: false,
+        framework: "pytest",
+        assertions: Vec::new(),
+    };
+    let a = classify_sink_alignment(&owner, line, &related, std::slice::from_ref(&alias_test));
+    assert_eq!(a.oracle_alignment, "alias");
+    assert_eq!(a.alignment_reason, "strong_oracle_observes_import_alias");
+    assert!(a.observes());
+}
+
+#[test]
+fn sink_alignment_is_changed_sink_token_when_oracle_observes_changed_literal() {
+    // Oracle observes a changed-sink identifier (`rate`) but not the owner name.
+    let owner = align_owner("compute", "compute");
+    let line = "return base * rate";
+    let related = [align_strong("assert result.rate == 0.1")];
+    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    assert_eq!(a.oracle_alignment, "changed_sink_token");
+    assert_eq!(
+        a.alignment_reason,
+        "strong_oracle_observes_changed_sink_token"
+    );
+    assert!(a.observes());
+}
+
+#[test]
+fn sink_alignment_is_orthogonal_for_strong_oracle_on_different_sink() {
+    // Strong oracle observes a wrapper return — neither the owner nor a changed sink.
+    let owner = align_owner("apply_discount", "apply_discount");
+    let line = "return price * (1 - rate)";
+    let related = [align_strong("assert run(lambda: 5) == 5")];
+    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    assert_eq!(a.oracle_alignment, "orthogonal");
+    assert_eq!(a.alignment_reason, "strong_oracle_observes_different_sink");
+    // The decision must stay "not observed" — this is the over-credit guard.
+    assert!(!a.observes());
+}
+
+#[test]
+fn sink_alignment_is_unknown_without_strong_oracle() {
+    let owner = align_owner("apply_discount", "apply_discount");
+    let line = "return price * (1 - rate)";
+    let weak = [RelatedTest {
+        oracle_strength: OracleStrength::Weak,
+        ..align_strong("assert apply_discount(100, 0.1) is not None")
+    }];
+    let a = classify_sink_alignment(&owner, line, &weak, &[]);
+    assert_eq!(a.oracle_alignment, "unknown");
+    assert_eq!(a.alignment_reason, "no_strong_oracle");
+    assert_eq!(a.observed_sink, None);
+    assert!(!a.observes());
+}
+
+#[test]
+fn sink_alignment_for_module_owner_preserves_observes_decision() {
+    // `<module>` owner with no usable token: the prior boolean returned `true`,
+    // so the derived decision must stay `observes` even though alignment reads
+    // `unknown`. This is the one place `unknown` does not imply not-observed.
+    let owner = align_owner("<module>", "<module>");
+    let line = "x = 1";
+    let related = [align_strong("assert y == 2")];
+    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    assert_eq!(a.oracle_alignment, "unknown");
+    assert_eq!(a.alignment_reason, "module_owner_no_sink_token");
+    assert!(a.observes());
+}
+
+#[test]
+fn sink_alignment_changed_sink_join_format() {
+    let owner = align_owner("compute", "compute");
+    let line = "return price * rate";
+    let a = classify_sink_alignment(&owner, line, &[], &[]);
+    // Significant tokens of the changed line, deduped and comma-joined.
+    assert_eq!(a.changed_sink.as_deref(), Some("price, rate"));
+    // No related test -> no strong oracle -> unknown.
+    assert_eq!(a.oracle_alignment, "unknown");
+}

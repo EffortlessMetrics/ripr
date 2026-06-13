@@ -445,6 +445,40 @@ The evidence-first fields are additive in schema `0.2`:
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
   integrations.
+- `changed_sink`, `observed_sink`, `oracle_alignment`, and `alignment_reason`
+  are additive optional fields (RIPR-SPEC-0028) that surface the Python
+  classifier's **sink-alignment** decision — *why* a strong oracle did or did
+  not credit `exposed`. They are emitted only on `language == "python"` findings
+  and are absent on Rust and TypeScript findings; they do **not** bump
+  `schema_version` (still `0.2`). `changed_sink` is the comma-joined significant
+  tokens of the changed line; `observed_sink` is the strongest related oracle's
+  assertion text; `alignment_reason` is a stable snake_case token. The
+  `oracle_alignment` value is a controlled enum (`ORACLE_ALIGNMENT_VALUES`):
+  - `direct` — a strong oracle observes the changed owner by name.
+  - `alias` — a strong oracle observes an import alias of the owner.
+  - `changed_sink_token` — a strong oracle observes a changed-sink token from
+    the changed line, but not the owner name.
+  - `orthogonal` — a strong oracle exists but observes a different sink than the
+    change (the fail-closed `weakly_exposed` branch); `alignment_reason` is
+    `strong_oracle_observes_different_sink`.
+  - `unknown` — no strong oracle observed the changed sink (or a `<module>`
+    owner with no usable token).
+
+  Example — an `exposed` finding aligned directly, and a `weakly_exposed`
+  finding whose strong oracle is orthogonal:
+
+  ```json
+  { "class": "exposed", "language": "python",
+    "changed_sink": "amount, threshold",
+    "observed_sink": "assert apply_discount(100, 100) == 90",
+    "oracle_alignment": "direct",
+    "alignment_reason": "strong_oracle_observes_owner_name" }
+  { "class": "weakly_exposed", "language": "python",
+    "changed_sink": "amount, threshold",
+    "observed_sink": "assert run_retry(lambda: 'x') == 'x'",
+    "oracle_alignment": "orthogonal",
+    "alignment_reason": "strong_oracle_observes_different_sink" }
+  ```
 - `repair_placement` is an additive optional object for preview-language
   findings that can statically name a bounded test location and command before
   full repair-card projection. It currently appears for direct weak Python

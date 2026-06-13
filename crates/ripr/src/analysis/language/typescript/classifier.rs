@@ -343,6 +343,10 @@ pub(crate) fn classify_change(
         language_status: Some(LanguageStatus::Preview),
         owner_kind: Some(owner.owner_kind),
         static_limit_kind: static_limit.map(|limit| limit.kind),
+        changed_sink: None,
+        observed_sink: None,
+        oracle_alignment: None,
+        alignment_reason: None,
     })
 }
 

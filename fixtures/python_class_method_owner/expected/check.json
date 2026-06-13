@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config[\"discount\"] + 1)`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "class_method"
+      "owner_kind": "class_method",
+      "changed_sink": "config, discount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

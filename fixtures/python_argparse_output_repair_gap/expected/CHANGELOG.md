@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0028: surface Python oracle sink-alignment fields (changed_sink/observed_sink/oracle_alignment/alignment_reason); additive, no classification change
+
+Command:
+`cargo xtask goldens bless python_argparse_output_repair_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

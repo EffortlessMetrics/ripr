@@ -120,7 +120,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

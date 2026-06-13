@@ -61,7 +61,10 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "static_limit_kind": "metaprogramming"
+      "static_limit_kind": "metaprogramming",
+      "changed_sink": "InvoiceRecord, metaclass, AuditMeta",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

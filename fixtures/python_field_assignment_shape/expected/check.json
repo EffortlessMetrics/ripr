@@ -74,7 +74,11 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "method"
+      "owner_kind": "method",
+      "changed_sink": "status, paid",
+      "observed_sink": "assert invoice.status == \"paid\"",
+      "oracle_alignment": "changed_sink_token",
+      "alignment_reason": "strong_oracle_observes_changed_sink_token"
     }
   ],
   "preview_languages": [

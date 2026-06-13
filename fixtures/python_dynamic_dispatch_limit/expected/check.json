@@ -62,7 +62,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "dynamic_dispatch"
+      "static_limit_kind": "dynamic_dispatch",
+      "changed_sink": "getattr, client, method_name",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

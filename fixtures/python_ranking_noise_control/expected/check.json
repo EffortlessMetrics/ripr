@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount, threshold",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     },
     {
       "id": "probe:src_b_observed.py:python_preview:3c7333c2",
@@ -192,7 +195,11 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "observed_sink": "assert calculate_fee(100) == 105",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
     },
     {
       "id": "probe:src_d_isolated.py:python_preview:557fe7cf",
@@ -254,7 +261,10 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     },
     {
       "id": "probe:src_a_dynamic.py:python_preview:01f806b7",
@@ -312,7 +322,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "dynamic_dispatch"
+      "static_limit_kind": "dynamic_dispatch",
+      "changed_sink": "getattr, client, method_name",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

@@ -62,7 +62,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "decorator_indirection"
+      "static_limit_kind": "decorator_indirection",
+      "changed_sink": "client, total_with_retry",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

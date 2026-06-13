@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "method"
+      "owner_kind": "method",
+      "changed_sink": "amount, threshold",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

@@ -62,7 +62,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "metaprogramming"
+      "static_limit_kind": "metaprogramming",
+      "changed_sink": "type, name, kind, preview",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

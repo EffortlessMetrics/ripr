@@ -3948,27 +3948,100 @@ fn push_identifier(out: &mut Vec<String>, current: &mut String, stop: &[&str]) {
     current.clear();
 }
 
-/// Whether a strong related-test oracle actually observes the changed behavior's
-/// sink — not merely reaches the owner. Reach-plus-strong-oracle is not enough:
-/// a strong oracle that asserts a *different* value (e.g. a wrapper's return)
-/// does not discriminate the change. Alignment is accepted when a strong
-/// oracle's assertion references the owner (by name or import alias) or the
-/// changed sink (identifiers/literals from the changed line). Module owners and
-/// owners with no usable token keep prior behavior.
-fn strong_oracle_observes_owner(
+/// The visible read-out of the sink-alignment decision. `ripr`'s value over
+/// coverage is that a strong oracle credits `exposed` only when it *observes the
+/// changed sink*, not merely reaches the owner. This carries which token
+/// category the strongest oracle matched so a consumer can see *why* a strong
+/// oracle did or did not credit `exposed`. It is a pure read-out: the boolean
+/// the classifier uses is derived from `oracle_alignment` (see
+/// [`SinkAlignment::observes`]), so the surfaced value can never disagree with
+/// the decision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SinkAlignment {
+    changed_sink: Option<String>,
+    observed_sink: Option<String>,
+    /// One of `direct | alias | changed_sink_token | orthogonal | unknown`.
+    oracle_alignment: String,
+    alignment_reason: String,
+}
+
+impl SinkAlignment {
+    /// The decision the classifier uses, derived from the alignment so the two
+    /// can never drift. A strong oracle observes the owner when the alignment is
+    /// `direct`/`alias`/`changed_sink_token`, OR in the legacy module-owner /
+    /// empty-token case (alignment `unknown`, reason `module_owner_no_sink_token`)
+    /// which historically returned `true` — the one place where `unknown` does
+    /// not imply not-observed, preserved to keep the prior decision unchanged.
+    fn observes(&self) -> bool {
+        matches!(
+            self.oracle_alignment.as_str(),
+            "direct" | "alias" | "changed_sink_token"
+        ) || self.alignment_reason == "module_owner_no_sink_token"
+    }
+
+    /// The alignment surfaced when the classifier did not reach a strong-oracle
+    /// branch (no-static-path, static-limit, heuristic-only, or weak-oracle
+    /// findings never compute owner alignment). `changed_sink` is retained
+    /// because it describes the changed line regardless of the test side.
+    fn unknown(changed_sink: Option<String>) -> Self {
+        SinkAlignment {
+            changed_sink,
+            observed_sink: None,
+            oracle_alignment: "unknown".to_string(),
+            alignment_reason: "no_strong_oracle".to_string(),
+        }
+    }
+}
+
+/// Classify whether a strong related-test oracle actually observes the changed
+/// behavior's sink — and *which* token category matched. Reach-plus-strong-oracle
+/// is not enough: a strong oracle that asserts a *different* value (e.g. a
+/// wrapper's return) does not discriminate the change. The three token groups
+/// (owner name, import alias, changed-sink tokens) are probed in order against
+/// the strongest related oracles, mirroring the prior boolean exactly so the
+/// derived decision is unchanged.
+fn classify_sink_alignment(
     owner: &PythonOwner,
     line_text: &str,
     related: &[RelatedTest],
     all_tests: &[PythonTest],
-) -> bool {
-    let mut tokens: Vec<String> = owner
+) -> SinkAlignment {
+    // `changed_sink` describes the changed line; deduped, joined for display.
+    let change_tokens = significant_change_tokens(line_text);
+    let mut change_display: Vec<String> = Vec::new();
+    for token in &change_tokens {
+        if !change_display.contains(token) {
+            change_display.push(token.clone());
+        }
+    }
+    let changed_sink = if change_display.is_empty() {
+        None
+    } else {
+        Some(change_display.join(", "))
+    };
+
+    // The strongest strong-rank related oracle is the one the decision inspects.
+    let strong_tests: Vec<&RelatedTest> = related
+        .iter()
+        .filter(|test| test.oracle_strength.rank() >= OracleStrength::Strong.rank())
+        .collect();
+    if strong_tests.is_empty() {
+        return SinkAlignment::unknown(changed_sink);
+    }
+    let observed_sink = strong_tests
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+        .and_then(|test| test.oracle.clone());
+
+    // Owner-name tokens.
+    let mut owner_tokens: Vec<String> = owner
         .qualified_name
         .split('.')
         .filter(|token| !token.is_empty() && *token != "<module>")
         .map(str::to_string)
         .collect();
     if !owner.name.is_empty() && owner.name != "<module>" {
-        tokens.push(owner.name.clone());
+        owner_tokens.push(owner.name.clone());
     }
     // Import aliases of the owner: `from m import owner as alias` makes the test
     // assert on `alias(...)`, which still observes the owner's output.
@@ -3977,27 +4050,74 @@ fn strong_oracle_observes_owner(
         .rsplit('.')
         .next()
         .unwrap_or(owner.name.as_str());
+    let mut alias_tokens: Vec<String> = Vec::new();
     for test in all_tests {
         for import in &test.imports {
             if (import.imported == owner_simple || import.imported == owner.name)
                 && !import.alias.is_empty()
             {
-                tokens.push(import.alias.clone());
+                alias_tokens.push(import.alias.clone());
             }
         }
     }
-    tokens.extend(significant_change_tokens(line_text));
-    tokens.retain(|token| token.len() >= 2);
-    if tokens.is_empty() {
-        return true;
+    let mut change_only = change_tokens.clone();
+    owner_tokens.retain(|token| token.len() >= 2);
+    alias_tokens.retain(|token| token.len() >= 2);
+    change_only.retain(|token| token.len() >= 2);
+
+    // Module owner / no usable token: the prior boolean returned `true` here, so
+    // the decision must stay `observes`. Map to `unknown` with the reason that
+    // `observes()` special-cases back to true.
+    if owner_tokens.is_empty() && alias_tokens.is_empty() && change_only.is_empty() {
+        return SinkAlignment {
+            changed_sink,
+            observed_sink,
+            oracle_alignment: "unknown".to_string(),
+            alignment_reason: "module_owner_no_sink_token".to_string(),
+        };
     }
-    related.iter().any(|test| {
-        test.oracle_strength.rank() >= OracleStrength::Strong.rank()
-            && test
-                .oracle
+
+    let any_strong_observes = |group: &[String]| -> bool {
+        strong_tests.iter().any(|test| {
+            test.oracle
                 .as_deref()
-                .is_some_and(|text| tokens.iter().any(|token| text.contains(token.as_str())))
-    })
+                .is_some_and(|text| group.iter().any(|token| text.contains(token.as_str())))
+        })
+    };
+    let (oracle_alignment, alignment_reason) = if any_strong_observes(&owner_tokens) {
+        ("direct", "strong_oracle_observes_owner_name")
+    } else if any_strong_observes(&alias_tokens) {
+        ("alias", "strong_oracle_observes_import_alias")
+    } else if any_strong_observes(&change_only) {
+        (
+            "changed_sink_token",
+            "strong_oracle_observes_changed_sink_token",
+        )
+    } else {
+        ("orthogonal", "strong_oracle_observes_different_sink")
+    };
+    SinkAlignment {
+        changed_sink,
+        observed_sink,
+        oracle_alignment: oracle_alignment.to_string(),
+        alignment_reason: alignment_reason.to_string(),
+    }
+}
+
+/// Whether a strong related-test oracle actually observes the changed behavior's
+/// sink — not merely reaches the owner. Derived from [`classify_sink_alignment`]
+/// so the boolean and the surfaced `oracle_alignment` can never disagree. Now a
+/// `#[cfg(test)]` regression helper: production code reads the alignment directly
+/// via [`SinkAlignment::observes`], and the existing boolean tests pin that the
+/// derivation stays equivalent to the prior decision.
+#[cfg(test)]
+fn strong_oracle_observes_owner(
+    owner: &PythonOwner,
+    line_text: &str,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> bool {
+    classify_sink_alignment(owner, line_text, related, all_tests).observes()
 }
 
 fn classify_change(
@@ -4010,6 +4130,7 @@ fn classify_change(
     let owner = owner_for_changed_line(file, line, owners)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
+    let alignment = classify_sink_alignment(owner, line_text, &related, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
@@ -4074,9 +4195,7 @@ fn classify_change(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank()
-        && strong_oracle_observes_owner(owner, line_text, &related, all_tests)
-    {
+    } else if strongest_strength >= OracleStrength::Strong.rank() && alignment.observes() {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -4116,6 +4235,22 @@ fn classify_change(
     if let Some(limit) = &static_limit {
         missing.push(limit.missing.clone());
     }
+
+    // Surface the sink alignment only where the classifier actually consulted a
+    // strong oracle: the `exposed` branch and the strong-but-orthogonal
+    // `weakly_exposed` branch. No-static-path, static-limit, heuristic-only, and
+    // weak-oracle findings never computed owner alignment, so they read
+    // `unknown` (the `changed_sink` of the changed line is still retained).
+    let surfaced_alignment = if matches!(class, ExposureClass::Exposed)
+        || (matches!(class, ExposureClass::WeaklyExposed)
+            && static_limit.is_none()
+            && has_oracle_eligible_relation
+            && strongest_strength >= OracleStrength::Strong.rank())
+    {
+        alignment
+    } else {
+        SinkAlignment::unknown(alignment.changed_sink.clone())
+    };
 
     let id_path: String = file
         .display()
@@ -4369,6 +4504,10 @@ fn classify_change(
         language_status: Some(LanguageStatus::Preview),
         owner_kind: owner.owner_kind,
         static_limit_kind: static_limit.map(|limit| limit.kind),
+        changed_sink: surfaced_alignment.changed_sink,
+        observed_sink: surfaced_alignment.observed_sink,
+        oracle_alignment: Some(surfaced_alignment.oracle_alignment),
+        alignment_reason: Some(surfaced_alignment.alignment_reason),
     })
 }
 

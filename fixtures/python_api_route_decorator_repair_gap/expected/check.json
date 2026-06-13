@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `response.status_code == 422`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "response, status_code",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

@@ -14,7 +14,8 @@ pub use evidence::{
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
-    MissingDiscriminatorFact, Probe, ProbeFamily, RelatedTest, StopReason, ValueContext, ValueFact,
+    MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest, StopReason,
+    ValueContext, ValueFact,
 };
 pub use summary::Summary;
 pub use support::{ProbeId, SourceLocation, SymbolId};

@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains \"shipment queued\"`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "click, echo, shipment, queued, shipment queued",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

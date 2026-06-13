@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "status, paid, invoice_id, id",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

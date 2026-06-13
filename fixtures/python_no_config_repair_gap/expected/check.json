@@ -122,7 +122,10 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `days == minimum_days`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "days, minimum_days",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

@@ -74,7 +74,10 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "module_function"
+      "owner_kind": "module_function",
+      "changed_sink": "BASE_DISCOUNT",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

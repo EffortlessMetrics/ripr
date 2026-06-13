@@ -62,7 +62,10 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "mocked_module"
+      "static_limit_kind": "mocked_module",
+      "changed_sink": "remote_total_with_tax",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
     }
   ],
   "preview_languages": [

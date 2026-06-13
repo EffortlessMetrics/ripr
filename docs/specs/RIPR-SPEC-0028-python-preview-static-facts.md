@@ -238,6 +238,31 @@ repair-card contract supplies the test shape, verify command, receipt command,
 and edit boundaries. Heuristic-only links, no related-test paths, and static
 limits must not emit repair guidance.
 
+### Sink alignment visibility
+
+The adapter already decides `exposed` vs `weakly_exposed` by whether a strong
+oracle observes the changed sink (the revealability rule above). It must also
+**surface** that decision so a consumer can see *why* a strong oracle did or did
+not credit `exposed`, via four additive optional output fields. They are a pure
+read-out: the boolean the classifier uses is derived from the surfaced
+`oracle_alignment`, so the visible value can never disagree with the decision.
+
+- `changed_sink` — the comma-joined significant tokens of the changed line.
+- `observed_sink` — the strongest related oracle's assertion text.
+- `oracle_alignment` — a controlled enum mapping to the existing branches:
+  `direct` / `alias` / `changed_sink_token` appear only on `exposed` findings
+  (strong oracle observes the owner name, an import alias, or a changed-sink
+  token); `orthogonal` appears only on the fail-closed `weakly_exposed` branch
+  (strong oracle observes a different sink); `unknown` covers every other
+  finding (no strong oracle, or a `<module>` owner with no usable token).
+- `alignment_reason` — a stable snake_case token explaining the value
+  (e.g. `strong_oracle_observes_different_sink`).
+
+These fields are advisory preview evidence; they do not change the
+classification and do not claim runtime maturity. The contract does not bump the
+JSON `schema_version`. Python's support tier remains governed by
+[Support tiers](../status/SUPPORT_TIERS.md).
+
 ## Required Evidence
 
 The Python preview contract is supported only when the implementation
