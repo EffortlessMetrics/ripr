@@ -3995,6 +3995,21 @@ impl SinkAlignment {
     }
 }
 
+/// Whether `token` appears in `text` as a whole Python identifier rather than a
+/// substring of a larger one. Without this, a common changed-sink token like
+/// `buffer` would spuriously "observe" an unrelated oracle that merely contains
+/// it (e.g. `buffered_stream` from a different class), over-crediting `exposed` —
+/// a confirmed false-exposed vector. Mirrors the identifier-boundary rule of
+/// [`has_identifier_boundary`]; whole words such as `key` in `Invalid key` still
+/// match, so genuine sink observation is preserved.
+fn oracle_text_observes_token(text: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    text.match_indices(token)
+        .any(|(idx, _)| has_identifier_boundary(text, idx, token.len()))
+}
+
 /// Classify whether a strong related-test oracle actually observes the changed
 /// behavior's sink — and *which* token category matched. Reach-plus-strong-oracle
 /// is not enough: a strong oracle that asserts a *different* value (e.g. a
@@ -4081,9 +4096,11 @@ fn classify_sink_alignment(
 
     let any_strong_observes = |group: &[String]| -> bool {
         strong_tests.iter().any(|test| {
-            test.oracle
-                .as_deref()
-                .is_some_and(|text| group.iter().any(|token| text.contains(token.as_str())))
+            test.oracle.as_deref().is_some_and(|text| {
+                group
+                    .iter()
+                    .any(|token| oracle_text_observes_token(text, token))
+            })
         })
     };
     let (oracle_alignment, alignment_reason) = if any_strong_observes(&owner_tokens) {
@@ -5309,6 +5326,30 @@ def test_build_user_smoke():
             python_route_response_field_discriminator("headers", "expected_headers").as_deref(),
             Some("response.headers == expected_headers")
         );
+    }
+
+    #[test]
+    fn oracle_text_observes_token_requires_identifier_boundary() {
+        // Whole-word matches still observe (preserves genuine sink alignment).
+        assert!(oracle_text_observes_token(
+            "assert raises(ValueError, match='Invalid key: x')",
+            "key"
+        ));
+        assert!(oracle_text_observes_token("assert stop(3)", "stop"));
+        assert!(oracle_text_observes_token(
+            "assert x.max_buffer_size == 2",
+            "max_buffer_size"
+        ));
+        // Substring co-occurrence must NOT observe: the confirmed false-exposed
+        // vector — `buffer` (a changed-sink token) inside an unrelated
+        // `buffered_stream` oracle from a different class.
+        assert!(!oracle_text_observes_token(
+            "assert buffered_stream.receive_exactly(10) == b\"x\"",
+            "buffer"
+        ));
+        assert!(!oracle_text_observes_token("assert client.send()", "len"));
+        assert!(!oracle_text_observes_token("assert keys() == []", "key"));
+        assert!(!oracle_text_observes_token("anything", ""));
     }
 
     #[test]
