@@ -13,11 +13,14 @@ use std::path::Path;
 
 pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) -> Vec<Probe> {
     let mut probes = Vec::new();
+    // Use `new_side_line` for all lines: for added lines this equals `line`; for
+    // removed lines `new_side_line` is the new-file coordinate, which is what
+    // the RustIndex (built from the new file) expects (RANK-1 fix, #1222).
     let changed_lines = changed
         .added_lines
         .iter()
         .chain(changed.removed_lines.iter())
-        .map(|line| line.line)
+        .map(|line| line.new_side_line)
         .collect::<Vec<_>>();
     let changed_nodes = changed_nodes_for_lines(index, &changed.path, &changed_lines);
     let build_context = ProbeBuildContext {
@@ -32,10 +35,10 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if should_ignore_changed_line(text) {
             continue;
         }
-        if changed_line_owned_by_test(index, &changed.path, added.line) {
+        if changed_line_owned_by_test(index, &changed.path, added.new_side_line) {
             continue;
         }
-        let families = classify_changed_syntax(index, &changed.path, added.line, text)
+        let families = classify_changed_syntax(index, &changed.path, added.new_side_line, text)
             .unwrap_or_else(|| classify_changed_line(text));
         for family in families {
             probes.push(build_probe(
@@ -53,7 +56,10 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if should_ignore_changed_line(text) {
             continue;
         }
-        if changed_line_owned_by_test(index, &changed.path, removed.line) {
+        // Use new_side_line so the owner lookup queries the new-file index at the
+        // correct position (RANK-1 fix: `removed.line` is an old-side coordinate
+        // and diverges from the new file when an earlier hunk shifted lines).
+        if changed_line_owned_by_test(index, &changed.path, removed.new_side_line) {
             continue;
         }
         for family in classify_changed_line(text) {
@@ -114,13 +120,18 @@ fn build_probe(
 ) -> Probe {
     let text = changed_line.text.trim();
     let delta = delta_for_family(&family);
+    // Use `new_side_line` for all index lookups and the SourceLocation: for
+    // added lines this equals `line`; for removed lines it is the new-file
+    // coordinate, which is what the RustIndex (built from the new file) and any
+    // IDE navigation into the new file require (RANK-1 fix, #1222).
+    let new_line = changed_line.new_side_line;
     let owner = context
         .changed_nodes
         .iter()
-        .find(|node| node.start_line <= changed_line.line && changed_line.line <= node.end_line)
+        .find(|node| node.start_line <= new_line && new_line <= node.end_line)
         .and_then(|node| node.owner.clone())
         .or_else(|| {
-            find_owner_function(context.index, &context.changed.path, changed_line.line)
+            find_owner_function(context.index, &context.changed.path, new_line)
                 .map(|function| function.id.clone())
         });
     let norm_expr = normalize_expression(text);
@@ -137,11 +148,7 @@ fn build_probe(
 
     Probe {
         id,
-        location: SourceLocation::new(
-            context.root.join(&context.changed.path),
-            changed_line.line,
-            1,
-        ),
+        location: SourceLocation::new(context.root.join(&context.changed.path), new_line, 1),
         owner,
         family,
         delta,
@@ -161,7 +168,12 @@ fn has_matching_added_line(
     let removed_tokens = extract_identifier_tokens(&removed_line.text);
     !removed_tokens.is_empty()
         && changed.added_lines.iter().any(|line| {
-            if removed_line.line.abs_diff(line.line) > 1 {
+            // Compare new-side positions: `removed_line.new_side_line` is the
+            // new-file coordinate of the removed line; `line.new_side_line`
+            // (== `line.line` for added lines) is the added line's new-file
+            // coordinate.  Using old-side `removed_line.line` would give wrong
+            // proximity when earlier hunks shifted the coordinate systems.
+            if removed_line.new_side_line.abs_diff(line.new_side_line) > 1 {
                 return false;
             }
             let added_families = classify_changed_line(line.text.trim());
@@ -214,10 +226,12 @@ mod tests {
             path: path.clone(),
             added_lines: vec![ChangedLine {
                 line: 3,
+                new_side_line: 3,
                 text: "if amount >= threshold {".to_string(),
             }],
             removed_lines: vec![ChangedLine {
                 line: 3,
+                new_side_line: 3,
                 text: "if amount > threshold {".to_string(),
             }],
         };
@@ -279,6 +293,7 @@ mod tests {
             path: path.clone(),
             added_lines: vec![ChangedLine {
                 line: 3,
+                new_side_line: 3,
                 text: "let config = toml::from_str(text)?;".to_string(),
             }],
             removed_lines: vec![],
@@ -329,6 +344,7 @@ mod tests {
             path: PathBuf::from("src/lib.rs"),
             added_lines: vec![ChangedLine {
                 line: 10,
+                new_side_line: 10,
                 text: "let total = discounted;".to_string(),
             }],
             removed_lines: vec![],
@@ -350,6 +366,7 @@ mod tests {
             added_lines: vec![],
             removed_lines: vec![ChangedLine {
                 line: 4,
+                new_side_line: 4,
                 text: "events.publish(invoice);".to_string(),
             }],
         };
@@ -410,10 +427,12 @@ mod tests {
             path: PathBuf::from("src/lib.rs"),
             added_lines: vec![ChangedLine {
                 line: 3,
+                new_side_line: 3,
                 text: "if amount >= threshold {".to_string(),
             }],
             removed_lines: vec![ChangedLine {
                 line: 3,
+                new_side_line: 3,
                 text: "if amount > threshold {".to_string(),
             }],
         };
@@ -438,10 +457,12 @@ mod tests {
             added_lines: vec![
                 ChangedLine {
                     line: 1,
+                    new_side_line: 1,
                     text: "use crate::pricing;".to_string(),
                 },
                 ChangedLine {
                     line: 2,
+                    new_side_line: 2,
                     text: "// comment".to_string(),
                 },
             ],

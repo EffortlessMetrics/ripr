@@ -1407,6 +1407,7 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
             path: production_rel.clone(),
             added_lines: vec![crate::analysis::diff::ChangedLine {
                 line: 2,
+                new_side_line: 2,
                 text: "    if amount >= 100:".to_string(),
             }],
             removed_lines: Vec::new(),
@@ -1417,6 +1418,7 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
             path: test_rel.clone(),
             added_lines: vec![crate::analysis::diff::ChangedLine {
                 line: 1,
+                new_side_line: 1,
                 text: "from src.pricing import apply_discount".to_string(),
             }],
             removed_lines: Vec::new(),
@@ -1490,6 +1492,7 @@ def test_encode_status():\n    assert encode_status('paid')['status'] == 'paid'\
         path: generated_rel,
         added_lines: vec![crate::analysis::diff::ChangedLine {
             line: 2,
+            new_side_line: 2,
             text: "    return {'status': status, 'version': 2}".to_string(),
         }],
         removed_lines: Vec::new(),
@@ -2257,6 +2260,7 @@ fn analyze_diff_counts_python_file_but_skips_unreadable_workspace_source() -> Re
         path: PathBuf::from("src/keep.py"),
         added_lines: vec![crate::analysis::diff::ChangedLine {
             line: 2,
+            new_side_line: 2,
             text: "    return 1".to_string(),
         }],
         removed_lines: Vec::new(),

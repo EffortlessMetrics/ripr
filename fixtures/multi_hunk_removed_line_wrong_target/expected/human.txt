@@ -1,0 +1,207 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/multi_hunk_removed_line_wrong_target/input
+
+Summary: 6 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 3 unknown
+
+NOTE fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:2
+
+Changed
+  before: x + 1
+  after:  let y = x + 1;
+
+Probe
+  family: static_unknown
+  delta:  unknown
+  owner:  src/lib.rs::one
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+  - propagation unknown: No propagation model is available for this changed syntax
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches unknown sink: unknown sink (line 2)
+
+Weakness
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
+
+Stop reasons:
+  - static_probe_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+NOTE fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:2
+
+Changed
+  before: x + 1
+  expr:   x + 1
+
+Probe
+  family: static_unknown
+  delta:  unknown
+  owner:  src/lib.rs::one
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+  - propagation unknown: No propagation model is available for this changed syntax
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches unknown sink: unknown sink (line 2)
+
+Weakness
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
+
+Stop reasons:
+  - static_probe_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+NOTE fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:3
+
+Changed
+  before: x + 1
+  after:  let z = y * 2;
+
+Probe
+  family: static_unknown
+  delta:  unknown
+  owner:  src/lib.rs::one
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+  - propagation unknown: No propagation model is available for this changed syntax
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches unknown sink: unknown sink (line 3)
+
+Weakness
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
+
+Stop reasons:
+  - static_probe_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+WARNING fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:4
+
+Changed
+  before: x + 1
+  after:  z
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::one
+
+Static exposure
+  no_static_path (warning, confidence 0.35)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No reachable tests were found, so infection cannot be established
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches unknown sink: unknown sink (line 4)
+
+Weakness
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.
+
+WARNING fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:8
+
+Changed
+  before: x + 1
+  after:  if x >= 0 {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::two
+
+Static exposure
+  no_static_path (warning, confidence 0.35)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - No assertion can discriminate the changed behavior without a reachable test
+  - No reachable test oracle found
+  - No static test path found for the changed owner
+  - No tests were found, so activation/infection cannot be estimated
+  - Propagation is not statically obvious from syntax-first analysis
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.
+
+WARNING fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:8
+
+Changed
+  before: if x > 0 {
+  expr:   if x > 0 {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::two
+
+Static exposure
+  no_static_path (warning, confidence 0.35)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - No assertion can discriminate the changed behavior without a reachable test
+  - No reachable test oracle found
+  - No static test path found for the changed owner
+  - No tests were found, so activation/infection cannot be estimated
+  - Propagation is not statically obvious from syntax-first analysis
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.
+
+
+Note: ripr found no static test path for any of the 6 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
