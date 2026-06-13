@@ -296,6 +296,23 @@ Merge-safety rules, learned the hard way:
   inherited failure.
 - A pass with zero analyzed subjects is `not_run`, not evidence. Preserve
   denominators in reports; a green state with an empty denominator proves nothing.
+- An output-shape change invalidates every golden. A PR that adds or renames a
+  field in `ripr check` / report JSON must re-bless **all** affected goldens in
+  the same PR — and a golden PR that merges concurrently with such a change goes
+  stale the moment both land, breaking `goldens check` (the required gate) for
+  every subsequent PR. This is the single-writer-collision family (cf. spec
+  numbers) on goldens. When `goldens check` fails on `main`, diff
+  `expected/check.json` against the actual output: an additive missing field
+  points at a concurrent output-shape PR. Fix by re-blessing on the *current*
+  `main` (after the latest output-shape change), not an older base — re-blessing
+  on a stale base just re-breaks it. If a later output-shape PR has already
+  re-blessed everything, an earlier in-flight re-bless PR becomes redundant *and*
+  harmful (merging it reverts the golden): close it.
+- Distinguish an infra tempfail from a real failure before reacting. A quick
+  `runner_api_failed` / runner-selection error is infra — re-run. A gate that
+  *ran* and failed (e.g. `xtask: goldens check failed`, a `FAILED` test) is real
+  — read the report and fix it. Re-running a real failure wastes a CI cycle;
+  debugging your own diff for an infra flake wastes a turn.
 
 `stackable = false` means do not build the next dependent work item on top of
 the current branch. It does not create an approval gate.
