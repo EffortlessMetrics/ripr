@@ -64,8 +64,10 @@ existing `ripr check` surface and aggregates results.
    `sha` into a `target/`-local checkout dir via the existing
    `run::run_with_envs` helper; otherwise expect a pre-placed checkout and record
    `skipped_missing_checkout` if absent (never fails on absence).
-2. Run `ripr check --root <checkout> --diff <synthetic-diff> --format json`
-   under a wall-clock timeout via `run::capture_output_with_timeout`.
+2. Run `ripr check --root <checkout> --diff <synthetic-diff> --mode fast --json`
+   under a wall-clock timeout via `run::capture_output_with_timeout`. The harness
+   builds `ripr` once and invokes the built binary directly (not `cargo run`), so
+   `runtime_ms` measures analysis time rather than cargo's per-invocation overhead.
 3. Classify the outcome from exit code and JSON:
    - `crash` — process abort or `ripr: <err>` failure exit;
    - `timed_out` — exceeded the timeout;
@@ -162,7 +164,7 @@ repos_total = 3, repos_run = 0 (all skipped_missing_checkout)
 | --- | --- |
 | Command logic (arg parse, manifest load, run orchestration, classify, metrics, render) | `xtask/src/reports/eval_sweep.rs` |
 | Subcommand registration | `xtask/src/command.rs`, `xtask/src/dispatch.rs`, `xtask/src/reports/mod.rs` |
-| Subprocess helpers (clone, `ripr check`) | `xtask/src/run.rs` (`run_with_envs`, `capture_output_with_timeout`) |
+| Subprocess helpers (build, clone, `ripr check`) | `xtask/src/run.rs` (`run`, `run_with_envs`, `capture_output_with_timeout`) |
 | Pinned manifest + synthetic diff | `fixtures/python-eval-sweep/manifest.json`, `fixtures/python-eval-sweep/synthetic-diff.diff` |
 | Rendered report | `target/ripr/reports/eval-sweep.{json,md}` |
 
@@ -174,7 +176,7 @@ repos_total = 3, repos_run = 0 (all skipped_missing_checkout)
 | `crash_rate` | fraction of `repos_run` that aborted or failed-exit |
 | `parse_failure_rate` | fraction degrading to a named static-unknown limitation |
 | `timed_out_count` | repos exceeding the wall-clock timeout |
-| `runtime_ms_median` | median run-1 `ripr check` wall-clock per repo |
+| `runtime_ms_median` | median run-1 `ripr check` wall-clock per repo (built binary, excludes cargo overhead) |
 | `gap_id_stability_rate` | fraction with identical canonical gap-ID sets across a re-run |
 | `gate_status` | `not_run` if `repos_run == 0`; else `pass` iff `crash_rate == 0` and `gap_id_stability_rate == 1.0`; else `review` |
 

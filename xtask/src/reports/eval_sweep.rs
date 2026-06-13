@@ -284,7 +284,7 @@ impl RepoRun {
     }
 }
 
-fn run_repo(entry: &RepoEntry, manifest: &Manifest, args: &SweepArgs) -> RepoRun {
+fn run_repo(entry: &RepoEntry, manifest: &Manifest, args: &SweepArgs, binary: &Path) -> RepoRun {
     let checkout = PathBuf::from(&args.checkout_root).join(&entry.id);
     if args.clone {
         if let Err(err) = clone_repo(entry, &checkout) {
@@ -301,9 +301,9 @@ fn run_repo(entry: &RepoEntry, manifest: &Manifest, args: &SweepArgs) -> RepoRun
         .unwrap_or_default()
         .to_string();
 
-    let first = run_check(&checkout, &diff, args);
+    let first = run_check(binary, &checkout, &diff, args);
     let second_gap_ids = if first.outcome.counts_as_run() {
-        run_check(&checkout, &diff, args).gap_ids
+        run_check(binary, &checkout, &diff, args).gap_ids
     } else {
         first.gap_ids.clone()
     };
@@ -335,14 +335,12 @@ struct CheckRun {
     stderr: String,
 }
 
-fn run_check(checkout: &Path, diff: &str, args: &SweepArgs) -> CheckRun {
+fn run_check(binary: &Path, checkout: &Path, diff: &str, args: &SweepArgs) -> CheckRun {
     let root = checkout.to_string_lossy().to_string();
-    let cargo_args: Vec<String> = vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
+    let program = binary.to_string_lossy().to_string();
+    // Invoke the pre-built `ripr` binary directly (not `cargo run`) so the
+    // recorded runtime measures analysis time, not cargo's per-invocation overhead.
+    let check_args: Vec<String> = vec![
         "check".to_string(),
         "--root".to_string(),
         root,
@@ -353,8 +351,8 @@ fn run_check(checkout: &Path, diff: &str, args: &SweepArgs) -> CheckRun {
         "--json".to_string(),
     ];
     match run::capture_output_with_timeout(
-        "cargo",
-        &cargo_args,
+        &program,
+        &check_args,
         &[],
         args.timeout,
         "eval-sweep ripr check",
@@ -386,6 +384,18 @@ fn run_check(checkout: &Path, diff: &str, args: &SweepArgs) -> CheckRun {
             stderr: err,
         },
     }
+}
+
+fn ripr_binary_path() -> PathBuf {
+    PathBuf::from("target")
+        .join("debug")
+        .join(format!("ripr{}", std::env::consts::EXE_SUFFIX))
+}
+
+fn build_ripr() -> Result<(), String> {
+    run::run("cargo", &["build", "-p", "ripr", "--quiet"])
+        .map(|_| ())
+        .map_err(|err| format!("eval-sweep failed to build ripr before the sweep: {err}"))
 }
 
 fn clone_repo(entry: &RepoEntry, checkout: &Path) -> Result<(), String> {
@@ -654,6 +664,20 @@ pub(crate) fn eval_sweep(args: &[String]) -> Result<(), String> {
     let parsed = parse_args(args)?;
     let manifest = load_manifest(&parsed.manifest)?;
 
+    // Build ripr once and invoke the binary directly per repo, so recorded
+    // runtime measures analysis time rather than per-repo `cargo run` overhead.
+    // Only build when at least one repo will actually be analyzed.
+    let binary = ripr_binary_path();
+    let will_run = parsed.clone
+        || manifest.repos.iter().any(|entry| {
+            PathBuf::from(&parsed.checkout_root)
+                .join(&entry.id)
+                .exists()
+        });
+    if will_run {
+        build_ripr()?;
+    }
+
     let mut runs = Vec::new();
     for entry in &manifest.repos {
         if let Some(only) = &parsed.only_repo
@@ -661,7 +685,7 @@ pub(crate) fn eval_sweep(args: &[String]) -> Result<(), String> {
         {
             continue;
         }
-        runs.push(run_repo(entry, &manifest, &parsed));
+        runs.push(run_repo(entry, &manifest, &parsed, &binary));
     }
 
     let metrics = compute_metrics(&runs);
