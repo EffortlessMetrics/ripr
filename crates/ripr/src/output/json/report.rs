@@ -91,10 +91,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 adv.enabled, adv.enabled
             ));
             field(&mut out, 3, "category", "preview_language_advisory", true);
-            let why = if adv.enabled {
+            let why_owned;
+            let why: &str = if adv.enabled {
                 "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
             } else {
-                "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+                why_owned = format!(
+                    "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
+                    adv.language
+                );
+                &why_owned
             };
             field(&mut out, 3, "why", why, false);
             out.push_str("    }");

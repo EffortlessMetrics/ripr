@@ -3833,6 +3833,7 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     report_config_status(&root, &mut ok);
     report_cache_status(&root);
     report_detected_languages(&root);
+    suggest_preview_language_enablement(&root);
     report_detected_test_surfaces(&root);
     report_known_limitations();
 
@@ -4002,6 +4003,57 @@ fn report_detected_languages(root: &Path) {
         })
         .collect();
     println!("- Detected languages: {}", entries.join(", "));
+}
+
+/// When a preview language is detected in `root` but is not yet enabled in
+/// `ripr.toml`, print a copy-paste-ready TOML block so the user can enable
+/// it in a single edit.
+///
+/// Gated on BOTH conditions to stay fail-closed:
+/// 1. `LanguageId::is_available()` — the adapter was compiled into this binary
+///    (`cfg!(feature = "lang-<x>")`). If the feature was not compiled in, a
+///    user cannot enable the adapter regardless of `ripr.toml`.
+/// 2. The language is NOT already in `config.languages().enabled()`.
+///
+/// Emits nothing when either condition fails, when the root has no config
+/// file, or when the config cannot be loaded.
+fn suggest_preview_language_enablement(root: &Path) {
+    for line in preview_language_enable_suggestions(root) {
+        println!("{line}");
+    }
+}
+
+/// Pure computation for `suggest_preview_language_enablement` — returns the
+/// tip lines (ready to print) for each preview language that is detected,
+/// available (compiled in), and not yet enabled in `ripr.toml`.
+///
+/// Returns an empty vec when there is nothing to suggest. Separated from the
+/// printing logic so it can be covered by unit tests without stdout capture.
+fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
+    let detected = detect_languages(root);
+    let preview_detected: Vec<LanguageId> = detected
+        .into_iter()
+        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
+        .collect();
+    if preview_detected.is_empty() {
+        return Vec::new();
+    }
+    let config = match load_for_root(root) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let enabled = config.languages().enabled();
+    let mut suggestions = Vec::new();
+    for id in &preview_detected {
+        if id.is_available() && !enabled.contains(id) {
+            suggestions.push(format!(
+                "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
+                id.as_str(),
+                id.as_str(),
+            ));
+        }
+    }
+    suggestions
 }
 
 /// Detect test-framework markers per detected language.
@@ -9258,6 +9310,104 @@ language = "rust"
     #[test]
     fn doctor_accepts_default_root() {
         assert_eq!(doctor(&args(&[])), Ok(()));
+    }
+
+    // --- preview_language_enable_suggestions tests ---
+
+    /// When TypeScript files are detected in a directory that has no ripr.toml
+    /// (so the config defaults to `["rust"]`) AND the `lang-typescript` feature
+    /// was compiled in, we expect a suggestion line containing the copy-paste
+    /// TOML block.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_suggests_typescript_when_detected_and_not_enabled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-detected");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        // Drop a .ts file so TypeScript is detected.
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // No ripr.toml → defaults to enabled = ["rust"] only.
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            !suggestions.is_empty(),
+            "expected a suggestion when TS detected and not enabled"
+        );
+        let joined = suggestions.join("\n");
+        assert!(
+            joined.contains("typescript"),
+            "suggestion must name the language; got:\n{joined}"
+        );
+        assert!(
+            joined.contains(r#"enabled = ["rust", "typescript"]"#),
+            "suggestion must contain copy-paste TOML block; got:\n{joined}"
+        );
+        Ok(())
+    }
+
+    /// When TypeScript is explicitly listed in ripr.toml `enabled`, no
+    /// suggestion should appear even if .ts files are present.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_no_suggestion_when_typescript_already_enabled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-already-enabled");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // ripr.toml explicitly enables typescript.
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions when typescript already enabled; got: {suggestions:?}"
+        );
+        Ok(())
+    }
+
+    /// When no preview-language files are detected (only Rust), the suggestion
+    /// list must be empty regardless of config.
+    #[test]
+    fn doctor_no_suggestion_when_no_preview_language_detected() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-no-preview");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        // Only a Cargo.toml → Rust only, no preview language detected.
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions for Rust-only dir; got: {suggestions:?}"
+        );
+        Ok(())
+    }
+
+    /// When the binary was built WITHOUT the `lang-typescript` feature (adapter
+    /// not compiled in), the suggestion must be suppressed even if .ts files are
+    /// present. The user cannot enable an adapter that isn't in the binary.
+    #[cfg(not(feature = "lang-typescript"))]
+    #[test]
+    fn doctor_no_suggestion_when_typescript_adapter_not_compiled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-not-compiled");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // No ripr.toml → defaults to enabled = ["rust"] only.
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions when lang-typescript feature is not compiled; got: {suggestions:?}"
+        );
+        Ok(())
     }
 
     #[test]

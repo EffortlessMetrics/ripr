@@ -93,7 +93,7 @@ pub(crate) struct DiffPreviewLanguageAdvisory {
     /// Advisory category tag.
     pub(crate) category: &'static str,
     /// Human-readable advisory note.
-    pub(crate) why: &'static str,
+    pub(crate) why: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -204,9 +204,12 @@ pub(crate) fn build_diff_report(
                 analyzed: advisory.enabled,
                 category: "preview_language_advisory",
                 why: if advisory.enabled {
-                    "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+                    "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean".to_string()
                 } else {
-                    "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+                    format!(
+                        "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
+                        advisory.language
+                    )
                 },
             })
             .collect(),

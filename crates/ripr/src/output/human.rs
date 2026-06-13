@@ -63,7 +63,8 @@ An empty result here does NOT mean your changed behavior is covered.\n",
 ///   and may be incomplete, not Rust-grade clean.
 /// - not enabled — the files were detected but not analyzed because the
 ///   preview adapter is not enabled in `ripr.toml`; the empty result must not
-///   be read as clean.
+///   be read as clean. A copy-paste-ready TOML block is appended so enabling
+///   the adapter is a single edit.
 fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
     for advisory in &output.preview_language_advisories {
         let language = capitalize_first(&advisory.language);
@@ -73,8 +74,9 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
                 advisory.file_count, language,
             ));
         } else {
+            let language_lowercase = advisory.language.to_lowercase();
             out.push_str(&format!(
-                "\nNote: this diff contains {} {}(s). The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n",
+                "\nNote: this diff contains {} {}(s). The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
                 advisory.file_count, language, language,
             ));
         }
@@ -828,10 +830,49 @@ mod tests {
             rendered.contains("Enable it in ripr.toml"),
             "expected enable hint; got:\n{rendered}"
         );
+        // Must include the copy-paste TOML block.
+        assert!(
+            rendered.contains("[languages]\nenabled = [\"rust\", \"typescript\"]"),
+            "expected copy-paste TOML block; got:\n{rendered}"
+        );
         // Must NOT use the enabled wording.
         assert!(
             !rendered.contains("analyzed under preview support"),
             "not-enabled case must not claim analysis ran; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_not_enabled_disclosure_includes_language_specific_toml_block() {
+        // Verify the copy-paste block uses the actual language name, not a
+        // hardcoded string. This covers the Python path; TypeScript is covered
+        // by render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "python".to_string(),
+                file_count: 3,
+                sample_paths: vec!["app/models.py".to_string()],
+                enabled: false,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(r#"enabled = ["rust", "python"]"#),
+            "expected python-specific copy-paste TOML block; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r#"enabled = ["rust", "typescript"]"#),
+            "python advisory must not mention typescript; got:\n{rendered}"
         );
     }
 

@@ -138,7 +138,7 @@ Not-enabled (default) example:
     "enabled": false,
     "analyzed": false,
     "category": "preview_language_advisory",
-    "why": "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; enable in ripr.toml [languages]"
+    "why": "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"typescript\"]"
   }
 ]
 ```
