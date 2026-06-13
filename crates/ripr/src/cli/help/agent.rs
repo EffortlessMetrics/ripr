@@ -47,6 +47,11 @@ Options:
   --json           Required until a human brief surface exists.
   --max-seams N    Requested seam cap. Defaults to 3 and cannot exceed 10.
 
+When --files or --base produces a working set that matches no seams, the brief
+falls back to all repo-actionable seams. This scope-widening is disclosed in
+the warnings[] field of the JSON output — check warnings[] to confirm whether
+you received a scoped result or a repo-wide fallback.
+
 This parser is the first implementation seam for RIPR-SPEC-0010. The brief
 router remains advisory and static; it does not run mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.

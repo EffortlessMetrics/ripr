@@ -259,6 +259,11 @@ pub(crate) fn select_agent_brief_seams<'a>(
     let mut direct = direct_candidates(classified, working_set, policy, &mut warnings);
 
     if direct.candidates.is_empty() && direct.allow_fallback {
+        warnings.push(format!(
+            "No seams matched the requested scope (source: {}); showing all \
+             repo-actionable seams instead — this is NOT a scoped result.",
+            working_set.source.as_str()
+        ));
         direct.candidates = fallback_candidates(classified, policy);
     }
 
@@ -1353,6 +1358,111 @@ mod tests {
         assert_eq!(
             selection.top_seams[0].why_now.confidence,
             AgentBriefWhyNowConfidence::Low
+        );
+    }
+
+    #[test]
+    fn agent_brief_scope_degradation_warning_fires_on_files_fallback() {
+        let seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let seams = vec![seam];
+        // Request --files with a path that has no seams → triggers fallback
+        let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.warnings,
+            vec![
+                "No seams matched the requested scope (source: files); showing all \
+                 repo-actionable seams instead — this is NOT a scoped result."
+            ]
+        );
+        // Candidates must still be present (fail-open)
+        assert!(!selection.top_seams.is_empty());
+    }
+
+    #[test]
+    fn agent_brief_scope_degradation_warning_fires_on_base_fallback() {
+        let seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let seams = vec![seam];
+        // --base with an empty changed_lines list matches no seams → triggers fallback
+        let working_set = AgentBriefResolvedWorkingSet::base("origin/main", vec![]);
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.warnings,
+            vec![
+                "No seams matched the requested scope (source: base); showing all \
+                 repo-actionable seams instead — this is NOT a scoped result."
+            ]
+        );
+        assert!(!selection.top_seams.is_empty());
+    }
+
+    #[test]
+    fn agent_brief_scope_degradation_warning_absent_when_working_set_matches() {
+        let seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let seams = vec![seam];
+        // --files pointing at the file that DOES contain the seam → genuine match
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert!(
+            !selection
+                .top_seams
+                .iter()
+                .any(|s| s.why_now.reason == AgentBriefWhyNowReason::RepoActionableFallback),
+            "expected scoped result, not fallback"
+        );
+        assert!(
+            selection.warnings.is_empty(),
+            "expected no scope-degradation warning for genuine match"
+        );
+    }
+
+    #[test]
+    fn agent_brief_scope_degradation_warning_absent_when_no_working_set() {
+        // --seam-id path: allow_fallback is false, no degradation warning even if
+        // the seam isn't found (a different, specific warning fires instead)
+        let seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let seams = vec![seam];
+        let working_set = AgentBriefResolvedWorkingSet::seam_id("missing-seam");
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert!(
+            !selection
+                .warnings
+                .iter()
+                .any(|w| w.contains("NOT a scoped result")),
+            "scope-degradation warning must not fire for seam_id path"
         );
     }
 
