@@ -1,0 +1,144 @@
+id = "python-repair-routing-reliability"
+title = "Python Repair-Routing Reliability to Release"
+status = "tracker"
+lane = 1
+
+# Focused Python release-readiness tracker.
+# This is not the active Codex Goals manifest. `.ripr/goals/active.toml` remains
+# the active execution manifest (use-case spec spine, frozen until 0.9.0 ships).
+# Promotion into `active.toml` is a maintainer decision recorded here.
+#
+# Public tracker: https://github.com/EffortlessMetrics/ripr-swarm/issues/1160
+# Ruff parser-substrate watchpoint (NOT a release gate): EffortlessMetrics/ripr#1430
+
+objective = """
+Promote Python repair routing from usable-alpha proof to a usable release claim
+shipped from source `ripr`, using external-repo evidence as the spine. Each PR
+adds one production delta plus its evidence; promotion gates on measured crash
+rate, parse-failure rate, runtime, gap-ID stability, and false-actionability,
+never on assertion. Target tier is `usable`, not `stable`.
+"""
+
+non_goals = [
+  "Ruff integration or parser breadth (tracked separately as ripr#1430).",
+  "Completeness across all Python constructs or frameworks.",
+  "A `stable` claim; the target tier is `usable`.",
+  "Supporting Django/SQLAlchemy/etc — only failing closed (named limitation) there.",
+]
+
+# The evidence ladder. Tier A measures robustness only; Tier B measures top-card
+# usefulness and false-actionability; Tier C measures repair closure.
+evidence_path = [
+  "baseline dogfood (in-repo corpus, saturated 26/26) — done",
+  "Tier A external robustness sweep (crash / parse-fail / runtime / gap-ID stability)",
+  "Tier B judged external PR panel (top-1 usefulness, false-actionable rate)",
+  "Tier C external repair attempts (before/after receipts)",
+  "rollback / regression proof",
+  "support-tier promotion (usable)",
+  "source promotion into ripr",
+]
+
+end_state = [
+  "ripr runs crash-free and gap-ID-stable on external Python repos at scale.",
+  "False-actionable rate measured and low on a judged external PR (diff) panel.",
+  "Repair closure demonstrated externally with before/after receipts.",
+  "Rollback/regression behavior documented and honest.",
+  "Support tier promoted to `usable` with signoff.",
+  "Demonstrated surface shipped from source `ripr`.",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-harness"
+status = "done"
+branch = "eval/python-eval-sweep-harness"
+acceptance = "Tier A `cargo xtask eval-sweep` harness reads a pinned manifest, runs ripr check + one re-run per repo, and records crash/parse/runtime/gap-ID-stability metrics (RIPR-SPEC-0086, PR #1161)."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-not-run-gate"
+status = "done"
+branch = "dogfood/eval-sweep-not-run-gate"
+acceptance = "Empty/no-clone sweeps report `not_run`, never a vacuous `pass` (PR #1163)."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-runtime-fidelity"
+status = "next"
+branch = "dogfood/eval-sweep-runtime-fidelity"
+acceptance = "Invoke the built `ripr` binary directly so runtime measures analysis time, not `cargo run` overhead."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-scale"
+status = "ready"
+branch = "dogfood/eval-sweep-scale"
+acceptance = "Per-repo real diffs + 12-20 stratified repos incl. unsupported buckets; first real gap-stability and robustness trend."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-b-judged-panel"
+status = "ready"
+branch = "dogfood/python-tier-b-judged-panel"
+acceptance = "Judged external PR (diff) panel; top-1 usefulness and false-actionable rate (the number that gates `usable`)."
+commands = [
+  "cargo xtask metrics",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-c-repair-attempts"
+status = "ready"
+branch = "dogfood/python-tier-c-repair-attempts"
+acceptance = "External repair attempts with before/after receipts (card -> packet -> test edit -> verify -> receipt)."
+commands = [
+  "cargo xtask metrics",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-rollback-proof"
+status = "ready"
+branch = "outcome/python-rollback-proof"
+acceptance = "Demonstrate and document Python-lane rollback/regression behavior."
+commands = [
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-support-tier-promotion"
+status = "ready"
+branch = "docs/python-support-tier-promotion"
+acceptance = "Promote Python repair routing to `usable`, gated on measured evidence."
+commands = [
+  "cargo xtask check-support-tiers",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-source-promotion"
+status = "ready"
+branch = "release/python-source-promotion"
+acceptance = "Promote the demonstrated lane into source `ripr`."
+commands = [
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr",
+]
