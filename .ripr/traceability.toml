@@ -5433,3 +5433,31 @@ outputs = [
 metrics = [
   "ts_full_repo_guidance_disclosure_named"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0090"
+name = "all-no-path aggregate disclosure"
+spec = "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md"
+tests = [
+  "crates/ripr/src/output/human.rs::tests::render_emits_all_no_path_disclosure_when_all_findings_are_no_path",
+  "crates/ripr/src/output/human.rs::tests::render_emits_all_no_path_disclosure_for_infection_unknown_findings",
+  "crates/ripr/src/output/human.rs::tests::render_omits_all_no_path_disclosure_when_exposed_finding_exists",
+  "crates/ripr/src/output/human.rs::tests::render_omits_all_no_path_disclosure_when_weakly_exposed_finding_exists",
+  "crates/ripr/src/output/human.rs::tests::render_omits_all_no_path_disclosure_when_zero_findings",
+  "crates/ripr/src/output/human.rs::tests::render_all_no_path_disclosure_uses_finding_count_not_probe_count",
+  "crates/ripr/src/output/human.rs::tests::render_all_no_path_disclosure_uses_conservative_static_language"
+]
+fixtures = [
+  "fixtures/all_no_path_disclosure"
+]
+code = [
+  "crates/ripr/src/output/human.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md",
+  "fixtures/all_no_path_disclosure/expected/check.json",
+  "fixtures/all_no_path_disclosure/expected/human.txt"
+]
+metrics = [
+  "all_no_path_disclosure_honesty_note_present"
+]

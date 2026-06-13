@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/all_no_path_disclosure/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:908b0e30",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:908b0e30",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/all_no_path_disclosure/input/src/lib.rs",
+        "line": 2,
+        "expression": "if amount >= fee {"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No tests were found, so activation/infection cannot be estimated"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - fee"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No tests were found, so activation/infection cannot be estimated", "propagation yes: Changed behavior appears to influence returned value: amount - fee", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: amount - fee (line 3)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - fee","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: amount - fee", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated"],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
+      "suggested_next_action": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
+      "language": "rust"
+    }
+  ]
+}

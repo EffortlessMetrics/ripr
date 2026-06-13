@@ -331,6 +331,14 @@ owner = "product-swarm"
 standalone_reason = "Fixes #1175: emits a named typescript_diff_first guidance disclosure in repo-exposure-md and repo-exposure-json when a TypeScript-predominant workspace produces zero seams; fail-closed (fires only when Rust absent + TS present + seams empty); additive limitations[] entry with no schema bump; anchored by fixture ts_full_repo_guidance; no separate proposal artifact."
 
 [[artifact]]
+id = "RIPR-SPEC-0090"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only (JSON unchanged, no schema bump); addresses #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

@@ -47,8 +47,38 @@ An empty result here does NOT mean your changed behavior is covered.\n",
         out.push_str(&render_finding_with_config(finding, config));
         out.push('\n');
     }
+    render_all_no_path_disclosure(&mut out, output);
     render_preview_language_advisories(&mut out, output);
     out
+}
+
+/// Emit an advisory note when every finding is no-path or unknown (zero
+/// exposed/weakly_exposed/reachable_unrevealed). See RIPR-SPEC-0090.
+///
+/// Called unconditionally after the findings loop; emits nothing when:
+/// - there are zero findings (a different case handled elsewhere), or
+/// - at least one finding is exposed/weakly_exposed/reachable_unrevealed
+///   (the per-finding output already carries the signal).
+///
+/// This is a pure ABSENCE-OF-PATH statement, not a coverage or adequacy claim.
+fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
+    let s = &output.summary;
+    let all_no_path_count =
+        s.no_static_path + s.infection_unknown + s.propagation_unknown + s.static_unknown;
+    if s.findings == 0 {
+        return;
+    }
+    if s.exposed > 0 || s.weakly_exposed > 0 || s.reachable_unrevealed > 0 {
+        return;
+    }
+    if all_no_path_count != s.findings {
+        return;
+    }
+    out.push_str(&format!(
+        "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
+This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.\n",
+        all_no_path_count
+    ));
 }
 
 /// Emit preview-language advisory notes when preview-language files were
@@ -1053,6 +1083,217 @@ mod tests {
         assert!(
             !rendered.contains("--mode fast"),
             "guidance must NOT recommend --mode fast as a full-repo-scan command; got:\n{rendered}"
+        );
+    }
+
+    // RIPR-SPEC-0090 tests: all-no-path disclosure honesty
+
+    #[test]
+    fn render_emits_all_no_path_disclosure_when_all_findings_are_no_path() {
+        // Primary case: findings exist but none are exposed/weak/reachable.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                no_static_path: 2,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered
+                .contains("ripr found no static test path for any of the 2 changed expression(s)"),
+            "expected all-no-path disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("not a coverage assessment"),
+            "expected honesty note; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("no co-located test was found that statically discriminates"),
+            "expected absence-of-path wording; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_emits_all_no_path_disclosure_for_infection_unknown_findings() {
+        // Also fires for infection_unknown / propagation_unknown / static_unknown classes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered
+                .contains("ripr found no static test path for any of the 1 changed expression(s)"),
+            "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_exposed_finding_exists() {
+        // If any finding is exposed, the per-finding output carries the signal.
+        // Do NOT emit the all-no-path note.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                exposed: 1,
+                no_static_path: 1,
+                ..Summary::default()
+            },
+            findings: vec![sample_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when an exposed finding exists; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_weakly_exposed_finding_exists() {
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![sample_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when a weakly_exposed finding exists; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_zero_findings() {
+        // Zero findings is a different case (handled by no-probes message).
+        // The all-no-path disclosure must NOT fire here.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when there are zero findings; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_uses_finding_count_not_probe_count() {
+        // The count shown must be the no-path/unknown total (= findings), not probes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 5,
+                findings: 3,
+                no_static_path: 2,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("for any of the 3 changed expression(s)"),
+            "expected count=3 (findings), not 5 (probes); got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_uses_conservative_static_language() {
+        // Verify the disclosure does not use forbidden mutation-testing vocabulary.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                no_static_path: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(!rendered.contains("killed"), "must not use 'killed'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("survived"), "must not use 'survived'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("untested"), "must not use 'untested'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("proven"), "must not use 'proven'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("adequate"), "must not use 'adequate'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(
+            rendered.contains("ripr found no static test path"),
+            "expected absence-of-path statement"
         );
     }
 }

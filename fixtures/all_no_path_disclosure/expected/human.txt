@@ -1,19 +1,19 @@
 ripr static RIPR exposure analysis
 mode: fast
-root: fixtures/unrelated_test_mentions_token/input
+root: fixtures/all_no_path_disclosure/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
 
-WARNING fixtures/unrelated_test_mentions_token/input/src/lib.rs:2
+WARNING fixtures/all_no_path_disclosure/input/src/lib.rs:2
 
 Changed
-  before: if amount > discount_threshold {
-  after:  if amount >= discount_threshold {
+  before: if amount > fee {
+  after:  if amount >= fee {
 
 Probe
   family: predicate
   delta:  control
-  owner:  src/lib.rs::discounted_total
+  owner:  src/lib.rs::apply_fee
 
 Static exposure
   no_static_path (warning, confidence 0.48)
@@ -21,10 +21,10 @@ Static exposure
 Evidence
   - reach no: No static test path found for the changed owner
   - infection unknown: No tests were found, so activation/infection cannot be estimated
-  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - propagation yes: Changed behavior appears to influence returned value: amount - fee
   - observation no: No reachable test oracle found
   - discriminator no: No assertion can discriminate the changed behavior without a reachable test
-  - local flow reaches returned value: amount - 10 (line 3)
+  - local flow reaches returned value: amount - fee (line 3)
 
 Weakness
   - No detected boundary input for the changed predicate
