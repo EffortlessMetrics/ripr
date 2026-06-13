@@ -8,6 +8,7 @@ use crate::output::agent_seam_packets::{
     AGENT_SEAM_PACKET_SCHEMA_VERSION, allowed_edit_surface_for_gap_route,
     gap_record_packet_do_not_do,
 };
+use crate::output::next_step::reconcile_next_step;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
@@ -345,11 +346,14 @@ fn finding_json_with_config_and_counts(
             .unwrap_or("none"),
         true,
     );
+    // RIPR-SPEC-0088 §PR8: use the shared reconciliation fn so the JSON
+    // surface agrees with the human surface — no raw-field serialization.
+    let reconciled_step = reconcile_next_step(finding);
     field(
         out,
         indent + 1,
         "recommended_next_step",
-        finding.recommended_next_step.as_deref().unwrap_or(""),
+        &reconciled_step,
         true,
     );
     let has_language = finding.language.is_some();
@@ -369,7 +373,7 @@ fn finding_json_with_config_and_counts(
         out,
         indent + 1,
         "suggested_next_action",
-        finding.recommended_next_step.as_deref().unwrap_or(""),
+        &reconciled_step,
         has_language || has_status || has_owner_kind || has_static_limit_kind || has_alignment,
     );
     if let Some(language) = finding.language {

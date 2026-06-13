@@ -12,6 +12,7 @@ use crate::domain::{
     ExposureClass, Finding, LanguageId, LanguageStatus, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::next_step::reconcile_next_step;
 use crate::output::path::display_path_text;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
@@ -335,9 +336,11 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
         "missing_discriminators".to_string(),
         missing_discriminators(&finding.activation.missing_discriminators),
     );
+    // RIPR-SPEC-0088 §PR8: use the shared reconciliation fn so SARIF
+    // suggested_next_action agrees with the human and JSON surfaces.
     properties.insert(
         "suggested_next_action".to_string(),
-        json!(finding.recommended_next_step.as_deref().unwrap_or("")),
+        json!(reconcile_next_step(finding)),
     );
     Value::Object(properties)
 }
@@ -660,9 +663,12 @@ fn finding_message(finding: &Finding) -> String {
         message.push_str(": ");
         message.push_str(&finding.probe.expression);
     }
-    if let Some(next) = &finding.recommended_next_step {
+    // RIPR-SPEC-0088 §PR8: the SARIF message text is a machine-consumed surface.
+    // Use the shared reconciliation fn (not the raw field) so the embedded
+    // "Next step" agrees with suggested_next_action and the other surfaces.
+    if finding.recommended_next_step.is_some() {
         message.push_str(". Next step: ");
-        message.push_str(next);
+        message.push_str(&reconcile_next_step(finding));
     }
     message
 }

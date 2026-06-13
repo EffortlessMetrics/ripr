@@ -21,6 +21,7 @@ pub mod human;
 pub mod json;
 pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
+pub(crate) mod next_step;
 pub(crate) mod outcome;
 pub(crate) mod path;
 pub(crate) mod perl_preview_card;

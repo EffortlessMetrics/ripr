@@ -3,6 +3,7 @@ use crate::domain::{Finding, LanguageId, LanguageStatus};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
 };
+use crate::output::next_step::reconcile_next_step;
 use crate::output::path::display_path;
 use crate::output::perl_preview_card::{PerlPreviewCard, PerlRawEvidenceRef, perl_preview_card};
 use crate::output::preview_actionability::{
@@ -119,36 +120,12 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         ));
     }
 
-    if let Some(step) = &finding.recommended_next_step {
+    if finding.recommended_next_step.is_some() {
         out.push_str("\nNext step\n");
-        out.push_str(&format!("  {}\n", next_step_for_finding(finding, step)));
+        out.push_str(&format!("  {}\n", reconcile_next_step(finding)));
     }
 
     out
-}
-
-/// Render the recommended next step, rewriting the blocked-case
-/// "no actionable repair packet is emitted until ... available" tail when the
-/// finding is in fact an actionable complete TypeScript repair packet
-/// (RIPR-SPEC-0088 §PR8). The `recommended_next_step` string is produced in the
-/// analysis layer, which cannot see the output-layer validator flip, so the
-/// correction happens here at render time.
-fn next_step_for_finding(finding: &Finding, step: &str) -> String {
-    let actionable = preview_actionability_for(finding)
-        .map(|a| a.repair_packet_ready)
-        .unwrap_or(false);
-    if !actionable {
-        return step.to_string();
-    }
-    // Strip the contradictory "; no actionable repair packet is emitted until
-    // ..." tail and replace it with an actionable confirmation.
-    let head = step
-        .split("; no actionable repair packet is emitted until")
-        .next()
-        .unwrap_or(step)
-        .trim_end_matches(['.', ' '])
-        .to_string();
-    format!("{head}; the repair packet is complete and delegatable (advisory).")
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {

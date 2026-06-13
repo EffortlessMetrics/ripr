@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+fix: JSON/SARIF recommended_next_step serialized raw blocked-case string despite repair_packet_ready:true; now uses shared reconcile_next_step fn (RIPR-SPEC-0088 §PR8)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
