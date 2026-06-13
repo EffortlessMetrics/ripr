@@ -24,8 +24,12 @@ pub(in crate::analysis) fn reveal_evidence(
     let analysis = analyze_related_assertions(probe, related_tests);
     let related = finalize_related_tests(analysis.related);
     let observe = build_observe_evidence(analysis.matched_any);
-    let discriminate =
-        build_discriminate_evidence(&analysis.strongest, &analysis.strongest_kind, &probe.family);
+    let discriminate = build_discriminate_evidence(
+        &analysis.strongest,
+        &analysis.strongest_kind,
+        &probe.family,
+        analysis.arm_observation_unverified,
+    );
 
     (observe, discriminate, related)
 }
@@ -35,6 +39,15 @@ struct RevealAssertionAnalysis {
     strongest: OracleStrength,
     strongest_kind: OracleKind,
     matched_any: bool,
+    /// True when this is a `MatchArm` probe whose discrimination was matched
+    /// only via `family_match` or the `assertion_count == 1` escape hatch, with
+    /// no assertion text containing a token from the arm's pattern or variant.
+    ///
+    /// `token_match` is the only static signal that an assertion actually
+    /// references this specific arm (e.g. `None`, `State::Ready`). Without it,
+    /// `family_match` only tells us an equality oracle exists — it cannot confirm
+    /// which arm the test exercises. Cleared as soon as any `token_match` fires.
+    arm_observation_unverified: bool,
 }
 
 fn analyze_related_assertions(
@@ -42,10 +55,13 @@ fn analyze_related_assertions(
     related_tests: &[&TestSummary],
 ) -> RevealAssertionAnalysis {
     let probe_tokens = extract_identifier_tokens(&probe.expression);
+    let is_match_arm = matches!(probe.family, ProbeFamily::MatchArm);
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
     let mut strongest_kind = OracleKind::Unknown;
     let mut matched_any = false;
+    // For MatchArm probes: start pessimistic and clear once a token_match fires.
+    let mut arm_observation_unverified = false;
 
     for test in related_tests {
         if test.assertions.is_empty() {
@@ -60,12 +76,23 @@ fn analyze_related_assertions(
             continue;
         }
         for assertion in &test.assertions {
-            if assertion_matches_probe(
+            let (matched, has_token_match) = assertion_matches_probe_detail(
                 &probe_tokens,
                 &probe.family,
                 assertion,
                 test.assertions.len(),
-            ) {
+            );
+            if matched {
+                if is_match_arm {
+                    if !matched_any {
+                        // First matching assertion: arm is unverified unless a
+                        // token_match confirms it observes this arm's pattern.
+                        arm_observation_unverified = !has_token_match;
+                    } else if has_token_match {
+                        // A confirmed arm-token match clears the unverified flag.
+                        arm_observation_unverified = false;
+                    }
+                }
                 matched_any = true;
                 let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
                 if relative_strength.rank() > strongest.rank() {
@@ -89,20 +116,29 @@ fn analyze_related_assertions(
         strongest,
         strongest_kind,
         matched_any,
+        arm_observation_unverified,
     }
 }
 
-fn assertion_matches_probe(
+/// Returns `(matched, has_token_match)`.
+///
+/// `matched` is true when the assertion should be associated with this probe
+/// (via token text, family kind, or single-assertion escape hatch).
+/// `has_token_match` is true when the assertion text contains an identifier
+/// token from the probe expression — the only static signal that an assertion
+/// directly references this probe's specific pattern or variant.
+fn assertion_matches_probe_detail(
     probe_tokens: &[String],
     family: &ProbeFamily,
     assertion: &OracleFact,
     assertion_count: usize,
-) -> bool {
+) -> (bool, bool) {
     let token_match = probe_tokens
         .iter()
         .any(|token| token.len() > 3 && assertion.text.contains(token));
     let family_match = oracle_matches_family(family, assertion);
-    token_match || family_match || assertion_count == 1
+    let matched = token_match || family_match || assertion_count == 1;
+    (matched, token_match)
 }
 
 fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
@@ -131,7 +167,21 @@ fn build_discriminate_evidence(
     strongest: &OracleStrength,
     strongest_kind: &OracleKind,
     family: &ProbeFamily,
+    arm_observation_unverified: bool,
 ) -> StageEvidence {
+    // For MatchArm probes, token_match is the only static signal that an
+    // assertion references this specific arm's pattern or variant. Without it,
+    // we cannot confirm the test exercises this arm even if it has an exact
+    // oracle. Downgrade to Weak so classify() emits weakly_exposed rather than
+    // exposed (arm_observation_unverified). A probe with a token_match stays
+    // exposed.
+    if arm_observation_unverified {
+        return StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Discriminator unconfirmed: no assertion text references this arm's pattern or variant (arm_observation_unverified)",
+        );
+    }
     match strongest {
         OracleStrength::Strong => StageEvidence::new(
             StageState::Yes,
@@ -376,42 +426,53 @@ mod tests {
             OracleKind::Unknown,
             OracleStrength::Unknown,
         );
-        assert!(assertion_matches_probe(
+        let (matched, has_token) = assertion_matches_probe_detail(
             &["score".to_string()],
             &ProbeFamily::StaticUnknown,
             &token_assertion,
-            2
-        ));
+            2,
+        );
+        assert!(matched, "token match must fire");
+        assert!(has_token, "token match must set has_token_match");
 
         let family_assertion = oracle(
             "assert!(result.is_err());",
             OracleKind::BroadError,
             OracleStrength::Weak,
         );
-        assert!(assertion_matches_probe(
+        let (matched, has_token) = assertion_matches_probe_detail(
             &["err".to_string()],
             &ProbeFamily::ErrorPath,
             &family_assertion,
-            2
-        ));
+            2,
+        );
+        assert!(matched, "family match must fire");
+        assert!(!has_token, "family-only match must not set has_token_match");
 
         let fallback_assertion = oracle(
             "assert!(ran);",
             OracleKind::Unknown,
             OracleStrength::Unknown,
         );
-        assert!(assertion_matches_probe(
+        let (matched, has_token) = assertion_matches_probe_detail(
             &["run".to_string()],
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
-            1
-        ));
-        assert!(!assertion_matches_probe(
+            1,
+        );
+        assert!(matched, "single-assertion fallback must fire");
+        assert!(
+            !has_token,
+            "escape-hatch-only match must not set has_token_match"
+        );
+
+        let (matched, _) = assertion_matches_probe_detail(
             &["run".to_string()],
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
-            2
-        ));
+            2,
+        );
+        assert!(!matched, "fallback must not fire for assertion_count > 1");
     }
 
     #[test]
@@ -511,7 +572,7 @@ mod tests {
         ];
 
         for (strength, kind, family, state, summary) in cases {
-            let evidence = build_discriminate_evidence(&strength, &kind, &family);
+            let evidence = build_discriminate_evidence(&strength, &kind, &family, false);
             assert_eq!(evidence.state, state);
             assert_eq!(evidence.summary, summary);
         }
@@ -803,5 +864,85 @@ mod tests {
             strength,
             observed_tokens: extract_identifier_tokens(text),
         }
+    }
+
+    // --- RIPR-SPEC-0093 arm-blind downgrade ---
+
+    /// A MatchArm probe whose expression has no extractable tokens (e.g. `None`
+    /// is filtered) and whose single related test has an ExactValue oracle for a
+    /// DIFFERENT arm must emit weakly_exposed with arm_observation_unverified.
+    #[test]
+    fn match_arm_probe_without_token_match_downgrades_discriminate_to_weak() {
+        // probe expression "None => 0," — None is filtered, 0 is not alpha
+        let probe = probe(ProbeFamily::MatchArm, "None => 0,");
+        let test = test_with_assertions(
+            "some_arm_returns_incremented_value",
+            vec![oracle(
+                "assert_eq!(reason(Some(5)), 6);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+
+        assert_eq!(observe.state, StageState::Yes, "observe must still fire");
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "discriminate must be downgraded to Weak (arm_observation_unverified)"
+        );
+        assert!(
+            discriminate.summary.contains("arm_observation_unverified"),
+            "summary must name the reason: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// A MatchArm probe whose expression DOES have a token that appears in the
+    /// assertion text (token_match) must stay exposed (StageState::Yes).
+    #[test]
+    fn match_arm_probe_with_token_match_keeps_discriminate_yes() {
+        // probe expression "Status::Idle => 0," — Idle and Status are extractable
+        let probe = probe(ProbeFamily::MatchArm, "Status::Idle => 0,");
+        let test = test_with_assertions(
+            "idle_arm_returns_zero",
+            vec![oracle(
+                "assert_eq!(classify(Status::Idle), 0);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+
+        assert_eq!(observe.state, StageState::Yes);
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "token_match on Idle must keep discriminate Yes (no over-correction)"
+        );
+    }
+
+    /// Non-MatchArm probes must not be affected by the arm_observation_unverified
+    /// logic even when they have no token_match.
+    #[test]
+    fn non_match_arm_probe_family_match_only_keeps_discriminate_yes() {
+        // ReturnValue probe with a single ExactValue assertion, no token match.
+        // The existing behavior (discriminate Yes via family_match) must be unchanged.
+        let probe = probe(ProbeFamily::ReturnValue, "value + 1");
+        let test = test_with_assertions(
+            "returns_incremented",
+            vec![oracle(
+                "assert_eq!(compute(), 42);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "ReturnValue probe must not be affected by arm_observation_unverified"
+        );
     }
 }

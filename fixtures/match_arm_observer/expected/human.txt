@@ -1,0 +1,29 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/match_arm_observer/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO fixtures/match_arm_observer/input/src/lib.rs:7
+
+Changed
+  after:  Status::Idle => 0,
+
+Probe
+  family: match_arm
+  delta:  control
+  owner:  src/lib.rs::classify
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach classify: idle_arm_returns_zero
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence match arm result: 0
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches match arm result: 0 (line 7)
+  - related test tests/classify.rs:4 idle_arm_returns_zero uses strong exact value oracle: assert_eq!(classify(Status::Idle), 0);
+  - observed assertion argument value 0 at line 5
+  - observed enum variant value Status::Idle at line 5

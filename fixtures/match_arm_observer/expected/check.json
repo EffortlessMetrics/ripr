@@ -1,0 +1,86 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/match_arm_observer/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:match_arm:43b1f2c8",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:match_arm:43b1f2c8",
+        "family": "match_arm",
+        "delta": "control",
+        "file": "fixtures/match_arm_observer/input/src/lib.rs",
+        "line": 7,
+        "expression": "Status::Idle => 0,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify: idle_arm_returns_zero"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence match arm result: 0"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify: idle_arm_returns_zero", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence match arm result: 0", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches match arm result: 0 (line 7)", "related test tests/classify.rs:4 idle_arm_returns_zero uses strong exact value oracle: assert_eq!(classify(Status::Idle), 0);", "observed assertion argument value 0 at line 5", "observed enum variant value Status::Idle at line 5"],
+      "flow_sinks": [
+        {"kind":"match_arm","text":"0","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence match arm result: 0", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach classify: idle_arm_returns_zero", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "5": "assert_eq!(classify(Status::Idle), 0);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "Status::Idle",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "Status::Idle",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "idle_arm_returns_zero",
+          "file": "tests/classify.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(Status::Idle), 0);"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    }
+  ]
+}
