@@ -60927,35 +60927,20 @@ fn check_readme_state() -> Result<(), String> {
     {
         violations.push("README.md is missing `# ripr` or centered HTML h1".to_string());
     }
+    // README front-door contract: the README is a front door, not a support
+    // ledger. Required sections are the contract spine; aging capability state
+    // lives in docs/CAPABILITY_MATRIX.md, not the front door.
     for heading in [
-        "## Current Scope",
-        "## Current Capability Snapshot",
-        "## Supporting Docs",
+        "## The first useful run",
+        "## Where it fits",
+        "## What you get",
+        "## Status",
+        "## Docs",
+        "## Contributing",
+        "## License",
     ] {
         if !has_markdown_heading(&readme, heading) {
             violations.push(format!("README.md is missing `{heading}`"));
-        }
-    }
-
-    if !readme.contains("| Capability | Current state | Next checkpoint |") {
-        violations
-            .push("README.md capability snapshot is missing the expected table header".to_string());
-    }
-
-    for capability in [
-        "Distribution",
-        "Diff analysis",
-        "Test discovery",
-        "Output",
-        "LSP",
-        "Agent context",
-        "Calibration",
-    ] {
-        let marker = format!("| {capability} |");
-        if !readme.contains(&marker) {
-            violations.push(format!(
-                "README.md capability snapshot is missing `{capability}`"
-            ));
         }
     }
 
