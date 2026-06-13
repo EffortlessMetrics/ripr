@@ -115,9 +115,9 @@ commands = [
 
 [[work_item]]
 id = "eval/python-eval-sweep-classification-distribution"
-status = "next"
+status = "done"
 branch = "dogfood/eval-sweep-classification-distribution"
-acceptance = "Eval-sweep records the exposed / weakly_exposed / no_static_path / limitation distribution with confidence, not only gap-ID stability, so Tier A surfaces false-`exposed` risk before Tier B judging."
+acceptance = "Eval-sweep records the exposed / weakly_exposed / no_static_path / limitation distribution plus oracle_alignment distribution (absent != unknown) and repair-packet presence, not only gap-ID stability, so Tier A surfaces over-credit risk before Tier B judging (PR #1190). Validated externally: the starter --clone sweep recorded on #1160 showed 0 exposed, tenacity weakly_exposed/orthogonal, six parse_failure correctly counted (parse-key fix #1194)."
 commands = [
   "cargo xtask eval-sweep",
   "cargo xtask check-pr",
@@ -135,10 +135,21 @@ commands = [
 ]
 
 [[work_item]]
-id = "eval/python-tier-b-judged-panel"
-status = "ready"
+id = "eval/python-tier-b-panel-schema"
+status = "done"
 branch = "dogfood/python-tier-b-judged-panel"
-acceptance = "Judged external PR (diff) panel; top-1 usefulness and false-actionable rate (the number that gates `usable`)."
+acceptance = "Tier B judged-diff panel SCHEMA + hand-vetted seed (RIPR-SPEC-0092, PR #1197): panel unit is a judged diff with expected_direction (should_gap/should_stay_quiet/should_limit), the two-error model (false_actionable visible vs false_exposed silent) and the outcome lattice, labels all-nullable until judged. Schema + seed only; no judging engine, no analyzer change. (Renumbered 0091->0092 after a concurrent registry collision with #1195.)"
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-b-judged-panel"
+status = "next"
+branch = "dogfood/python-tier-b-judged-panel-judging"
+acceptance = "Populate the RIPR-SPEC-0092 panel labels by judging real diffs (run ripr check, record the verdict against expected_direction): the first measured false-actionable AND false-`exposed` rates — the number that gates `usable`. Must include should_stay_quiet and should_limit items, not only should_gap."
 commands = [
   "cargo xtask metrics",
   "cargo xtask check-pr",
