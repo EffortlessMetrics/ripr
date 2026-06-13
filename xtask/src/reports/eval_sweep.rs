@@ -215,8 +215,10 @@ fn findings_have_parse_failure(value: &Value) -> bool {
         return false;
     };
     findings.iter().any(|finding| {
+        // The real `ripr check --json` finding key is `classification`
+        // (crates/ripr/src/output/json/report.rs), not the legacy `class`.
         let class_unknown = finding
-            .get("class")
+            .get("classification")
             .and_then(Value::as_str)
             .is_some_and(|class| class == "static_unknown");
         let unsupported_limit = finding
@@ -961,10 +963,15 @@ mod tests {
         assert!(classify(false, None) == Outcome::Crash);
         let ok = json!({ "findings": [{ "canonical_gap": { "id": "gap:python:a" } }] });
         assert!(classify(false, Some(&ok)) == Outcome::Ok);
-        let pf = json!({ "findings": [{ "class": "static_unknown" }] });
+        // Real output emits `classification`; this is the key the parser must read.
+        let pf = json!({ "findings": [{ "classification": "static_unknown" }] });
         assert!(classify(false, Some(&pf)) == Outcome::ParseFailure);
         let pf2 = json!({ "findings": [{ "static_limit_kind": "unsupported_syntax" }] });
         assert!(classify(false, Some(&pf2)) == Outcome::ParseFailure);
+        // The legacy `class` key must NOT be read — a finding carrying only the
+        // old key is not a parse failure under the real schema.
+        let legacy = json!({ "findings": [{ "class": "static_unknown" }] });
+        assert!(classify(false, Some(&legacy)) == Outcome::Ok);
     }
 
     #[test]
