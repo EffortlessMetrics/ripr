@@ -32,6 +32,21 @@ pub(crate) use seam_inventory::{
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
 
+/// Re-export workspace discovery helpers for the output layer so it can
+/// detect TS-predominant workspaces without importing through analysis::workspace
+/// directly. These are thin shims that forward to the inner workspace module.
+pub(crate) fn workspace_preview_language_files(
+    root: &Path,
+) -> Vec<(language::LanguageId, PathBuf)> {
+    workspace::discover_preview_language_files(root)
+}
+
+/// Re-export workspace Rust file discovery for the output layer so it can
+/// check whether a workspace has any Rust source.
+pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {
+    workspace::discover_rust_files(root).unwrap_or_default()
+}
+
 use crate::config::OraclePolicy;
 use crate::domain::{Finding, Summary};
 use std::collections::BTreeSet;

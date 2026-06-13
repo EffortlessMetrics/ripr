@@ -89,9 +89,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         python_first_use: python_first_use.as_ref(),
     };
 
+    let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
     std::fs::write(
         &artifacts.repo_exposure_json,
-        output::repo_exposure::render_repo_exposure_json(&classified, None),
+        output::repo_exposure::render_repo_exposure_json(&classified, None, ts_guidance.as_ref()),
     )
     .map_err(|err| {
         format!(
@@ -101,7 +102,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     })?;
     std::fs::write(
         &artifacts.repo_exposure_md,
-        output::repo_exposure::render_repo_exposure_md(&classified),
+        output::repo_exposure::render_repo_exposure_md(&classified, ts_guidance.as_ref()),
     )
     .map_err(|err| {
         format!(

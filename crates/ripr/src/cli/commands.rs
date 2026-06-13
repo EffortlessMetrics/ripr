@@ -3416,11 +3416,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     if matches!(format, OutputFormat::RepoExposureJson) {
         let (classified, limit_info) =
             analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let ts_guidance =
+            output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
         output::repo_exposure::write_repo_exposure_json(
             &classified,
             limit_info.as_ref(),
+            ts_guidance.as_ref(),
             &mut handle,
         )
         .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;

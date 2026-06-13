@@ -99,3 +99,4 @@ observable behavior.
 | [RIPR-SPEC-0086](RIPR-SPEC-0086-python-eval-sweep.md) | proposed | Python Tier A eval sweep |
 | [RIPR-SPEC-0087](RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md) | proposed | TypeScript preview→actionable repair-packet contract (0085 §PR7) |
 | [RIPR-SPEC-0088](RIPR-SPEC-0088-typescript-repair-packet-projection.md) | proposed | TypeScript repair-packet surface projection (0085 §PR8) |
+| [RIPR-SPEC-0089](RIPR-SPEC-0089-ts-full-repo-guidance.md) | proposed | TypeScript full-repo scan guidance disclosure |

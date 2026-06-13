@@ -5396,3 +5396,31 @@ outputs = [
 metrics = [
   "typescript_repair_packet_projection_surfaces_count"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0089"
+name = "TypeScript full-repo scan guidance disclosure"
+spec = "docs/specs/RIPR-SPEC-0089-ts-full-repo-guidance.md"
+tests = [
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_emits_ts_guidance_limitations_when_ts_workspace_and_empty_seams",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_emits_ts_guidance_alongside_seam_limit_when_both_apply",
+  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_emits_ts_guidance_section_when_ts_workspace_and_empty_seams",
+  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_does_not_emit_ts_guidance_when_rust_seams_present"
+]
+fixtures = [
+  "fixtures/ts_full_repo_guidance"
+]
+code = [
+  "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/render.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/commands/pilot.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0089-ts-full-repo-guidance.md",
+  "fixtures/ts_full_repo_guidance/expected/repo-exposure.json",
+  "fixtures/ts_full_repo_guidance/expected/repo-exposure.md"
+]
+metrics = [
+  "ts_full_repo_guidance_disclosure_named"
+]
