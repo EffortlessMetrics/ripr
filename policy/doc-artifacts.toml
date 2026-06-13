@@ -339,6 +339,14 @@ owner = "product-swarm"
 standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only (JSON unchanged, no schema bump); addresses #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
 
 [[artifact]]
+id = "RIPR-SPEC-0091"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0091-pilot-artifact-size-bound.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Bounds ripr pilot artifact size (repo-exposure.json + agent-seam-packets.json) to DEFAULT_PILOT_SEAM_BUDGET=2000 seams; fail-closed with limitations[] disclosure in both artifacts naming RIPR_PILOT_SEAM_BUDGET and a repair route; mirrors RIPR-SPEC-0074 run_status pattern; fixes #1170 (400 MB artifacts for one-file change)."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

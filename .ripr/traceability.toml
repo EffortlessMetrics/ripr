@@ -5463,3 +5463,29 @@ outputs = [
 metrics = [
   "all_no_path_disclosure_honesty_note_present"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0091"
+name = "pilot artifact size bound"
+spec = "docs/specs/RIPR-SPEC-0091-pilot-artifact-size-bound.md"
+tests = [
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::pilot_seam_budget_default_constant_is_smaller_than_repo_exposure_cap",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::pilot_seam_budget_env_zero_parses_as_unbounded",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_pilot_seam_budget_inner_truncates_when_above_limit",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::apply_pilot_seam_budget_inner_returns_none_when_at_or_below_limit",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::no_limit_info_emits_run_status_complete",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::limit_info_emits_run_status_seam_limit_applied_and_disclosure",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::limit_info_configured_source_emits_configured_repair_route"
+]
+code = [
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/cli/commands/pilot.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0091-pilot-artifact-size-bound.md"
+]
+metrics = [
+  "pilot_seam_budget_default_2000",
+  "pilot_artifact_bound_disclosure_present"
+]

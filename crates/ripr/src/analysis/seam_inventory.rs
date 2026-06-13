@@ -47,6 +47,17 @@ const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
 /// on giant workspaces. Operators can opt out via `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0`.
 pub(crate) const DEFAULT_REPO_EXPOSURE_SEAM_LIMIT: usize = 10_000;
 
+/// Environment variable that overrides the pilot artifact seam budget.
+/// Set to `0` to remove the cap (unbounded); any positive integer sets
+/// the budget explicitly.  When unset, `DEFAULT_PILOT_SEAM_BUDGET` applies.
+pub(crate) const PILOT_SEAM_BUDGET_ENV: &str = "RIPR_PILOT_SEAM_BUDGET";
+
+/// Default cap on the number of seams written to pilot artifacts
+/// (`repo-exposure.json` and `agent-seam-packets.json`).  2 000 seams
+/// stay comfortably below 10 MB at typical per-seam evidence sizes.
+/// Operators can raise or remove the cap via `RIPR_PILOT_SEAM_BUDGET`.
+pub(crate) const DEFAULT_PILOT_SEAM_BUDGET: usize = 2_000;
+
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 
 /// Walk production Rust files at `root` and emit the raw seam inventory.
@@ -709,6 +720,52 @@ fn apply_repo_exposure_seam_limit_for_test(
 ) -> Option<SeamLimitInfo> {
     let (limit, source) = limit_and_source?;
     apply_repo_exposure_seam_limit_inner(seams, limit, source)
+}
+
+/// Apply the pilot seam budget to an already-classified slice, returning
+/// a `SeamLimitInfo` when the slice was truncated, or `None` when the full
+/// slice fits within the budget.
+///
+/// The budget is resolved in priority order:
+/// 1. `RIPR_PILOT_SEAM_BUDGET=0` → unbounded (operator opt-out).
+/// 2. `RIPR_PILOT_SEAM_BUDGET=N` (N > 0) → configured cap N.
+/// 3. Env var unset → `DEFAULT_PILOT_SEAM_BUDGET` (always-on default).
+pub(crate) fn apply_pilot_seam_budget(
+    classified: &mut Vec<super::seam_classification::ClassifiedSeam>,
+) -> Option<SeamLimitInfo> {
+    let (limit, source) = pilot_seam_budget()?;
+    apply_pilot_seam_budget_inner(classified, limit, source)
+}
+
+fn apply_pilot_seam_budget_inner(
+    classified: &mut Vec<super::seam_classification::ClassifiedSeam>,
+    limit: usize,
+    source: SeamLimitSource,
+) -> Option<SeamLimitInfo> {
+    let total = classified.len();
+    if total <= limit {
+        return None;
+    }
+    classified.truncate(limit);
+    Some(SeamLimitInfo {
+        analyzed: classified.len(),
+        total,
+        source,
+    })
+}
+
+/// Return the effective pilot seam budget and its source.
+///
+/// - Env var unset → `Some((DEFAULT_PILOT_SEAM_BUDGET, Default))`.
+/// - Env var = `"0"` → `None` (operator opt-out: unbounded).
+/// - Env var = N > 0 → `Some((N, Configured))`.
+pub(crate) fn pilot_seam_budget() -> Option<(usize, SeamLimitSource)> {
+    match std::env::var(PILOT_SEAM_BUDGET_ENV) {
+        Ok(value) => {
+            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
+        }
+        Err(_) => Some((DEFAULT_PILOT_SEAM_BUDGET, SeamLimitSource::Default)),
+    }
 }
 
 #[cfg(test)]
@@ -2205,5 +2262,149 @@ pub fn check_b(x: i32) -> bool { x < 0 }
             "None limit (opt-out) should return None (unbounded), got {result:?}"
         );
         Ok(())
+    }
+
+    // -- Pilot seam budget tests ---------------------------------------------
+
+    #[test]
+    fn pilot_seam_budget_default_constant_is_smaller_than_repo_exposure_cap() {
+        // DEFAULT_PILOT_SEAM_BUDGET must be ≤ DEFAULT_REPO_EXPOSURE_SEAM_LIMIT
+        // so the pilot budget can never produce a larger artifact than the
+        // repo-exposure default.
+        // Enforce the compile-time invariant: pilot budget must not exceed
+        // the repo-exposure default cap.
+        const _: () = assert!(
+            DEFAULT_PILOT_SEAM_BUDGET <= DEFAULT_REPO_EXPOSURE_SEAM_LIMIT,
+            "pilot budget must not exceed the repo-exposure seam limit"
+        );
+        assert_eq!(DEFAULT_PILOT_SEAM_BUDGET, 2_000);
+    }
+
+    #[test]
+    fn pilot_seam_budget_env_zero_parses_as_unbounded() {
+        // The same `parse_repo_exposure_seam_limit` helper is shared for
+        // opt-out (value "0" → None means no budget applied).
+        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+        assert_eq!(parse_repo_exposure_seam_limit("500"), Some(500));
+    }
+
+    #[test]
+    fn apply_pilot_seam_budget_inner_truncates_when_above_limit() -> Result<(), String> {
+        // Use the inner fn to avoid env-var dependency in the test.
+        use super::seam_classification::ClassifiedSeam;
+        use super::test_grip_evidence::TestGripEvidence;
+        use crate::analysis::seams::{
+            ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind,
+        };
+        use crate::domain::{Confidence, StageEvidence, StageState};
+        use std::path::PathBuf;
+
+        let stage = |state| StageEvidence::new(state, Confidence::Unknown, String::new());
+
+        let make_classified = |byte_offset: usize| -> ClassifiedSeam {
+            let seam = RepoSeam::new(
+                PathBuf::from("src/lib.rs"),
+                format!("owner_{byte_offset}"),
+                SeamKind::ReturnValue,
+                byte_offset,
+                1,
+                "x".to_string(),
+                RequiredDiscriminator::ReturnValue {
+                    description: "x".to_string(),
+                },
+                ExpectedSink::ReturnValue,
+            );
+            let seam_id = seam.id().clone();
+            ClassifiedSeam {
+                seam,
+                evidence: TestGripEvidence {
+                    seam_id,
+                    related_tests: Vec::new(),
+                    reach: stage(StageState::Unknown),
+                    activate: stage(StageState::Unknown),
+                    propagate: stage(StageState::Unknown),
+                    observe: stage(StageState::Unknown),
+                    discriminate: stage(StageState::Unknown),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                },
+                class: SeamGripClass::Ungripped,
+            }
+        };
+
+        let mut classified = vec![make_classified(0), make_classified(10), make_classified(20)];
+        let info = apply_pilot_seam_budget_inner(&mut classified, 2, SeamLimitSource::Default);
+        let info = info.ok_or("should truncate and return Some when limit < total")?;
+        if classified.len() != 2 {
+            return Err(format!(
+                "expected classified.len() == 2, got {}",
+                classified.len()
+            ));
+        }
+        if info.analyzed != 2 || info.total != 3 {
+            return Err(format!(
+                "expected analyzed=2 total=3, got analyzed={} total={}",
+                info.analyzed, info.total
+            ));
+        }
+        if info.source != SeamLimitSource::Default {
+            return Err(format!(
+                "expected SeamLimitSource::Default, got {:?}",
+                info.source
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn apply_pilot_seam_budget_inner_returns_none_when_at_or_below_limit() {
+        use super::seam_classification::ClassifiedSeam;
+        use super::test_grip_evidence::TestGripEvidence;
+        use crate::analysis::seams::{
+            ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind,
+        };
+        use crate::domain::{Confidence, StageEvidence, StageState};
+        use std::path::PathBuf;
+
+        let stage = |state| StageEvidence::new(state, Confidence::Unknown, String::new());
+
+        let make_classified = |byte_offset: usize| -> ClassifiedSeam {
+            let seam = RepoSeam::new(
+                PathBuf::from("src/lib.rs"),
+                format!("owner_{byte_offset}"),
+                SeamKind::ReturnValue,
+                byte_offset,
+                1,
+                "x".to_string(),
+                RequiredDiscriminator::ReturnValue {
+                    description: "x".to_string(),
+                },
+                ExpectedSink::ReturnValue,
+            );
+            let seam_id = seam.id().clone();
+            ClassifiedSeam {
+                seam,
+                evidence: TestGripEvidence {
+                    seam_id,
+                    related_tests: Vec::new(),
+                    reach: stage(StageState::Unknown),
+                    activate: stage(StageState::Unknown),
+                    propagate: stage(StageState::Unknown),
+                    observe: stage(StageState::Unknown),
+                    discriminate: stage(StageState::Unknown),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                },
+                class: SeamGripClass::Ungripped,
+            }
+        };
+
+        let mut classified = vec![make_classified(0), make_classified(10)];
+        let info = apply_pilot_seam_budget_inner(&mut classified, 5, SeamLimitSource::Default);
+        assert!(
+            info.is_none(),
+            "slice smaller than budget must return None, got {info:?}"
+        );
+        assert_eq!(classified.len(), 2, "slice should be unchanged");
     }
 }

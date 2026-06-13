@@ -101,3 +101,4 @@ observable behavior.
 | [RIPR-SPEC-0088](RIPR-SPEC-0088-typescript-repair-packet-projection.md) | proposed | TypeScript repair-packet surface projection (0085 §PR8) |
 | [RIPR-SPEC-0089](RIPR-SPEC-0089-ts-full-repo-guidance.md) | proposed | TypeScript full-repo scan guidance disclosure |
 | [RIPR-SPEC-0090](RIPR-SPEC-0090-all-no-path-disclosure.md) | proposed | All-no-path aggregate disclosure |
+| [RIPR-SPEC-0091](RIPR-SPEC-0091-pilot-artifact-size-bound.md) | proposed | Pilot artifact size bound (DEFAULT_PILOT_SEAM_BUDGET=2000) |

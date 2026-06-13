@@ -598,6 +598,7 @@ impl Backend {
             let seam = snapshot.classified_seam_by_id(seam_id)?;
             let packet = crate::output::agent_seam_packets::render_agent_seam_packets_json(
                 std::slice::from_ref(seam),
+                None,
             );
             return serde_json::from_str(&packet).ok();
         }

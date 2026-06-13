@@ -42,9 +42,9 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let analysis_config = config.clone();
     let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
         analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
-            .map(|(classified, _)| classified)
     })?;
-    let PilotAnalysisResult::Complete(classified) = analysis_result else {
+    let PilotAnalysisResult::Complete((mut classified, inventory_limit_info)) = analysis_result
+    else {
         let context = output::pilot::PilotSummaryContext {
             root: &input.root,
             mode: &input.mode,
@@ -78,6 +78,14 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         return Ok(());
     };
 
+    // Apply the pilot artifact seam budget.  The inventory may already have
+    // been capped by the repo-exposure seam limit; we then further cap the
+    // classified slice for the two pilot artifacts so they stay under a
+    // manageable size.  `limit_info` carries whichever cap fired (pilot
+    // budget wins when both fire; inventory limit is the outer bound).
+    let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
+    let limit_info = pilot_budget_info.or(inventory_limit_info);
+
     let python_first_use = collect_pilot_python_first_use(&input, &config);
     let context = output::pilot::PilotSummaryContext {
         root: &input.root,
@@ -92,7 +100,11 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
     std::fs::write(
         &artifacts.repo_exposure_json,
-        output::repo_exposure::render_repo_exposure_json(&classified, None, ts_guidance.as_ref()),
+        output::repo_exposure::render_repo_exposure_json(
+            &classified,
+            limit_info.as_ref(),
+            ts_guidance.as_ref(),
+        ),
     )
     .map_err(|err| {
         format!(
@@ -112,7 +124,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     })?;
     std::fs::write(
         &artifacts.agent_seam_packets_json,
-        output::agent_seam_packets::render_agent_seam_packets_json(&classified),
+        output::agent_seam_packets::render_agent_seam_packets_json(
+            &classified,
+            limit_info.as_ref(),
+        ),
     )
     .map_err(|err| {
         format!(
@@ -214,7 +229,12 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
 }
 
 enum PilotAnalysisResult {
-    Complete(Vec<analysis::ClassifiedSeam>),
+    Complete(
+        (
+            Vec<analysis::ClassifiedSeam>,
+            Option<analysis::SeamLimitInfo>,
+        ),
+    ),
     TimedOut,
 }
 
@@ -223,7 +243,14 @@ fn run_pilot_analysis_with_timeout<F>(
     runner: F,
 ) -> Result<PilotAnalysisResult, String>
 where
-    F: FnOnce() -> Result<Vec<analysis::ClassifiedSeam>, String> + Send + 'static,
+    F: FnOnce() -> Result<
+            (
+                Vec<analysis::ClassifiedSeam>,
+                Option<analysis::SeamLimitInfo>,
+            ),
+            String,
+        > + Send
+        + 'static,
 {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -342,7 +369,7 @@ mod tests {
         let (_hold_tx, hold_rx) = mpsc::channel::<()>();
         let result = run_pilot_analysis_with_timeout(1, move || {
             let _ignored = hold_rx.recv();
-            Ok(Vec::new())
+            Ok((Vec::new(), None))
         });
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));

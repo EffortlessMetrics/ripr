@@ -39,6 +39,13 @@ Options:
   --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
   --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to 30000.
 
+Environment variables:
+  RIPR_PILOT_SEAM_BUDGET   Maximum seams written to pilot artifacts (repo-exposure.json,
+                            agent-seam-packets.json). Default: 2000. Set to 0 to disable
+                            the budget and write all seams (may produce very large files).
+                            When the budget is applied, both artifacts include a
+                            limitations[] disclosure naming the env var and a repair route.
+
 Outputs:
   - repo-exposure.json and repo-exposure.md
   - agent-seam-packets.json

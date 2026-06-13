@@ -96,6 +96,7 @@ pub(crate) fn render_check_with_config(
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(agent_seam_packets::render_agent_seam_packets_json(
                 &classified,
+                None,
             ))
         }
     }
