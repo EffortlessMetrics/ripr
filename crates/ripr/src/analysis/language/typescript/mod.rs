@@ -174,6 +174,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                     &added.text,
                     &all_owners,
                     &all_tests,
+                    Some(&options.root),
                 ) {
                     finding.evidence.extend(discovery_evidence.clone());
                     // Inject verify-command evidence derived from the strongest

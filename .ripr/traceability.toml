@@ -5248,7 +5248,14 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_high_when_strong_oracle_and_literal_expected",
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_medium_when_strong_oracle_and_no_literal",
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_medium_for_medium_strength",
-  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_low_for_weak_and_smoke"
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_low_for_weak_and_smoke",
+  # PR6: ownership hardening — package-local, import forms, typescript_target_unresolved
+  "crates/ripr/src/analysis/language/typescript/tests.rs::package_local_filter_selects_same_package_test",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::package_local_filter_rejects_cross_package_test",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::extract_imports_recognizes_commonjs_destructured_require",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::extract_imports_recognizes_re_export_form",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_target_unresolved_emitted_for_cross_package_reference",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_target_unresolved_not_emitted_for_same_package"
 ]
 fixtures = [
   "fixtures/ts_pkg_discovery_single_package",
@@ -5260,7 +5267,10 @@ fixtures = [
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_limitation_custom_matcher",
   # PR5: oracle metadata hardening (new fixture)
-  "fixtures/typescript_dynamic_assertion_unresolved"
+  "fixtures/typescript_dynamic_assertion_unresolved",
+  # PR6: ownership hardening — package-local and CommonJS require
+  "fixtures/typescript_monorepo_package_local",
+  "fixtures/typescript_commonjs_require"
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript/package.rs",
@@ -5269,7 +5279,9 @@ code = [
   "crates/ripr/src/analysis/language/typescript/oracle.rs",
   "crates/ripr/src/analysis/language/typescript/types.rs",
   "crates/ripr/src/analysis/language/typescript/mod.rs",
-  "crates/ripr/src/output/typescript_preview_card.rs"
+  "crates/ripr/src/output/typescript_preview_card.rs",
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs",
+  "crates/ripr/src/analysis/language/typescript/owners.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md",

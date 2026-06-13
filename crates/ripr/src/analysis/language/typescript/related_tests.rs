@@ -2,12 +2,89 @@
 
 use super::*;
 
+/// Resolve the nearest `package.json` root for `file` by walking up to
+/// `workspace_root`.  Returns the package root path (relative to
+/// `workspace_root`) when found.
+///
+/// This is a lightweight path-only walk — it does NOT parse the manifest and
+/// does NOT perform full `PackageDiscovery`. It is used only for the
+/// package-local ownership filter.
+pub(crate) fn package_root_for_file_path(file: &Path, workspace_root: &Path) -> Option<PathBuf> {
+    let absolute_file = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        workspace_root.join(file)
+    };
+    let start = absolute_file.parent()?;
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join("package.json").is_file() {
+            // Convert back to workspace-relative.
+            return current.strip_prefix(workspace_root).ok().map(|rel| {
+                if rel == Path::new("") {
+                    PathBuf::from(".")
+                } else {
+                    rel.to_path_buf()
+                }
+            });
+        }
+        if current == workspace_root {
+            break;
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    // Check workspace root itself.
+    if workspace_root.join("package.json").is_file() {
+        return Some(PathBuf::from("."));
+    }
+    None
+}
+
+/// Return `true` when `owner_file` and `test_file` both resolve to the same
+/// package root under `workspace_root`, or when either file's package root
+/// cannot be determined (fail-open: preserve existing behaviour when no
+/// `package.json` hierarchy exists).
+///
+/// A cross-package candidate is one where the owner lives in
+/// `packages/a/` and the test lives in `packages/b/`.  Such a candidate
+/// MUST NOT be selected as an owned relation.
+pub(crate) fn same_package_root(
+    owner_file: &Path,
+    test_file: &Path,
+    workspace_root: &Path,
+) -> bool {
+    let owner_pkg = package_root_for_file_path(owner_file, workspace_root);
+    let test_pkg = package_root_for_file_path(test_file, workspace_root);
+    match (owner_pkg, test_pkg) {
+        // Both found: they must agree.
+        (Some(a), Some(b)) => a == b,
+        // If either is unresolved, fail-open (preserve existing behaviour).
+        _ => true,
+    }
+}
+
+/// Collect related test candidates for `owner` from `all_tests`.
+///
+/// `workspace_root` enables package-local ownership filtering when `Some`:
+/// tests in different packages are excluded from the candidate set so that a
+/// test in `packages/b/` cannot be selected as an owner relation for a source
+/// file in `packages/a/`.  Pass `None` to preserve the previous behaviour
+/// (used in unit tests that do not have a real filesystem).
 pub(crate) fn related_test_candidates<'a>(
     owner: &TypeScriptOwner,
     all_tests: &'a [TypeScriptTest],
+    workspace_root: Option<&Path>,
 ) -> Vec<TypeScriptRelatedCandidate<'a>> {
     let mut candidates: Vec<TypeScriptRelatedCandidate<'a>> = all_tests
         .iter()
+        .filter(|test| {
+            workspace_root
+                .map(|root| same_package_root(&owner.file, &test.file, root))
+                .unwrap_or(true)
+        })
         .filter_map(|test| {
             owner_call_relation(test, owner)
                 .map(|relation| TypeScriptRelatedCandidate { test, relation })
@@ -16,6 +93,11 @@ pub(crate) fn related_test_candidates<'a>(
     if candidates.is_empty() {
         candidates = all_tests
             .iter()
+            .filter(|test| {
+                workspace_root
+                    .map(|root| same_package_root(&owner.file, &test.file, root))
+                    .unwrap_or(true)
+            })
             .filter_map(|test| {
                 heuristic_relation(test, owner)
                     .map(|relation| TypeScriptRelatedCandidate { test, relation })
@@ -268,11 +350,17 @@ fn heuristic_owner_supported(owner: &TypeScriptOwner) -> bool {
     )
 }
 
+/// Find related tests for `owner` in `all_tests`.
+///
+/// `workspace_root` enables package-local ownership filtering when `Some`:
+/// tests in different packages are excluded from the candidate set.
+/// Pass `None` to preserve the previous behaviour (used in unit tests).
 pub(crate) fn find_related_tests(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
+    workspace_root: Option<&Path>,
 ) -> Vec<RelatedTest> {
-    related_test_candidates(owner, all_tests)
+    related_test_candidates(owner, all_tests, workspace_root)
         .into_iter()
         .map(|candidate| {
             let strongest = candidate

@@ -164,8 +164,15 @@ fn heuristic_name_test_for(owner_name: &str) -> TypeScriptTest {
 fn classify_weak_direct_line(line_text: &str) -> Result<Finding, String> {
     let owner = test_owner("applyDiscount", "src/lib.ts");
     let test = weak_direct_test_for("applyDiscount");
-    classify_change(Path::new("src/lib.ts"), 2, line_text, &[owner], &[test])
-        .ok_or_else(|| "expected TypeScript preview finding".to_string())
+    classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        line_text,
+        &[owner],
+        &[test],
+        None,
+    )
+    .ok_or_else(|| "expected TypeScript preview finding".to_string())
 }
 
 fn missing_discriminator_values(finding: &Finding) -> Vec<String> {
@@ -725,6 +732,7 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         "  return blob;",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -1539,7 +1547,7 @@ fn find_related_tests_matches_by_call_name() {
             imports_in_file: Vec::new(),
         },
     ];
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alpha");
 }
@@ -1568,7 +1576,7 @@ fn find_related_tests_ignores_object_method_calls_for_function_owners() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1596,8 +1604,8 @@ test("cart total observes receiver", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests);
-    let related = find_related_tests(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1633,7 +1641,7 @@ test("cart total through factory stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1662,7 +1670,7 @@ test("cart total through dynamic method stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1692,7 +1700,7 @@ test("mocked cart total stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1719,8 +1727,8 @@ test("static build observes class method", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests);
-    let related = find_related_tests(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1756,7 +1764,7 @@ test("shadowed static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1781,8 +1789,8 @@ fn find_related_tests_matches_same_file_class_method_calls() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests);
-    let related = find_related_tests(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1818,7 +1826,7 @@ test("namespace static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1847,7 +1855,7 @@ test("mocked static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1874,7 +1882,7 @@ test("unknown class static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -1901,8 +1909,8 @@ test("rate value observes initializer", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests);
-    let related = find_related_tests(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1937,7 +1945,7 @@ test("rate value observes namespace initializer", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "rate value observes namespace initializer");
@@ -1976,7 +1984,7 @@ test("string mention stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -2003,7 +2011,7 @@ test("alias import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alias import observes threshold");
@@ -2031,7 +2039,7 @@ test("namespace import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "namespace import observes threshold");
@@ -2069,7 +2077,7 @@ test("type only import", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -2098,7 +2106,7 @@ fn find_related_tests_ignores_call_shaped_string_mentions() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -2140,7 +2148,7 @@ fn find_related_tests_ignores_call_shaped_comment_mentions() {
         },
     ];
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
 
     assert!(related.is_empty());
 }
@@ -2181,7 +2189,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
 "#,
     ));
 
-    let candidates = related_test_candidates(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
     let relations: Vec<_> = candidates
         .iter()
         .map(|candidate| candidate.relation)
@@ -2201,7 +2209,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
             .all(|candidate| candidate.relation.is_uncertain())
     );
 
-    let related = find_related_tests(&owner, &tests);
+    let related = find_related_tests(&owner, &tests, None);
     assert_eq!(related.len(), 3);
     assert!(
         related
@@ -2232,7 +2240,7 @@ fn related_test_name_proximity_ignores_partial_tokens() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests);
+    let candidates = related_test_candidates(&owner, &tests, None);
 
     assert!(candidates.is_empty());
 }
@@ -2263,6 +2271,7 @@ fn classify_change_uses_heuristic_links_as_weak_uncertain_proximity() -> Result<
         "    if (amount >= threshold) {",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
 
@@ -2312,6 +2321,7 @@ fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(
         "    if (amount >= threshold) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
@@ -2383,6 +2393,7 @@ fn typescript_preview_weak_oracle_guidance_names_snapshot_exact_value_shape() ->
         "    return `summary:${status.trim()}`;",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2453,6 +2464,7 @@ fn typescript_preview_weak_oracle_guidance_keeps_broad_error_advisory() -> Resul
         "    throw new Error(\"empty user\");",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2495,6 +2507,7 @@ fn typescript_preview_weak_oracle_guidance_distinguishes_mock_payload_limits() -
         "    sink.record(status);",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2551,6 +2564,7 @@ fn typescript_preview_mock_payload_guidance_names_literal_payload_without_repair
         "    sink.record(\"ready\");",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2625,6 +2639,7 @@ fn classify_change_labels_javascript_sources_separately() -> Result<(), String> 
         "    if (amount >= threshold) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a JavaScript preview finding".to_string())?;
 
@@ -2688,6 +2703,7 @@ fn classify_change_matches_owner_file_before_line_range() -> Result<(), String> 
         "    if (value >= 10) {",
         &owners,
         &tests,
+        None,
     )
     .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
 
@@ -3215,6 +3231,7 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
         "    if (amount >= threshold) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::Exposed));
@@ -3252,6 +3269,7 @@ fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), S
         "    if (amount >= threshold) {",
         &[owner],
         &[],
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::NoStaticPath));
@@ -3281,6 +3299,7 @@ fn classify_change_returns_none_when_line_is_outside_any_owner() {
         "// top-level comment",
         &[owner],
         &[],
+        None,
     );
     assert!(finding.is_none());
 }
@@ -3693,6 +3712,7 @@ fn classify_change_surfaces_decorator_indirection_static_limit() -> Result<(), S
         "    return value;",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected decorated owner finding".to_string())?;
 
@@ -3740,6 +3760,7 @@ export function discountedTotal(amount: number): number {
         "    return normalizeTotal(amount);",
         &owners,
         &[test],
+        None,
     )
     .ok_or_else(|| "expected imported-symbol finding".to_string())?;
 
@@ -3777,6 +3798,7 @@ fn classify_change_omits_probe_facts_for_heuristic_only_related_test() -> Result
         "    if (amount >= threshold) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected heuristic TypeScript preview finding".to_string())?;
 
@@ -3958,6 +3980,7 @@ fn classify_change_surfaces_mocked_module_static_limit_in_missing_and_evidence()
         "    if (amount >= threshold) {",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(
@@ -4033,6 +4056,7 @@ fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() 
         "    if (amount >= threshold) {",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4113,6 +4137,7 @@ fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -
         "    return normalizeLabel(props.label);",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4161,6 +4186,7 @@ test("renders summary snapshot", () => {
         "    return `summary:${status.trim()}`;",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4211,6 +4237,7 @@ test("price is in expected range", () => {
         "    if (base >= 0) {",
         &[owner],
         &tests,
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4250,6 +4277,7 @@ fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Resul
         "    if (amount >= threshold) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4298,6 +4326,7 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
         "    return `summary:${status.trim()}`;",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4445,6 +4474,7 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
         "    if (value < min) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4502,6 +4532,7 @@ fn named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation() 
         "    if (value < min) {",
         &[owner],
         &[test],
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4552,4 +4583,332 @@ fn oracle_confidence_low_for_weak_and_smoke() {
         derive_oracle_confidence(&OracleStrength::Smoke, &None, "toBeTruthy"),
         OracleConfidence::Low
     );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PR6: Ownership hardening — package-local, import forms, typescript_target_unresolved
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Package-local filter: a test in the SAME package as the owner IS selected.
+#[test]
+fn package_local_filter_selects_same_package_test() {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-pkg-local-{stamp}"));
+    // pkg-a directory with its own package.json
+    let pkg_a = root.join("packages").join("pkg-a");
+    let _ = fs::create_dir_all(pkg_a.join("src"));
+    let _ = fs::create_dir_all(pkg_a.join("tests"));
+    let _ = fs::write(
+        pkg_a.join("package.json"),
+        r#"{"name":"pkg-a","devDependencies":{"jest":"^29"}}"#,
+    );
+
+    let owner = TypeScriptOwner {
+        name: "doWork".to_string(),
+        file: pkg_a.join("src").join("work.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "do work test".to_string(),
+        local_name: "do work test".to_string(),
+        describe_names: Vec::new(),
+        file: pkg_a.join("tests").join("work.test.ts"),
+        line: 1,
+        body_text: "doWork();".to_string(),
+        assertions: Vec::new(),
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+
+    let tests_slice = [test.clone()];
+    let candidates = related_test_candidates(&owner, &tests_slice, Some(&root));
+    // The package-local filter must NOT exclude same-package tests.
+    // (candidates may still be empty if body_text has no call — that's tested
+    // elsewhere; here we only verify the package filter is not the bottleneck.)
+    // Use workspace_root=None to check the unfiltered count equals
+    // workspace_root=Some count (filter didn't discard it).
+    let candidates_no_filter = related_test_candidates(&owner, &tests_slice, None);
+    assert_eq!(
+        candidates.len(),
+        candidates_no_filter.len(),
+        "package-local filter must not discard same-package tests"
+    );
+}
+
+/// Package-local filter: a test in a DIFFERENT package must NOT be selected.
+#[test]
+fn package_local_filter_rejects_cross_package_test() {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-pkg-cross-{stamp}"));
+    let pkg_a = root.join("packages").join("pkg-a");
+    let pkg_b = root.join("packages").join("pkg-b");
+    let _ = fs::create_dir_all(pkg_a.join("src"));
+    let _ = fs::create_dir_all(pkg_b.join("tests"));
+    let _ = fs::write(pkg_a.join("package.json"), r#"{"name":"pkg-a"}"#);
+    let _ = fs::write(pkg_b.join("package.json"), r#"{"name":"pkg-b"}"#);
+
+    let owner = TypeScriptOwner {
+        name: "doWork".to_string(),
+        file: pkg_a.join("src").join("work.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "cross-package doWork test".to_string(),
+        local_name: "cross-package doWork test".to_string(),
+        describe_names: Vec::new(),
+        file: pkg_b.join("tests").join("work.test.ts"),
+        line: 1,
+        body_text: "doWork();".to_string(),
+        assertions: Vec::new(),
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+
+    let tests_slice = [test.clone()];
+    let candidates = related_test_candidates(&owner, &tests_slice, Some(&root));
+    assert!(
+        candidates.is_empty(),
+        "cross-package test must NOT be selected, got {candidates:?}"
+    );
+}
+
+/// CommonJS require() destructuring: `const { fn } = require('./path')` should
+/// be extracted as an import with `imported = Some("fn")`, `local = "fn"`,
+/// `namespace = false`.
+#[test]
+fn extract_imports_recognizes_commonjs_destructured_require() {
+    let source = r#"const { formatAmount, parseAmount: parse } = require('../src/format');
+const mod = require('../src/utils');
+"#;
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::mjs()).parse();
+    let imports = extract_imports_from_statements(&parse_result.program.body);
+
+    // Destructured: formatAmount
+    let fmt_matches: Vec<_> = imports
+        .iter()
+        .filter(|i| i.local == "formatAmount")
+        .collect();
+    assert_eq!(
+        fmt_matches.len(),
+        1,
+        "expected exactly 1 formatAmount import, got: {imports:?}"
+    );
+    assert_eq!(fmt_matches[0].source, "../src/format");
+    assert_eq!(fmt_matches[0].imported.as_deref(), Some("formatAmount"));
+    assert!(!fmt_matches[0].namespace);
+
+    // Renamed destructure: parseAmount → parse
+    let parse_matches: Vec<_> = imports.iter().filter(|i| i.local == "parse").collect();
+    assert_eq!(
+        parse_matches.len(),
+        1,
+        "expected exactly 1 parse import, got: {imports:?}"
+    );
+    assert_eq!(parse_matches[0].source, "../src/format");
+    assert_eq!(parse_matches[0].imported.as_deref(), Some("parseAmount"));
+    assert!(!parse_matches[0].namespace);
+
+    // Namespace-like require: const mod = require(...)
+    let mod_matches: Vec<_> = imports.iter().filter(|i| i.local == "mod").collect();
+    assert_eq!(
+        mod_matches.len(),
+        1,
+        "expected exactly 1 mod import, got: {imports:?}"
+    );
+    assert_eq!(mod_matches[0].source, "../src/utils");
+    assert!(mod_matches[0].namespace);
+}
+
+/// Re-export form: `export { x } from './y'` should be extracted as an import
+/// so that `import_source_matches_owner` can follow the re-export one hop.
+#[test]
+fn extract_imports_recognizes_re_export_form() {
+    let source = r#"export { applyDiscount, computeBase as base } from './pricing';
+"#;
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let imports = extract_imports_from_statements(&parse_result.program.body);
+
+    // Re-exported applyDiscount
+    let ad_matches: Vec<_> = imports
+        .iter()
+        .filter(|i| i.local == "applyDiscount")
+        .collect();
+    assert_eq!(
+        ad_matches.len(),
+        1,
+        "expected applyDiscount re-export import, got: {imports:?}"
+    );
+    assert_eq!(ad_matches[0].source, "./pricing");
+    assert_eq!(ad_matches[0].imported.as_deref(), Some("applyDiscount"));
+    assert!(!ad_matches[0].namespace);
+
+    // Renamed re-export: computeBase exported as base
+    let base_matches: Vec<_> = imports.iter().filter(|i| i.local == "base").collect();
+    assert_eq!(
+        base_matches.len(),
+        1,
+        "expected base re-export import, got: {imports:?}"
+    );
+    assert_eq!(base_matches[0].source, "./pricing");
+    assert_eq!(base_matches[0].imported.as_deref(), Some("computeBase"));
+}
+
+/// `typescript_target_unresolved` is emitted when a cross-package test
+/// references the owner by name but is excluded by the package-local filter.
+#[test]
+fn named_limitation_target_unresolved_emitted_for_cross_package_reference() -> Result<(), String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-target-unresolved-{stamp}"));
+    let pkg_a = root.join("packages").join("pkg-a");
+    let pkg_b = root.join("packages").join("pkg-b");
+    let _ = fs::create_dir_all(pkg_a.join("src"));
+    let _ = fs::create_dir_all(pkg_b.join("tests"));
+    let _ = fs::write(
+        pkg_a.join("package.json"),
+        r#"{"name":"pkg-a","devDependencies":{"jest":"^29"}}"#,
+    );
+    let _ = fs::write(
+        pkg_b.join("package.json"),
+        r#"{"name":"pkg-b","devDependencies":{"jest":"^29"}}"#,
+    );
+
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: pkg_a.join("src").join("discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // Cross-package test that calls applyDiscount by name (local shadow or
+    // referencing it without a resolvable import).
+    let cross_pkg_test = TypeScriptTest {
+        name: "cross-pkg discount test".to_string(),
+        local_name: "cross-pkg discount test".to_string(),
+        describe_names: Vec::new(),
+        file: pkg_b.join("tests").join("pricing.test.ts"),
+        line: 5,
+        body_text: "const result = applyDiscount(100, 20);\nexpect(result).toBe(80);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 6,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Same-package test that correctly imports
+    let same_pkg_test = TypeScriptTest {
+        name: "same-pkg discount test".to_string(),
+        local_name: "same-pkg discount test".to_string(),
+        describe_names: Vec::new(),
+        file: pkg_a.join("tests").join("discount.test.ts"),
+        line: 1,
+        body_text: "applyDiscount(100, 20);".to_string(),
+        assertions: Vec::new(),
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+
+    let all_owners = vec![owner.clone()];
+    let all_tests = vec![cross_pkg_test, same_pkg_test];
+    let finding = classify_change(
+        &pkg_a.join("src").join("discount.ts"),
+        2,
+        "    if (discountPct >= 100) {",
+        &all_owners,
+        &all_tests,
+        Some(&root),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // The typescript_target_unresolved limitation must be emitted for the
+    // cross-package test reference.
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_target_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_target_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_target_unresolved → analysis/typescript-cross-package-ownership",
+    );
+    // repair_packet_ready stays false
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
+    Ok(())
+}
+
+/// `typescript_target_unresolved` must NOT be emitted when all tests are in
+/// the same package (single-package workspace without a package.json hierarchy
+/// does not trigger cross-package detection).
+#[test]
+fn named_limitation_target_unresolved_not_emitted_for_same_package() -> Result<(), String> {
+    let owner = test_owner("applyDiscount", "src/discount.ts");
+    let test = TypeScriptTest {
+        name: "discount applies".to_string(),
+        local_name: "discount applies".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "applyDiscount(100, 20);".to_string(),
+        assertions: Vec::new(),
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // No workspace_root → no package-local filter → no typescript_target_unresolved
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        2,
+        "    if (discountPct >= 100) {",
+        &[owner],
+        &[test],
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_target_unresolved",
+    );
+    Ok(())
 }

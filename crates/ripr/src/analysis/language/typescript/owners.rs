@@ -379,61 +379,185 @@ pub(crate) fn extract_imports_from_statements(
 ) -> Vec<TypeScriptImport> {
     let mut out: Vec<TypeScriptImport> = Vec::new();
     for stmt in statements {
-        let Statement::ImportDeclaration(import) = stmt else {
-            continue;
-        };
-        if import.import_kind == ImportOrExportKind::Type {
+        // ES module import declarations: `import { x } from './y'`
+        if let Statement::ImportDeclaration(import) = stmt {
+            if import.import_kind == ImportOrExportKind::Type {
+                continue;
+            }
+            let source = import.source.value.to_string();
+            let Some(specifiers) = &import.specifiers else {
+                continue;
+            };
+            for specifier in specifiers {
+                match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                        if specifier.import_kind == ImportOrExportKind::Type {
+                            continue;
+                        }
+                        let Some(imported) = module_export_name_text(&specifier.imported) else {
+                            continue;
+                        };
+                        push_unique_import(
+                            &mut out,
+                            TypeScriptImport {
+                                source: source.clone(),
+                                imported: Some(imported),
+                                local: specifier.local.name.as_str().to_string(),
+                                namespace: false,
+                            },
+                        );
+                    }
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                        push_unique_import(
+                            &mut out,
+                            TypeScriptImport {
+                                source: source.clone(),
+                                imported: Some("default".to_string()),
+                                local: specifier.local.name.as_str().to_string(),
+                                namespace: false,
+                            },
+                        );
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                        push_unique_import(
+                            &mut out,
+                            TypeScriptImport {
+                                source: source.clone(),
+                                imported: None,
+                                local: specifier.local.name.as_str().to_string(),
+                                namespace: true,
+                            },
+                        );
+                    }
+                }
+            }
             continue;
         }
-        let source = import.source.value.to_string();
-        let Some(specifiers) = &import.specifiers else {
-            continue;
-        };
-        for specifier in specifiers {
-            match specifier {
-                ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
-                    if specifier.import_kind == ImportOrExportKind::Type {
+
+        // Simple re-exports: `export { x } from './y'`
+        // These appear as ExportNamedDeclaration with a source string and no
+        // inline declaration.  We record each re-exported specifier as an
+        // import so that `import_source_matches_owner` can resolve the
+        // re-export chain one hop back.
+        if let Statement::ExportNamedDeclaration(export) = stmt {
+            if export.declaration.is_none()
+                && let Some(re_source) = &export.source
+            {
+                let src = re_source.value.to_string();
+                for specifier in &export.specifiers {
+                    if specifier.export_kind == ImportOrExportKind::Type {
                         continue;
                     }
-                    let Some(imported) = module_export_name_text(&specifier.imported) else {
+                    let Some(local_name) = module_export_name_text(&specifier.local) else {
                         continue;
                     };
+                    let exported_name = module_export_name_text(&specifier.exported)
+                        .unwrap_or_else(|| local_name.clone());
                     push_unique_import(
                         &mut out,
                         TypeScriptImport {
-                            source: source.clone(),
-                            imported: Some(imported),
-                            local: specifier.local.name.as_str().to_string(),
+                            source: src.clone(),
+                            imported: Some(local_name),
+                            local: exported_name,
                             namespace: false,
                         },
                     );
                 }
-                ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+            }
+            continue;
+        }
+
+        // CommonJS require(): `const { x } = require('./y')` or
+        // `const x = require('./y')`.
+        // Only handles the simple synchronous require() form with a string
+        // literal path.  Dynamic require / factory-returning requires are
+        // fail-closed (not extracted → no import match → caller emits
+        // `typescript_target_unresolved` when ownership cannot resolve).
+        if let Statement::VariableDeclaration(var_decl) = stmt {
+            for declarator in &var_decl.declarations {
+                let Some(init) = &declarator.init else {
+                    continue;
+                };
+                let source_str = require_string_literal_source(init);
+                let Some(source_str) = source_str else {
+                    continue;
+                };
+                // Simple binding: `const x = require('./y')`
+                if let Some(name) = binding_identifier_name(&declarator.id) {
                     push_unique_import(
                         &mut out,
                         TypeScriptImport {
-                            source: source.clone(),
+                            source: source_str.clone(),
                             imported: Some("default".to_string()),
-                            local: specifier.local.name.as_str().to_string(),
-                            namespace: false,
+                            local: name.to_string(),
+                            namespace: true, // namespace-like: callers access via x.method
                         },
                     );
+                    continue;
                 }
-                ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
-                    push_unique_import(
-                        &mut out,
-                        TypeScriptImport {
-                            source: source.clone(),
-                            imported: None,
-                            local: specifier.local.name.as_str().to_string(),
-                            namespace: true,
-                        },
-                    );
+                // Destructured binding: `const { x, y: z } = require('./y')`
+                if let BindingPattern::ObjectPattern(obj) = &declarator.id {
+                    for prop in &obj.properties {
+                        let Some(key_name) = object_binding_key_name(prop) else {
+                            continue;
+                        };
+                        let local_name = binding_identifier_name(&prop.value)
+                            .unwrap_or(key_name)
+                            .to_string();
+                        push_unique_import(
+                            &mut out,
+                            TypeScriptImport {
+                                source: source_str.clone(),
+                                imported: Some(key_name.to_string()),
+                                local: local_name,
+                                namespace: false,
+                            },
+                        );
+                    }
                 }
             }
         }
     }
     out
+}
+
+/// Extract the string literal source from a `require('...')` call expression.
+///
+/// Returns `Some(source)` only for the simple form `require("./literal")`.
+/// Dynamic arguments (variables, template literals, concatenations) return
+/// `None` so the caller can fail closed.
+pub(crate) fn require_string_literal_source(expr: &Expression<'_>) -> Option<String> {
+    let Expression::CallExpression(call) = expr else {
+        return None;
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return None;
+    };
+    if callee.name.as_str() != "require" {
+        return None;
+    }
+    let first_arg = call.arguments.first()?;
+    let oxc_ast::ast::Argument::StringLiteral(literal) = first_arg else {
+        return None;
+    };
+    Some(literal.value.to_string())
+}
+
+/// Extract the key name from an object-pattern binding property.
+///
+/// Handles `{ x }` (shorthand) and `{ x: y }` (renamed) but not computed
+/// keys (`{ [expr]: y }`).
+pub(crate) fn object_binding_key_name<'a>(
+    prop: &'a oxc_ast::ast::BindingProperty<'a>,
+) -> Option<&'a str> {
+    if prop.computed {
+        return None;
+    }
+    match &prop.key {
+        PropertyKey::StaticIdentifier(ident) => Some(ident.name.as_str()),
+        PropertyKey::StringLiteral(lit) => Some(lit.value.as_str()),
+        _ => None,
+    }
 }
 
 pub(crate) fn push_unique_import(out: &mut Vec<TypeScriptImport>, import: TypeScriptImport) {

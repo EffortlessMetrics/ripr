@@ -2,20 +2,27 @@
 
 use super::*;
 
+/// Classify a changed TypeScript/JavaScript line and return a finding.
+///
+/// `workspace_root` enforces package-local ownership when `Some`: a test in
+/// `packages/b/` will not be selected as an owner relation for a source file in
+/// `packages/a/`.  Pass `None` to preserve the previous single-package
+/// behaviour (used in unit tests).
 pub(crate) fn classify_change(
     file: &Path,
     line: usize,
     line_text: &str,
     owners: &[TypeScriptOwner],
     all_tests: &[TypeScriptTest],
+    workspace_root: Option<&Path>,
 ) -> Option<Finding> {
     let changed_file = normalized_path(file);
     let owner = owners
         .iter()
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
-    let related_candidates = related_test_candidates(owner, all_tests);
-    let related = find_related_tests(owner, all_tests);
+    let related_candidates = related_test_candidates(owner, all_tests, workspace_root);
+    let related = find_related_tests(owner, all_tests, workspace_root);
     let bun_array_buffer_facts = collect_related_bun_array_buffer_facts(&related_candidates);
     let bun_bridge_hints = collect_related_bun_bridge_hints(&bun_array_buffer_facts);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
@@ -28,6 +35,16 @@ pub(crate) fn classify_change(
         .and_then(|limit| named_limitation_for_static_limit(limit, file, line))
         .into_iter()
         .collect();
+    // Ownership-resolution limitations (RIPR-SPEC-0085 §PR6):
+    // Emitted when a cross-package test references the owner by name but is
+    // excluded by the package-local filter — the target is unresolvable.
+    // Only active when workspace_root is supplied (i.e. in the live pipeline).
+    let named_limitations_from_ownership: Vec<TypeScriptNamedLimitation> =
+        if let Some(root) = workspace_root {
+            named_limitations_for_unresolved_ownership(owner, all_tests, root)
+        } else {
+            Vec::new()
+        };
     // Oracle-based limitations fire from oracle-eligible candidates even when
     // there is no static_limit. We always compute them; they are empty when there
     // are no oracle-eligible candidates or no qualifying assertions.
@@ -262,11 +279,12 @@ pub(crate) fn classify_change(
     if let Some(limit) = &static_limit {
         evidence.extend(limit.evidence.iter().cloned());
     }
-    // Emit additive named limitation evidence lines (RIPR-SPEC-0085 §PR4).
+    // Emit additive named limitation evidence lines (RIPR-SPEC-0085 §PR4/PR6).
     // These lines are ADDITIVE — they do not change any existing field value.
     for named_limit in named_limitations_from_static
         .iter()
         .chain(named_limitations_from_oracle.iter())
+        .chain(named_limitations_from_ownership.iter())
     {
         evidence.extend(named_limit.evidence_lines());
     }

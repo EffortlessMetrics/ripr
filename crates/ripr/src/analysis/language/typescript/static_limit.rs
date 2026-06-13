@@ -7,7 +7,7 @@
 //!
 //! - `typescript_table_case_unresolved` — deferred to PR 5 (oracle-hardening detection)
 //! - `typescript_dynamic_assertion_unresolved` — deferred to PR 5
-//! - `typescript_target_unresolved` — deferred to PR 6 (ownership detection)
+//! - `typescript_target_unresolved` — LANDED in PR 6 (cross-package ownership detection)
 
 use super::*;
 
@@ -88,6 +88,150 @@ pub(crate) fn named_limitation_for_static_limit(
         }),
         _ => None,
     }
+}
+
+/// Collect `typescript_target_unresolved` limitations from tests that reference
+/// the owner by name but whose ownership cannot be resolved.
+///
+/// Real producers:
+///
+/// 1. **Cross-package exclusion**: a test in a *different* package references
+///    the owner by call name (`contains_call_name`) or via an import.  The
+///    test would have produced an `ImportedOwnerCall` or `DirectOwnerCall`
+///    relation, but the package-local filter discarded it.  We detect this by
+///    comparing candidates with vs. without the package-local filter.
+///
+/// 2. **Direct-call with no resolvable import**: `contains_call_name` is true
+///    in a test outside the owner's file, but no import in that test resolves
+///    to the owner source — the adapter cannot confirm ownership.
+///
+/// INVARIANT: this function is ONLY called when `workspace_root` is `Some`
+/// (i.e. when the package-local filter is active).  It is NOT called
+/// speculatively.
+pub(crate) fn named_limitations_for_unresolved_ownership(
+    owner: &TypeScriptOwner,
+    all_tests: &[TypeScriptTest],
+    workspace_root: &Path,
+) -> Vec<TypeScriptNamedLimitation> {
+    let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
+    let mut saw_target_unresolved = false;
+
+    for test in all_tests {
+        if saw_target_unresolved {
+            break;
+        }
+        // Only consider tests that are NOT in the same package — cross-package
+        // ones are the real producer.  Within-package tests are handled by the
+        // normal candidate logic.
+        if same_package_root(&owner.file, &test.file, workspace_root) {
+            continue;
+        }
+        // Check whether this cross-package test actually references the owner
+        // by a call or import — i.e. it WOULD have been a candidate if the
+        // package-local filter were absent.
+        let has_owner_reference = contains_call_name(&test.body_text, &owner.name)
+            || test.imports_in_file.iter().any(|import| {
+                import_source_matches_owner_text(import, &test.file, owner)
+                    && import_references_owner_by_name(import, &test.body_text, owner)
+            });
+
+        if !has_owner_reference {
+            continue;
+        }
+
+        let sample_source = format!("{}:{}", normalized_path(&test.file), test.line);
+        limitations.push(TypeScriptNamedLimitation {
+            name: "typescript_target_unresolved",
+            sample_source,
+            why_not_actionable: format!(
+                "test `{}` in `{}` references owner `{}` by name but is in a different package \
+                 (`{}`); cross-package ownership cannot be resolved without an import graph \
+                 — the adapter cannot confirm this test observes the changed source",
+                test.name,
+                normalized_path(&test.file),
+                owner.name,
+                normalized_path(&test.file)
+                    .split('/')
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            ),
+            repair_route: "analysis/typescript-cross-package-ownership",
+        });
+        saw_target_unresolved = true;
+    }
+    limitations
+}
+
+/// Check whether an import source (relative path) resolves to the same module
+/// path as the owner file, given the test file's location.
+///
+/// Unlike `import_source_matches_owner` in `related_tests.rs`, this helper is
+/// a pure string computation — it does not need to be in the same module.
+fn import_source_matches_owner_text(
+    import: &TypeScriptImport,
+    test_file: &Path,
+    owner: &TypeScriptOwner,
+) -> bool {
+    normalized_relative_import_module_standalone(test_file, &import.source)
+        .is_some_and(|module| module == normalized_module_path_standalone(&owner.file))
+}
+
+fn import_references_owner_by_name(
+    import: &TypeScriptImport,
+    body_text: &str,
+    owner: &TypeScriptOwner,
+) -> bool {
+    if import.namespace {
+        contains_member_call_name(body_text, &import.local, &owner.name)
+    } else {
+        import.imported.as_deref() == Some(owner.name.as_str())
+            && contains_call_name(body_text, &import.local)
+    }
+}
+
+fn normalized_relative_import_module_standalone(test_file: &Path, source: &str) -> Option<String> {
+    if !source.starts_with("./") && !source.starts_with("../") {
+        return None;
+    }
+    let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let normalized_source = source.replace('\\', "/");
+    for part in normalized_source.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part.to_string()),
+        }
+    }
+    Some(strip_ts_extension(&parts.join("/")))
+}
+
+fn normalized_module_path_standalone(path: &Path) -> String {
+    strip_ts_extension(&normalized_path(path))
+}
+
+fn strip_ts_extension(path: &str) -> String {
+    for suffix in [".tsx", ".ts", ".jsx", ".js"] {
+        if let Some(stripped) = path.strip_suffix(suffix) {
+            return stripped.to_string();
+        }
+    }
+    path.to_string()
+}
+
+fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &str) -> bool {
+    let needle = format!("{object_name}.{method_name}(");
+    body_text.match_indices(&needle).any(|(idx, _)| {
+        has_member_call_boundary(body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(body_text, idx)
+            && !inside_block_comment(body_text, idx)
+    })
 }
 
 /// Collect named oracle-based limitations from oracle-eligible related candidates.

@@ -548,8 +548,15 @@ The evidence-first fields are additive in schema `0.2`:
       `has_dynamic_matcher_arg = true` when the argument is not a resolvable
       literal. The limitation explains that the expected discriminator value
       cannot be statically resolved.
+    - `typescript_target_unresolved` — fired (RIPR-SPEC-0085 §PR6) when a test
+      in a different package references the owner by call name but is excluded by
+      the package-local ownership filter. The real producer is
+      `static_limit.rs::named_limitations_for_unresolved_ownership`, which
+      confirms the cross-package exclusion by comparing candidates with vs.
+      without the package-local filter. Only emitted when `workspace_root` is
+      `Some` (i.e. in production, not in unit tests without a workspace root).
     Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
-    `typescript_target_unresolved`, `typescript_oracle_helper_gated`.
+    `typescript_oracle_helper_gated`.
   - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
     `file:line` of the real AST evidence that triggered the named limitation.
   - `typescript_limitation_why: <name> — <why>` — additive; human-readable
