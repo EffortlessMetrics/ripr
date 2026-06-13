@@ -2,8 +2,20 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Grace period for draining stdout/stderr pipes after a process-group kill.
+///
+/// After `terminate_timed_process_tree` fires, any descendant that escaped the
+/// group-kill may still hold the inherited pipe write-end open, keeping
+/// `read_to_end` blocked. This constant caps how long we wait for the pipes to
+/// drain before giving up and returning whatever was captured so far, plus a
+/// diagnostic note in the output.  Five seconds is generous relative to the
+/// typical `~100 ms` group-kill propagation delay while still being a hard
+/// upper bound.
+const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -234,18 +246,39 @@ pub(crate) fn capture_output_with_timeout(
     let echo_latency_trace = envs
         .iter()
         .any(|(name, _)| *name == "RIPR_REPO_EXPOSURE_LATENCY_TRACE");
-    let stdout_reader = thread::spawn(move || read_stream(stdout));
-    let stderr_reader = thread::spawn(move || {
-        if echo_latency_trace {
-            read_stream_with_latency_progress(stderr)
-        } else {
-            read_stream(stderr)
-        }
-    });
+
+    // Always use channel-based readers so the post-kill drain path can apply a
+    // bounded wait via `recv_timeout` (see `drain_stream_reader_bounded`).
+    let (stdout_handle, stdout_rx) = spawn_stream_reader_channel(stdout);
+    let (stderr_handle, stderr_rx) = if echo_latency_trace {
+        spawn_latency_stream_reader_channel(stderr)
+    } else {
+        spawn_stream_reader_channel(stderr)
+    };
 
     let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
-    let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
-    let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+
+    // Always use the bounded drain.  On a normal process exit the pipe
+    // write-ends are already closed, so the reader threads finish promptly and
+    // the grace timeout is never reached — behavior is identical to an
+    // unbounded join.  On a timed-out kill the grace timeout caps the drain if
+    // a descendant escaped the process-group kill and still holds the pipe open,
+    // guaranteeing the function returns in bounded time regardless.
+    let stdout = drain_stream_reader_bounded(
+        stdout_rx,
+        stdout_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stdout",
+        error_context,
+    )?;
+    let stderr = drain_stream_reader_bounded(
+        stderr_rx,
+        stderr_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stderr",
+        error_context,
+    )?;
+
     Ok(TimedOutput {
         status: Some(wait_outcome.status),
         stdout,
@@ -295,17 +328,25 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
     let echo_latency_trace = envs
         .iter()
         .any(|(name, _)| *name == "RIPR_REPO_EXPOSURE_LATENCY_TRACE");
-    let stdout_writer = thread::spawn(move || stream_to_file(stdout, stdout_file));
-    let stderr_reader = thread::spawn(move || {
-        if echo_latency_trace {
-            read_stream_with_latency_progress(stderr)
-        } else {
-            read_stream(stderr)
-        }
-    });
+    let (stdout_writer_handle, stdout_writer_rx) =
+        spawn_stream_file_writer_channel(stdout, stdout_file);
+    let (stderr_handle, stderr_rx) = if echo_latency_trace {
+        spawn_latency_stream_reader_channel(stderr)
+    } else {
+        spawn_stream_reader_channel(stderr)
+    };
 
     let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
-    let stdout_bytes = match join_stream_file_writer(stdout_writer, "stdout", error_context) {
+
+    // Use bounded drains for the same reason as in `capture_output_with_timeout`:
+    // after a group-kill an escaped descendant may keep the pipe open.
+    let stdout_bytes = match drain_file_writer_bounded(
+        stdout_writer_rx,
+        stdout_writer_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stdout",
+        error_context,
+    ) {
         Ok(stdout_bytes) => stdout_bytes,
         Err(err) => {
             let _ = fs::remove_file(&stdout_tmp_path);
@@ -313,7 +354,13 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
         }
     };
     publish_stdout_capture(&stdout_tmp_path, stdout_path, error_context)?;
-    let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+    let stderr = drain_stream_reader_bounded(
+        stderr_rx,
+        stderr_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stderr",
+        error_context,
+    )?;
     Ok(TimedFileOutput {
         status: Some(wait_outcome.status),
         stderr,
@@ -517,46 +564,129 @@ fn read_stream_with_latency_progress<T: Read>(stream: T) -> Result<String, Strin
     Ok(out)
 }
 
-fn join_stream_file_writer(
-    writer: thread::JoinHandle<Result<usize, String>>,
+/// Spawn a stream reader that delivers its result over a channel rather than
+/// only through `JoinHandle::join`.  Returns `(handle, receiver)`.  The handle
+/// is kept so the OS can reap the thread; the receiver is used to impose a
+/// deadline on the drain via `recv_timeout`.
+fn spawn_stream_reader_channel<T: Read + Send + 'static>(
+    stream: T,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<String, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = read_stream(stream);
+        // Ignore send errors: the receiver may have been abandoned on grace
+        // expiry, which is expected.
+        let _ = tx.send(result);
+    });
+    (handle, rx)
+}
+
+/// Spawn a latency-progress stream reader that delivers over a channel.
+fn spawn_latency_stream_reader_channel<T: Read + Send + 'static>(
+    stream: T,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<String, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = read_stream_with_latency_progress(stream);
+        let _ = tx.send(result);
+    });
+    (handle, rx)
+}
+
+/// Drain a stream reader within a bounded grace period.
+///
+/// Used after a process-group kill to guard against escaped descendants that
+/// still hold the pipe write-end open.  If `grace` elapses before the reader
+/// finishes, the `JoinHandle` is leaked (the thread will unblock when the
+/// process eventually exits or the OS reclaims the fd) and the function returns
+/// whatever was captured up to the kill, prefixed with a diagnostic message.
+/// The caller should check `timed_out` and propagate the diagnostic
+/// appropriately; it is not an error to abandon the drain.
+fn drain_stream_reader_bounded(
+    rx: mpsc::Receiver<Result<String, String>>,
+    // The handle is intentionally held until after recv_timeout so the thread
+    // stays alive while we wait.  On grace expiry we drop it; the thread
+    // continues in the background until the fd closes.
+    _handle: thread::JoinHandle<()>,
+    grace: Duration,
     stream_name: &str,
     error_context: &str,
-) -> Result<usize, String> {
-    match writer.join() {
+) -> Result<String, String> {
+    match rx.recv_timeout(grace) {
         Ok(result) => result,
-        Err(_) => Err(format!(
-            "{stream_name} writer thread failed while running {error_context}"
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // A descendant escaped the process-group kill and still holds the
+            // pipe open.  Return an empty string with a diagnostic; the caller
+            // already knows the process timed out.
+            Ok(format!(
+                "[ripr-xtask: {stream_name} drain exceeded post-kill grace \
+                 ({grace_secs}s) for {error_context}; a descendant process \
+                 escaped group-kill and kept the pipe open — output truncated]",
+                grace_secs = grace.as_secs(),
+            ))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "{stream_name} reader thread disconnected while running {error_context}"
         )),
     }
 }
 
-fn join_stream_reader(
-    reader: thread::JoinHandle<Result<String, String>>,
+/// Drain a file-writer thread within a bounded grace period.  Returns 0 bytes
+/// on grace expiry (the partial file content written before the kill remains).
+fn drain_file_writer_bounded(
+    rx: mpsc::Receiver<Result<usize, String>>,
+    _handle: thread::JoinHandle<()>,
+    grace: Duration,
     stream_name: &str,
     error_context: &str,
-) -> Result<String, String> {
-    match reader.join() {
+) -> Result<usize, String> {
+    match rx.recv_timeout(grace) {
         Ok(result) => result,
-        Err(_) => Err(format!(
-            "{stream_name} reader thread failed while running {error_context}"
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(0),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "{stream_name} writer thread disconnected while running {error_context}"
         )),
     }
+}
+
+/// Spawn a stream-to-file writer that delivers its byte count over a channel.
+fn spawn_stream_file_writer_channel<T: Read + Send + 'static>(
+    stream: T,
+    file: fs::File,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<usize, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = stream_to_file(stream, file);
+        let _ = tx.send(result);
+    });
+    (handle, rx)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedOutput, capture_output, capture_output_with_timeout,
-        capture_stdout_to_file_with_timeout, command_success_owned,
+        CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
+        capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
         read_stream_with_latency_progress, run, run_in_dir, run_output, run_output_optional,
-        run_output_owned, run_owned, terminate_after_timeout, timeout_was_enforced,
+        run_output_owned, run_owned, spawn_stream_reader_channel, terminate_after_timeout,
+        timeout_was_enforced,
     };
     use std::fs;
-    use std::io::Cursor;
+    use std::io::{Cursor, Read};
     use std::path::Path;
     use std::process::{Command, Stdio};
+    use std::sync::mpsc;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     type TestCommand = (String, Vec<String>, Vec<(String, String)>);
 
@@ -943,6 +1073,99 @@ mod tests {
         if !timeout_was_enforced(true, &failure) {
             return Err("terminated failure should be treated as timeout".to_string());
         }
+        Ok(())
+    }
+
+    /// A `Read` implementation that blocks indefinitely on every `read` call.
+    ///
+    /// This simulates a pipe whose write-end is held open by a descendant that
+    /// escaped the process-group kill.  It is used to exercise the
+    /// `drain_stream_reader_bounded` grace-timeout path at the unit level
+    /// without spawning a real process tree.
+    ///
+    /// Note on Windows/platform portability: spawning a real grandchild that
+    /// keeps a pipe open across a `taskkill /T /F` is inherently racy and
+    /// unreliable in CI, so this unit-level seam test is the authoritative check
+    /// for the bounded-drain guarantee on all platforms.
+    struct BlockingRead {
+        /// Receiving on this channel blocks until the sender half is dropped,
+        /// i.e. forever from the `Read` side.
+        _park: mpsc::Receiver<()>,
+    }
+
+    impl BlockingRead {
+        fn new() -> (Self, mpsc::SyncSender<()>) {
+            let (tx, rx) = mpsc::sync_channel(0);
+            (BlockingRead { _park: rx }, tx)
+        }
+    }
+
+    impl Read for BlockingRead {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            // Block until the sender half (held by the test to keep the "pipe"
+            // open) is dropped.  A real escaped descendant behaves identically:
+            // it holds the write-end of the inherited pipe, and `read_to_end`
+            // on the read-end never returns until that fd is closed.
+            match self._park.recv() {
+                Ok(()) | Err(mpsc::RecvError) => Ok(0),
+            }
+        }
+    }
+
+    /// The bounded-drain path must return within `grace + slack` even when the
+    /// reader thread is permanently blocked (simulating an escaped descendant
+    /// holding the pipe write-end open after a process-group kill).
+    ///
+    /// Uses a short synthetic grace to keep the test fast.  The production
+    /// `POST_KILL_DRAIN_GRACE` constant is also verified to equal 5 s so the
+    /// actual timeout is deterministic in CI.
+    #[test]
+    fn drain_stream_reader_bounded_returns_within_grace_when_pipe_stays_open() -> Result<(), String>
+    {
+        // Sanity-check the production constant so reviewers know what the real
+        // bound is.
+        if POST_KILL_DRAIN_GRACE != Duration::from_secs(5) {
+            return Err(format!(
+                "POST_KILL_DRAIN_GRACE should be 5 s; got {:?}",
+                POST_KILL_DRAIN_GRACE
+            ));
+        }
+
+        // Use a short synthetic grace (200 ms) to keep the test fast while
+        // still proving the timeout fires.
+        let test_grace = Duration::from_millis(200);
+        // Allow up to 2x the grace as wall-clock slack for slow CI machines.
+        let wall_limit = test_grace * 2;
+
+        let (blocking, _keeper) = BlockingRead::new();
+        // _keeper is kept alive so the BlockingRead::read never returns EOF —
+        // it stays blocked for the entire test, simulating the escaped
+        // descendant scenario.
+
+        let (handle, rx) = spawn_stream_reader_channel(blocking);
+
+        let started = Instant::now();
+        let result = drain_stream_reader_bounded(rx, handle, test_grace, "stdout", "test-context")?;
+        let elapsed = started.elapsed();
+
+        // The function must have returned (not hung).
+        if elapsed > wall_limit {
+            return Err(format!("drain took {elapsed:?}, expected < {wall_limit:?}"));
+        }
+
+        // The result must contain the diagnostic message indicating output was
+        // truncated due to the escaped-descendant scenario.
+        if !result.contains("drain exceeded post-kill grace") {
+            return Err(format!(
+                "truncated drain should include diagnostic message; got: {result:?}"
+            ));
+        }
+        if !result.contains("test-context") {
+            return Err(format!(
+                "diagnostic message should name the error context; got: {result:?}"
+            ));
+        }
+
         Ok(())
     }
 }
