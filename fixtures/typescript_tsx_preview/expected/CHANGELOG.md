@@ -131,3 +131,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+PR5: additive oracle metadata + typescript_dynamic_assertion_unresolved for variable toBe arg
+
+Command:
+`cargo xtask goldens bless typescript_tsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

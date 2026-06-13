@@ -541,15 +541,41 @@ The evidence-first fields are additive in schema `0.2`:
       related test assertion has `OracleKind::Unknown` AND a non-empty matcher
       name that is not in the recognised matcher set (real oxc-parsed AST
       evidence).
+    - `typescript_dynamic_assertion_unresolved` — fired (RIPR-SPEC-0085 §PR5)
+      when an oracle-eligible related test assertion has a non-literal dynamic
+      matcher argument (a variable, function call, or computed expression). The
+      real producer is `oracle.rs::extract_matcher_expected_value`, which sets
+      `has_dynamic_matcher_arg = true` when the argument is not a resolvable
+      literal. The limitation explains that the expected discriminator value
+      cannot be statically resolved.
     Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
-    `typescript_dynamic_assertion_unresolved`, `typescript_target_unresolved`,
-    `typescript_oracle_helper_gated`.
+    `typescript_target_unresolved`, `typescript_oracle_helper_gated`.
   - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
     `file:line` of the real AST evidence that triggered the named limitation.
   - `typescript_limitation_why: <name> — <why>` — additive; human-readable
     reason why the finding is not actionable for this limitation.
   - `typescript_limitation_repair_route: <name> → <route>` — additive; pointer
     to the analyzer backlog slice that would resolve this limitation.
+- Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5). ADDITIVE: do not change
+  `oracle_kind`, `oracle_strength`, `static_limit_kind`, or `repair_packet_ready`.
+  Emitted from the strongest oracle-eligible assertion across all oracle-eligible
+  related test candidates. Only ONE assertion's metadata is emitted per finding.
+  - `typescript_oracle_observed: <expr>` — additive; the `expect(<expr>)` argument
+    as source text, extracted from the oxc AST span. The actual value/expression
+    being observed by the assertion.
+  - `typescript_oracle_expected: <value>` — additive; the matcher argument as
+    source text, emitted ONLY when the argument is a concrete resolvable literal
+    (string, number, boolean, null, or a safe all-literal object). NOT emitted
+    for dynamic/non-literal arguments; those trigger
+    `typescript_dynamic_assertion_unresolved` instead.
+  - `typescript_oracle_confidence: <level>` — additive; confidence derived from
+    `oracle_strength` plus whether the expected value is a concrete literal.
+    Values: `high` (Strong oracle + literal expected), `medium` (Strong oracle
+    without literal, or Medium oracle), `low` (Weak or Smoke oracle), `unknown`
+    (Unknown oracle kind).
+  - `typescript_oracle_evidence_ref: <file>:<line>` — additive; `file:line`
+    back to the `expect(...)` call in the test file, pointing at the AST call
+    site of the assertion.
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1

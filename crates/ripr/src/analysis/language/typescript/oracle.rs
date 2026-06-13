@@ -218,6 +218,23 @@ pub(crate) fn expect_assertion_from_expression(
     } else {
         oracle_for_matcher(matcher)
     };
+
+    // Oracle metadata (RIPR-SPEC-0085 §PR5).
+    // Extract observed_expression from the first argument of `expect(...)`.
+    let observed_expression = expect_call
+        .arguments
+        .first()
+        .and_then(|arg| source_text_for_argument(arg, source));
+
+    // Extract expected_value_or_variant from the first matcher argument when it
+    // is a concrete resolvable literal. Detect dynamic args to emit the
+    // typescript_dynamic_assertion_unresolved limitation.
+    let (expected_value_or_variant, has_dynamic_matcher_arg) =
+        extract_matcher_expected_value(matcher, &error_payload, outer_call, source);
+
+    let oracle_confidence =
+        derive_oracle_confidence(&oracle_strength, &expected_value_or_variant, matcher);
+
     Some(TypeScriptAssertion {
         matcher: matcher.to_string(),
         argument_count: outer_call.arguments.len(),
@@ -226,6 +243,10 @@ pub(crate) fn expect_assertion_from_expression(
         oracle_strength,
         mock_payload,
         error_payload,
+        observed_expression,
+        expected_value_or_variant,
+        has_dynamic_matcher_arg,
+        oracle_confidence,
     })
 }
 
@@ -431,6 +452,109 @@ pub(crate) fn is_safe_javascript_identifier(text: &str) -> bool {
         && chars.all(is_javascript_identifier_char)
 }
 
+/// Returns `true` if the `Argument` is a concrete resolvable literal
+/// (string, number, boolean, null, or a safe all-literal object).
+/// Returns `false` for variables, function calls, computed expressions,
+/// template literals, arrays, etc.
+pub(crate) fn is_literal_argument(arg: &Argument<'_>) -> bool {
+    match arg {
+        Argument::StringLiteral(_)
+        | Argument::NumericLiteral(_)
+        | Argument::BooleanLiteral(_)
+        | Argument::NullLiteral(_) => true,
+        Argument::ObjectExpression(object) => safe_mock_expected_object(object),
+        // Template literals, identifiers, call expressions, member expressions,
+        // unary/binary expressions, array expressions, spread elements, etc.
+        // are all treated as dynamic / non-resolvable.
+        _ => false,
+    }
+}
+
+/// Extract the expected value or variant from the first matcher argument.
+///
+/// Returns `(Some(text), false)` when the argument is a concrete literal.
+/// Returns `(None, true)` when the argument exists but is a non-literal
+/// dynamic expression (triggers `typescript_dynamic_assertion_unresolved`).
+/// Returns `(None, false)` when the matcher takes no argument (e.g.
+/// `toThrow()` with no arg, `toBeTruthy()`) or is an error/mock payload
+/// (already extracted separately).
+pub(crate) fn extract_matcher_expected_value(
+    matcher: &str,
+    error_payload: &Option<TypeScriptErrorPayload>,
+    matcher_call: &oxc_ast::ast::CallExpression<'_>,
+    source: &str,
+) -> (Option<String>, bool) {
+    // Error payloads are already extracted and stored on `error_payload`.
+    // Don't double-extract — return (None, false) to avoid confusion.
+    if error_payload.is_some() {
+        return (None, false);
+    }
+
+    // Matchers that take no meaningful scalar argument for oracle metadata.
+    // Their "oracle value" is the existence of the call, not an argument text.
+    let no_scalar_arg_matchers = [
+        "toBeTruthy",
+        "toBeFalsy",
+        "toBeDefined",
+        "toBeUndefined",
+        "toBeNull",
+        "toBeNaN",
+        "toHaveBeenCalled",
+        "toMatchSnapshot",
+        "toMatchInlineSnapshot",
+        "toHaveBeenCalledTimes",
+        "toHaveBeenCalledWith",
+        "toHaveBeenLastCalledWith",
+        "toHaveBeenNthCalledWith",
+    ];
+    if no_scalar_arg_matchers.contains(&matcher) {
+        return (None, false);
+    }
+
+    // For the matchers that DO take a scalar expected-value argument.
+    let Some(first_arg) = matcher_call.arguments.first() else {
+        // No argument — toThrow() with no arg, etc.
+        return (None, false);
+    };
+
+    if is_literal_argument(first_arg) {
+        let text = source_text_for_argument(first_arg, source);
+        (text, false)
+    } else {
+        // Dynamic / non-literal argument — cannot resolve to a concrete value.
+        (None, true)
+    }
+}
+
+/// Derive the oracle confidence level from oracle strength and whether the
+/// expected value was resolved to a concrete literal.
+pub(crate) fn derive_oracle_confidence(
+    strength: &OracleStrength,
+    expected_value_or_variant: &Option<String>,
+    matcher: &str,
+) -> OracleConfidence {
+    match strength {
+        OracleStrength::Strong => {
+            if expected_value_or_variant.is_some() {
+                OracleConfidence::High
+            } else {
+                // Strong matcher but no concrete literal arg (dynamic, or
+                // matcher takes no arg like `toBeTruthy`).
+                OracleConfidence::Medium
+            }
+        }
+        OracleStrength::Medium => OracleConfidence::Medium,
+        OracleStrength::Weak => OracleConfidence::Low,
+        OracleStrength::Smoke => OracleConfidence::Low,
+        OracleStrength::Unknown | OracleStrength::None => {
+            // For error variant: oracle_kind=ExactErrorVariant, strength=Strong,
+            // but we check matcher to handle toThrow/toThrowError separately.
+            let _ = matcher;
+            OracleConfidence::Unknown
+        }
+    }
+}
+
 pub(crate) fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     if let Some(mock_payload) = &assertion.mock_payload {
         return mock_payload.oracle_text();
@@ -444,6 +568,68 @@ pub(crate) fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
         format!("expect(...).{}()", assertion.matcher)
     } else {
         format!("expect(...).{}(...)", assertion.matcher)
+    }
+}
+
+/// Emit the additive oracle metadata evidence lines for an assertion
+/// (RIPR-SPEC-0085 §PR5).
+///
+/// Lines emitted (all additive, none replace existing fields):
+/// - `typescript_oracle_observed: <expr>` — the `expect(<expr>)` argument.
+/// - `typescript_oracle_expected: <value>` — matcher arg when it is a literal.
+/// - `typescript_oracle_confidence: <level>` — derived confidence.
+/// - `typescript_oracle_evidence_ref: <file>:<line>` — AST call site.
+pub(crate) fn oracle_metadata_evidence_lines(
+    assertion: &TypeScriptAssertion,
+    test_file: &Path,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(observed) = &assertion.observed_expression {
+        lines.push(format!("typescript_oracle_observed: {observed}"));
+    }
+    if let Some(expected) = &assertion.expected_value_or_variant {
+        lines.push(format!("typescript_oracle_expected: {expected}"));
+    }
+    lines.push(format!(
+        "typescript_oracle_confidence: {}",
+        assertion.oracle_confidence.as_str()
+    ));
+    lines.push(format!(
+        "typescript_oracle_evidence_ref: {}:{}",
+        normalized_path(test_file),
+        assertion.line
+    ));
+    lines
+}
+
+/// Collect additive oracle metadata evidence lines from oracle-eligible
+/// related test candidates (RIPR-SPEC-0085 §PR5).
+///
+/// Emits lines for the single strongest assertion (by `oracle_strength` rank)
+/// across all oracle-eligible related tests. Heuristic-only candidates are
+/// excluded — they are not oracle-eligible and cannot produce oracle metadata.
+///
+/// Returns an empty `Vec` when there are no oracle-eligible candidates or no
+/// assertions with metadata to surface.
+pub(crate) fn collect_oracle_metadata_evidence_lines(
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+) -> Vec<String> {
+    // Only oracle-eligible candidates (direct call, imported call, etc.)
+    let strongest_assertion_with_file = candidates
+        .iter()
+        .filter(|c| c.relation.uses_oracle())
+        .flat_map(|candidate| {
+            candidate
+                .test
+                .assertions
+                .iter()
+                .map(move |assertion| (assertion, &candidate.test.file))
+        })
+        .max_by_key(|(assertion, _)| assertion.oracle_strength.rank());
+
+    match strongest_assertion_with_file {
+        Some((assertion, file)) => oracle_metadata_evidence_lines(assertion, file),
+        None => Vec::new(),
     }
 }
 

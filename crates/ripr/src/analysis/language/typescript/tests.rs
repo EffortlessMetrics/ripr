@@ -33,6 +33,10 @@ fn smoke_assertion() -> TypeScriptAssertion {
         oracle_strength: OracleStrength::Smoke,
         mock_payload: None,
         error_payload: None,
+        observed_expression: None,
+        expected_value_or_variant: None,
+        has_dynamic_matcher_arg: false,
+        oracle_confidence: OracleConfidence::Low,
     }
 }
 
@@ -88,6 +92,10 @@ fn mock_interaction_test_for(owner_name: &str) -> TypeScriptTest {
             oracle_strength: OracleStrength::Medium,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -113,10 +121,14 @@ fn direct_test_with_assertion(
             matcher: matcher.to_string(),
             argument_count,
             line: 2,
-            oracle_kind,
-            oracle_strength,
+            oracle_kind: oracle_kind.clone(),
+            oracle_strength: oracle_strength.clone(),
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Unknown,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -139,6 +151,10 @@ fn heuristic_name_test_for(owner_name: &str) -> TypeScriptTest {
             oracle_strength: OracleStrength::Strong,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -3185,6 +3201,10 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
             oracle_strength: OracleStrength::Strong,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -3999,6 +4019,10 @@ fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() 
             oracle_strength: OracleStrength::Strong,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
         }],
         mocks_in_file: vec!["./api".to_string()],
         imports_in_file: Vec::new(),
@@ -4075,6 +4099,10 @@ fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -
             oracle_strength: OracleStrength::Smoke,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Low,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -4256,6 +4284,10 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
             oracle_strength: OracleStrength::Medium,
             mock_payload: None,
             error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
         }],
         mocks_in_file: Vec::new(),
         imports_in_file: Vec::new(),
@@ -4275,4 +4307,249 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
         "typescript_limitation: typescript_snapshot_discriminator_unresolved",
     );
     Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PR5: Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Oracle metadata lines are emitted for an oracle-eligible relation with a
+/// literal expected value: observed_expression, expected_value_or_variant,
+/// confidence (high), and evidence_ref.
+#[test]
+fn oracle_metadata_emitted_for_literal_expected_value() {
+    // Parse a bare expression statement (not wrapped in a test() call)
+    // so collect_expect_assertions_in_statements can find it directly.
+    let source = "expect(clamp(-5, 0, 10)).toBe(0);";
+    let file = PathBuf::from("tests/clamp.test.ts");
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    assert_eq!(assertions.len(), 1, "should extract one assertion");
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "toBe");
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("clamp(-5, 0, 10)")
+    );
+    assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("0"));
+    assert!(!assertion.has_dynamic_matcher_arg);
+    assert_eq!(assertion.oracle_confidence, OracleConfidence::High);
+
+    let lines = oracle_metadata_evidence_lines(assertion, &file);
+    assert!(
+        lines
+            .iter()
+            .any(|l| l == "typescript_oracle_observed: clamp(-5, 0, 10)"),
+        "expected observed line, got: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l == "typescript_oracle_expected: 0"),
+        "expected expected line, got: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l == "typescript_oracle_confidence: high"),
+        "expected confidence high, got: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("typescript_oracle_evidence_ref: tests/clamp.test.ts:")),
+        "expected evidence_ref line, got: {lines:?}"
+    );
+}
+
+/// Oracle metadata: `has_dynamic_matcher_arg = true` and no expected value when
+/// the matcher argument is a variable (non-literal dynamic expression).
+#[test]
+fn oracle_metadata_has_dynamic_matcher_arg_for_variable_expected() {
+    let source = "expect(clamp(-5, 0, 10)).toBe(expected);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    assert_eq!(assertions.len(), 1);
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "toBe");
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("clamp(-5, 0, 10)")
+    );
+    assert!(assertion.expected_value_or_variant.is_none());
+    assert!(assertion.has_dynamic_matcher_arg);
+    assert_eq!(assertion.oracle_confidence, OracleConfidence::Medium);
+}
+
+/// Oracle metadata: `has_dynamic_matcher_arg = true` and no expected value when
+/// the matcher argument is a function call expression.
+#[test]
+fn oracle_metadata_has_dynamic_matcher_arg_for_call_expression() {
+    let source = "expect(getValue()).toBe(computeExpected(0));";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    assert_eq!(assertions.len(), 1);
+    let assertion = &assertions[0];
+    assert!(assertion.has_dynamic_matcher_arg);
+    assert!(assertion.expected_value_or_variant.is_none());
+}
+
+/// Oracle metadata: no `has_dynamic_matcher_arg` for matchers that take no argument.
+#[test]
+fn oracle_metadata_no_dynamic_flag_for_no_arg_matchers() {
+    let source = "expect(result).toBeTruthy();\nexpect(fn).toThrow();";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    for assertion in &assertions {
+        assert!(
+            !assertion.has_dynamic_matcher_arg,
+            "no-arg matchers should not set has_dynamic_matcher_arg: {assertion:?}"
+        );
+    }
+}
+
+/// `typescript_dynamic_assertion_unresolved` limitation emitted when a direct
+/// oracle-eligible related test has `has_dynamic_matcher_arg = true`.
+#[test]
+fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Result<(), String> {
+    let owner = test_owner("clamp", "src/clamp.ts");
+    // Manually construct a test with a dynamic matcher arg
+    let test = TypeScriptTest {
+        name: "clamps below minimum".to_string(),
+        local_name: "clamps below minimum".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/clamp.test.ts"),
+        line: 1,
+        body_text: "const expected = computeExpected(0);\nclamp(-5, 0, 10);\nexpect(clamp(-5, 0, 10)).toBe(expected);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 3,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("clamp(-5, 0, 10)".to_string()),
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: true,
+            oracle_confidence: OracleConfidence::Medium,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/clamp.ts"),
+        2,
+        "    if (value < min) {",
+        &[owner],
+        &[test],
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_dynamic_assertion_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_dynamic_assertion_unresolved at tests/clamp.test.ts:3",
+    );
+    assert_evidence_contains(&finding, "typescript_oracle_observed: clamp(-5, 0, 10)");
+    // No expected value — dynamic arg
+    assert_evidence_lacks(&finding, "typescript_oracle_expected:");
+    assert_evidence_contains(&finding, "typescript_oracle_confidence: medium");
+    // repair_packet_ready stays false
+    assert_evidence_contains(&finding, "repair_route:");
+    Ok(())
+}
+
+/// `typescript_dynamic_assertion_unresolved` must NOT fire for heuristic-only
+/// relations (not oracle-eligible).
+#[test]
+fn named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation() -> Result<(), String>
+{
+    let owner = test_owner("clamp", "src/clamp.ts");
+    // Heuristic: no "clamp(" in body_text → name-proximity only
+    let test = TypeScriptTest {
+        name: "clamp boundary".to_string(),
+        local_name: "clamp boundary".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/clamp.test.ts"),
+        line: 1,
+        body_text: "const expected = computeExpected(0);\nexpect(result).toBe(expected);"
+            .to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("result".to_string()),
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: true,
+            oracle_confidence: OracleConfidence::Medium,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/clamp.ts"),
+        2,
+        "    if (value < min) {",
+        &[owner],
+        &[test],
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // Heuristic relation → no dynamic assertion limitation
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_dynamic_assertion_unresolved",
+    );
+    Ok(())
+}
+
+/// Oracle metadata confidence is `high` when oracle strength is Strong and
+/// expected value is a concrete literal.
+#[test]
+fn oracle_confidence_high_when_strong_oracle_and_literal_expected() {
+    assert_eq!(
+        derive_oracle_confidence(&OracleStrength::Strong, &Some("42".to_string()), "toBe"),
+        OracleConfidence::High
+    );
+}
+
+/// Oracle metadata confidence is `medium` when strong oracle but no literal.
+#[test]
+fn oracle_confidence_medium_when_strong_oracle_and_no_literal() {
+    assert_eq!(
+        derive_oracle_confidence(&OracleStrength::Strong, &None, "toBe"),
+        OracleConfidence::Medium
+    );
+}
+
+/// Oracle metadata confidence is `medium` for Medium oracle strength.
+#[test]
+fn oracle_confidence_medium_for_medium_strength() {
+    assert_eq!(
+        derive_oracle_confidence(&OracleStrength::Medium, &None, "toMatchSnapshot"),
+        OracleConfidence::Medium
+    );
+}
+
+/// Oracle metadata confidence is `low` for Weak and Smoke oracle strengths.
+#[test]
+fn oracle_confidence_low_for_weak_and_smoke() {
+    assert_eq!(
+        derive_oracle_confidence(&OracleStrength::Weak, &None, "toContain"),
+        OracleConfidence::Low
+    );
+    assert_eq!(
+        derive_oracle_confidence(&OracleStrength::Smoke, &None, "toBeTruthy"),
+        OracleConfidence::Low
+    );
 }

@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+PR5: additive oracle metadata lines
+
+Command:
+`cargo xtask goldens bless ts_pkg_discovery_monorepo --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

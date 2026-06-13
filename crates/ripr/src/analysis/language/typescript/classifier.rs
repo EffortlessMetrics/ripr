@@ -33,6 +33,13 @@ pub(crate) fn classify_change(
     // are no oracle-eligible candidates or no qualifying assertions.
     let named_limitations_from_oracle =
         named_limitations_for_oracle_candidates(&related_candidates);
+    // Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5).
+    // Emitted from the strongest oracle-eligible assertion across candidates.
+    // ADDITIVE: does not change oracle_kind, oracle_strength, static_limit_kind,
+    // or repair_packet_ready. At most one assertion's metadata is emitted
+    // (the strongest, by oracle_strength rank) to avoid redundant evidence.
+    let oracle_metadata_lines: Vec<String> =
+        collect_oracle_metadata_evidence_lines(&related_candidates);
     let has_oracle_eligible_relation = related_candidates
         .iter()
         .any(|candidate| candidate.relation.uses_oracle());
@@ -263,6 +270,11 @@ pub(crate) fn classify_change(
     {
         evidence.extend(named_limit.evidence_lines());
     }
+    // Emit additive oracle metadata evidence lines (RIPR-SPEC-0085 §PR5).
+    // ADDITIVE: oracle_kind, oracle_strength, static_limit_kind, and
+    // repair_packet_ready are unchanged. These lines surface the structured
+    // metadata needed for a future repair packet.
+    evidence.extend(oracle_metadata_lines);
     evidence.extend(actionability.evidence(typescript_raw_evidence_ref(
         file,
         line,

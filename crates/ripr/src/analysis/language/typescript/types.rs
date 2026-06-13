@@ -143,6 +143,17 @@ pub(crate) struct TypeScriptRelatedCandidate<'a> {
 /// matchers to oracle vocabulary and tags the rest as `Unknown`.
 /// Async-aware (`.resolves` / `.rejects`) chains are recognised by syntax;
 /// custom matchers stay `Unknown`.
+///
+/// Oracle metadata fields (RIPR-SPEC-0085 §PR5):
+/// - `observed_expression` — the `expect(<expr>)` argument as source text.
+/// - `expected_value_or_variant` — the matcher argument as source text, only
+///   when the argument is a concrete resolvable literal (not dynamic).
+///   `None` when the matcher argument is a variable, function call, or other
+///   non-literal expression; those cases emit `typescript_dynamic_assertion_unresolved`.
+/// - `oracle_confidence` — derived from `oracle_strength` plus whether the
+///   expected value is a concrete literal.
+/// - `raw_evidence_ref` — `file:line` back to the `expect(...)` call site,
+///   i.e. `<file>:<assertion_line>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TypeScriptAssertion {
     pub(crate) matcher: String,
@@ -152,6 +163,43 @@ pub(crate) struct TypeScriptAssertion {
     pub(crate) oracle_strength: OracleStrength,
     pub(crate) mock_payload: Option<TypeScriptMockPayload>,
     pub(crate) error_payload: Option<TypeScriptErrorPayload>,
+    /// The `expect(<expr>)` argument as source text (RIPR-SPEC-0085 §PR5).
+    pub(crate) observed_expression: Option<String>,
+    /// The matcher argument as source text when it is a concrete literal
+    /// (RIPR-SPEC-0085 §PR5). `None` for dynamic/non-literal arguments.
+    pub(crate) expected_value_or_variant: Option<String>,
+    /// Whether the matcher argument is a non-literal dynamic expression
+    /// (RIPR-SPEC-0085 §PR5). When `true` and `expected_value_or_variant`
+    /// is `None`, the `typescript_dynamic_assertion_unresolved` limitation is emitted.
+    pub(crate) has_dynamic_matcher_arg: bool,
+    /// Confidence derived from oracle_strength + literal concreteness
+    /// (RIPR-SPEC-0085 §PR5).
+    pub(crate) oracle_confidence: OracleConfidence,
+}
+
+/// Oracle confidence level derived from `oracle_strength` plus whether the
+/// expected value is a concrete literal (RIPR-SPEC-0085 §PR5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OracleConfidence {
+    /// Strong oracle strength with a concrete literal expected value.
+    High,
+    /// Strong oracle strength but no resolvable literal expected value.
+    Medium,
+    /// Weak or smoke oracle strength.
+    Low,
+    /// Unknown oracle kind or no expected value evidence.
+    Unknown,
+}
+
+impl OracleConfidence {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

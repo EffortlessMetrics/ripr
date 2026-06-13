@@ -92,7 +92,7 @@ pub(crate) fn named_limitation_for_static_limit(
 
 /// Collect named oracle-based limitations from oracle-eligible related candidates.
 ///
-/// Scans assertions in oracle-eligible related tests for two real producers:
+/// Scans assertions in oracle-eligible related tests for three real producers:
 ///
 /// - `OracleKind::Snapshot` → `typescript_snapshot_discriminator_unresolved`
 ///   Real producer: `oracle.rs::oracle_for_matcher` already recognises
@@ -104,11 +104,18 @@ pub(crate) fn named_limitation_for_static_limit(
 ///   NOT in `oracle.rs`'s recognised set returns `OracleKind::Unknown`. The
 ///   matcher string is real AST evidence from the oxc-parsed call expression.
 ///
+/// - `has_dynamic_matcher_arg = true` → `typescript_dynamic_assertion_unresolved`
+///   Real producer: `oracle.rs::extract_matcher_expected_value` returns
+///   `has_dynamic_matcher_arg = true` when the matcher argument is a
+///   non-literal dynamic expression (a variable, function call, or computed
+///   value). This is a PR 5 addition — the producer now exists.
+///
 /// Deferred (no producer yet — do NOT add without a real producer):
-/// - `typescript_oracle_helper_gated` — deferred to PR 5
-///   (`OpaqueCustomAssertionHelper` detection not yet wired for TS)
-/// - `typescript_table_case_unresolved` — deferred to PR 5
-/// - `typescript_dynamic_assertion_unresolved` — deferred to PR 5
+/// - `typescript_oracle_helper_gated` — deferred (OpaqueCustomAssertionHelper
+///   detection not yet wired for TS)
+/// - `typescript_table_case_unresolved` — deferred (test.each detection is a
+///   separate seam for a later PR)
+/// - `typescript_target_unresolved` — deferred to PR 6 (ownership detection)
 pub(crate) fn named_limitations_for_oracle_candidates(
     candidates: &[TypeScriptRelatedCandidate<'_>],
 ) -> Vec<TypeScriptNamedLimitation> {
@@ -118,6 +125,7 @@ pub(crate) fn named_limitations_for_oracle_candidates(
     let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
     let mut saw_snapshot = false;
     let mut saw_custom_matcher = false;
+    let mut saw_dynamic_assertion = false;
 
     for candidate in candidates.iter().filter(|c| c.relation.uses_oracle()) {
         for assertion in &candidate.test.assertions {
@@ -160,6 +168,28 @@ pub(crate) fn named_limitations_for_oracle_candidates(
                     repair_route: "analysis/typescript-custom-matcher-resolution",
                 });
                 saw_custom_matcher = true;
+            }
+            // Dynamic assertion limitation: the matcher argument is a non-literal
+            // dynamic expression (variable, function call, computed value).
+            // Real producer: `oracle.rs::extract_matcher_expected_value` sets
+            // `has_dynamic_matcher_arg = true` for such cases (RIPR-SPEC-0085 §PR5).
+            if assertion.has_dynamic_matcher_arg && !saw_dynamic_assertion {
+                let sample = format!(
+                    "{}:{}",
+                    normalized_path(&candidate.test.file),
+                    assertion.line
+                );
+                let why = format!(
+                    "the matcher `.{}(...)` receives a non-literal dynamic argument; the adapter cannot statically resolve the expected value and cannot confirm the discriminator pins the changed behavior",
+                    assertion.matcher
+                );
+                limitations.push(TypeScriptNamedLimitation {
+                    name: "typescript_dynamic_assertion_unresolved",
+                    sample_source: sample,
+                    why_not_actionable: why,
+                    repair_route: "analysis/typescript-dynamic-assertion-resolution",
+                });
+                saw_dynamic_assertion = true;
             }
         }
     }

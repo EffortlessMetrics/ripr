@@ -5237,7 +5237,18 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_snapshot_discriminator_emitted_for_snapshot_oracle",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_emitted_for_unrecognised_matcher",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_not_emitted_for_recognised_matcher",
-  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_oracle_based_not_emitted_for_heuristic_only_relation"
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_oracle_based_not_emitted_for_heuristic_only_relation",
+  # PR5: oracle metadata hardening
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_emitted_for_literal_expected_value",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_has_dynamic_matcher_arg_for_variable_expected",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_has_dynamic_matcher_arg_for_call_expression",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_no_dynamic_flag_for_no_arg_matchers",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_high_when_strong_oracle_and_literal_expected",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_medium_when_strong_oracle_and_no_literal",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_medium_for_medium_strength",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_low_for_weak_and_smoke"
 ]
 fixtures = [
   "fixtures/ts_pkg_discovery_single_package",
@@ -5247,12 +5258,16 @@ fixtures = [
   "fixtures/typescript_mocked_module_limit",
   "fixtures/typescript_static_limit_taxonomy",
   "fixtures/typescript_jest_vitest_assertion_facts",
-  "fixtures/typescript_limitation_custom_matcher"
+  "fixtures/typescript_limitation_custom_matcher",
+  # PR5: oracle metadata hardening (new fixture)
+  "fixtures/typescript_dynamic_assertion_unresolved"
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript/package.rs",
   "crates/ripr/src/analysis/language/typescript/static_limit.rs",
   "crates/ripr/src/analysis/language/typescript/classifier.rs",
+  "crates/ripr/src/analysis/language/typescript/oracle.rs",
+  "crates/ripr/src/analysis/language/typescript/types.rs",
   "crates/ripr/src/analysis/language/typescript/mod.rs",
   "crates/ripr/src/output/typescript_preview_card.rs"
 ]
