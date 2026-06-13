@@ -54,6 +54,7 @@
           "flow_sink": null
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "price is in expected range",

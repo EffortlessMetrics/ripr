@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "summarize smoke",
@@ -166,6 +167,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "summarize smoke",
@@ -294,6 +296,7 @@
           "flow_sink": {"kind":"error_variant","text":"throw new RangeError(\"missing token\");","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "parseToken smoke",
@@ -429,6 +432,7 @@
           "flow_sink": {"kind":"call_effect","text":"mockSend(payload);","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "notify smoke",
@@ -563,6 +567,7 @@
           "flow_sink": null
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "discountedTotal smoke",
@@ -698,6 +703,7 @@
           "flow_sink": {"kind":"return_value","text":"return amount - discount;","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "discountedTotal smoke",
@@ -833,6 +839,7 @@
           "flow_sink": {"kind":"struct_field","text":"profile.status = status;","line":4}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "updateProfile smoke",
@@ -968,6 +975,7 @@
           "flow_sink": {"kind":"call_effect","text":"audit.record(status);","line":5}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "updateProfile smoke",
@@ -1103,6 +1111,7 @@
           "flow_sink": {"kind":"call_effect","text":"console.log(\"status-ready\");","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "StatusView smoke",
@@ -1238,6 +1247,7 @@
           "flow_sink": {"kind":"struct_field","text":"return { status: \"ready\", label, amount };","line":4}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "PriceBadge smoke",

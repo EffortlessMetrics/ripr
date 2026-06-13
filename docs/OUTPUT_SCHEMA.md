@@ -405,6 +405,7 @@ A finding contains:
       }
     }
   ],
+  "related_tests_total": 1,
   "related_tests": [
     {
       "name": "premium_customer_gets_discount",
@@ -441,6 +442,15 @@ The evidence-first fields are additive in schema `0.2`:
 - `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
   nested activation evidence for consumers that want direct finding-level
   access.
+- `related_tests_total` — number of related tests the analyzer matched for
+  this finding (pre-cap, always the true count). The `related_tests` array is
+  **capped** at `MAX_RELATED_TESTS_PER_FINDING_JSON` (currently 8) to bound
+  artifact size on real repos where a high-traffic owner can fan out to
+  hundreds of related tests. This is an additive field (no `schema_version`
+  bump). The cap never affects classification, finding count, or the
+  `oracle_kind`/`oracle_strength` summary — those use the full pre-cap vector.
+  Mirrors the `related_tests_total` + cap pattern already in
+  `seams[].related_tests_total` for the `repo-exposure.json` format.
 - `oracle_kind` and `oracle_strength` summarize the strongest related oracle
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented

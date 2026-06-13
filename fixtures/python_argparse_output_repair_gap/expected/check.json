@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"call_effect","text":"print(\"shipment queued\")","line":8}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_main_smoke",

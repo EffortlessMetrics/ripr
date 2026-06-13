@@ -116,6 +116,7 @@
           "flow_sink": {"kind":"return_value","text":"amount - 10","line":3}
         }
       ],
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "below_threshold_has_no_discount",

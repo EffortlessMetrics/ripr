@@ -45,6 +45,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "add returns sum",

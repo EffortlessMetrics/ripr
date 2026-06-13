@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"return_value","text":"return cls(config[\"discount\"] + 1)","line":4}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_price_rule_from_config",

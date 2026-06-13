@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_discount_policy_apply",

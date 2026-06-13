@@ -24,6 +24,14 @@ use std::collections::BTreeMap;
 use super::finding_alignment;
 use super::{array_field, escape, field, float_field, number_field};
 
+/// Cap on `related_tests` serialized per finding in the diff-check JSON output.
+/// The heuristic is permissive (any test that reaches the changed owner counts),
+/// so a high-traffic function can fan out to hundreds of related tests per probe.
+/// The cap keeps the artifact review-sized. The pre-cap count is always disclosed
+/// in `related_tests_total` so consumers see what was elided.
+/// Mirrors `MAX_RELATED_TESTS_PER_SEAM_JSON` in `output/repo_exposure.rs`.
+const MAX_RELATED_TESTS_PER_FINDING_JSON: usize = 8;
+
 pub fn render(output: &CheckOutput) -> String {
     render_with_config(output, &RiprConfig::default())
 }
@@ -263,13 +271,21 @@ fn finding_json_with_config_and_counts(
         indent + 1,
     );
     out.push_str(",\n");
+    let related_total = finding.related_tests.len();
+    let related_rendered = related_total.min(MAX_RELATED_TESTS_PER_FINDING_JSON);
+    number_field(out, indent + 1, "related_tests_total", related_total, true);
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
         "  ".repeat(indent + 1)
     ));
-    for (idx, test) in finding.related_tests.iter().enumerate() {
+    for (idx, test) in finding
+        .related_tests
+        .iter()
+        .take(related_rendered)
+        .enumerate()
+    {
         related_test_json(out, test, indent + 2);
-        if idx + 1 != finding.related_tests.len() {
+        if idx + 1 != related_rendered {
             out.push(',');
         }
         out.push('\n');

@@ -45,6 +45,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "formats price",
@@ -170,6 +171,7 @@
           "flow_sink": {"kind":"return_value","text":"return this.items.length + 1;","line":7}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "cart total smoke",
@@ -305,6 +307,7 @@
           "flow_sink": {"kind":"return_value","text":"return new Cart({ tracked: true });","line":11}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "static build smoke",
@@ -429,6 +432,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "rate is visible",

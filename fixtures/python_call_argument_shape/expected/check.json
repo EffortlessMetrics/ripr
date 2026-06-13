@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"call_effect","text":"notifier(\"receipt.sent\", order_id)","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_send_receipt_notifies_callback",

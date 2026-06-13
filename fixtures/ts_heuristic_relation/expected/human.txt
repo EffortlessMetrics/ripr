@@ -1,0 +1,73 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_heuristic_relation/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/formatter.ts:2
+
+Changed
+  after:      if (amount <= 0) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/formatter.ts::formatCurrency
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: ambiguous_related_test
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  missing fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+  raw evidence: src/formatter.ts:2 (typescript_preview_probe) source=probe:src_formatter.ts:typescript_preview:bf26bc95 owner=formatCurrency
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 1 related test(s) found for owner `formatCurrency`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/formatter.test.ts:3 formatCurrency behavior formats positive amounts uses unknown unknown oracle
+
+Weakness
+  - Only heuristic TypeScript test links were found for `formatCurrency`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: formatCurrency
+  owner kind: function
+  changed behavior: predicate changed at src/formatter.ts:2: `if (amount <= 0) {`
+  related test: tests/formatter.test.ts:3 formatCurrency behavior formats positive amounts
+  oracle: unknown (unknown)
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  next capability needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+
+Next step
+  TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

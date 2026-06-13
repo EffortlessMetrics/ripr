@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "fixture_builder_case_has_no_discount",

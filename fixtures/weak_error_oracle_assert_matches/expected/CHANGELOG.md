@@ -59,3 +59,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"struct_field","text":"return {\"status\": \"paid\", \"id\": invoice_id}","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_invoice_payload_smoke",

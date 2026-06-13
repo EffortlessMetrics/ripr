@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "clamp below min",
@@ -158,6 +159,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "clamp below min",

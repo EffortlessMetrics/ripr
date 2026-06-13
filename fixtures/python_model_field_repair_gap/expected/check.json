@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"struct_field","text":"return User(active=True)","line":7}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_build_user_smoke",

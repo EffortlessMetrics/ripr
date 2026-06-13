@@ -55,6 +55,7 @@
           "flow_sink": {"kind":"error_variant","text":"return await Promise.reject(new Error(\"missing id\"));","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "rejects missing profile id broadly",
@@ -180,6 +181,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "rejects missing publish id exactly",

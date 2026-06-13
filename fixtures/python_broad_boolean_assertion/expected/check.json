@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_priority_amount",

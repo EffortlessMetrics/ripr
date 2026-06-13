@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 3,
       "related_tests": [
         {
           "name": "threshold documented elsewhere",

@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "at threshold discounts",

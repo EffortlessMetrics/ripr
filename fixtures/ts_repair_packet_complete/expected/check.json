@@ -54,6 +54,7 @@
           "flow_sink": null
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "applyDiscount applies discount when amount meets threshold",

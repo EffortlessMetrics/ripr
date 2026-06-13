@@ -45,6 +45,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 0,
       "related_tests": [
       ],
       "typescript_preview_card": {
@@ -150,6 +151,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "dispatch smoke",
@@ -268,6 +270,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "LabelView smoke",
@@ -386,6 +389,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "wrap smoke",

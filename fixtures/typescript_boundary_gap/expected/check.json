@@ -54,6 +54,7 @@
           "flow_sink": null
         }
       ],
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "below threshold has no discount",

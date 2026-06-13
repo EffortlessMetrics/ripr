@@ -65,6 +65,7 @@
           "flow_sink": {"kind":"return_value","text":"\"ok\".to_string()","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "renders_error_status_snapshot",

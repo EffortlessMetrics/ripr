@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_apply_discount_smoke",

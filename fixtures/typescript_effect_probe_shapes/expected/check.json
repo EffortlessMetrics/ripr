@@ -55,6 +55,7 @@
           "flow_sink": {"kind":"struct_field","text":"profile.status = status;","line":4}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "updates and records status",
@@ -190,6 +191,7 @@
           "flow_sink": {"kind":"call_effect","text":"audit.record(status);","line":5}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "updates and records status",

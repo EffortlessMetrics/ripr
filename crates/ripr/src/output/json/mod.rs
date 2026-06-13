@@ -580,6 +580,95 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_emits_related_tests_total_and_caps_array_at_eight() {
+        // Behavioral proof of the related_tests_total cap fix:
+        //   - `related_tests_total` always reflects the PRE-cap count.
+        //   - `related_tests` array is bounded to MAX_RELATED_TESTS_PER_FINDING_JSON (8).
+        //   - Tests beyond the cap are elided from the serialized array (size fix).
+        //   - Classification and finding count are untouched (fail-closed-safe).
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..12)
+            .map(|index| RelatedTest {
+                name: format!("test_over_cap_{index}"),
+                file: PathBuf::from("tests/big_suite.rs"),
+                line: 200 + index,
+                oracle: Some(format!("assert_eq!(val, {index});")),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+            })
+            .collect();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        // Total count must reflect all 12 (pre-cap).
+        assert!(
+            out.contains("\"related_tests_total\": 12"),
+            "related_tests_total must be 12 (pre-cap): {out}"
+        );
+        // First 8 tests must be serialized (tests 0-7).
+        assert!(
+            out.contains("\"name\": \"test_over_cap_7\""),
+            "test 7 must be present (within cap): {out}"
+        );
+        // Tests 8-11 must be elided (beyond cap).
+        assert!(
+            !out.contains("\"name\": \"test_over_cap_8\""),
+            "test 8 must be elided (beyond cap=8): {out}"
+        );
+        assert!(
+            !out.contains("\"name\": \"test_over_cap_11\""),
+            "test 11 must be elided (beyond cap=8): {out}"
+        );
+        // Classification must be unaffected.
+        assert!(
+            out.contains("\"classification\": \"static_unknown\""),
+            "classification must be unchanged: {out}"
+        );
+    }
+
+    #[test]
+    fn finding_json_emits_related_tests_total_zero_when_no_related_tests() {
+        let finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(
+            out.contains("\"related_tests_total\": 0"),
+            "related_tests_total must be 0 when no related tests: {out}"
+        );
+        assert!(
+            out.contains("\"related_tests\": ["),
+            "related_tests array must still be present: {out}"
+        );
+    }
+
+    #[test]
+    fn finding_json_emits_related_tests_total_matching_count_when_under_cap() {
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..3)
+            .map(|index| RelatedTest {
+                name: format!("small_suite_{index}"),
+                file: PathBuf::from("tests/small.rs"),
+                line: 10 + index,
+                oracle: None,
+                oracle_kind: OracleKind::SmokeOnly,
+                oracle_strength: OracleStrength::Weak,
+            })
+            .collect();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        // When under the cap, total == array length.
+        assert!(
+            out.contains("\"related_tests_total\": 3"),
+            "related_tests_total must equal actual count when under cap: {out}"
+        );
+    }
+
+    #[test]
     fn finding_json_escapes_special_characters_in_recommended_next_step() {
         let mut finding = unknown_finding();
         finding.recommended_next_step = Some("Verify \"quoted\" step\nthen patch".to_string());

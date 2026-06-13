@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"call_effect","text":"logger.warning(\"coupon expired\")","line":6}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_warn_coupon_logs_expired_message",

@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"return_value","text":"return \"coupon expired\"","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_warn_coupon_output_message",

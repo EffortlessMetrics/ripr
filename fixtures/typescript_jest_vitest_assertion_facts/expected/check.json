@@ -44,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "pricing discounts pins threshold",
@@ -177,6 +178,7 @@
           "flow_sink": {"kind":"return_value","text":"return `summary:${status.trim()}`;","line":9}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "renders summary snapshot",
@@ -312,6 +314,7 @@
           "flow_sink": {"kind":"return_value","text":"return count >= 1;","line":13}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "smoke readiness",
@@ -447,6 +450,7 @@
           "flow_sink": {"kind":"call_effect","text":"sink.record(status);","line":17}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "records status %s",
@@ -582,6 +586,7 @@
           "flow_sink": {"kind":"call_effect","text":"sink.record(\"ready\");","line":21}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "records literal status",
@@ -707,6 +712,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "loads profile",

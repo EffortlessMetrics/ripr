@@ -47,3 +47,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless ts_pkg_discovery_no_package --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless ts_pkg_discovery_no_package --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless ts_pkg_discovery_no_package --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

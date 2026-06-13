@@ -147,6 +147,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 3,
       "related_tests": [
         {
           "name": "below_threshold_has_no_discount",

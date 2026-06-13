@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"unknown","text":"if amount >= threshold:","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_calculate_discount_smoke",
@@ -188,6 +189,7 @@
           "flow_sink": {"kind":"error_variant","text":"raise ValueError(\"positive required\")","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_rejects_zero_value",

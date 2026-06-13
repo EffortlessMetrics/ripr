@@ -67,6 +67,7 @@
           "flow_sink": {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_recording_callback_starts_idle",
