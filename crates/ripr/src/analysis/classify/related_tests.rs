@@ -1,7 +1,7 @@
 use super::super::rust_index::{
     FunctionSummary, RustIndex, TestSummary, extract_identifier_tokens,
 };
-use crate::domain::Probe;
+use crate::domain::{Probe, RelationReason};
 use std::path::Path;
 
 /// Minimum token length for the `assertions_reference_owner` signal.
@@ -12,8 +12,8 @@ pub(in crate::analysis) fn find_related_tests<'a>(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
     index: &'a RustIndex,
-) -> Vec<&'a TestSummary> {
-    let mut related = Vec::new();
+) -> Vec<(&'a TestSummary, RelationReason)> {
+    let mut related: Vec<(&TestSummary, RelationReason)> = Vec::new();
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let probe_tokens = extract_identifier_tokens(&probe.expression);
     let file_name = probe
@@ -70,20 +70,45 @@ pub(in crate::analysis) fn find_related_tests<'a>(
             });
 
         let test_name = test.name.to_ascii_lowercase();
-        let owner_name = owner_name.to_ascii_lowercase();
-        let same_file_or_named = normalize_path(&test.file).contains(file_name)
-            || (!owner_name.is_empty() && test_name.contains(&owner_name))
-            || probe_tokens
-                .iter()
-                .any(|token| token.len() > 2 && test_name.contains(&token.to_ascii_lowercase()));
+        let owner_name_lc = owner_name.to_ascii_lowercase();
+        let file_path_matches = normalize_path(&test.file).contains(file_name);
+        let owner_name_in_test = !owner_name_lc.is_empty() && test_name.contains(&owner_name_lc);
+        let token_in_test_name = probe_tokens
+            .iter()
+            .any(|token| token.len() > 2 && test_name.contains(&token.to_ascii_lowercase()));
+        let same_file_or_named = file_path_matches || owner_name_in_test || token_in_test_name;
 
-        if calls_owner || assertions_reference_owner || same_file_or_named {
-            related.push(test);
+        if !calls_owner && !assertions_reference_owner && !same_file_or_named {
+            continue;
         }
+
+        // Determine the single highest-priority reason for the match so the
+        // emitted `RelatedTest` can carry `relation_reason` /
+        // `relation_confidence` tags for consumer filtering.
+        let reason = if calls_owner {
+            // The test directly calls or mentions the changed owner function.
+            RelationReason::DirectOwnerCall
+        } else if assertions_reference_owner {
+            // Struct/field probe whose tokens appear in assertion observed_tokens.
+            RelationReason::AssertionTargetAffinity
+        } else if owner_name_in_test {
+            // Test name contains the owner function name.
+            RelationReason::OwnerNamedTest
+        } else if file_path_matches {
+            // Test file path contains the probe's source file stem.
+            RelationReason::SameTestFile
+        } else {
+            // Probe token substring appears in the test name — the broadest,
+            // least precise match branch (`same_file_or_named` token path).
+            // `token_in_test_name` must be true here (guarded above).
+            RelationReason::WeakTokenSubstring
+        };
+
+        related.push((test, reason));
     }
 
-    related.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.file.cmp(&b.file)));
-    related.dedup_by(|a, b| a.name == b.name && a.file == b.file);
+    related.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name).then_with(|| a.file.cmp(&b.file)));
+    related.dedup_by(|(a, _), (b, _)| a.name == b.name && a.file == b.file);
     related
 }
 
@@ -146,7 +171,7 @@ mod tests {
         let related = find_related_tests(&probe, Some(&owner), &index);
 
         assert_eq!(related.len(), 1);
-        assert_eq!(related[0].name, "crate_a_score_test");
+        assert_eq!(related[0].0.name, "crate_a_score_test");
     }
 
     #[test]
@@ -164,8 +189,8 @@ mod tests {
         let related = find_related_tests(&probe, Some(&owner), &index);
 
         assert_eq!(related.len(), 2);
-        assert_eq!(related[0].file, PathBuf::from("tests/a_case.rs"));
-        assert_eq!(related[1].file, PathBuf::from("tests/z_case.rs"));
+        assert_eq!(related[0].0.file, PathBuf::from("tests/a_case.rs"));
+        assert_eq!(related[1].0.file, PathBuf::from("tests/z_case.rs"));
     }
 
     #[test]
@@ -184,7 +209,7 @@ mod tests {
         let related = find_related_tests(&probe, Some(&owner), &index);
 
         assert_eq!(related.len(), 1);
-        assert_eq!(related[0].name, "vat_boundary_is_checked_by_macro");
+        assert_eq!(related[0].0.name, "vat_boundary_is_checked_by_macro");
     }
 
     #[test]
@@ -342,7 +367,7 @@ mod tests {
         let related = find_related_tests(&probe, None, &index);
 
         assert_eq!(related.len(), 1);
-        assert_eq!(related[0].name, "repo_lane_deserializes_fields_correctly");
+        assert_eq!(related[0].0.name, "repo_lane_deserializes_fields_correctly");
     }
 
     // --- #1054 repro ---
@@ -394,7 +419,7 @@ mod tests {
             "open_cap probe must find the oracle test"
         );
         assert_eq!(
-            related_in[0].name, related_cap[0].name,
+            related_in[0].0.name, related_cap[0].0.name,
             "sibling fields must select the same oracle test"
         );
     }

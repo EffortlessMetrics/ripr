@@ -73,7 +73,9 @@
           "line": 4,
           "oracle_strength": "medium",
           "oracle_kind": "snapshot",
-          "oracle": "insta::assert_snapshot!(rendered);"
+          "oracle": "insta::assert_snapshot!(rendered);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

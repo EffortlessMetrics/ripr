@@ -365,6 +365,8 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 oracle_kind: OracleKind::ExactValue,
                 oracle: Some("expect(...).toBe(...)".to_string()),
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

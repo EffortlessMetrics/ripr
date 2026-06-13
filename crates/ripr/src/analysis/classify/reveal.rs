@@ -3,7 +3,7 @@ use crate::domain::*;
 
 pub(in crate::analysis) fn reveal_evidence(
     probe: &Probe,
-    related_tests: &[&TestSummary],
+    related_tests: &[(&TestSummary, RelationReason)],
 ) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
     if related_tests.is_empty() {
         return (
@@ -52,7 +52,7 @@ struct RevealAssertionAnalysis {
 
 fn analyze_related_assertions(
     probe: &Probe,
-    related_tests: &[&TestSummary],
+    related_tests: &[(&TestSummary, RelationReason)],
 ) -> RevealAssertionAnalysis {
     let probe_tokens = extract_identifier_tokens(&probe.expression);
     let is_match_arm = matches!(probe.family, ProbeFamily::MatchArm);
@@ -63,7 +63,9 @@ fn analyze_related_assertions(
     // For MatchArm probes: start pessimistic and clear once a token_match fires.
     let mut arm_observation_unverified = false;
 
-    for test in related_tests {
+    for (test, reason) in related_tests {
+        let relation_reason = Some(*reason);
+        let relation_confidence = Some(reason.confidence());
         if test.assertions.is_empty() {
             related.push(RelatedTest {
                 name: test.name.clone(),
@@ -72,6 +74,8 @@ fn analyze_related_assertions(
                 oracle: None,
                 oracle_kind: OracleKind::Unknown,
                 oracle_strength: OracleStrength::None,
+                relation_reason,
+                relation_confidence,
             });
             continue;
         }
@@ -106,6 +110,8 @@ fn analyze_related_assertions(
                     oracle: Some(assertion.text.clone()),
                     oracle_kind: assertion.kind.clone(),
                     oracle_strength: relative_strength,
+                    relation_reason,
+                    relation_confidence,
                 });
             }
         }
@@ -353,7 +359,8 @@ mod tests {
     fn reveal_evidence_keeps_assertionless_related_test_without_observe_signal() {
         let probe = probe(ProbeFamily::ReturnValue, "score");
         let test = test_with_assertions("score_returns_value", Vec::new());
-        let (observe, discriminate, related) = reveal_evidence(&probe, &[&test]);
+        let (observe, discriminate, related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
 
         assert_eq!(observe.state, StageState::No);
         assert_eq!(discriminate.state, StageState::No);
@@ -384,7 +391,13 @@ mod tests {
                 OracleStrength::Strong,
             )],
         );
-        let (observe, discriminate, related) = reveal_evidence(&probe, &[&late, &early]);
+        let (observe, discriminate, related) = reveal_evidence(
+            &probe,
+            &[
+                (&late, RelationReason::DirectOwnerCall),
+                (&early, RelationReason::DirectOwnerCall),
+            ],
+        );
 
         assert_eq!(observe.state, StageState::Yes);
         assert_eq!(discriminate.state, StageState::Yes);
@@ -412,7 +425,8 @@ mod tests {
                 ),
             ],
         );
-        let (observe, discriminate, related) = reveal_evidence(&probe, &[&test]);
+        let (observe, discriminate, related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::WeakTokenSubstring)]);
 
         assert_eq!(observe.state, StageState::No);
         assert_eq!(discriminate.state, StageState::No);
@@ -883,7 +897,8 @@ mod tests {
                 OracleStrength::Strong,
             )],
         );
-        let (observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+        let (observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
 
         assert_eq!(observe.state, StageState::Yes, "observe must still fire");
         assert_eq!(
@@ -912,7 +927,8 @@ mod tests {
                 OracleStrength::Strong,
             )],
         );
-        let (observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+        let (observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
 
         assert_eq!(observe.state, StageState::Yes);
         assert_eq!(
@@ -937,7 +953,8 @@ mod tests {
                 OracleStrength::Strong,
             )],
         );
-        let (_observe, discriminate, _related) = reveal_evidence(&probe, &[&test]);
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
 
         assert_eq!(
             discriminate.state,

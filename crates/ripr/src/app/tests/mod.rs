@@ -56,6 +56,8 @@ fn sample_finding(file: &str, line: usize) -> Finding {
             oracle: None,
             oracle_kind: crate::domain::OracleKind::Unknown,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }],
         recommended_next_step: Some("add stronger assertion".to_string()),
         language: None,

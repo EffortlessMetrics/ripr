@@ -131,3 +131,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+add relation_reason and relation_confidence fields to related_test JSON output
+
+Command:
+`cargo xtask goldens bless snapshot_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

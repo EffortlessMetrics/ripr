@@ -587,6 +587,8 @@ pub(crate) fn related_profile_bun_tests(
                 oracle: oracle_text,
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }
         })
         .collect::<Vec<_>>();

@@ -85,6 +85,8 @@ mod tests {
             oracle: Some("assert_eq!(discounted_total(50, 100), 50);".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         });
 
         let mut out = String::new();
@@ -219,6 +221,8 @@ mod tests {
             oracle: None,
             oracle_kind: OracleKind::Snapshot,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         };
         let output = CheckOutput {
             schema_version: "0.2".to_string(),
@@ -346,6 +350,8 @@ mod tests {
             oracle: None,
             oracle_kind: OracleKind::Snapshot,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         };
         let output = CheckOutput {
             schema_version: "0.2".to_string(),
@@ -512,6 +518,8 @@ mod tests {
                 oracle: Some("assert!(ok())".to_string()),
                 oracle_kind: OracleKind::RelationalCheck,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             },
             RelatedTest {
                 name: "strict_check".to_string(),
@@ -520,6 +528,8 @@ mod tests {
                 oracle: Some("assert_eq!(value, 42)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             },
         ];
 
@@ -568,6 +578,8 @@ mod tests {
                 oracle: Some(format!("assert_eq!(actual, {index});")),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             })
             .collect();
         let mut out = String::new();
@@ -595,6 +607,8 @@ mod tests {
                 oracle: Some(format!("assert_eq!(val, {index});")),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             })
             .collect();
         let mut out = String::new();
@@ -655,6 +669,8 @@ mod tests {
                 oracle: None,
                 oracle_kind: OracleKind::SmokeOnly,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             })
             .collect();
         let mut out = String::new();
@@ -955,6 +971,8 @@ mod tests {
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);

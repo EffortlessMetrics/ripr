@@ -884,6 +884,8 @@ fn finding_hover_renders_related_tests_and_oracle_text() -> Result<(), String> {
         oracle: Some("assert_eq!(total, expected)".to_string()),
         oracle_kind: OracleKind::ExactValue,
         oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
     });
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
@@ -2836,6 +2838,8 @@ fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), Stri
         oracle: Some("assert_eq!(total, expected)".to_string()),
         oracle_kind: OracleKind::ExactValue,
         oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
     });
 
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
@@ -4353,6 +4357,8 @@ fn finding_hover_response_includes_evidence_details() -> Result<(), String> {
         oracle: Some("assert_eq!(total, expected)".to_string()),
         oracle_kind: OracleKind::ExactValue,
         oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
     }];
     finding.activation = ActivationEvidence {
         observed_values: vec![ValueFact {

@@ -73,7 +73,9 @@
           "line": 4,
           "oracle_strength": "weak",
           "oracle_kind": "broad_error",
-          "oracle": "assert!(authenticate(\"\").is_err());"
+          "oracle": "assert!(authenticate(\"\").is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -150,7 +152,9 @@
           "line": 4,
           "oracle_strength": "weak",
           "oracle_kind": "broad_error",
-          "oracle": "assert!(authenticate(\"\").is_err());"
+          "oracle": "assert!(authenticate(\"\").is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -227,7 +231,9 @@
           "line": 4,
           "oracle_strength": "weak",
           "oracle_kind": "broad_error",
-          "oracle": "assert!(authenticate(\"\").is_err());"
+          "oracle": "assert!(authenticate(\"\").is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

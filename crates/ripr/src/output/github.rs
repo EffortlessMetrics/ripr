@@ -642,6 +642,8 @@ mod tests {
             oracle: Some("assert result".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.language = Some(LanguageId::Python);
         finding.language_status = Some(LanguageStatus::Preview);
@@ -725,6 +727,8 @@ mod tests {
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.language = Some(LanguageId::Perl);
         finding.language_status = Some(LanguageStatus::Preview);

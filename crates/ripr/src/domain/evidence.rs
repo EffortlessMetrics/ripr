@@ -134,9 +134,111 @@ pub struct RiprEvidence {
     pub reveal: RevealEvidence,
 }
 
+/// Why a test is related to a seam or probe. Single highest-priority reason
+/// per test. The diff-check path (`analysis/classify/related_tests.rs`) tags
+/// each related test with the reason it matched so consumers can filter weak
+/// matches. The repo-exposure path (`analysis/test_grip_evidence.rs`) uses the
+/// same enum for richer grip-evidence ranking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationReason {
+    DirectOwnerCall,
+    HelperOwnerCall,
+    AssertionTargetAffinity,
+    SameTestFile,
+    SameModule,
+    OwnerNamedTest,
+    ImportPathAffinity,
+    FixtureOwnerAffinity,
+    /// Matched via probe-token substring in file path or test name.
+    /// This signal is deliberately broad — a short token can match many
+    /// unrelated tests. Consumers should treat `relation_confidence: low`
+    /// as advisory only.
+    WeakTokenSubstring,
+}
+
+impl RelationReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectOwnerCall => "direct_owner_call",
+            Self::HelperOwnerCall => "helper_owner_call",
+            Self::AssertionTargetAffinity => "assertion_target_affinity",
+            Self::SameTestFile => "same_test_file",
+            Self::SameModule => "same_module",
+            Self::OwnerNamedTest => "owner_named_test",
+            Self::ImportPathAffinity => "import_path_affinity",
+            Self::FixtureOwnerAffinity => "fixture_owner_affinity",
+            Self::WeakTokenSubstring => "weak_token_substring",
+        }
+    }
+
+    /// Sort order: lower value sorts first (highest-priority reason first).
+    pub fn priority(self) -> u8 {
+        match self {
+            Self::DirectOwnerCall => 0,
+            Self::HelperOwnerCall => 1,
+            Self::AssertionTargetAffinity => 2,
+            Self::SameTestFile => 3,
+            Self::SameModule => 4,
+            Self::OwnerNamedTest => 5,
+            Self::ImportPathAffinity => 6,
+            Self::FixtureOwnerAffinity => 7,
+            Self::WeakTokenSubstring => 8,
+        }
+    }
+
+    /// Derive the matching confidence for this reason.
+    pub fn confidence(self) -> RelationConfidence {
+        match self {
+            Self::DirectOwnerCall | Self::HelperOwnerCall => RelationConfidence::High,
+            Self::AssertionTargetAffinity
+            | Self::SameTestFile
+            | Self::SameModule
+            | Self::OwnerNamedTest
+            | Self::ImportPathAffinity => RelationConfidence::Medium,
+            Self::FixtureOwnerAffinity | Self::WeakTokenSubstring => RelationConfidence::Low,
+        }
+    }
+}
+
+/// Confidence that a related test grips the seam. Independent of
+/// oracle strength: a `Low` relation can still carry a strong oracle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationConfidence {
+    High,
+    Medium,
+    Low,
+    Opaque,
+}
+
+impl RelationConfidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::Opaque => "opaque",
+        }
+    }
+
+    /// Sort rank: lower value sorts first (highest confidence first).
+    pub fn rank(self) -> u8 {
+        match self {
+            Self::High => 0,
+            Self::Medium => 1,
+            Self::Low => 2,
+            Self::Opaque => 3,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Confidence, OracleKind, OracleStrength, StageEvidence, StageState};
+    use super::{
+        Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, StageEvidence,
+        StageState,
+    };
 
     #[test]
     fn oracle_kind_labels_are_stable_contract_terms() {
@@ -205,5 +307,42 @@ mod tests {
         assert_eq!(evidence.state, StageState::Weak);
         assert_eq!(evidence.confidence, Confidence::Medium);
         assert_eq!(evidence.summary, "summary");
+    }
+
+    #[test]
+    fn relation_reason_labels_are_stable_contract_terms() {
+        let cases = [
+            (RelationReason::DirectOwnerCall, "direct_owner_call"),
+            (RelationReason::HelperOwnerCall, "helper_owner_call"),
+            (
+                RelationReason::AssertionTargetAffinity,
+                "assertion_target_affinity",
+            ),
+            (RelationReason::SameTestFile, "same_test_file"),
+            (RelationReason::SameModule, "same_module"),
+            (RelationReason::OwnerNamedTest, "owner_named_test"),
+            (RelationReason::ImportPathAffinity, "import_path_affinity"),
+            (
+                RelationReason::FixtureOwnerAffinity,
+                "fixture_owner_affinity",
+            ),
+            (RelationReason::WeakTokenSubstring, "weak_token_substring"),
+        ];
+        for (reason, label) in cases {
+            assert_eq!(reason.as_str(), label);
+        }
+    }
+
+    #[test]
+    fn relation_confidence_labels_are_stable_contract_terms() {
+        let cases = [
+            (RelationConfidence::High, "high"),
+            (RelationConfidence::Medium, "medium"),
+            (RelationConfidence::Low, "low"),
+            (RelationConfidence::Opaque, "opaque"),
+        ];
+        for (confidence, label) in cases {
+            assert_eq!(confidence.as_str(), label);
+        }
     }
 }

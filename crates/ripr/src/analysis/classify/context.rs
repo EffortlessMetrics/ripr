@@ -1,23 +1,32 @@
 use super::super::rust_index::{FunctionSummary, TestSummary};
-use crate::domain::Probe;
+use crate::domain::{Probe, RelationReason};
 
 pub(in crate::analysis) struct ProbeContext<'a> {
     pub probe: &'a Probe,
     pub owner_fn: Option<&'a FunctionSummary>,
-    pub related_tests: Vec<&'a TestSummary>,
+    /// Related tests paired with their relation reason so `reveal_evidence`
+    /// can tag each emitted `RelatedTest` with `relation_reason` /
+    /// `relation_confidence`.
+    pub related_tests: Vec<(&'a TestSummary, RelationReason)>,
 }
 
 impl<'a> ProbeContext<'a> {
     pub(in crate::analysis) fn new(
         probe: &'a Probe,
         owner_fn: Option<&'a FunctionSummary>,
-        related_tests: Vec<&'a TestSummary>,
+        related_tests: Vec<(&'a TestSummary, RelationReason)>,
     ) -> Self {
         Self {
             probe,
             owner_fn,
             related_tests,
         }
+    }
+
+    /// Borrow just the `TestSummary` references for callers that don't need
+    /// the relation reason (reach, infection, activation).
+    pub(in crate::analysis) fn related_test_summaries(&self) -> Vec<&TestSummary> {
+        self.related_tests.iter().map(|(t, _)| *t).collect()
     }
 }
 

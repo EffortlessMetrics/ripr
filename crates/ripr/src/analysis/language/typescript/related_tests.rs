@@ -383,6 +383,8 @@ pub(crate) fn find_related_tests(
                 oracle: oracle_text,
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }
         })
         .collect()

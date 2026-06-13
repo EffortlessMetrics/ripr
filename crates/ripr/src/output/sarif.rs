@@ -954,6 +954,8 @@ mod tests {
             oracle: Some("assert dispatch(\"total\", 10) == 10".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         }];
 
         let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
@@ -1468,6 +1470,8 @@ weakly_gripped = "note"
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -1544,6 +1548,8 @@ weakly_gripped = "note"
                 oracle: Some("assert_eq!(discounted_total(50, 100), 50)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("Add an equality-boundary assertion".to_string()),
             language: None,

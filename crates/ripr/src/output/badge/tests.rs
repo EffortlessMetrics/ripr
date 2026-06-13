@@ -76,6 +76,8 @@ fn related_test(name: &str, file: &str, line: usize) -> RelatedTest {
         oracle: None,
         oracle_kind: OracleKind::Unknown,
         oracle_strength: OracleStrength::Weak,
+        relation_reason: None,
+        relation_confidence: None,
     }
 }
 

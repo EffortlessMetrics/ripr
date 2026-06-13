@@ -73,7 +73,9 @@
           "line": 10,
           "oracle_strength": "medium",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -150,7 +152,9 @@
           "line": 10,
           "oracle_strength": "strong",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -227,7 +231,9 @@
           "line": 10,
           "oracle_strength": "strong",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

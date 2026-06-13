@@ -124,7 +124,9 @@
           "line": 14,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(discounted_total(50, 100), 50);"
+          "oracle": "assert_eq!(discounted_total(50, 100), 50);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         },
         {
           "name": "far_above_threshold_discounts",
@@ -132,7 +134,9 @@
           "line": 19,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);"
+          "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

@@ -579,6 +579,8 @@ mod tests {
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -641,6 +643,8 @@ mod tests {
                 oracle: Some("assert_eq!(actual, expected)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
             language: None,

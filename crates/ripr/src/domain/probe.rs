@@ -237,6 +237,13 @@ pub struct RelatedTest {
     pub oracle: Option<String>,
     pub oracle_kind: OracleKind,
     pub oracle_strength: OracleStrength,
+    /// Why this test was related to the probe. `None` when the match origin
+    /// is unknown (legacy callers). `Some` for all diff-check findings that
+    /// go through `classify/related_tests.rs`.
+    pub relation_reason: Option<crate::domain::RelationReason>,
+    /// Confidence that this test grips the changed behavior. `None` when
+    /// `relation_reason` is `None`. Derived from `relation_reason` when set.
+    pub relation_confidence: Option<crate::domain::RelationConfidence>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

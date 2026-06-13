@@ -1022,12 +1022,35 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         test.oracle_kind.as_str(),
         true,
     );
+    // Additive optional fields: relation_reason and relation_confidence.
+    // Present only on Rust diff-check findings; absent (omitted) on Python /
+    // TypeScript preview findings and on legacy callers that set None.
+    let has_reason = test.relation_reason.is_some();
+    let has_confidence = test.relation_confidence.is_some();
     field(
         out,
         indent + 1,
         "oracle",
         test.oracle.as_deref().unwrap_or(""),
-        false,
+        has_reason || has_confidence,
     );
+    if let Some(reason) = test.relation_reason {
+        field(
+            out,
+            indent + 1,
+            "relation_reason",
+            reason.as_str(),
+            has_confidence,
+        );
+    }
+    if let Some(confidence) = test.relation_confidence {
+        field(
+            out,
+            indent + 1,
+            "relation_confidence",
+            confidence.as_str(),
+            false,
+        );
+    }
     out.push_str(&format!("{sp}}}"));
 }

@@ -413,7 +413,9 @@ A finding contains:
       "line": 12,
       "oracle_strength": "strong",
       "oracle_kind": "exact_value",
-      "oracle": "assert_eq!(total, 90)"
+      "oracle": "assert_eq!(total, 90)",
+      "relation_reason": "direct_owner_call",
+      "relation_confidence": "high"
     }
   ],
   "stop_reasons": [],
@@ -451,6 +453,22 @@ The evidence-first fields are additive in schema `0.2`:
   `oracle_kind`/`oracle_strength` summary — those use the full pre-cap vector.
   Mirrors the `related_tests_total` + cap pattern already in
   `seams[].related_tests_total` for the `repo-exposure.json` format.
+- `related_tests[].relation_reason` — (optional, additive, no `schema_version`
+  bump) the highest-priority static signal that caused this test to be
+  included. Values: `direct_owner_call`, `helper_owner_call`,
+  `assertion_target_affinity`, `same_test_file`, `same_module`,
+  `owner_named_test`, `import_path_affinity`, `fixture_owner_affinity`,
+  `weak_token_substring`. Consumers can filter or de-prioritize entries tagged
+  `weak_token_substring` — these are attached via probe-token name matching and
+  cover ~59–90% of unrelated tests in real repos. **Membership is unchanged**:
+  all tests that were previously in `related_tests` remain; only the tagging
+  is added. Absent on language adapters (Python, TypeScript) that do not yet
+  compute reason; `null` / omitted in that case.
+- `related_tests[].relation_confidence` — (optional, additive) companion
+  confidence level for the `relation_reason`. Values: `high`, `medium`, `low`,
+  `opaque`. `direct_owner_call` → `high`; `assertion_target_affinity`,
+  `owner_named_test`, `same_test_file` → `medium`; `weak_token_substring`,
+  `same_module`, `helper_owner_call` → `low`; other static signals → `opaque`.
 - `oracle_kind` and `oracle_strength` summarize the strongest related oracle
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented

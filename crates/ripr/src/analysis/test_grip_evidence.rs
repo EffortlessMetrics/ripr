@@ -21,6 +21,8 @@ use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     ValueContext, ValueFact,
 };
+// Re-export so callers that import from this module continue to compile.
+pub(crate) use crate::domain::{RelationConfidence, RelationReason};
 use serde::{Deserialize, Serialize};
 use std::cell::{OnceCell, RefCell};
 use std::cmp::Reverse;
@@ -1891,94 +1893,9 @@ fn code_contains_parent_qualified_helper_call(code: &str, helper_name: &str) -> 
     })
 }
 
-/// Why this test is related to the seam. v1: a single highest-priority
-/// reason per test (no multi-reason public shape). Priority is pinned
-/// by `RelationReason::priority` and exercised by ranking tests.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum RelationReason {
-    DirectOwnerCall,
-    HelperOwnerCall,
-    AssertionTargetAffinity,
-    SameTestFile,
-    SameModule,
-    OwnerNamedTest,
-    ImportPathAffinity,
-    FixtureOwnerAffinity,
-}
-
-impl RelationReason {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::DirectOwnerCall => "direct_owner_call",
-            Self::HelperOwnerCall => "helper_owner_call",
-            Self::AssertionTargetAffinity => "assertion_target_affinity",
-            Self::SameTestFile => "same_test_file",
-            Self::SameModule => "same_module",
-            Self::OwnerNamedTest => "owner_named_test",
-            Self::ImportPathAffinity => "import_path_affinity",
-            Self::FixtureOwnerAffinity => "fixture_owner_affinity",
-        }
-    }
-
-    /// Lower value sorts first. Stable contract pinned by tests.
-    fn priority(self) -> u8 {
-        match self {
-            Self::DirectOwnerCall => 0,
-            Self::HelperOwnerCall => 1,
-            Self::AssertionTargetAffinity => 2,
-            Self::SameTestFile => 3,
-            Self::SameModule => 4,
-            Self::OwnerNamedTest => 5,
-            Self::ImportPathAffinity => 6,
-            Self::FixtureOwnerAffinity => 7,
-        }
-    }
-
-    fn confidence(self) -> RelationConfidence {
-        match self {
-            Self::DirectOwnerCall | Self::HelperOwnerCall => RelationConfidence::High,
-            Self::AssertionTargetAffinity => RelationConfidence::Medium,
-            Self::SameTestFile
-            | Self::SameModule
-            | Self::OwnerNamedTest
-            | Self::ImportPathAffinity => RelationConfidence::Medium,
-            Self::FixtureOwnerAffinity => RelationConfidence::Low,
-        }
-    }
-}
-
-/// Confidence that the related test grips the seam. Independent of
-/// oracle strength: a `Low` relation can still carry a strong oracle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum RelationConfidence {
-    High,
-    Medium,
-    Low,
-    Opaque,
-}
-
-impl RelationConfidence {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::High => "high",
-            Self::Medium => "medium",
-            Self::Low => "low",
-            Self::Opaque => "opaque",
-        }
-    }
-
-    /// Lower value sorts first (highest confidence first).
-    fn rank(self) -> u8 {
-        match self {
-            Self::High => 0,
-            Self::Medium => 1,
-            Self::Low => 2,
-            Self::Opaque => 3,
-        }
-    }
-}
+// `RelationReason` and `RelationConfidence` now live in `crate::domain::evidence`.
+// They are re-exported at the top of this file so callers can still import them
+// from here without source-level changes.
 
 /// Build evidence records for a slice of seams. Output is sorted by
 /// `seam_id` so two runs over the same input produce identical bytes.

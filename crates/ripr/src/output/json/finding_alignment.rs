@@ -3538,6 +3538,8 @@ mod tests {
             oracle: None,
             oracle_kind,
             oracle_strength,
+            relation_reason: None,
+            relation_confidence: None,
         }
     }
 

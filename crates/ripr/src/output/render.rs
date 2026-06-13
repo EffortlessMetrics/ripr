@@ -981,6 +981,8 @@ mod tests {
                 oracle: None,
                 oracle_kind: OracleKind::Unknown,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("add stronger assertion".to_string()),
             language: None,

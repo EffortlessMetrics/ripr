@@ -1580,6 +1580,8 @@ mod tests {
                 oracle: Some("expect(discountedTotal(10)).toBeTruthy()".to_string()),
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

@@ -73,7 +73,9 @@
           "line": 4,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(classify(Status::Idle), 0);"
+          "oracle": "assert_eq!(classify(Status::Idle), 0);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

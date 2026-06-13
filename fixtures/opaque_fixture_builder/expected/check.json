@@ -52,7 +52,9 @@
           "line": 16,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(discounted_total(case.amount), case.expected);"
+          "oracle": "assert_eq!(discounted_total(case.amount), case.expected);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": ["fixture_opaque"],

@@ -2105,6 +2105,8 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
                 oracle,
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }
         })
         .collect()

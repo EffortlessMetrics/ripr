@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive related_tests_total (#1204) + relation_reason/confidence (#1207) fields; fixture added by #1205 after those landed
+
+Command:
+`cargo xtask goldens bless python_local_callable_binding --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -95,3 +95,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+add relation_reason and relation_confidence fields to related_test JSON output
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

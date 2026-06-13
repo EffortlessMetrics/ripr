@@ -9,7 +9,8 @@ mod support;
 
 pub use classification::ExposureClass;
 pub use evidence::{
-    Confidence, OracleKind, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
+    Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
+    RiprEvidence, StageEvidence, StageState,
 };
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
 pub use probe::{

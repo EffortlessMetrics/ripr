@@ -547,6 +547,8 @@ mod tests {
                 oracle: Some("ok(discount(...))".to_string()),
                 oracle_kind: OracleKind::SmokeOnly,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("Add a focused Perl assertion.".to_string()),
             language: Some(LanguageId::Perl),

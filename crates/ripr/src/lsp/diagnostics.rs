@@ -1289,6 +1289,8 @@ mod seam_diagnostic_tests {
             oracle: None,
             oracle_kind: crate::domain::OracleKind::ExactValue,
             oracle_strength: crate::domain::OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         };
 
         let path = absolute_related_test_path(Path::new("/repo"), &test);
@@ -1304,6 +1306,8 @@ mod seam_diagnostic_tests {
             oracle: None,
             oracle_kind: crate::domain::OracleKind::ExactValue,
             oracle_strength: crate::domain::OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         };
 
         let path = absolute_related_test_path(Path::new("/repo"), &test);
