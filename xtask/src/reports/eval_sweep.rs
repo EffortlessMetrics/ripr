@@ -21,7 +21,7 @@ const DEFAULT_CHECKOUT_ROOT: &str = "target/ripr/eval-sweep/checkouts";
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 const REPORT_JSON: &str = "eval-sweep.json";
 const REPORT_MD: &str = "eval-sweep.md";
-const SCHEMA_VERSION: &str = "0.1";
+const SCHEMA_VERSION: &str = "0.2";
 const STDERR_EXCERPT_LIMIT: usize = 280;
 
 // ---------------------------------------------------------------------------
@@ -253,6 +253,142 @@ fn gap_ids(value: &Value) -> BTreeSet<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Classification + alignment distribution (descriptive; Tier-A robustness only)
+// ---------------------------------------------------------------------------
+
+/// The 7-way exposure-class distribution over a run's findings. Descriptive
+/// only: it counts emitted facts and never affects `gate_status`.
+#[derive(Clone, Copy, Default)]
+struct ClassificationCounts {
+    exposed: usize,
+    weakly_exposed: usize,
+    reachable_unrevealed: usize,
+    no_static_path: usize,
+    infection_unknown: usize,
+    propagation_unknown: usize,
+    static_unknown: usize,
+}
+
+impl ClassificationCounts {
+    fn add(&mut self, other: &ClassificationCounts) {
+        self.exposed += other.exposed;
+        self.weakly_exposed += other.weakly_exposed;
+        self.reachable_unrevealed += other.reachable_unrevealed;
+        self.no_static_path += other.no_static_path;
+        self.infection_unknown += other.infection_unknown;
+        self.propagation_unknown += other.propagation_unknown;
+        self.static_unknown += other.static_unknown;
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "exposed": self.exposed,
+            "weakly_exposed": self.weakly_exposed,
+            "reachable_unrevealed": self.reachable_unrevealed,
+            "no_static_path": self.no_static_path,
+            "infection_unknown": self.infection_unknown,
+            "propagation_unknown": self.propagation_unknown,
+            "static_unknown": self.static_unknown,
+        })
+    }
+}
+
+/// The Python sink-alignment distribution (RIPR-SPEC-0028 fields) plus
+/// repair-packet presence counts. `absent` (field not emitted) is kept distinct
+/// from `unknown` (the emitted enum value) so the distribution is not silently
+/// overcounted. Descriptive only; never affects `gate_status`.
+#[derive(Clone, Copy, Default)]
+struct AlignmentCounts {
+    direct: usize,
+    alias: usize,
+    changed_sink_token: usize,
+    orthogonal: usize,
+    unknown: usize,
+    absent: usize,
+    repair_placement_present: usize,
+    verify_command_present: usize,
+    python_repair_card_present: usize,
+}
+
+impl AlignmentCounts {
+    fn add(&mut self, other: &AlignmentCounts) {
+        self.direct += other.direct;
+        self.alias += other.alias;
+        self.changed_sink_token += other.changed_sink_token;
+        self.orthogonal += other.orthogonal;
+        self.unknown += other.unknown;
+        self.absent += other.absent;
+        self.repair_placement_present += other.repair_placement_present;
+        self.verify_command_present += other.verify_command_present;
+        self.python_repair_card_present += other.python_repair_card_present;
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "direct": self.direct,
+            "alias": self.alias,
+            "changed_sink_token": self.changed_sink_token,
+            "orthogonal": self.orthogonal,
+            "unknown": self.unknown,
+            "absent": self.absent,
+            "repair_placement_present": self.repair_placement_present,
+            "verify_command_present": self.verify_command_present,
+            "python_repair_card_present": self.python_repair_card_present,
+        })
+    }
+}
+
+/// Tally the exposure-class and sink-alignment distributions over a run's
+/// findings, reusing the already-parsed check JSON (no extra invocation). Reads
+/// the `"classification"` key (the real `ripr check --json` field; see
+/// `crates/ripr/src/output/json/report.rs`), not the legacy `"class"`.
+/// Unrecognized/missing values are dropped silently, consistent with Tier-A
+/// robustness counting (no panic).
+fn count_distributions(value: &Value) -> (ClassificationCounts, AlignmentCounts) {
+    let mut class = ClassificationCounts::default();
+    let mut align = AlignmentCounts::default();
+    let Some(findings) = value.get("findings").and_then(Value::as_array) else {
+        return (class, align);
+    };
+    for finding in findings {
+        match finding.get("classification").and_then(Value::as_str) {
+            Some("exposed") => class.exposed += 1,
+            Some("weakly_exposed") => class.weakly_exposed += 1,
+            Some("reachable_unrevealed") => class.reachable_unrevealed += 1,
+            Some("no_static_path") => class.no_static_path += 1,
+            Some("infection_unknown") => class.infection_unknown += 1,
+            Some("propagation_unknown") => class.propagation_unknown += 1,
+            Some("static_unknown") => class.static_unknown += 1,
+            _ => {}
+        }
+        match finding.get("oracle_alignment").and_then(Value::as_str) {
+            Some("direct") => align.direct += 1,
+            Some("alias") => align.alias += 1,
+            Some("changed_sink_token") => align.changed_sink_token += 1,
+            Some("orthogonal") => align.orthogonal += 1,
+            Some("unknown") => align.unknown += 1,
+            Some(_) => align.unknown += 1,
+            None => align.absent += 1,
+        }
+        if finding.get("repair_placement").is_some() {
+            align.repair_placement_present += 1;
+        }
+        if finding
+            .get("repair_placement")
+            .and_then(|placement| placement.get("verify_command"))
+            .and_then(Value::as_str)
+            .is_some_and(|command| !command.is_empty())
+        {
+            align.verify_command_present += 1;
+        }
+        if finding.get("python_repair_card").is_some() {
+            align.python_repair_card_present += 1;
+        }
+    }
+    (class, align)
+}
+
+// ---------------------------------------------------------------------------
 // Per-repo run (orchestration; shells out)
 // ---------------------------------------------------------------------------
 
@@ -266,6 +402,8 @@ struct RepoRun {
     gap_ids_stable: bool,
     unstable_gap_ids: Vec<String>,
     stderr_excerpt: String,
+    classification_counts: ClassificationCounts,
+    alignment_counts: AlignmentCounts,
 }
 
 impl RepoRun {
@@ -280,6 +418,8 @@ impl RepoRun {
             gap_ids_stable: true,
             unstable_gap_ids: Vec::new(),
             stderr_excerpt: excerpt(&stderr),
+            classification_counts: ClassificationCounts::default(),
+            alignment_counts: AlignmentCounts::default(),
         }
     }
 }
@@ -325,6 +465,10 @@ fn run_repo(entry: &RepoEntry, manifest: &Manifest, args: &SweepArgs, binary: &P
         gap_ids_stable: stable,
         unstable_gap_ids: unstable,
         stderr_excerpt: excerpt(&first.stderr),
+        // Distribution is from run-1 only; the re-run exists solely for gap-ID
+        // stability and is not counted.
+        classification_counts: first.classification_counts,
+        alignment_counts: first.alignment_counts,
     }
 }
 
@@ -333,6 +477,8 @@ struct CheckRun {
     gap_ids: BTreeSet<String>,
     runtime_ms: u128,
     stderr: String,
+    classification_counts: ClassificationCounts,
+    alignment_counts: AlignmentCounts,
 }
 
 fn run_check(binary: &Path, checkout: &Path, diff: &str, args: &SweepArgs) -> CheckRun {
@@ -365,16 +511,22 @@ fn run_check(binary: &Path, checkout: &Path, diff: &str, args: &SweepArgs) -> Ch
                     gap_ids: BTreeSet::new(),
                     runtime_ms,
                     stderr: out.stderr,
+                    classification_counts: ClassificationCounts::default(),
+                    alignment_counts: AlignmentCounts::default(),
                 };
             }
             let parsed = serde_json::from_str::<Value>(&out.stdout).ok();
             let outcome = classify(false, parsed.as_ref());
             let gaps = parsed.as_ref().map(gap_ids).unwrap_or_default();
+            let (classification_counts, alignment_counts) =
+                parsed.as_ref().map(count_distributions).unwrap_or_default();
             CheckRun {
                 outcome,
                 gap_ids: gaps,
                 runtime_ms,
                 stderr: out.stderr,
+                classification_counts,
+                alignment_counts,
             }
         }
         Err(err) => CheckRun {
@@ -382,6 +534,8 @@ fn run_check(binary: &Path, checkout: &Path, diff: &str, args: &SweepArgs) -> Ch
             gap_ids: BTreeSet::new(),
             runtime_ms: 0,
             stderr: err,
+            classification_counts: ClassificationCounts::default(),
+            alignment_counts: AlignmentCounts::default(),
         },
     }
 }
@@ -448,6 +602,8 @@ struct Metrics {
     crash_rate: f64,
     parse_failure_rate: f64,
     gap_id_stability_rate: f64,
+    classification_counts: ClassificationCounts,
+    alignment_counts: AlignmentCounts,
     gate_status: &'static str,
     gate_reason: String,
 }
@@ -501,6 +657,16 @@ fn compute_metrics(runs: &[RepoRun]) -> Metrics {
     let gap_id_stable_count = run_set.iter().filter(|r| r.gap_ids_stable).count();
     let gap_id_unstable_count = repos_run.saturating_sub(gap_id_stable_count);
 
+    // Aggregate the descriptive distributions over the analyzed (counts_as_run)
+    // set only. Plain `usize +=` with no division, so an empty run set yields
+    // all-zero aggregates with no guard needed. These never affect the gate.
+    let mut classification_counts = ClassificationCounts::default();
+    let mut alignment_counts = AlignmentCounts::default();
+    for run in &run_set {
+        classification_counts.add(&run.classification_counts);
+        alignment_counts.add(&run.alignment_counts);
+    }
+
     let crash_rate = ratio(crash_count, repos_run);
     let parse_failure_rate = ratio(parse_failure_count, repos_run);
     let gap_id_stability_rate = if repos_run == 0 {
@@ -551,6 +717,8 @@ fn compute_metrics(runs: &[RepoRun]) -> Metrics {
         crash_rate,
         parse_failure_rate,
         gap_id_stability_rate,
+        classification_counts,
+        alignment_counts,
         gate_status,
         gate_reason,
     }
@@ -574,6 +742,8 @@ fn render_json(metrics: &Metrics, runs: &[RepoRun]) -> Result<String, String> {
                 "gap_ids_stable": run.gap_ids_stable,
                 "unstable_gap_ids": run.unstable_gap_ids,
                 "stderr_excerpt": run.stderr_excerpt,
+                "classification_counts": run.classification_counts.to_json(),
+                "alignment_counts": run.alignment_counts.to_json(),
             })
         })
         .collect();
@@ -600,6 +770,8 @@ fn render_json(metrics: &Metrics, runs: &[RepoRun]) -> Result<String, String> {
             "gap_id_stable_count": metrics.gap_id_stable_count,
             "gap_id_unstable_count": metrics.gap_id_unstable_count,
             "gap_id_stability_rate": metrics.gap_id_stability_rate,
+            "classification_counts": metrics.classification_counts.to_json(),
+            "alignment_counts": metrics.alignment_counts.to_json(),
             "gate_status": metrics.gate_status,
             "gate_reason": metrics.gate_reason,
         },
@@ -636,6 +808,36 @@ fn render_markdown(metrics: &Metrics, runs: &[RepoRun]) -> String {
     out.push_str(&format!(
         "- runtime ms (min/median/max): {}/{}/{}\n\n",
         metrics.runtime_ms_min, metrics.runtime_ms_median, metrics.runtime_ms_max
+    ));
+
+    let class = &metrics.classification_counts;
+    let align = &metrics.alignment_counts;
+    out.push_str("## Distribution\n\n");
+    out.push_str("Descriptive only — these counts never affect the gate.\n\n");
+    out.push_str(&format!(
+        "- classification: {} exposed, {} weakly_exposed, {} reachable_unrevealed, {} no_static_path, {} infection_unknown, {} propagation_unknown, {} static_unknown\n",
+        class.exposed,
+        class.weakly_exposed,
+        class.reachable_unrevealed,
+        class.no_static_path,
+        class.infection_unknown,
+        class.propagation_unknown,
+        class.static_unknown,
+    ));
+    out.push_str(&format!(
+        "- oracle alignment: {} direct, {} alias, {} changed_sink_token, {} orthogonal, {} unknown, {} absent\n",
+        align.direct,
+        align.alias,
+        align.changed_sink_token,
+        align.orthogonal,
+        align.unknown,
+        align.absent,
+    ));
+    out.push_str(&format!(
+        "- packet completeness: {} repair_placement, {} verify_command, {} python_repair_card\n\n",
+        align.repair_placement_present,
+        align.verify_command_present,
+        align.python_repair_card_present,
     ));
 
     out.push_str("## Repos\n\n");
@@ -802,6 +1004,8 @@ mod tests {
             gap_ids_stable: stable,
             unstable_gap_ids: Vec::new(),
             stderr_excerpt: String::new(),
+            classification_counts: ClassificationCounts::default(),
+            alignment_counts: AlignmentCounts::default(),
         }
     }
 
@@ -863,5 +1067,135 @@ mod tests {
         let md = render_markdown(&metrics, &runs);
         assert!(md.contains("Tier A Eval Sweep"));
         assert!(md.contains("Gate: **pass**"));
+    }
+
+    #[test]
+    fn count_distributions_tallies_classification() {
+        let value = json!({ "findings": [
+            { "classification": "exposed" },
+            { "classification": "weakly_exposed" },
+            { "classification": "weakly_exposed" },
+            { "classification": "no_static_path" },
+            { "classification": "static_unknown" },
+        ]});
+        let (class, _align) = count_distributions(&value);
+        assert_eq!(class.exposed, 1);
+        assert_eq!(class.weakly_exposed, 2);
+        assert_eq!(class.no_static_path, 1);
+        assert_eq!(class.static_unknown, 1);
+        assert_eq!(class.reachable_unrevealed, 0);
+    }
+
+    #[test]
+    fn count_distributions_uses_classification_key_not_class() {
+        // Real `ripr check --json` emits "classification" (report.rs). The
+        // legacy "class" key must NOT be counted, or the distribution silently
+        // reads zero against real output.
+        let real = json!({ "findings": [{ "classification": "exposed" }] });
+        let legacy = json!({ "findings": [{ "class": "exposed" }] });
+        assert_eq!(count_distributions(&real).0.exposed, 1);
+        assert_eq!(count_distributions(&legacy).0.exposed, 0);
+    }
+
+    #[test]
+    fn count_distributions_oracle_alignment_buckets() {
+        let value = json!({ "findings": [
+            { "classification": "exposed", "oracle_alignment": "direct" },
+            { "classification": "exposed", "oracle_alignment": "alias" },
+            { "classification": "exposed", "oracle_alignment": "changed_sink_token" },
+            { "classification": "weakly_exposed", "oracle_alignment": "orthogonal" },
+            { "classification": "weakly_exposed", "oracle_alignment": "unknown" },
+            { "classification": "no_static_path" },
+        ]});
+        let (_class, align) = count_distributions(&value);
+        assert_eq!(align.direct, 1);
+        assert_eq!(align.alias, 1);
+        assert_eq!(align.changed_sink_token, 1);
+        assert_eq!(align.orthogonal, 1);
+        assert_eq!(align.unknown, 1);
+        // The finding with no oracle_alignment field is `absent`, not `unknown`.
+        assert_eq!(align.absent, 1);
+    }
+
+    #[test]
+    fn count_distributions_counts_packet_completeness_presence() {
+        let value = json!({ "findings": [
+            { "classification": "weakly_exposed",
+              "repair_placement": { "verify_command": "pytest tests/x.py" },
+              "python_repair_card": { "card_version": "v1" } },
+            { "classification": "weakly_exposed",
+              "repair_placement": { "verify_command": "" } },
+            { "classification": "no_static_path" },
+        ]});
+        let (_class, align) = count_distributions(&value);
+        assert_eq!(align.repair_placement_present, 2);
+        // The empty verify_command is not counted as present.
+        assert_eq!(align.verify_command_present, 1);
+        assert_eq!(align.python_repair_card_present, 1);
+    }
+
+    #[test]
+    fn count_distributions_empty_findings_is_all_zero() {
+        let none = json!({ "summary": {} });
+        let (class, align) = count_distributions(&none);
+        assert_eq!(class.exposed, 0);
+        assert_eq!(align.absent, 0);
+    }
+
+    fn run_with_counts(class: ClassificationCounts, align: AlignmentCounts) -> RepoRun {
+        RepoRun {
+            id: "r".to_string(),
+            sha: "s".to_string(),
+            shape: "pytest_library".to_string(),
+            outcome: Outcome::Ok,
+            runtime_ms: 50,
+            gap_ids: BTreeSet::new(),
+            gap_ids_stable: true,
+            unstable_gap_ids: Vec::new(),
+            stderr_excerpt: String::new(),
+            classification_counts: class,
+            alignment_counts: align,
+        }
+    }
+
+    #[test]
+    fn report_includes_distribution_and_gate_is_unaffected() {
+        let class = ClassificationCounts {
+            exposed: 2,
+            weakly_exposed: 1,
+            ..Default::default()
+        };
+        let align = AlignmentCounts {
+            direct: 2,
+            orthogonal: 1,
+            ..Default::default()
+        };
+        let runs = vec![run_with_counts(class, align)];
+        let metrics = compute_metrics(&runs);
+        // Aggregated into the metrics.
+        assert_eq!(metrics.classification_counts.exposed, 2);
+        assert_eq!(metrics.alignment_counts.direct, 2);
+        // Distributions never change the gate: one clean Ok run stays `pass`.
+        assert_eq!(metrics.gate_status, "pass");
+        let json = render_json(&metrics, &runs);
+        assert!(json.is_ok());
+        if let Ok(text) = &json {
+            assert!(text.contains("\"classification_counts\""));
+            assert!(text.contains("\"alignment_counts\""));
+            assert!(text.contains("\"direct\": 2"));
+        }
+        let md = render_markdown(&metrics, &runs);
+        assert!(md.contains("## Distribution"));
+        assert!(md.contains("2 exposed"));
+        assert!(md.contains("2 direct"));
+    }
+
+    #[test]
+    fn distribution_does_not_rescue_not_run_gate() {
+        // Even if a skipped repo somehow carried counts, an all-skipped sweep
+        // stays not_run — distributions are informational only.
+        let runs = vec![run_with(Outcome::SkippedMissingCheckout, 0, true)];
+        let metrics = compute_metrics(&runs);
+        assert_eq!(metrics.gate_status, "not_run");
     }
 }

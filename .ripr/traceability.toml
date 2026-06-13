@@ -5316,7 +5316,9 @@ code = [
 outputs = []
 metrics = [
   "crash_rate",
-  "gap_id_stability_rate"
+  "gap_id_stability_rate",
+  "classification_counts",
+  "alignment_counts"
 ]
 
 [[behavior]]

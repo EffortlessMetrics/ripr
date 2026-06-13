@@ -74,13 +74,23 @@ existing `ripr check` surface and aggregates results.
    - `parse_failure` — JSON parsed but the file degraded to a named static-unknown
      limitation (graceful, **not** a crash);
    - `ok` — exit 0 with well-formed JSON.
-4. Collect the set of `canonical_gap_id` values and the run-1 runtime.
-5. Re-run steps 2–4 once; gap-ID stability is `set(run1) == set(run2)`.
+4. Collect the set of `canonical_gap_id` values and the run-1 runtime. From the
+   same run-1 JSON, also tally — per repo and aggregate — the `classification`
+   distribution (the 7 exposure classes), and, where the Python sink-alignment
+   fields are emitted (RIPR-SPEC-0028), the `oracle_alignment` distribution and
+   repair-packet presence counts. No extra invocation: these are read from the
+   already-captured JSON.
+5. Re-run steps 2–4 once; gap-ID stability is `set(run1) == set(run2)`. The
+   distributions are taken from run-1 only; the re-run is for gap-ID stability.
 
 ### Metrics
 
 Across non-skipped entries: `crash_rate`, `parse_failure_rate`, `timed_out_count`,
-runtime min/median/max/total, and `gap_id_stability_rate`. The `gate_status` is:
+runtime min/median/max/total, and `gap_id_stability_rate`. The run also records,
+across the `counts_as_run` set, the `classification_counts` and `alignment_counts`
+distributions. **Distributions are descriptive only: they are informational, make
+no usefulness/actionability judgement, and never affect `gate_status`.** The
+`gate_status` is:
 
 - `not_run` when `repos_run == 0` (zero repos analyzed — e.g. a default no-clone
   run with no pre-placed checkouts). A pass/review verdict is only meaningful once
@@ -119,6 +129,12 @@ to `0.0` crash / `1.0` stability).
   findings, so it is structurally blind to false-`exposed`: a silent over-credit
   emits nothing. Measuring it needs ground-truthed should-stay-quiet cases, not
   only boundary-flip diffs that exercise the should-gap direction.
+- The `classification_counts` and `alignment_counts` distributions count emitted
+  facts only. They make no usefulness, actionability, false-actionable, or
+  false-`exposed` judgement, and never change `gate_status` — they add
+  visibility, not a verdict. `absent` (the alignment field was not emitted) is
+  kept distinct from the `unknown` enum value so the distribution is not
+  silently overcounted.
 - No mutation execution, provider calls, generated tests, or production-code edits.
 - No network access on the default CI path; external clone is opt-in only.
 - No change to `crates/ripr` analyzer behavior or public API.
@@ -160,7 +176,13 @@ repos_total = 3, repos_run = 0 (all skipped_missing_checkout)
 - `eval_sweep::classifier_maps_outcomes` -> outcome classification contract.
 - `eval_sweep::gap_id_instability_detected` -> gap-ID stability contract.
 - `eval_sweep::metrics_guard_empty_run_set` -> metrics arithmetic contract.
-- `eval_sweep::report_render_golden` -> deterministic report rendering.
+- `eval_sweep::report_render_is_deterministic` -> deterministic report rendering.
+- `eval_sweep::count_distributions_tallies_classification` -> classification distribution.
+- `eval_sweep::count_distributions_uses_classification_key_not_class` -> reads the real `classification` key.
+- `eval_sweep::count_distributions_oracle_alignment_buckets` -> alignment distribution (`absent` ≠ `unknown`).
+- `eval_sweep::count_distributions_counts_packet_completeness_presence` -> packet-presence counts.
+- `eval_sweep::report_includes_distribution_and_gate_is_unaffected` -> distributions render and never change the gate.
+- `eval_sweep::distribution_does_not_rescue_not_run_gate` -> `not_run` preserved.
 
 ## Implementation Mapping
 
@@ -182,5 +204,7 @@ repos_total = 3, repos_run = 0 (all skipped_missing_checkout)
 | `timed_out_count` | repos exceeding the wall-clock timeout |
 | `runtime_ms_median` | median run-1 `ripr check` wall-clock per repo (built binary, excludes cargo overhead) |
 | `gap_id_stability_rate` | fraction with identical canonical gap-ID sets across a re-run |
-| `gate_status` | `not_run` if `repos_run == 0`; else `pass` iff `crash_rate == 0` and `gap_id_stability_rate == 1.0`; else `review` |
+| `classification_counts` | per-repo + aggregate 7-way exposure-class distribution (descriptive; never gates) |
+| `alignment_counts` | per-repo + aggregate `oracle_alignment` distribution (`direct`/`alias`/`changed_sink_token`/`orthogonal`/`unknown`/`absent`, Python-only) plus repair-packet presence counts (`repair_placement`/`verify_command`/`python_repair_card`) |
+| `gate_status` | `not_run` if `repos_run == 0`; else `pass` iff `crash_rate == 0` and `gap_id_stability_rate == 1.0`; else `review` (distributions never affect this) |
 
