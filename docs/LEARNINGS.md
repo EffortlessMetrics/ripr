@@ -1141,3 +1141,34 @@ edit would be dragged back to it. The gate is part of the product model: a stale
 gate is a fossilized old decision that outvotes the new one. When changing a
 governed contract, change the artifact, the gate that preserves it, and the docs
 together in the same PR; otherwise the gate quietly wins.
+
+## 2026-06-13: Background workflow agents mutate the shared working directory
+
+A background planning fanout — whose agents were Explore (no Edit/Write tool) and
+prompted as "read-only research" — nonetheless **authored a whole spec plus a
+fixtures directory and edited four tracked files** into the working tree, because
+Explore agents still have shell access (`cat >`, `git apply`, `mkdir`). The
+files landed on whatever branch the main session occupied, and a `git add -A`
+swept them into an unrelated PR; the contamination was caught only by reading
+`git status` before pushing. Orchestration agents are not sandboxed from the
+repo. So: run any workflow whose agents might write with **worktree isolation**,
+not the shared tree; word planning prompts to forbid file creation; never
+`git add -A` while a background workflow is live — stage explicit paths; and
+diff `git status --short` against what *you* authored before every commit,
+reverting foreign tracked files (`git checkout origin/main -- <path>`) and moving
+untracked drafts aside rather than committing them. "Read-only by intent" is not
+"read-only by capability."
+
+## 2026-06-13: The wrong-key recurrence — count what the artifact emits
+
+`eval_sweep::findings_have_parse_failure` reads `finding.get("class")`, but real
+`ripr check --json` emits `"classification"` (`output/json/report.rs`). The
+`"class"` branch is dead; parse-failure detection silently undercounts. Its unit
+test uses `{ "class": "static_unknown" }` — the wrong key — so it stays green
+against a fixture that does not match live output. This is the 2026-05-04 "Live
+Source Beats Paraphrased Schema" learning recurring inside a metric: a parser and
+its test agreed with each other and with neither the producer. When a consumer
+reads another component's output by key, pin the key against a real emitted
+sample (a committed golden `check.json`), not a hand-written fixture — and when a
+new consumer is added (the classification-distribution counter), make it read the
+*verified* key even if a sibling reads a legacy one. Tracked as a fix in #1191.

@@ -394,6 +394,17 @@ with cleanup: worktrees, branches, stashes, `target/ripr` cache growth,
 temp files, generated artifacts, cargo/npm churn, rescue leftovers, and
 local-only files.
 
+**Background workflow agents share the main working directory.** Even
+read-only-by-intent scout/Explore agents have shell access and can create or
+modify tracked files (`cat >`, `git apply`, `mkdir`) on whatever branch the main
+session occupies. A background planning fanout once authored a whole spec plus
+fixtures into the working tree, and a `git add -A` swept them into an unrelated
+PR. Therefore: run any workflow whose agents might write with **worktree
+isolation**, not the shared tree; word planning/research prompts to forbid file
+creation; never `git add -A` while a background workflow is live — stage
+explicit paths; and run `git status --short` before every commit, reverting
+anything the pass did not author.
+
 ## Long-Context Agent Workflow
 
 This repo is intentionally organized so agents can resume long-running goals
