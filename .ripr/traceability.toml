@@ -2243,6 +2243,7 @@ fixtures = [
   "fixtures/python_class_method_owner",
   "fixtures/python_parametrize_basic",
   "fixtures/python_strong_oracle",
+  "fixtures/python_local_callable_binding",
   "fixtures/python_pytest_raises",
   "fixtures/python_pytest_oracle_shapes",
   "fixtures/python_unittest_assertions",
