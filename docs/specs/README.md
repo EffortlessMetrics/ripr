@@ -96,3 +96,4 @@ observable behavior.
 | [RIPR-SPEC-0083](RIPR-SPEC-0083-check-no-scope-disclosure.md) | proposed | Check no-scope disclosure |
 | [RIPR-SPEC-0084](RIPR-SPEC-0084-default-base-resolution.md) | proposed | Default base resolution |
 | [RIPR-SPEC-0085](RIPR-SPEC-0085-typescript-evidence-adapter-contract.md) | proposed | TypeScript evidence adapter contract |
+| [RIPR-SPEC-0086](RIPR-SPEC-0086-python-eval-sweep.md) | proposed | Python Tier A eval sweep |

@@ -3,6 +3,7 @@ mod badges;
 mod bun;
 mod ci_budget;
 mod dogfood;
+mod eval_sweep;
 mod first_pr;
 mod fixtures;
 mod impacted_evidence;
@@ -33,6 +34,7 @@ pub(crate) use badges::{
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
 pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
+pub(crate) use eval_sweep::eval_sweep;
 pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
 pub(crate) use impacted_evidence::impacted_evidence;

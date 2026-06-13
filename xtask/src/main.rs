@@ -5452,6 +5452,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "gap-decision-ledger"
                     | "perl_lsp_facts_exporter"
                     | "python"
+                    | "python-eval-sweep"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
                     | "surface-projection-alignment"

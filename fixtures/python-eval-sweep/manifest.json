@@ -1,0 +1,41 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_eval_sweep_manifest",
+  "spec": "RIPR-SPEC-0086",
+  "tier": "A",
+  "description": "Pinned Tier A external Python repos for the ripr crash / parse-failure / runtime / gap-ID-stability sweep. Starter set across supported shapes; scaled in a follow-up PR. Clone is opt-in (--clone) and off the default CI path.",
+  "limits": [
+    "static preview evidence only",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "clone is opt-in (--clone) and never runs on the default CI path"
+  ],
+  "synthetic_diff": "fixtures/python-eval-sweep/synthetic-diff.diff",
+  "repos": [
+    {
+      "id": "click",
+      "url": "https://github.com/pallets/click",
+      "sha": "8a1b1a33d739be05b7e91251e3c0dde77c5e152f",
+      "license": "BSD-3-Clause",
+      "shape": "click_typer",
+      "why": "Click CLI library; large pytest suite; decorator-heavy argument parsing."
+    },
+    {
+      "id": "six",
+      "url": "https://github.com/benjaminp/six",
+      "sha": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
+      "license": "MIT",
+      "shape": "unittest_library",
+      "why": "Tiny single-module compatibility library with a unittest suite; fast baseline."
+    },
+    {
+      "id": "tenacity",
+      "url": "https://github.com/jd/tenacity",
+      "sha": "a49e9d6dd4e4611238dc277263d1975e1cada21e",
+      "license": "Apache-2.0",
+      "shape": "pytest_library",
+      "why": "Retry library; decorator + predicate logic; compact pytest suite."
+    }
+  ]
+}

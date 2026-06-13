@@ -5290,3 +5290,22 @@ outputs = [
 metrics = [
   "typescript_evidence_adapter_contract_status_proposed"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0086"
+name = "python tier a eval sweep"
+spec = "docs/specs/RIPR-SPEC-0086-python-eval-sweep.md"
+tests = [
+  "xtask/src/reports/eval_sweep.rs"
+]
+fixtures = [
+  "fixtures/python-eval-sweep"
+]
+code = [
+  "xtask/src/reports/eval_sweep.rs"
+]
+outputs = []
+metrics = [
+  "crash_rate",
+  "gap_id_stability_rate"
+]
