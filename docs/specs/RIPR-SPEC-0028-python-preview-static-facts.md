@@ -211,7 +211,14 @@ spine as other languages:
   can flow through an exception/control boundary, or can only weakly propagate
   through unresolved control, object, or side-effect flow
 - revealability: the strongest extracted pytest or unittest oracle and whether
-  it discriminates the changed behavior
+  it discriminates the changed behavior. A strong oracle is credited as
+  discriminating — and the finding classified `exposed` — only when its
+  assertion observes the changed sink: it must reference the changed owner (by
+  name or import alias) or a changed-sink identifier/literal from the changed
+  line. A strong oracle that reaches the owner but observes a *different* value
+  (for example a wrapper's return value rather than the changed boundary)
+  downgrades to `weakly_exposed` with a typed reason. Reach plus a strong oracle
+  alone must not credit `exposed`, or the classification degrades into coverage.
 
 Static-limit findings must fail closed. They keep any observed reachability and
 oracle facts, but their infection and propagation stages remain `unknown`, the

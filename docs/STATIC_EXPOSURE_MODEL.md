@@ -72,7 +72,7 @@ static analysis should stop or escalate.
 
 | Class | Meaning |
 | --- | --- |
-| `exposed` | Static evidence suggests a complete RIPR path to a strong oracle. |
+| `exposed` | Static evidence suggests a complete RIPR path to a strong oracle that observes the changed sink (see Discrimination vs Coverage). |
 | `weakly_exposed` | A path exists, but infection or discrimination appears weak. |
 | `reachable_unrevealed` | Related tests appear reachable, but no meaningful oracle was found. |
 | `no_static_path` | No static test path was found for the changed owner. |
@@ -131,6 +131,51 @@ Weak or smoke oracle examples:
 The MVP favors high-signal distinctions over completeness. A weak oracle is not
 bad by itself; it is weak when the changed behavior needs a stronger
 discriminator.
+
+## Discrimination vs Coverage
+
+`ripr` is not a coverage tool, and the difference is the entire point. Coverage
+asks whether a line *executed*. `ripr` asks whether a test would *notice* the
+changed behavior being wrong — whether some oracle actually observes the value
+the change moves.
+
+The two come apart constantly. A test can execute every branch of a function and
+assert almost nothing (`assert result is not None`, a smoke check, a mock that
+never inspects the value). Every line is covered; nothing is discriminated. So
+`ripr 0` (no exposure gaps) is already a higher bar than 100% coverage, and
+`ripr+ 0` (no exposure gaps *and* no weak oracles — every changed behavior under
+a strong, aligned discriminator) is higher still. Most repositories at 100%
+coverage sit well below `ripr+ 0`.
+
+### The alignment invariant
+
+The standing danger for a static analyzer is to drift back into coverage by
+crediting proximity as discrimination: "a strong oracle reaches the owner,
+therefore the behavior is checked." That is false. A strong oracle that observes
+a *different* value than the changed sink does not discriminate the change — a
+test asserting a wrapped function's return value does not pin a boundary deep
+inside the wrapper, even though the assertion is strong and exact.
+
+So `exposed` requires **sink alignment**: the strong oracle must observe the
+changed behavior's output — its assertion references the changed owner (by name
+or import alias) or the changed sink (the attribute, field, or value the change
+touches). A strong-but-orthogonal oracle downgrades to `weakly_exposed` with a
+typed reason and routes a repair, rather than being silently called covered.
+
+### Two error rates
+
+Trust in `ripr` rests on two error rates, not one:
+
+- **false-actionable** — it routed a repair for a behavior that is actually
+  discriminated. Visible: inspect the emitted finding.
+- **false-`exposed` / over-credit** — it called a behavior covered when no oracle
+  discriminates it. *Silent*: `ripr` emits nothing, so it cannot be found by
+  inspecting output, only against ground truth on the cases where `ripr` stayed
+  quiet.
+
+The second is the more dangerous: it is the failure that makes a discriminator
+indistinguishable from coverage, and the one a cheap robustness sweep
+structurally cannot see.
 
 ## Finding Shape
 

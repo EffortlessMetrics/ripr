@@ -114,7 +114,11 @@ to `0.0` crash / `1.0` stability).
 
 ## Non-Goals
 
-- No actionability, usefulness, or false-actionable judgement (that is Tier B).
+- No actionability, usefulness, false-actionable, or false-`exposed`
+  (over-credit) judgement (that is Tier B). A robustness sweep counts emitted
+  findings, so it is structurally blind to false-`exposed`: a silent over-credit
+  emits nothing. Measuring it needs ground-truthed should-stay-quiet cases, not
+  only boundary-flip diffs that exercise the should-gap direction.
 - No mutation execution, provider calls, generated tests, or production-code edits.
 - No network access on the default CI path; external clone is opt-in only.
 - No change to `crates/ripr` analyzer behavior or public API.

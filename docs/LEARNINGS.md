@@ -869,3 +869,45 @@ Key constraints for any future change:
   returns `Ok(())`. There is no shortcut.
 - `authority_boundary` stays `"preview_advisory_only"` even when flipped. TypeScript
   remains preview; the flipped finding is delegatable but not gate authority.
+
+## 2026-06-13: Discrimination vs Coverage — `exposed` requires sink alignment
+
+`ripr`'s value over coverage is one invariant: a strong oracle discriminates a
+change only if it *observes the changed sink*. The Python classifier had drifted
+into the coverage mistake — `reach + strong oracle => exposed` — crediting a
+strong-but-orthogonal assertion (a wrapper's return value) as discrimination.
+`classify_change` now requires the strong oracle's assertion to reference the
+changed owner (by name or import alias) or a changed-sink identifier/literal from
+the changed line before crediting `exposed`; otherwise it downgrades to
+`weakly_exposed` with a typed reason. Protect this invariant on any future
+classifier work — it is the line between a discriminator and coverage with extra
+steps. See `docs/STATIC_EXPOSURE_MODEL.md` (Discrimination vs Coverage),
+`RIPR-SPEC-0028` revealability, and the `strong_oracle_observes_owner` tests.
+
+## 2026-06-13: Two error rates — and the dangerous one is silent
+
+Trust requires tracking both: false-actionable (routed a repair for a behavior
+that is discriminated; visible in emitted output) and false-`exposed` /
+over-credit (called covered when no oracle discriminates; *silent* — emits
+nothing). False-`exposed` is the worse failure: it is what makes a discriminator
+indistinguishable from coverage, and a robustness sweep that counts emitted
+findings is structurally blind to it. Measuring it needs ground-truthed
+should-stay-quiet cases, not gap counts.
+
+## 2026-06-13: External evidence finds blind spots; build the engine first
+
+A saturated in-repo dogfood corpus (e.g. 26/26 all-pass) is necessary but says
+nothing about accuracy — it is authored by the same people who wrote the
+analyzer. Every real accuracy bug this campaign — `not_run` reporting a vacuous
+`pass`, eval-sweep runtime measuring `cargo run` overhead, and the `exposed`
+over-credit — was surfaced by running on external code, not by reasoning about
+it. Build the external eval-sweep before deciding what to fix; the bugs come from
+running it.
+
+## 2026-06-13: Eval diffs must test both directions
+
+Synthetic boundary-flip diffs only exercise the should-gap direction, so a
+maximally over-eager analyzer scores perfectly on them. A trustworthy judged
+panel needs deliberately-constructed should-stay-quiet cases (direct-boundary
+assertions that must read `exposed`) alongside should-gap cases — otherwise the
+eval itself has a weak oracle.

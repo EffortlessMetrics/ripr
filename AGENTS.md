@@ -204,9 +204,25 @@ Prefer small, high-signal changes:
 - Human output should be actionable.
 - JSON output should be stable and versioned.
 - Agent context should state the exact missing discriminator.
+- Do not credit reach-plus-a-strong-oracle as `exposed`: a strong oracle must
+  observe the changed sink (see `docs/STATIC_EXPOSURE_MODEL.md` § Discrimination
+  vs Coverage). Crediting proximity as discrimination is the coverage mistake.
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
+
+### Verification bias
+
+- Treat sub-agent and scout findings as leads, not facts. Verify control-flow
+  claims against the code, and turn a suspected bug into a PR only behind a
+  failing fixture. Fast, confident producers — sub-agents included — are
+  unreliable on precise logic; a cheap finding is a lead that needs a slower
+  verifier beneath it.
+- For classifier or `analysis/**` behavior changes, work fixture-first and
+  measure golden blast radius (`cargo xtask goldens check` + `cargo xtask
+  dogfood`) before finalizing. The golden corpus is the regression net and will
+  catch an over-corrected heuristic; an in-repo corpus that already passes is not
+  evidence the change is accurate on external code.
 
 ## PR Scope Doctrine
 
