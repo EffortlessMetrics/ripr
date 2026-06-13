@@ -6,6 +6,7 @@ use super::{
     ripr_plus_canonical_actionable_gap_badge_summary, ripr_seam_badge_summary,
 };
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::PreviewLanguageAdvisory;
 use crate::analysis::seams::{
     ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
 };
@@ -393,7 +394,7 @@ fn badge_native_json_uses_snake_case_schema_version_and_all_required_fields() {
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
-    assert!(json.contains("\"schema_version\": \"0.5\""));
+    assert!(json.contains("\"schema_version\": \"0.6\""));
     assert!(!json.contains("\"schemaVersion\""));
     assert!(json.contains("\"kind\": \"ripr\""));
     assert!(json.contains("\"scope\": \"diff\""));
@@ -1507,5 +1508,177 @@ fn diff_ripr_plus_count_unaffected_by_unrelated_repo_wide_te_debt() {
     assert_eq!(
         summary.counts.unsuppressed_test_efficiency_findings, 1,
         "diff headline should only count the related entry, not the 5 unrelated ones"
+    );
+}
+
+// -------- preview-skip honesty tests --------
+//
+// Fail-closed bar: a badge on a diff whose ONLY change is in an un-analyzed
+// preview-language file must NOT read as green/pass. The amber/warn downgrade
+// must fire exactly on `enabled == false` advisories; clean Rust-only diffs
+// with no preview advisories must stay green/pass.
+
+fn check_output_with_preview_advisory(
+    findings: Vec<Finding>,
+    language: &str,
+    enabled: bool,
+) -> CheckOutput {
+    let defaults = CheckInput::default();
+    CheckOutput {
+        schema_version: "0.1".to_string(),
+        tool: "ripr".to_string(),
+        mode: Mode::Draft,
+        root: defaults.root,
+        base: defaults.base,
+        summary: Summary::default(),
+        findings,
+        preview_language_advisories: vec![PreviewLanguageAdvisory {
+            language: language.to_string(),
+            file_count: 1,
+            sample_paths: vec![format!("src/foo.{language}")],
+            enabled,
+        }],
+        no_scope_provided: false,
+    }
+}
+
+#[test]
+fn clean_rust_diff_zero_findings_no_preview_is_pass_green() {
+    // Direction 1: clean Rust-only diff — no findings, no advisories.
+    // Badge must stay green/pass. The amber state must NOT fire.
+    let output = check_output(vec![]);
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(summary.status, BadgeStatus::Pass, "clean Rust stays pass");
+    assert_eq!(summary.color, "brightgreen", "clean Rust stays brightgreen");
+    assert_eq!(summary.message, "0", "clean Rust message is 0");
+    assert!(
+        summary.preview_skipped.is_empty(),
+        "clean Rust has no preview_skipped"
+    );
+    let json = render_native_json(&summary);
+    assert!(
+        json.contains("\"preview_skipped\": []"),
+        "native JSON has empty preview_skipped"
+    );
+}
+
+#[test]
+fn typescript_disabled_advisory_downgrades_badge_from_pass_to_warn() {
+    // Direction 2: diff contains a TypeScript file with the adapter NOT enabled.
+    // Badge must be amber/warn even though there are 0 findings; message names
+    // the skipped language.
+    let output = check_output_with_preview_advisory(vec![], "typescript", false);
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(
+        summary.status,
+        BadgeStatus::Warn,
+        "preview-skipped diff must not be Pass"
+    );
+    assert_eq!(
+        summary.color, "yellow",
+        "preview-skipped diff must be yellow, not brightgreen"
+    );
+    assert!(
+        summary.message.contains("preview-skipped"),
+        "message must name the skip, got: {}",
+        summary.message
+    );
+    assert!(
+        summary.message.contains("typescript"),
+        "message must name the language, got: {}",
+        summary.message
+    );
+    assert_eq!(
+        summary.preview_skipped,
+        vec!["typescript".to_string()],
+        "preview_skipped must list the skipped language"
+    );
+    // Verify native JSON emits the new field
+    let json = render_native_json(&summary);
+    assert!(
+        json.contains("\"preview_skipped\": ["),
+        "native JSON must have preview_skipped array"
+    );
+    assert!(
+        json.contains("\"typescript\""),
+        "native JSON preview_skipped must contain typescript"
+    );
+    // Verify Shields message also reflects the skip
+    let shields = render_shields_json(&summary);
+    assert!(
+        shields.contains("preview-skipped"),
+        "Shields message must reflect preview-skip"
+    );
+}
+
+#[test]
+fn typescript_enabled_advisory_does_not_downgrade_badge() {
+    // A diff where the TypeScript adapter WAS enabled (enabled=true) must NOT
+    // downgrade the badge — the adapter ran and returned no findings.
+    let output = check_output_with_preview_advisory(vec![], "typescript", true);
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(
+        summary.status,
+        BadgeStatus::Pass,
+        "enabled-preview diff with 0 findings must stay Pass"
+    );
+    assert_eq!(
+        summary.color, "brightgreen",
+        "enabled-preview diff must stay brightgreen"
+    );
+    assert_eq!(summary.message, "0", "enabled-preview message must be 0");
+    assert!(
+        summary.preview_skipped.is_empty(),
+        "enabled-preview must not populate preview_skipped"
+    );
+}
+
+#[test]
+fn typescript_disabled_with_rust_findings_keeps_warn_and_names_skip() {
+    // If there are real Rust findings (headline > 0) AND a TS file is skipped,
+    // the badge stays warn (it already was warn) but message is overridden to
+    // name the skip instead of the raw count.
+    let output = check_output_with_preview_advisory(
+        vec![finding(ExposureClass::WeaklyExposed, vec![])],
+        "typescript",
+        false,
+    );
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(summary.status, BadgeStatus::Warn);
+    assert!(
+        summary.message.contains("preview-skipped"),
+        "message must name the skip even with existing findings, got: {}",
+        summary.message
+    );
+    assert_eq!(summary.preview_skipped, vec!["typescript".to_string()]);
+}
+
+#[test]
+fn native_json_schema_version_is_0_6() {
+    let output = check_output(vec![]);
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+    let json = render_native_json(&summary);
+
+    assert!(
+        json.contains("\"schema_version\": \"0.6\""),
+        "schema_version must be 0.6 after preview_skipped addition"
+    );
+}
+
+#[test]
+fn preview_skipped_field_always_present_in_native_json() {
+    // Stable shape guarantee: `preview_skipped` must always appear in native JSON
+    // even when empty, so consumers can rely on the field without version checks.
+    let clean = check_output(vec![]);
+    let summary = ripr_badge_summary(&clean, BadgePolicy::default());
+    let json = render_native_json(&summary);
+
+    assert!(
+        json.contains("\"preview_skipped\":"),
+        "native JSON must always contain preview_skipped field"
     );
 }

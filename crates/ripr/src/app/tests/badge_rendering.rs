@@ -8,7 +8,7 @@ fn render_check_dispatches_badge_json_format() -> Result<(), String> {
     let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
     let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.5\""));
+    assert!(rendered.contains("\"schema_version\": \"0.6\""));
     assert!(rendered.contains("\"kind\": \"ripr\""));
     assert!(rendered.contains("\"scope\": \"diff\""));
     assert!(rendered.contains("\"basis\": \"finding_exposure\""));
@@ -73,7 +73,7 @@ fn render_check_repo_badge_json_paints_scope_repo() -> Result<(), String> {
     let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
     let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.5\""));
+    assert!(rendered.contains("\"schema_version\": \"0.6\""));
     assert!(rendered.contains("\"scope\": \"repo\""));
     assert!(rendered.contains("\"basis\": \"canonical_actionable_gap\""));
     assert!(!rendered.contains("\"scope\": \"diff\""));

@@ -441,7 +441,7 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.6",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
@@ -478,7 +478,9 @@ output boundary; it is never the source of truth.
     "fail_on_nonzero": false,
     "test_intent_path": ".ripr/test_intent.toml",
     "suppressions_path": ".ripr/suppressions.toml"
-  }
+  },
+  "warnings": [],
+  "preview_skipped": []
 }
 ```
 
@@ -490,7 +492,31 @@ otherwise identical so consumers can parse one shape.
 change and must be called out in the PR. `0.3` adds `basis` and
 `counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
 `counts.analyzed_gap_records`; `0.5` adds
-`basis = "canonical_actionable_gap"` for public repair-item projection.
+`basis = "canonical_actionable_gap"` for public repair-item projection;
+`0.6` adds `preview_skipped` so consumers can detect when a
+preview-language diff was not analyzed and the badge is not a clean
+Rust-grade result (see Preview-language honesty below).
+
+### Preview-language honesty
+
+`preview_skipped` is an array of language names (e.g. `["typescript"]`) that
+were detected in the analyzed diff but whose adapter was **not enabled**.
+Non-empty means the badge result is **NOT a clean Rust-grade result** — those
+files were silently skipped. Consumers MUST treat a non-empty list as a
+honesty signal even when `status` is already `"warn"` due to real findings.
+
+When `preview_skipped` is non-empty and the headline count would otherwise be
+`0` (pass/green), the badge is downgraded to `warn`/`yellow` and `message`
+is set to `"preview-skipped: <language>"` instead of `"0"`. This prevents a
+glanceable "passing" badge on un-analyzed behavior. The Shields projection
+carries the same message so `img.shields.io` badge links are also honest.
+
+When `preview_skipped` is empty the badge behaves as before: clean Rust-only
+diffs with 0 findings render `pass`/`brightgreen`/`0`. The amber state does
+**not** fire on clean Rust — `preview_skipped` is populated only by the real
+producer in `analysis/pipeline.rs` (`detect_preview_advisories`) which sets
+`enabled: enabled.contains(language)`. It is never populated for Rust-only
+diffs.
 
 ### Scope and basis metadata (native only)
 
@@ -500,7 +526,7 @@ internal seam-native inventory counts, and explicit ledger projections:
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.6",
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",

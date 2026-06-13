@@ -113,7 +113,7 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     // suppressions and unmatched suppression selectors.
     out.push_str("  \"warnings\": [");
     if summary.warnings.is_empty() {
-        out.push_str("]\n}\n");
+        out.push_str("],\n");
     } else {
         out.push('\n');
         for (index, warning) in summary.warnings.iter().enumerate() {
@@ -121,6 +121,24 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
                 out.push_str(",\n");
             }
             out.push_str(&format!("    \"{}\"", json_escape(warning)));
+        }
+        out.push_str("\n  ],\n");
+    }
+
+    // Always emit `preview_skipped` as an array so consumers can detect when
+    // a preview-language diff was not analyzed and the badge is not a clean
+    // Rust-grade result. Non-empty only when at least one preview-language
+    // adapter was detected but NOT enabled (v0.6 contract field).
+    out.push_str("  \"preview_skipped\": [");
+    if summary.preview_skipped.is_empty() {
+        out.push_str("]\n}\n");
+    } else {
+        out.push('\n');
+        for (index, lang) in summary.preview_skipped.iter().enumerate() {
+            if index > 0 {
+                out.push_str(",\n");
+            }
+            out.push_str(&format!("    \"{}\"", json_escape(lang)));
         }
         out.push_str("\n  ]\n}\n");
     }

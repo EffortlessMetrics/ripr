@@ -311,6 +311,7 @@ fn missing_test_efficiency_badge_summary(
             ..badge::BadgePolicy::default()
         },
         warnings: vec![warning],
+        preview_skipped: Vec::new(),
     }
 }
 

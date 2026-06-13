@@ -3,7 +3,9 @@ use crate::output::suppressions::{SuppressionEntry, apply_test_efficiency_suppre
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::model::{BADGE_REASON_KEYS, BadgeCounts, BadgeKind, BadgePolicy, BadgeSummary};
+use super::model::{
+    BADGE_REASON_KEYS, BadgeCounts, BadgeKind, BadgePolicy, BadgeStatus, BadgeSummary,
+};
 use super::summaries::{badge_status_color, ripr_badge_summary_with_suppressions};
 
 /// One test-efficiency entry seen by the badge, retained so suppressions
@@ -441,17 +443,39 @@ fn ripr_plus_badge_summary_from_exposure(
     let mut warnings = exposure.warnings;
     warnings.extend(te_application.warnings);
 
+    // Carry the preview-skip signal from the exposure layer. When
+    // preview_skipped is non-empty the diff was not fully analyzed; override
+    // status/color/message to reflect the skip even when the headline is 0.
+    // The same downgrade rule as the exposure badge applies: pass/green must
+    // not be shown when preview-language files were silently skipped.
+    let preview_skipped = exposure.preview_skipped;
+    let (final_status, final_color, final_message) =
+        if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
+            let names = preview_skipped.join(", ");
+            (
+                BadgeStatus::Warn,
+                "yellow",
+                format!("preview-skipped: {names}"),
+            )
+        } else if !preview_skipped.is_empty() {
+            let names = preview_skipped.join(", ");
+            (status, color, format!("preview-skipped: {names}"))
+        } else {
+            (status, color, headline.to_string())
+        };
+
     BadgeSummary {
         kind: BadgeKind::RiprPlus,
         scope: exposure.scope,
         basis: exposure.basis,
-        message: headline.to_string(),
-        status,
-        color,
+        message: final_message,
+        status: final_status,
+        color: final_color,
         counts,
         reason_counts: test_efficiency.reason_counts,
         policy,
         warnings,
+        preview_skipped,
     }
 }
 
