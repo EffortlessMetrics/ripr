@@ -19,7 +19,8 @@
       "sha": "8a1b1a33d739be05b7e91251e3c0dde77c5e152f",
       "license": "BSD-3-Clause",
       "shape": "click_typer",
-      "why": "Click CLI library; large pytest suite; decorator-heavy argument parsing."
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/click.diff",
+      "why": "Click CLI library; large pytest suite; decorator-heavy argument parsing. Diff flips a stream-compat comparison return -> return_value gap."
     },
     {
       "id": "six",
@@ -27,7 +28,8 @@
       "sha": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
       "license": "MIT",
       "shape": "unittest_library",
-      "why": "Tiny single-module compatibility library with a unittest suite; fast baseline."
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/six.diff",
+      "why": "Tiny single-module compatibility library; fast baseline. Diff edits a version predicate -> exercises fail-closed (mocked_module) on compat-shim code."
     },
     {
       "id": "tenacity",
@@ -35,7 +37,8 @@
       "sha": "a49e9d6dd4e4611238dc277263d1975e1cada21e",
       "license": "Apache-2.0",
       "shape": "pytest_library",
-      "why": "Retry library; decorator + predicate logic; compact pytest suite."
+      "synthetic_diff": "fixtures/python-eval-sweep/diffs/tenacity.diff",
+      "why": "Retry library; compact pytest suite. Diff flips the stop_after_attempt boundary (>= -> >) -> return_value gap."
     }
   ]
 }

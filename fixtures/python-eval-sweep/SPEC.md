@@ -15,9 +15,12 @@ actionability or usefulness.
   `shape` (one of `pytest_library`, `unittest_library`, `click_typer`,
   `fastapi_web`, `flask_web`), optional per-repo `synthetic_diff`, and a `why`
   note. A top-level `synthetic_diff` is the fallback when a repo omits its own.
-- `synthetic-diff.diff` — the shared synthetic Python diff applied per repo. The
-  external repo working tree is never mutated; the diff is read from this file
-  via `ripr check --diff`.
+- `synthetic-diff.diff` — the shared fallback synthetic diff (matches no real
+  file; exercises the no-crash path for repos without a per-repo diff).
+- `diffs/<id>.diff` — per-repo diffs that touch a **real** source file so the
+  analyzer produces a real canonical gap (the meaningful gap-ID-stability signal).
+  Each must match the repo at its pinned `sha`. The external repo working tree is
+  never mutated; the diff is read from the file via `ripr check --diff`.
 
 ## Boundaries
 
