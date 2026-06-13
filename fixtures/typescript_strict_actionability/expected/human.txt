@@ -63,6 +63,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  next capability needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+
 Next step
   TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.
 
@@ -122,6 +127,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  next capability needed: none for a repair packet; retain strong related-test evidence as non-actionable context
 
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
@@ -184,6 +194,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

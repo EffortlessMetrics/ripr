@@ -870,6 +870,75 @@ Key constraints for any future change:
 - `authority_boundary` stays `"preview_advisory_only"` even when flipped. TypeScript
   remains preview; the flipped finding is delegatable but not gate authority.
 
+## 2026-06-13: Surface projection for a TypeScript packet goes through the shared renderer, not a parallel TS renderer (RIPR-SPEC-0088)
+
+RIPR-SPEC-0088 (§PR8) projects the GapRecord computed in §PR7 into four surfaces:
+human field-note, JSON `typescript_repair_packet` field, LSP hover section, and
+LSP copy code action. The key architectural lesson is **reuse the shared helpers,
+not a new renderer**.
+
+Concretely:
+- `typescript_gap_record_for(finding)` (in `output/typescript_packet_projection.rs`)
+  returns `Option<GapRecord>`. Call it from each surface. `None` means "not actionable".
+- `allowed_edit_surface_for_gap_route` and `gap_record_packet_do_not_do` from
+  `output/agent_seam_packets.rs` provide the canonical allowed-surface and
+  must-not-change lists. Use them everywhere to avoid drift.
+- Forbidden-files computation was left inline in the JSON renderer (it filters the
+  anchor file against the edit surface) because `forbidden_files_for_gap_record` is
+  private. That is fine; the pattern is tiny.
+- The LSP code action reads from `data.typescript_repair_packet` if present, with
+  fallback to `data.verification_commands[0]`. This is because the JSON field is
+  not yet in `diagnostic.data` — if a future PR adds it there, the action will
+  prefer it.
+
+The "not actionable" case surfaces a named limitation section in human output for ALL
+TypeScript findings (not just specific ones). That drifted ~28 golden fixtures. Bless
+them all: the named limitation section is the correct output for blocked findings.
+
+When bless-count is unexpectedly large: first confirm that every drifted fixture
+really is a TypeScript/JavaScript finding. If yes, bless with a reason that
+cites the spec section. Do not suppress the limitation output.
+
+Authority boundary reminder: `preview_advisory_only` stays in all four surfaces
+even when the packet is actionable. No surface promotes TypeScript to gate or badge
+authority.
+
+### §PR8 follow-up: the flip must also rewrite the evidence strings, not just the boolean
+
+The first §PR8 cut flipped `repair_packet_ready`/`gap_state`/`category` and added
+the new field-note, but left the OLD incomplete-packet evidence strings
+(`why_not_actionable`, `repair_route` = "...only after verify/receipt/edit
+boundaries are available", `evidence_needed_to_promote`, and the analysis-layer
+`recommended_next_step` "no actionable repair packet is emitted until...")
+flowing straight through to the `Preview actionability` block, the preview card,
+and the LSP hover. Result: the flagship actionable output simultaneously said
+"category: complete_repair_packet / repair packet ready: true" AND "why not
+actionable: ... / evidence needed: [the fields it already has] / project ... only
+after [those fields] are available". A direct honesty contradiction.
+
+Root cause: those strings are authored in the analysis layer for the BLOCKED
+cases and are reused verbatim. The flip happens later in `output/` (via the
+shared validator), so the analysis-layer strings never learn about it.
+
+Fix pattern (one place, three consumers):
+- In `output/preview_actionability.rs::preview_actionability_for`, when
+  `repair_packet_ready`, replace `repair_route` with the actual repair action
+  (assertion shape / missing discriminator via `actionable_repair_route`), set
+  `evidence_needed_to_promote` to the empty string, and make
+  `why_not_actionable` an actionable confirmation. JSON keys stay stable for
+  schema compatibility; only content changes.
+- In the three human/hover renderers, branch on `repair_packet_ready`: relabel
+  "why not actionable"→"why actionable", "repair route"→"repair action", and
+  omit the empty "evidence needed" line for the actionable case.
+- The analysis-layer `recommended_next_step` is corrected at RENDER time
+  (`next_step_for_finding`): strip the "; no actionable repair packet is emitted
+  until ..." tail and confirm completeness. The analysis layer can't see the
+  output-layer flip, so the renderer is the right seam.
+
+General lesson: when a downstream layer flips a status, audit EVERY string that
+was authored for the pre-flip status and still rides through. A boolean flip
+without a message rewrite produces output that contradicts itself — the exact
+proxy-for-artifact dishonesty `ripr` exists to catch, turned inward.
 ## 2026-06-13: Discrimination vs Coverage — `exposed` requires sink alignment
 
 `ripr`'s value over coverage is one invariant: a strong oracle discriminates a

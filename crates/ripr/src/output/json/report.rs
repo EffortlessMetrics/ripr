@@ -4,11 +4,16 @@ use crate::domain::{
     Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::agent_seam_packets::{
+    AGENT_SEAM_PACKET_SCHEMA_VERSION, allowed_edit_surface_for_gap_route,
+    gap_record_packet_do_not_do,
+};
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use crate::output::typescript_preview_card::{
     typescript_preview_card, typescript_preview_card_json_value,
 };
@@ -280,6 +285,21 @@ fn finding_json_with_config_and_counts(
             &typescript_preview_card_json_value(&card),
         );
         out.push_str(",\n");
+    }
+    // §PR8 (RIPR-SPEC-0088): emit the full work-packet JSON when
+    // repair_packet_ready: true. Absent when not actionable (invariant: never
+    // emit a partial or implied packet).
+    if let Some(record) = typescript_gap_record_for(finding) {
+        use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
+        if validate_agent_gap_record_packet(&record).is_ok() {
+            json_value_field(
+                out,
+                indent + 1,
+                "typescript_repair_packet",
+                &typescript_repair_packet_json(&record),
+            );
+            out.push_str(",\n");
+        }
     }
     if let Some(card) = perl_preview_card(finding) {
         json_value_field(
@@ -843,6 +863,63 @@ fn stage_json(out: &mut String, indent: usize, name: &str, stage: &StageEvidence
         escape(&stage.summary),
         if trailing { "," } else { "" }
     ));
+}
+
+/// Build the `typescript_repair_packet` JSON value for an actionable TypeScript
+/// finding (RIPR-SPEC-0088 §PR8).
+///
+/// Uses shared helper functions from `agent_seam_packets` — no parallel TS
+/// renderer is introduced. The `GapRecord` is projected by
+/// `typescript_gap_record_for` and validated before this function is called.
+fn typescript_repair_packet_json(record: &crate::output::gap_decision_ledger::GapRecord) -> Value {
+    let route = record.repair_route.as_ref();
+    let edit_surface = route
+        .map(allowed_edit_surface_for_gap_route)
+        .unwrap_or_default();
+    // Compute forbidden files: anchor file unless it's the same as the edit surface.
+    let allowed_first = edit_surface.first().map(String::as_str);
+    let forbidden: Vec<String> = record
+        .anchor
+        .as_ref()
+        .and_then(|anchor| anchor.file.as_deref())
+        .filter(|f| allowed_first != Some(f))
+        .map(|f| f.to_string())
+        .into_iter()
+        .collect();
+    let must_not_change = gap_record_packet_do_not_do(record);
+    let verify_command = record.verification_commands.first().cloned();
+    let receipt_command = record.receipt_command.as_deref();
+    let canonical_gap_id = if record.canonical_gap_id.trim().is_empty() {
+        None
+    } else {
+        Some(record.canonical_gap_id.as_str())
+    };
+    let anchor = record.anchor.as_ref();
+    let target_test = route.and_then(|r| r.related_test.as_deref());
+    let assertion_shape = route.and_then(|r| r.assertion_shape.as_deref());
+    let repair_kind = route.map(|r| r.route_kind.as_str());
+    let missing_discriminator = route.and_then(|r| r.missing_discriminator.as_deref());
+    serde_json::json!({
+        "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
+        "source": "typescript_preview_projection",
+        "gap_id": record.gap_id.as_str(),
+        "canonical_gap_id": canonical_gap_id,
+        "language": record.language.as_str(),
+        "language_status": record.language_status.as_str(),
+        "authority_boundary": record.authority_boundary.as_str(),
+        "file": anchor.and_then(|a| a.file.as_deref()),
+        "line": anchor.and_then(|a| a.line),
+        "owner": anchor.and_then(|a| a.owner.as_deref()),
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+        "allowed_edit_surface": edit_surface,
+        "forbidden_files": forbidden,
+        "must_not_change": must_not_change,
+        "assertion_shape": assertion_shape,
+        "repair_kind": repair_kind,
+        "target_test": target_test,
+        "missing_discriminator": missing_discriminator,
+    })
 }
 
 pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: usize) {

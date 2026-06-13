@@ -305,6 +305,18 @@ fn push_gap_actions(
         if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
             actions.push(copy_python_pytest_skeleton_action(target));
         }
+        // §PR8 (RIPR-SPEC-0088): Copy TypeScript repair packet action when
+        // the TS finding is actionable (repair_packet_ready: true in the
+        // diagnostic's preview_actionability data).
+        if let Some(target) =
+            typescript_repair_packet_target(params, context.diagnostic, context.data)
+        {
+            actions.push(copy_context_action(
+                COPY_TYPESCRIPT_REPAIR_PACKET_TITLE,
+                COPY_TYPESCRIPT_REPAIR_PACKET_TITLE,
+                target,
+            ));
+        }
         if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
             actions.push(open_related_test_action(target));
         }
@@ -373,6 +385,7 @@ const COPY_FIRST_REPAIR_PACKET_TITLE: &str = "Copy first repair packet";
 const COPY_PYTHON_AGENT_PACKET_TITLE: &str = "Agent handoff: copy Python packet";
 const COPY_PYTHON_REPAIR_CARD_TITLE: &str = "Copy Python repair card";
 const COPY_PYTHON_PYTEST_SKELETON_TITLE: &str = "Write Python test: copy pytest skeleton";
+const COPY_TYPESCRIPT_REPAIR_PACKET_TITLE: &str = "Copy TypeScript repair packet (advisory)";
 const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
 
 fn copy_agent_loop_command_action(
@@ -903,6 +916,129 @@ fn python_pytest_skeleton_target(snapshot: &AnalysisSnapshot, data: &Value) -> O
         "verify_command": verify_command,
         "brief": lines.join("\n"),
     }))
+}
+
+/// Build the LSP action target for "Copy TypeScript repair packet (advisory)"
+/// (RIPR-SPEC-0088 §PR8). Returns `None` unless:
+/// - `data.preview_actionability.repair_packet_ready == true`
+/// - `data.language == "typescript"` (or javascript)
+/// - `data.language_status == "preview"`
+///
+/// The target carries verify_command, receipt_command, canonical_gap_id, and
+/// edit_surface from the `preview_actionability` data so the VS Code extension
+/// can copy them to the clipboard without a separate server round-trip.
+fn typescript_repair_packet_target(
+    params: &CodeActionParams,
+    diagnostic: &Diagnostic,
+    data: &Value,
+) -> Option<LSPAny> {
+    // Only for TypeScript/JavaScript preview findings.
+    let language = string_at(data, &["language"])?;
+    if language != "typescript" && language != "javascript" {
+        return None;
+    }
+    let language_status = string_at(data, &["language_status"]).unwrap_or("stable");
+    if language_status != "preview" {
+        return None;
+    }
+
+    // repair_packet_ready must be true (from preview_actionability in diagnostic data).
+    let actionability = data.get("preview_actionability")?;
+    let repair_ready = actionability
+        .get("repair_packet_ready")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !repair_ready {
+        return None;
+    }
+
+    // Extract verify/receipt from typescript_repair_packet if present in data,
+    // else fall back to verification_commands from the gap data.
+    let ts_packet = data.get("typescript_repair_packet");
+    let verify_command = ts_packet
+        .and_then(|p| p.get("verify_command"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            data.get("verification_commands")
+                .and_then(|cmds| cmds.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+        })?;
+
+    let receipt_command = ts_packet
+        .and_then(|p| p.get("receipt_command"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty());
+
+    let canonical_gap_id = ts_packet
+        .and_then(|p| p.get("canonical_gap_id"))
+        .and_then(|v| v.as_str())
+        .or_else(|| string_at(data, &["canonical_gap_id"]));
+
+    let edit_surface: Vec<&str> = ts_packet
+        .and_then(|p| p.get("allowed_edit_surface"))
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    let mut target = serde_json::Map::new();
+    target.insert(
+        "label".to_string(),
+        Value::String("typescript_repair_packet".to_string()),
+    );
+    target.insert(
+        "line".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(
+            params.range.start.line.saturating_add(1),
+        )),
+    );
+    if let Some(id) = canonical_gap_id {
+        target.insert(
+            "canonical_gap_id".to_string(),
+            Value::String(id.to_string()),
+        );
+    }
+    target.insert("language".to_string(), Value::String(language.to_string()));
+    target.insert(
+        "language_status".to_string(),
+        Value::String(language_status.to_string()),
+    );
+    target.insert(
+        "authority_boundary".to_string(),
+        Value::String("preview_advisory_only".to_string()),
+    );
+    target.insert(
+        "verify_command".to_string(),
+        Value::String(verify_command.to_string()),
+    );
+    if let Some(receipt) = receipt_command {
+        target.insert(
+            "receipt_command".to_string(),
+            Value::String(receipt.to_string()),
+        );
+    }
+    if !edit_surface.is_empty() {
+        target.insert(
+            "allowed_edit_surface".to_string(),
+            Value::Array(
+                edit_surface
+                    .iter()
+                    .map(|s| Value::String(s.to_string()))
+                    .collect(),
+            ),
+        );
+    }
+    if let Some(finding_id) = diagnostic
+        .data
+        .as_ref()
+        .and_then(|d| d.as_object())
+        .and_then(|obj| obj.get("finding_id"))
+    {
+        target.insert("finding_id".to_string(), finding_id.clone());
+    }
+    Some(Value::Object(target))
 }
 
 fn python_test_name_for_skeleton(data: &Value, route: &Value, verify_command: &str) -> String {

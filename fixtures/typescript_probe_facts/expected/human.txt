@@ -61,6 +61,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape
+  next capability needed: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries
+
 Next step
   TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.
 
@@ -121,6 +126,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
 
 Next step
   TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.
@@ -185,6 +195,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `throws RangeError matching "missing token"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -248,6 +263,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `mock interaction mockSend called with payload`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -309,6 +329,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
@@ -373,6 +398,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == amount - discount`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -435,6 +465,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `profile.status == status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
@@ -499,6 +534,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `call audit.record includes status`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -562,6 +602,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `log contains "status-ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
@@ -624,6 +669,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
+  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
   TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `status == "ready"`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.

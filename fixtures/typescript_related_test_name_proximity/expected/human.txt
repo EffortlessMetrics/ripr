@@ -63,6 +63,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  next capability needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+
 Next step
   TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
 

@@ -313,3 +313,11 @@ path = "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "PR 7 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: closes the repair_packet_ready false→true flip for TypeScript findings with provably complete, evidence-backed, non-dynamic repair packets; reuses the shared validate_agent_gap_record_packet validator; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0088"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "PR 8 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: projects the actionable GapRecord computed in PR 7 into human (field-note), JSON (typescript_repair_packet field), LSP hover (Repair packet section), and LSP code-action (Copy TypeScript repair packet) surfaces via the shared renderer; no new public symbols; no separate proposal artifact."

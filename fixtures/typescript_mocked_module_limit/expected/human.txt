@@ -62,6 +62,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `mocked_module` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+
 Next step
   TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.
 

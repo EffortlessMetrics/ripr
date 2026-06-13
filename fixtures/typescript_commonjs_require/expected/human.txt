@@ -60,6 +60,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  next capability needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
 

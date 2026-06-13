@@ -1,11 +1,15 @@
 use crate::config::RiprConfig;
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::agent_seam_packets::{
+    allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
+};
 use crate::output::path::display_path;
 use crate::output::perl_preview_card::{PerlPreviewCard, PerlRawEvidenceRef, perl_preview_card};
 use crate::output::preview_actionability::{
     PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use crate::output::typescript_preview_card::{
     TypeScriptPreviewCard, bun_cross_language_advisory_packet, stable_byte_proof_mode,
     typescript_preview_card,
@@ -96,6 +100,10 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
         push_typescript_preview_card(&mut out, &card);
+        // §PR8 (RIPR-SPEC-0088): surface the full work-packet field-note when
+        // actionable, or the named limitation when blocked. Emitted after the
+        // preview card so it reads as a separate operator-facing section.
+        push_typescript_repair_packet_field_note(&mut out, finding);
     } else if let Some(card) = perl_preview_card(finding) {
         push_perl_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {
@@ -113,10 +121,34 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
 
     if let Some(step) = &finding.recommended_next_step {
         out.push_str("\nNext step\n");
-        out.push_str(&format!("  {step}\n"));
+        out.push_str(&format!("  {}\n", next_step_for_finding(finding, step)));
     }
 
     out
+}
+
+/// Render the recommended next step, rewriting the blocked-case
+/// "no actionable repair packet is emitted until ... available" tail when the
+/// finding is in fact an actionable complete TypeScript repair packet
+/// (RIPR-SPEC-0088 §PR8). The `recommended_next_step` string is produced in the
+/// analysis layer, which cannot see the output-layer validator flip, so the
+/// correction happens here at render time.
+fn next_step_for_finding(finding: &Finding, step: &str) -> String {
+    let actionable = preview_actionability_for(finding)
+        .map(|a| a.repair_packet_ready)
+        .unwrap_or(false);
+    if !actionable {
+        return step.to_string();
+    }
+    // Strip the contradictory "; no actionable repair packet is emitted until
+    // ..." tail and replace it with an actionable confirmation.
+    let head = step
+        .split("; no actionable repair packet is emitted until")
+        .next()
+        .unwrap_or(step)
+        .trim_end_matches(['.', ' '])
+        .to_string();
+    format!("{head}; the repair packet is complete and delegatable (advisory).")
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {
@@ -134,11 +166,26 @@ fn push_preview_actionability(out: &mut String, actionability: &PreviewActionabi
         "  repair packet ready: {}\n",
         actionability.repair_packet_ready
     ));
-    out.push_str(&format!(
-        "  why not actionable: {}\n",
-        actionability.why_not_actionable
-    ));
-    out.push_str(&format!("  repair route: {}\n", actionability.repair_route));
+    // RIPR-SPEC-0088 §PR8: an actionable finding must not emit
+    // "why not actionable" / "evidence needed" / blocked-case messaging — that
+    // contradicts the complete packet. Relabel to "why actionable" and the
+    // actual repair action, and drop the "evidence needed" line.
+    if actionability.repair_packet_ready {
+        out.push_str(&format!(
+            "  why actionable: {}\n",
+            actionability.why_not_actionable
+        ));
+        out.push_str(&format!(
+            "  repair action: {}\n",
+            actionability.repair_route
+        ));
+    } else {
+        out.push_str(&format!(
+            "  why not actionable: {}\n",
+            actionability.why_not_actionable
+        ));
+        out.push_str(&format!("  repair route: {}\n", actionability.repair_route));
+    }
     if !actionability.missing_actionability_fields.is_empty() {
         out.push_str(&format!(
             "  missing fields: {}\n",
@@ -154,10 +201,12 @@ fn push_preview_actionability(out: &mut String, actionability: &PreviewActionabi
     if let Some(unlock_condition) = &actionability.unlock_condition {
         out.push_str(&format!("  unlock condition: {unlock_condition}\n"));
     }
-    out.push_str(&format!(
-        "  evidence needed: {}\n",
-        actionability.evidence_needed_to_promote
-    ));
+    if !actionability.repair_packet_ready && !actionability.evidence_needed_to_promote.is_empty() {
+        out.push_str(&format!(
+            "  evidence needed: {}\n",
+            actionability.evidence_needed_to_promote
+        ));
+    }
     for raw_ref in &actionability.raw_evidence_refs {
         out.push_str("  raw evidence: ");
         push_raw_ref(out, raw_ref);
@@ -378,14 +427,103 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
         "  repair packet ready: {}\n",
         card.repair_packet_ready
     ));
-    out.push_str(&format!(
-        "  why not actionable: {}\n",
-        card.why_not_actionable
-    ));
-    out.push_str(&format!("  repair route: {}\n", card.repair_route));
+    // RIPR-SPEC-0088 §PR8: relabel for the actionable case so the card does not
+    // emit blocked-case "why not actionable" / "only after available" text that
+    // contradicts the complete packet.
+    if card.repair_packet_ready {
+        out.push_str(&format!("  why actionable: {}\n", card.why_not_actionable));
+        out.push_str(&format!("  repair action: {}\n", card.repair_route));
+    } else {
+        out.push_str(&format!(
+            "  why not actionable: {}\n",
+            card.why_not_actionable
+        ));
+        out.push_str(&format!("  repair route: {}\n", card.repair_route));
+    }
     out.push_str("  limits:\n");
     for limit in &card.limits {
         out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+/// Render the TypeScript repair packet field-note when actionable, or a named
+/// limitation when blocked. Called from `render_finding_with_config` after the
+/// preview card when the finding is TypeScript/JavaScript preview.
+///
+/// RIPR-SPEC-0088 §PR8: the full work-packet is surfaced ONLY when
+/// `repair_packet_ready: true`; blocked findings get the named limitation.
+pub(crate) fn push_typescript_repair_packet_field_note(out: &mut String, finding: &Finding) {
+    // Only emit for TypeScript/JavaScript preview findings.
+    if !matches!(
+        finding.language,
+        Some(LanguageId::TypeScript | LanguageId::JavaScript)
+    ) {
+        return;
+    }
+
+    let maybe_record = typescript_gap_record_for(finding);
+
+    match maybe_record {
+        Some(record) => {
+            // Actionable — render the full work-packet field-note.
+            out.push_str("\nTypeScript repair packet (advisory)\n");
+            out.push_str(&format!("  canonical gap: {}\n", record.canonical_gap_id));
+            // Source / owner from anchor
+            if let Some(anchor) = &record.anchor {
+                let file = anchor.file.as_deref().unwrap_or("unknown");
+                let line = anchor
+                    .line
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                let owner = anchor.owner.as_deref().unwrap_or("unknown");
+                out.push_str(&format!("  source: {owner} at {file}:{line}\n"));
+            }
+            // Related test + oracle from repair_route
+            if let Some(route) = &record.repair_route {
+                if let Some(related) = &route.related_test {
+                    out.push_str(&format!("  related test: {related}\n"));
+                }
+                if let Some(shape) = &route.assertion_shape {
+                    out.push_str(&format!("  oracle: {shape}\n"));
+                }
+                // Allowed edit surface via shared fn
+                let edit_surface = allowed_edit_surface_for_gap_route(route);
+                if !edit_surface.is_empty() {
+                    out.push_str(&format!("  edit surface: {}\n", edit_surface.join(", ")));
+                }
+            }
+            // Verify + receipt commands
+            if let Some(verify) = record.verification_commands.first() {
+                out.push_str(&format!("  verify: {verify}\n"));
+            }
+            if let Some(receipt) = record.receipt_command.as_deref() {
+                out.push_str(&format!("  receipt: {receipt}\n"));
+            }
+            // must_not_change via shared fn
+            let must_not_change = gap_record_packet_do_not_do(&record);
+            if !must_not_change.is_empty() {
+                out.push_str("  must not change:\n");
+                for item in &must_not_change {
+                    out.push_str(&format!("    - {item}\n"));
+                }
+            }
+            out.push_str("  why actionable: complete-contract TypeScript finding — package root, runner, owner, oracle all resolved; no blocking limitation\n");
+            out.push_str("  authority: preview_advisory_only\n");
+        }
+        None => {
+            // Blocked — name the limitation, never emit a partial packet.
+            // Only render this subsection if we have at least some preview
+            // actionability data to surface (otherwise stay silent).
+            let why = evidence_value(finding, "why_not_actionable: ")
+                .or_else(|| evidence_value(finding, "gap_state: "))
+                .unwrap_or("TypeScript preview; repair packet not yet complete");
+            let next_capability = evidence_value(finding, "evidence_needed_to_promote: ")
+                .unwrap_or("no further capability information");
+            out.push_str("\nTypeScript repair packet (advisory)\n");
+            out.push_str("  status: not actionable\n");
+            out.push_str(&format!("  limitation: {why}\n"));
+            out.push_str(&format!("  next capability needed: {next_capability}\n"));
+        }
     }
 }
 

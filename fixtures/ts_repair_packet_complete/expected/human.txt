@@ -24,9 +24,8 @@ Preview actionability
   gap state: actionable
   category: complete_repair_packet
   repair packet ready: true
-  why not actionable: complete repair packet — TypeScript finding is delegatable (advisory)
-  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
-  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
+  why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
+  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
   raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
 
 Static exposure
@@ -56,15 +55,32 @@ TypeScript preview card (advisory)
   suggested assertion shape: Add an exact boundary assertion for `amount == threshold`.
   verify: jest tests/discount.test.ts
   repair packet ready: true
-  why not actionable: complete repair packet — TypeScript finding is delegatable (advisory)
-  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
+  why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
+  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
   limits:
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  canonical gap: gap:typescript:typescript_preview:2396aec1
+  source: applyDiscount at src/discount.ts:2
+  related test: tests/discount.test.ts::applyDiscount applies discount when amount meets threshold
+  oracle: expect(result).toBe(50)
+  edit surface: tests/discount.test.ts
+  verify: jest tests/discount.test.ts
+  receipt: ripr outcome --before <baseline> --after <repair> --verify-cmd "jest tests/discount.test.ts" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json
+  must not change:
+    - Do not edit production code unless the focused proof exposes a real product defect.
+    - Do not broaden the change beyond this GapRecord and its repair route.
+    - Do not treat static evidence as runtime mutation, coverage, or correctness proof.
+    - Do not generate tests or call external providers from this packet.
+    - Do not treat preview-language evidence as gate authority.
+  why actionable: complete-contract TypeScript finding — package root, runner, owner, oracle all resolved; no blocking limitation
+  authority: preview_advisory_only
+
 Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
 
 
 Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

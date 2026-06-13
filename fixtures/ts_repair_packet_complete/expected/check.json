@@ -88,19 +88,50 @@
           "name": "applyDiscount applies discount when amount meets threshold"
         },
         "repair_packet_ready": true,
-        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "repair_route": "add or strengthen the focused assertion `expect(result).toBe(50)` in the related test",
         "source": "check_typescript_preview",
         "static_limits": [],
         "suggested_assertion_shape": "Add an exact boundary assertion for `amount == threshold`.",
         "verify": {
           "command": "jest tests/discount.test.ts"
         },
-        "why_not_actionable": "complete repair packet — TypeScript finding is delegatable (advisory)"
+        "why_not_actionable": "complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)"
+      },
+      "typescript_repair_packet": {
+        "allowed_edit_surface": [
+          "tests/discount.test.ts"
+        ],
+        "assertion_shape": "expect(result).toBe(50)",
+        "authority_boundary": "preview_advisory_only",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "file": "src/discount.ts",
+        "forbidden_files": [
+          "src/discount.ts"
+        ],
+        "gap_id": "probe:src_discount.ts:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "line": 2,
+        "missing_discriminator": "amount == threshold",
+        "must_not_change": [
+          "Do not edit production code unless the focused proof exposes a real product defect.",
+          "Do not broaden the change beyond this GapRecord and its repair route.",
+          "Do not treat static evidence as runtime mutation, coverage, or correctness proof.",
+          "Do not generate tests or call external providers from this packet.",
+          "Do not treat preview-language evidence as gate authority."
+        ],
+        "owner": "applyDiscount",
+        "receipt_command": "ripr outcome --before <baseline> --after <repair> --verify-cmd \"jest tests/discount.test.ts\" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json",
+        "repair_kind": "AddBoundaryAssertion",
+        "schema_version": "0.3",
+        "source": "typescript_preview_projection",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+        "verify_command": "jest tests/discount.test.ts"
       },
       "preview_actionability": {
         "actionability_category": "complete_repair_packet",
         "authority_boundary": "preview_advisory_only",
-        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "evidence_needed_to_promote": "",
         "gap_state": "actionable",
         "missing_actionability_fields": [],
         "missing_graph_legs": [],
@@ -117,9 +148,9 @@
           }
         ],
         "repair_packet_ready": true,
-        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "repair_route": "add or strengthen the focused assertion `expect(result).toBe(50)` in the related test",
         "unlock_condition": null,
-        "why_not_actionable": "complete repair packet — TypeScript finding is delegatable (advisory)"
+        "why_not_actionable": "complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)"
       },
       "stop_reasons": [],
       "oracle_kind": "relational_check",

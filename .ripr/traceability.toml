@@ -5353,3 +5353,46 @@ outputs = [
 metrics = [
   "typescript_actionable_repair_packet_contract_status_proposed"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0088"
+name = "TypeScript repair-packet surface projection"
+spec = "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md"
+tests = [
+  # Human surface — field-note and named limitation
+  "crates/ripr/src/output/human/sections.rs::tests::typescript_repair_packet_field_note_renders_for_actionable_finding",
+  "crates/ripr/src/output/human/sections.rs::tests::typescript_repair_packet_field_note_renders_limitation_for_blocked_finding",
+  # JSON surface — typescript_repair_packet field
+  "crates/ripr/src/output/json/report.rs::tests::typescript_repair_packet_json_field_present_when_actionable",
+  "crates/ripr/src/output/json/report.rs::tests::typescript_repair_packet_json_field_absent_when_blocked",
+  # Actionable-case consistency — no contradictory blocked-case messaging
+  "crates/ripr/src/output/preview_actionability.rs::tests::actionable_repair_route_names_assertion_shape_not_blocked_text",
+  "crates/ripr/src/output/preview_actionability.rs::tests::actionable_repair_route_falls_back_to_discriminator_then_generic"
+]
+fixtures = [
+  "fixtures/ts_repair_packet_complete",
+  "fixtures/ts_dynamic_oracle",
+  "fixtures/ts_heuristic_relation",
+  "fixtures/ts_cross_package_test",
+  "fixtures/ts_no_verify_command",
+  "fixtures/ts_static_limit",
+  "fixtures/ts_cross_language_bridge_limit",
+  "fixtures/ts_already_observed"
+]
+code = [
+  "crates/ripr/src/output/human/sections.rs",
+  "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/preview_actionability.rs",
+  "crates/ripr/src/lsp/hover.rs",
+  "crates/ripr/src/lsp/actions.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "fixtures/ts_repair_packet_complete/expected/check.json",
+  "fixtures/ts_repair_packet_complete/expected/human.txt"
+]
+metrics = [
+  "typescript_repair_packet_projection_surfaces_count"
+]

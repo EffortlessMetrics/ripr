@@ -61,6 +61,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `decorator_indirection` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+
 Next step
   TypeScript preview advisory: static limit `decorator_indirection`; Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.; no actionable repair packet is emitted.
 
@@ -121,6 +126,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
 
 Next step
   TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.
@@ -184,6 +194,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `missing_import_graph` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+
 Next step
   TypeScript preview advisory: static limit `missing_import_graph`; Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.; no actionable repair packet is emitted.
 
@@ -245,6 +260,11 @@ TypeScript preview card (advisory)
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `metaprogramming` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
 
 Next step
   TypeScript preview advisory: static limit `metaprogramming`; Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.; no actionable repair packet is emitted.

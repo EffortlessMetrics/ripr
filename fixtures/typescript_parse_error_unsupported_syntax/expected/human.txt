@@ -62,6 +62,11 @@ TypeScript preview card (advisory)
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
     - This card is advisory and is not a repair packet.
 
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+
 Next step
   TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.
 

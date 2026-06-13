@@ -501,6 +501,16 @@ The evidence-first fields are additive in schema `0.2`:
   `[]`, and `authority_boundary` stays `"preview_advisory_only"` (TypeScript
   remains preview). Only `incomplete_repair_packet` is eligible to flip; all
   other categories stay non-actionable. `schema_version` is unchanged.
+  When flipped, the actionability fields are rewritten to read as actionable
+  (RIPR-SPEC-0088 §PR8) so they do not contradict the complete packet:
+  `repair_route` names the actual repair action (the suggested assertion shape
+  or missing discriminator) rather than the blocked-case "only after ...
+  available" text; `evidence_needed_to_promote` is the empty string (nothing is
+  needed); and `why_not_actionable` carries the "why actionable" confirmation
+  naming the resolved contract fields. The JSON keys are kept stable for schema
+  compatibility; the human renderer relabels them to `why actionable` /
+  `repair action` and omits the empty `evidence needed` line for the actionable
+  case.
   Raw evidence refs carry the original raw string plus parsed `file`, `line`,
   `kind`, `source_id`, optional `owner`, optional graph `leg`, and optional
   source `sample` when present.
@@ -652,6 +662,19 @@ The evidence-first fields are additive in schema `0.2`:
   repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
+- `typescript_repair_packet` is an additive optional object present only when
+  `typescript_preview_card.repair_packet_ready == true` (i.e., the full RIPR-SPEC-0087
+  contract is satisfied). It is an advisory repair-work packet projected via the shared
+  renderer from the GapRecord computed by `typescript_gap_record_for`. It carries
+  `schema_version` (`"0.3"`), `source` (`"typescript_preview_projection"`),
+  `gap_id`, `canonical_gap_id`, `language`, `language_status` (`"preview"`),
+  `authority_boundary` (`"preview_advisory_only"`), optional `file`, optional `line`,
+  optional `owner`, `verify_command`, optional `receipt_command`, `allowed_edit_surface[]`,
+  `forbidden_files[]`, `must_not_change[]`, optional `assertion_shape`,
+  optional `repair_kind`, optional `target_test`, and optional `missing_discriminator`.
+  When absent, the human output contains a named `status: not actionable` limitation
+  section instead. This field is RIPR-SPEC-0088 §2.2. It is not a gate, badge, or
+  public repair authority; authority boundary remains `preview_advisory_only`.
 - `perl_preview_card` is an additive optional object for Perl preview findings
   that already have strict fact-packet evidence, canonical gap identity,
   related-test evidence, missing discriminator evidence, verify-command

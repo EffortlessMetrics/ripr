@@ -4,10 +4,12 @@ use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
 use crate::domain::{Finding, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
+    allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::preview_actionability::{PreviewActionability, preview_actionability_for};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use serde_json::Value;
 use std::path::Path;
 use tower_lsp_server::ls_types::{
@@ -432,17 +434,63 @@ fn push_preview_actionability(lines: &mut Vec<String>, finding: &Finding) {
             "not ready"
         }
     ));
-    lines.push(format!(
-        "Why not actionable: {}",
-        actionability.why_not_actionable
-    ));
-    lines.push(format!("Repair route: {}", actionability.repair_route));
-    push_missing_actionability_fields(lines, &actionability);
-    lines.push(format!(
-        "Evidence needed: {}",
-        actionability.evidence_needed_to_promote
-    ));
+    // RIPR-SPEC-0088 §PR8: relabel for the actionable case so the hover does
+    // not show blocked-case "Why not actionable" / "Evidence needed" lines that
+    // contradict the complete packet.
+    if actionability.repair_packet_ready {
+        lines.push(format!(
+            "Why actionable: {}",
+            actionability.why_not_actionable
+        ));
+        lines.push(format!("Repair action: {}", actionability.repair_route));
+        push_missing_actionability_fields(lines, &actionability);
+    } else {
+        lines.push(format!(
+            "Why not actionable: {}",
+            actionability.why_not_actionable
+        ));
+        lines.push(format!("Repair route: {}", actionability.repair_route));
+        push_missing_actionability_fields(lines, &actionability);
+        lines.push(format!(
+            "Evidence needed: {}",
+            actionability.evidence_needed_to_promote
+        ));
+    }
     lines.push("Authority: preview advisory only".to_string());
+    lines.push(String::new());
+
+    // §PR8 (RIPR-SPEC-0088): when repair_packet_ready, add a "Repair packet"
+    // section with the full work-packet from the shared GapRecord projection.
+    if actionability.repair_packet_ready {
+        push_ts_repair_packet_section(lines, finding);
+    }
+}
+
+/// Push a `## Repair packet (TypeScript preview, advisory)` hover section for
+/// an actionable TypeScript finding (RIPR-SPEC-0088 §PR8).
+fn push_ts_repair_packet_section(lines: &mut Vec<String>, finding: &Finding) {
+    let Some(record) = typescript_gap_record_for(finding) else {
+        return;
+    };
+    lines.push("## Repair packet (TypeScript preview, advisory)".to_string());
+    if let Some(verify) = record.verification_commands.first() {
+        lines.push(format!("Verify: `{verify}`"));
+    }
+    if let Some(receipt) = &record.receipt_command {
+        lines.push(format!("Receipt: `{receipt}`"));
+    }
+    if let Some(route) = &record.repair_route {
+        let edit_surface = allowed_edit_surface_for_gap_route(route);
+        if !edit_surface.is_empty() {
+            lines.push(format!("Edit surface: {}", edit_surface.join(", ")));
+        }
+    }
+    let must_not = gap_record_packet_do_not_do(&record);
+    lines.push(format!("Must not change: {} item(s)", must_not.len()));
+    if !record.canonical_gap_id.trim().is_empty() {
+        lines.push(format!("Canonical gap: `{}`", record.canonical_gap_id));
+    }
+    lines.push("Authority: preview_advisory_only".to_string());
     lines.push(String::new());
 }
 
