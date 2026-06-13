@@ -175,6 +175,10 @@ pub(super) struct GateCandidate {
     pub(super) suppressed: bool,
     pub(super) configured_off: bool,
     pub(super) suppression_reason: Option<String>,
+    /// Producer-assigned reason why this item was placed in `summary_only` instead
+    /// of an inline comment slot.  Closed vocabulary: `inline_comment_cap_reached`,
+    /// `no_safe_changed_line_placement`, `navigation_only_cross_language_target`.
+    pub(super) summary_reason: Option<String>,
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,
