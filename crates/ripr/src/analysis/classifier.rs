@@ -1272,7 +1272,7 @@ mod tests {
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
             Some(
-                "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage."
+                "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change."
             )
         );
         assert_eq!(

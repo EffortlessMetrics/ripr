@@ -49,8 +49,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
-      "suggested_next_action": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
+      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
       "language": "rust"
     }
   ]

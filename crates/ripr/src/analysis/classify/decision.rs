@@ -193,7 +193,7 @@ pub(in crate::analysis) fn recommended_next_step(
             Some(weakly_exposed_guidance_for_family(&probe.family).to_string())
         }
         ExposureClass::ReachableUnrevealed => Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string()),
-        ExposureClass::NoStaticPath => Some("Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.".to_string()),
+        ExposureClass::NoStaticPath => Some("Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.".to_string()),
         ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
         ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
     }
