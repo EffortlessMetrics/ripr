@@ -27,7 +27,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     ));
 
     if output.findings.is_empty() {
-        out.push_str("No diff-derived mutation exposure probes found.\n");
+        out.push_str("No diff-derived static exposure probes found.\n");
         // RIPR-SPEC-0083: disclose when no analysis scope was provided.
         // This fires only when the caller passed no --diff/--base/--mode, so
         // an empty result here means "nothing was analyzed", not "tests pass".
@@ -175,7 +175,7 @@ mod tests {
         assert!(rendered.contains(
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
-        assert!(rendered.contains("No diff-derived mutation exposure probes found."));
+        assert!(rendered.contains("No diff-derived static exposure probes found."));
     }
 
     #[test]

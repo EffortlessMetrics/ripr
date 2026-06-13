@@ -116,7 +116,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         ));
     }
     if output.findings.is_empty() {
-        out.push_str("::notice title=ripr::No static mutation exposure findings found\n");
+        out.push_str("::notice title=ripr::No static exposure findings found\n");
     }
     out
 }
@@ -245,7 +245,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "::notice title=ripr::No static mutation exposure findings found\n"
+            "::notice title=ripr::No static exposure findings found\n"
         );
     }
 
