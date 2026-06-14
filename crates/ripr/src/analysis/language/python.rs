@@ -1988,6 +1988,7 @@ enum PythonRelationKind {
     SyntacticCall,
     ImportAliasCall,
     ApiClientRouteCall,
+    ConstructCall,
     SameStem,
     TestNameSimilarity,
     FixtureName,
@@ -1999,6 +2000,7 @@ impl PythonRelationKind {
             Self::SyntacticCall => 5,
             Self::ImportAliasCall => 4,
             Self::ApiClientRouteCall => 4,
+            Self::ConstructCall => 4,
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
@@ -2008,7 +2010,10 @@ impl PythonRelationKind {
     fn uses_oracle(self) -> bool {
         matches!(
             self,
-            Self::SyntacticCall | Self::ImportAliasCall | Self::ApiClientRouteCall
+            Self::SyntacticCall
+                | Self::ImportAliasCall
+                | Self::ApiClientRouteCall
+                | Self::ConstructCall
         )
     }
 
@@ -2021,6 +2026,7 @@ impl PythonRelationKind {
             Self::SyntacticCall => "syntactic_call",
             Self::ImportAliasCall => "import_alias_call",
             Self::ApiClientRouteCall => "api_client_route_call",
+            Self::ConstructCall => "construct_call",
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
@@ -2202,6 +2208,9 @@ fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<Pytho
     if api_client_route_calls_owner(test, owner) {
         return Some(PythonRelationKind::ApiClientRouteCall);
     }
+    if construct_call_invokes_owner(test, owner) {
+        return Some(PythonRelationKind::ConstructCall);
+    }
     if same_stem_related(test, owner) {
         return Some(PythonRelationKind::SameStem);
     }
@@ -2222,6 +2231,76 @@ fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
             owner.owner_kind,
             Some(OwnerKind::Method | OwnerKind::ClassMethod)
         ) && contains_any_attribute_call(body_text, &owner.name))
+}
+
+/// Detects an inline construct-call `OwnerClass(...)(...)` that invokes a changed
+/// `__call__` owner directly (e.g. `LogfmtRenderer()(None, None, event_dict)`), a
+/// cross-file shape the name/attribute and import-alias heuristics miss — the
+/// changed sink is the class's `__call__`, but the test never names `__call__`.
+/// Strictly gated so it never over-links: the changed owner must be a `__call__`
+/// method (Guard A); the test must import the owner's class by name or alias
+/// (Guard B), which blocks a same-named class from an unrelated module; and the
+/// constructed instance must be *immediately* called (the balanced-paren check),
+/// which distinguishes the inline `C()(...)` from a bound local `x = C(); x(...)`
+/// (the latter stays uncertain, consistent with the local-callable limitation).
+fn construct_call_invokes_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    // Guard A: only callable-class `__call__` owners.
+    if owner.name != "__call__"
+        || !matches!(
+            owner.owner_kind,
+            Some(OwnerKind::Method | OwnerKind::ClassMethod)
+        )
+    {
+        return false;
+    }
+    let Some((class_name, _)) = owner.qualified_name.rsplit_once('.') else {
+        return false;
+    };
+    if class_name.is_empty() || !class_name.chars().all(is_python_identifier_char) {
+        return false;
+    }
+    // Guard B: the test must import the owner's class — blocks same-named classes
+    // in unrelated modules from cross-linking.
+    let imports_class = test
+        .imports
+        .iter()
+        .any(|import| import.imported == class_name || import.alias == class_name);
+    if !imports_class {
+        return false;
+    }
+    let needle = format!("{class_name}(");
+    test.body_text.match_indices(&needle).any(|(idx, _)| {
+        has_call_boundary(&test.body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(&test.body_text, idx)
+            && construct_result_is_called(&test.body_text, idx + needle.len() - 1)
+    })
+}
+
+/// Given the byte index of the `(` that opens a constructor call, returns whether
+/// its matching `)` is immediately followed (skipping spaces/tabs) by another `(`
+/// — i.e. the constructed instance is called inline, `C(...)(...)`.
+fn construct_result_is_called(text: &str, open_paren_idx: usize) -> bool {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open_paren_idx;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let mut next = index + 1;
+                    while matches!(bytes.get(next), Some(b' ' | b'\t')) {
+                        next += 1;
+                    }
+                    return bytes.get(next) == Some(&b'(');
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    false
 }
 
 fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -5326,6 +5405,25 @@ def test_build_user_smoke():
             python_route_response_field_discriminator("headers", "expected_headers").as_deref(),
             Some("response.headers == expected_headers")
         );
+    }
+
+    #[test]
+    fn construct_result_is_called_distinguishes_inline_from_bound() {
+        // open-paren index of the first `(` in each fixture string (always present).
+        let at = |s: &str| s.find('(').unwrap_or(0);
+        // Inline construct-call `C(...)(...)`: the constructed instance is called.
+        let inline = "Renderer()(None, event)";
+        assert!(construct_result_is_called(inline, at(inline)));
+        let inline_args = "Renderer(sort=True)(event)";
+        assert!(construct_result_is_called(inline_args, at(inline_args)));
+        // Bound local `x = C(...)` then a separate `x(...)`: NOT an inline call —
+        // the constructor's `)` is followed by a newline, not `(`. Keeps the
+        // local-callable case uncertain (consistent with #1221).
+        let bound = "stop = stop_after_attempt(3)\n    stop(3)";
+        assert!(!construct_result_is_called(bound, at(bound)));
+        // Plain construction with no following call.
+        let plain = "r = Renderer()";
+        assert!(!construct_result_is_called(plain, at(plain)));
     }
 
     #[test]
