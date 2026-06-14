@@ -1266,3 +1266,59 @@ The fix for `MatchArm` (#1200) revealed the same pattern in `ReturnValue`, `Fiel
 This is the Observe/Discriminate-stage instance of the general fail-closed rule (see "Discrimination vs Coverage" and "Two error rates" entries above). The escape hatch was intended for the case where a single comprehensive assertion covers the entire changed expression, but it over-fired whenever any assertion existed at all. Because the over-credit is silent — `ripr` emits a clean `exposed` with no caveat — it is the dangerous direction. The fix is to require at least one assertion token to match a changed token before the escape hatch fires; absent that match, `weakly_exposed` with a named reason is the honest answer.
 
 Any future work on `reveal.rs` or the classification heuristics must apply this check per probe family and must be backed by both a should-gap fixture (where the single assertion genuinely does not observe the changed token, producing `weakly_exposed`) and a should-stay-`exposed` fixture (where a direct-token assertion keeps the finding at `exposed`, proving no over-correction).
+## 2026-06-13: The local-callable "flip to exposed" goal was aimed at the wrong case
+
+A multi-agent design pass confidently proposed a ~35-line relation fix to flip
+`fixtures/python_local_callable_binding` (the tenacity
+`stop = stop_after_attempt(3); self.assertTrue(stop(3))` shape) from
+`weakly_exposed` to `exposed`. Reading the actual classifier disproved it twice
+over, and the second disproof reframed the whole work item:
+
+1. **A relation fix alone cannot reach `exposed`.** `classify_change` yields
+   `exposed` only when `strongest_strength >= Strong` **and** `alignment.observes()`.
+   `oracle_for_call` maps `assertTrue`/`assertFalse` to `OracleStrength::Smoke`.
+   So even with a perfect relation, the smoke oracle falls through to
+   `weakly_exposed`; and `classify_sink_alignment` only inspects `Strong`-rank
+   oracles, and the oracle text `stop(3)` carries the local var `stop`, not the
+   owner tokens `stop_after_attempt`/`__call__`, so it would read `orthogonal`
+   anyway. Three coupled barriers, not one.
+2. **`exposed` is the *wrong target*.** The golden
+   `fixtures/python_broad_boolean_assertion` pins `assert is_priority(100)` — a
+   *direct* call to the changed predicate owner under a broad boolean — as
+   `weakly_exposed`/`smoke` **by design**. The tenacity case is that exact shape
+   plus a local binding. Flipping it to `exposed` would contradict the golden and
+   the discrimination-not-coverage contract: `assertTrue(predicate())` is a weak
+   oracle on purpose (a single truthy check does not pin the boundary). The
+   local-callable problem is therefore a **relation-diagnosis bug** (the card
+   falsely implies no direct test exists), not a classification bug; the correct
+   resolved state is `weakly_exposed`/`smoke`/direct-relation, *matching*
+   `broad_boolean`.
+
+The deeper correction is to the Tier B reading itself: the four measured
+false-actionables split by **oracle strength**. tenacity's discriminating
+assertion is `assertTrue(stop(3))` — a *smoke* oracle — so the *correct resolved*
+state is `weakly_exposed`/smoke per `broad_boolean`, not a clean false-actionable.
+(Be precise about cause: today `ripr` reaches `weakly_exposed` for a *different*
+reason than the resolved one — the `same_stem` relation miss means it never links
+the test, so it surfaces `oracle_strength: unknown`, not `smoke`. The relation fix
+*surfaces* the smoke oracle and corrects the misleading "no direct test" card
+without changing the class. Don't conflate "the assertion is smoke" with "`ripr`
+detected smoke" — it currently detects neither the relation nor the oracle.)
+jinja (`tmpl.render() == "exact"`, ExactValue), structlog
+(`pytest.raises(ValueError, match=...)`, ExactErrorVariant) and anyio
+(`pytest.raises(Cancelled)`) are *strong* oracles `ripr` never saw because of
+relation/extraction misses (framework dispatch, cross-file, function-result
+binding) — those are the **true** false-actionables, and the only ones
+legitimately flippable to `exposed` (an empirical grep corroborates the gate: 14
+smoke oracles classify `weakly_exposed`, 7 strong un-limited oracles classify
+`exposed`). So the real precision lever is **linking the
+strong oracle `ripr` is missing**, not crediting the weak smoke oracle it already
+half-sees. The fixture and tracker were built around the weakest example.
+
+**How to apply:** before "fixing" a `weakly_exposed`, check the oracle *strength*
+of the discriminating test against the `broad_boolean` golden. If it is a broad
+boolean / smoke assertion, `weakly_exposed` is correct and the work is a card-text
+fix, not a classification change — chasing `exposed` there would drift `ripr`
+back toward coverage. Reserve `exposed` flips for missed *strong, sink-aligned*
+oracles. See the "verify the artifact, not the proxy" entry above — an agent panel's plausible
+plan was disproved only by reading the classifier and the golden, not the plan.

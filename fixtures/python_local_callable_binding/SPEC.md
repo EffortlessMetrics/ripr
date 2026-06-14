@@ -33,13 +33,29 @@ because the test reaches the owner through the local binding `stop(3)` rather
 than naming `stop_after_attempt` / `__call__` directly — so neither the relation
 heuristic nor oracle extraction traces the local-callable binding.
 
-This under-credits a behavior that is in fact discriminated, but it is the
-**conservative direction** (under-credit / over-suggest, never over-credit): it
-is the false-actionable measured on tenacity, not a dangerous false-`exposed`.
-This fixture pins that current behavior honestly. When the limitation is resolved
-(tracker `analysis/python-local-callable-instance-alignment`) — by tracing a
-single unambiguous `local = OwnerClass(...)` binding in **relation + oracle
-extraction**, not only in sink-alignment — this fixture should flip to `exposed`.
+The relation diagnosis is misleading (it implies no direct test exists), but the
+`weakly_exposed` classification is the **conservative direction** (under-credit /
+over-suggest, never over-credit). This fixture pins that current behavior
+honestly.
+
+**Correction (2026-06-13): the resolved state is NOT `exposed`.** The discriminating
+assertion here is `assertTrue(stop(3))` — a *broad boolean* oracle, which
+`oracle_for_call` classifies as `OracleStrength::Smoke`. The sibling golden
+`python_broad_boolean_assertion` deliberately pins the same shape
+(`assert is_priority(100)`, a *direct* call on the changed predicate owner) as
+`weakly_exposed`/`smoke`: a single truthy check does not pin the boundary, so it
+is a weak oracle *by contract*. Flipping this fixture to `exposed` would
+contradict that golden and drift `ripr` back toward coverage. When the
+limitation is resolved (tracker
+`analysis/python-local-callable-instance-alignment`) — by tracing a single
+unambiguous `local = OwnerClass(...)` binding so the relation links **direct** —
+this fixture should resolve to `weakly_exposed` with `oracle_strength: smoke` and
+a **direct** relation (matching `python_broad_boolean_assertion`), and a repair
+card that says "strengthen this broad-boolean assertion into an exact-value
+assertion" rather than "no direct test found". It must **not** flip to `exposed`.
+The cases that legitimately flip to `exposed` are the *strong* missed oracles
+(exact-value / exact-error reached through indirect calls — see tracker
+`analysis/python-cross-file-strong-oracle-relation`), not this smoke case.
 
 ## Must Not
 
