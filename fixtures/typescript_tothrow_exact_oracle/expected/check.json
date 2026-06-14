@@ -4,13 +4,13 @@
   "mode": "fast",
   "root": "fixtures/typescript_tothrow_exact_oracle/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
       "id": "probe:src_parser.ts:typescript_preview:c440ffa1",
-      "classification": "exposed",
-      "severity": "info",
-      "confidence": 0.60,
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
       "probe": {
         "id": "probe:src_parser.ts:typescript_preview:c440ffa1",
         "family": "predicate",
@@ -24,14 +24,14 @@
         "reach": {"state":"yes","confidence":"low","summary":"3 related test(s) found for owner `parseUser`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_error_variant` (rank 5)"},
-        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated."}
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
        },
-      "evidence_path": ["reach yes: 3 related test(s) found for owner `parseUser`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_error_variant` (rank 5)", "discriminator yes: Related test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/parser.test.ts:5 empty user throws exact message uses strong exact error variant oracle: expect(...).toThrow(\"empty user\")", "related test tests/parser.test.ts:11 empty user throws with error code uses strong exact error variant oracle: expect(...).toThrow({ code: \"EMPTY_INPUT\" })", "related test tests/parser.test.ts:17 empty user throws ParseError class uses strong exact error variant oracle: expect(...).toThrow(ParseError)"],
+      "evidence_path": ["reach yes: 3 related test(s) found for owner `parseUser`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/parser.test.ts:5 empty user throws exact message uses strong exact error variant oracle: expect(...).toThrow(\"empty user\")", "related test tests/parser.test.ts:11 empty user throws with error code uses strong exact error variant oracle: expect(...).toThrow({ code: \"EMPTY_INPUT\" })", "related test tests/parser.test.ts:17 empty user throws ParseError class uses strong exact error variant oracle: expect(...).toThrow(ParseError)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: parseUser", "typescript_oracle_observed: () => parseUser(\"\")", "typescript_oracle_confidence: medium", "typescript_oracle_evidence_ref: tests/parser.test.ts:18", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/parser.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_parser.ts:typescript_preview:c440ffa1;owner=parseUser", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Related test reaches `parseUser` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "evidence": ["owner: parseUser", "typescript_oracle_observed: () => parseUser(\"\")", "typescript_oracle_confidence: medium", "typescript_oracle_evidence_ref: tests/parser.test.ts:18", "gap_state: advisory", "actionability_category: missing_target_shape", "why_not_actionable: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape", "repair_route: add probe-specific discriminator extraction for this expression before repair packet projection", "missing_actionability_fields: repair_kind, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/parser.ts;line=11;kind=typescript_preview_probe;source_id=probe:src_parser.ts:typescript_preview:c440ffa1;owner=parseUser", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Related test reaches `parseUser` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).", "TypeScript preview actionability `advisory` / `missing_target_shape`: TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape. Repair route: add probe-specific discriminator extraction for this expression before repair packet projection"],
       "assertion_texts": {
       },
       "activation": {
@@ -101,21 +101,29 @@
           "name": "empty user throws ParseError class"
         },
         "repair_packet_ready": false,
-        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "repair_route": "add probe-specific discriminator extraction for this expression before repair packet projection",
         "source": "check_typescript_preview",
         "static_limits": [],
         "suggested_assertion_shape": "Exact error payload evidence is present; no repair packet is emitted without strict fields.",
         "verify": {
           "command": null
         },
-        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+        "why_not_actionable": "TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape"
       },
       "preview_actionability": {
-        "actionability_category": "strong_oracle_observed",
+        "actionability_category": "missing_target_shape",
         "authority_boundary": "preview_advisory_only",
-        "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
-        "gap_state": "already_observed",
-        "missing_actionability_fields": [],
+        "evidence_needed_to_promote": "safe probe discriminator, repair kind, target shape, verify command, receipt command, and edit boundaries",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "repair_kind",
+          "target_test_shape",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
         "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
@@ -130,15 +138,15 @@
           }
         ],
         "repair_packet_ready": false,
-        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "repair_route": "add probe-specific discriminator extraction for this expression before repair packet projection",
         "unlock_condition": null,
-        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+        "why_not_actionable": "TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape"
       },
       "stop_reasons": [],
       "oracle_kind": "exact_error_variant",
       "oracle_strength": "strong",
-      "recommended_next_step": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.",
+      "suggested_next_action": "TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emitted until the target shape is explicit.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"

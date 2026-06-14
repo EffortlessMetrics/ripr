@@ -37,7 +37,7 @@ Evidence
   - reach weak: 1 related test(s) found for owner `formatCurrency`
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
   - related test tests/formatter.test.ts:3 formatCurrency behavior formats positive amounts uses unknown unknown oracle
 

@@ -6127,3 +6127,469 @@ fn tsconfig_alias_non_owner_import_emits_no_limitation() -> Result<(), String> {
     assert_evidence_lacks(&finding, "typescript_path_alias_unresolved");
     Ok(())
 }
+
+// ── RIPR-SPEC-0104: family↔oracle-kind matching (4 controls) ─────────────────
+
+/// RIPR-SPEC-0104 control 1 (REPRO — headline fix):
+/// ReturnValue seam; two SEPARATE tests: one with `.toThrow(DiscountError)`
+/// (ExactErrorVariant, Strong) on the error path, one with `.toBeGreaterThan(0)`
+/// (RelationalCheck, Weak) on the return value.
+///
+/// The diff changes `0.95 → 0.90` on the gold return value line.
+/// Before the fix: the ExactErrorVariant (Strong) was promoted as
+/// `strongest_kind`, yielding `Exposed / strong_oracle_observed`.
+/// After the fix: only assertions matching the `ReturnValue` family are
+/// considered; the best match is `RelationalCheck/Weak` → `weakly_exposed`
+/// with an actionable repair card.
+#[test]
+fn spec_0104_repro_cross_family_error_oracle_does_not_promote_return_value_seam()
+-> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 20,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // Test A: error-path observer — toThrow(DiscountError) — Strong, ExactErrorVariant.
+    // This test does NOT match the ReturnValue seam family.
+    let error_test = TypeScriptTest {
+        name: "applyDiscount throws on invalid input".to_string(),
+        local_name: "applyDiscount throws on invalid input".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 10,
+        body_text: "expect(() => applyDiscount(-1, 'gold')).toThrow(DiscountError);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toThrow".to_string(),
+            argument_count: 1,
+            line: 11,
+            oracle_kind: OracleKind::ExactErrorVariant,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Medium,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Test B: return-value observer — toBeGreaterThan(0) — Weak, RelationalCheck.
+    // This test DOES match the ReturnValue seam family, but only weakly.
+    let return_test = TypeScriptTest {
+        name: "applyDiscount returns positive amount for gold".to_string(),
+        local_name: "applyDiscount returns positive amount for gold".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 15,
+        body_text: "expect(applyDiscount(100, 'gold')).toBeGreaterThan(0);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBeGreaterThan".to_string(),
+            argument_count: 1,
+            line: 16,
+            oracle_kind: OracleKind::RelationalCheck,
+            oracle_strength: OracleStrength::Weak,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("applyDiscount(100, 'gold')".to_string()),
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::Low,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Changed line: the gold-tier return value (ReturnValue seam).
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        5,
+        "  return amount * 0.90;",
+        &[owner],
+        &[error_test, return_test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // MUST be weakly_exposed — the only ReturnValue-matching oracle is Weak.
+    assert!(
+        matches!(finding.class, ExposureClass::WeaklyExposed),
+        "RIPR-SPEC-0104 control 1: expected WeaklyExposed for ReturnValue seam with \
+         only cross-family Strong oracle; got {:?}",
+        finding.class
+    );
+    // The strongest oracle reported back MUST NOT be ExactErrorVariant.
+    // (The summary text contains the oracle kind.)
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .all(|line| !line.contains("exact_error_variant")),
+        "RIPR-SPEC-0104 control 1: evidence must not name exact_error_variant; \
+         got {:?}",
+        finding.evidence
+    );
+    Ok(())
+}
+
+/// RIPR-SPEC-0104 control 2 (MUST-NOT-OVER-CORRECT — return + exact value):
+/// ReturnValue seam with a `toBe(90)` assertion (ExactValue, Strong).
+/// The family-matching filter allows ExactValue for ReturnValue seams.
+/// MUST stay `Exposed` (ExactValue matches ReturnValue).
+#[test]
+fn spec_0104_no_over_correct_return_value_with_exact_value_stays_exposed() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let exact_value_test = TypeScriptTest {
+        name: "applyDiscount gold rate".to_string(),
+        local_name: "applyDiscount gold rate".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "expect(applyDiscount(100, 'gold')).toBe(90);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("applyDiscount(100, 'gold')".to_string()),
+            expected_value_or_variant: Some("90".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        3,
+        "  return amount * 0.90;",
+        &[owner],
+        &[exact_value_test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // ExactValue matches ReturnValue → MUST stay Exposed.
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "RIPR-SPEC-0104 control 2: expected Exposed for ReturnValue seam with \
+         ExactValue Strong oracle; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// RIPR-SPEC-0104 control 3 (MUST-NOT-OVER-CORRECT — error + toThrow exact):
+/// ErrorPath seam with `expect(() => fn(-1)).toThrow('Invalid amount')`.
+/// The `toThrow` with a string literal yields ExactErrorVariant (Strong).
+/// ExactErrorVariant matches ErrorPath → MUST stay `Exposed`.
+#[test]
+fn spec_0104_no_over_correct_error_path_with_exact_error_variant_stays_exposed()
+-> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let throw_test = TypeScriptTest {
+        name: "applyDiscount throws on negative amount".to_string(),
+        local_name: "applyDiscount throws on negative amount".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "expect(() => applyDiscount(-1, 'gold')).toThrow('Invalid amount');".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toThrow".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::ExactErrorVariant,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: Some("'Invalid amount'".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        3,
+        "  throw new Error('Invalid amount');",
+        &[owner],
+        &[throw_test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // ExactErrorVariant matches ErrorPath → MUST stay Exposed.
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "RIPR-SPEC-0104 control 3: expected Exposed for ErrorPath seam with \
+         ExactErrorVariant Strong oracle; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// RIPR-SPEC-0104 control 4 (SINGLE-TEST-BOTH-ASSERTIONS — over-correction guard):
+/// ONE test that asserts BOTH `.toThrow(DiscountError)` (ExactErrorVariant,
+/// Strong, wrong-family for ReturnValue) AND `.toBe(90)` (ExactValue, Strong,
+/// matches ReturnValue) in a single test body.
+/// The diff changes the gold return value.
+///
+/// This test proves the fix operates at the ASSERTION level, not the TEST level.
+/// Filtering at the test level would DROP the whole test because its
+/// overall-strongest assertion (ExactErrorVariant) is wrong-family, losing the
+/// legitimate `.toBe(90)` assertion → false weakly_exposed.
+/// With assertion-level filtering, the `.toBe(90)` assertion is kept and the
+/// seam MUST stay `Exposed`.
+#[test]
+fn spec_0104_single_test_both_assertions_retains_matching_family_assertion_stays_exposed()
+-> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 20,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // ONE test with TWO assertions:
+    //   1. `.toThrow(DiscountError)` — ExactErrorVariant, Strong — wrong-family for ReturnValue.
+    //   2. `.toBe(90)` — ExactValue, Strong — matches ReturnValue.
+    // A test-level filter would drop the whole test due to assertion 1.
+    // An assertion-level filter retains assertion 2 → Exposed.
+    let dual_assertion_test = TypeScriptTest {
+        name: "applyDiscount gold path and error path".to_string(),
+        local_name: "applyDiscount gold path and error path".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: concat!(
+            "expect(() => applyDiscount(-1, 'gold')).toThrow(DiscountError);\n",
+            "expect(applyDiscount(100, 'gold')).toBe(90);"
+        )
+        .to_string(),
+        assertions: vec![
+            // Assertion 1: error-path observer (wrong-family for the changed ReturnValue seam).
+            TypeScriptAssertion {
+                matcher: "toThrow".to_string(),
+                argument_count: 1,
+                line: 2,
+                oracle_kind: OracleKind::ExactErrorVariant,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                observed_expression: None,
+                expected_value_or_variant: None,
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::Medium,
+            },
+            // Assertion 2: return-value observer (family-matching for ReturnValue seam).
+            TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 3,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                observed_expression: Some("applyDiscount(100, 'gold')".to_string()),
+                expected_value_or_variant: Some("90".to_string()),
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::High,
+            },
+        ],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Changed line: the gold-tier return value (ReturnValue seam).
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        5,
+        "  return amount * 0.90;",
+        &[owner],
+        &[dual_assertion_test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // The toBe(90) assertion is family-matching (ExactValue for ReturnValue).
+    // The test MUST NOT be dropped due to its toThrow assertion.
+    // MUST stay Exposed (assertion-level filter keeps the matching assertion).
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "RIPR-SPEC-0104 control 4: expected Exposed (assertion-level filter retains \
+         matching ExactValue assertion); got {:?}. \
+         If WeaklyExposed, the fix incorrectly filtered at the test level.",
+        finding.class
+    );
+    Ok(())
+}
+
+/// Unit test for `ts_oracle_kind_matches_seam`: validates the mapping table.
+///
+/// Key invariants (RIPR-SPEC-0104 §3):
+/// - `ExactErrorVariant` (Strong, error-path discriminator) does NOT match
+///   value-family seams (`ReturnValue`, `Predicate`, `FieldConstruction`, `MatchArm`).
+///   This is THE PRIMARY FIX — ExactErrorVariant must not promote a ReturnValue seam.
+/// - `ExactValue` (Strong, value discriminator) does NOT match `ErrorPath` seams.
+/// - `BroadError` is excluded from value-family seams (it is error-domain).
+/// - `MockExpectation` is excluded from value-family and error-path seams.
+/// - For `SideEffect` / `CallDeletion`: all oracle kinds are admitted (RIPR-SPEC-0098
+///   observation guard handles those seams independently).
+/// - `StaticUnknown` probe family is fail-open: all oracle kinds admitted.
+#[test]
+fn spec_0104_ts_oracle_kind_matches_seam_mapping_table() {
+    // ErrorPath family: excludes value/mock oracles.
+    assert!(ts_oracle_kind_matches_seam(
+        &OracleKind::ExactErrorVariant,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(ts_oracle_kind_matches_seam(
+        &OracleKind::BroadError,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(ts_oracle_kind_matches_seam(
+        &OracleKind::Snapshot,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(ts_oracle_kind_matches_seam(
+        &OracleKind::SmokeOnly,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(ts_oracle_kind_matches_seam(
+        &OracleKind::Unknown,
+        &ProbeFamily::ErrorPath
+    ));
+    // Excluded from ErrorPath: strong value and mock oracles.
+    assert!(!ts_oracle_kind_matches_seam(
+        &OracleKind::ExactValue,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(!ts_oracle_kind_matches_seam(
+        &OracleKind::MockExpectation,
+        &ProbeFamily::ErrorPath
+    ));
+    assert!(!ts_oracle_kind_matches_seam(
+        &OracleKind::RelationalCheck,
+        &ProbeFamily::ErrorPath
+    ));
+
+    // Value families: admit value oracles; reject ExactErrorVariant, BroadError, MockExpectation.
+    for value_family in [
+        ProbeFamily::ReturnValue,
+        ProbeFamily::Predicate,
+        ProbeFamily::FieldConstruction,
+        ProbeFamily::MatchArm,
+    ] {
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::ExactValue, &value_family),
+            "{value_family:?} must accept ExactValue"
+        );
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::WholeObjectEquality, &value_family),
+            "{value_family:?} must accept WholeObjectEquality"
+        );
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::Snapshot, &value_family),
+            "{value_family:?} must accept Snapshot"
+        );
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::RelationalCheck, &value_family),
+            "{value_family:?} must accept RelationalCheck"
+        );
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::SmokeOnly, &value_family),
+            "{value_family:?} must admit SmokeOnly (weak oracle, rank below Strong)"
+        );
+        assert!(
+            ts_oracle_kind_matches_seam(&OracleKind::Unknown, &value_family),
+            "{value_family:?} must admit Unknown (absent oracle)"
+        );
+        // THE KEY FIX: ExactErrorVariant must NOT match value-family seams.
+        assert!(
+            !ts_oracle_kind_matches_seam(&OracleKind::ExactErrorVariant, &value_family),
+            "{value_family:?} must reject ExactErrorVariant (error-path discriminator \
+             must not promote a value seam to Exposed)"
+        );
+        assert!(
+            !ts_oracle_kind_matches_seam(&OracleKind::BroadError, &value_family),
+            "{value_family:?} must reject BroadError (error-domain oracle)"
+        );
+        assert!(
+            !ts_oracle_kind_matches_seam(&OracleKind::MockExpectation, &value_family),
+            "{value_family:?} must reject MockExpectation (effect observer)"
+        );
+    }
+
+    // SideEffect / CallDeletion: all oracle kinds admitted (RIPR-SPEC-0098 handles these).
+    for effect_family in [ProbeFamily::SideEffect, ProbeFamily::CallDeletion] {
+        for kind in [
+            OracleKind::ExactValue,
+            OracleKind::ExactErrorVariant,
+            OracleKind::MockExpectation,
+            OracleKind::RelationalCheck,
+            OracleKind::BroadError,
+            OracleKind::Snapshot,
+            OracleKind::SmokeOnly,
+            OracleKind::Unknown,
+        ] {
+            assert!(
+                ts_oracle_kind_matches_seam(&kind, &effect_family),
+                "{effect_family:?} must admit {kind:?} (RIPR-SPEC-0098 handles downgrade)"
+            );
+        }
+    }
+
+    // StaticUnknown is fail-open: accepts all oracle kinds.
+    for kind in [
+        OracleKind::ExactValue,
+        OracleKind::ExactErrorVariant,
+        OracleKind::MockExpectation,
+        OracleKind::RelationalCheck,
+        OracleKind::BroadError,
+        OracleKind::Snapshot,
+        OracleKind::SmokeOnly,
+        OracleKind::Unknown,
+    ] {
+        assert!(
+            ts_oracle_kind_matches_seam(&kind, &ProbeFamily::StaticUnknown),
+            "StaticUnknown must accept {kind:?} (fail-open)"
+        );
+    }
+}

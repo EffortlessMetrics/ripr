@@ -24,10 +24,10 @@
         "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `add`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 1)"},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `return value == a + b + 0`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `add`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 1)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == a + b + 0`.", "local flow reaches returned value: return a + b + 0; (line 2)", "related test tests/math.test.ts:4 add returns sum uses unknown unknown oracle", "missing discriminator return value == a + b + 0: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `add`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == a + b + 0`.", "local flow reaches returned value: return a + b + 0; (line 2)", "related test tests/math.test.ts:4 add returns sum uses unknown unknown oracle", "missing discriminator return value == a + b + 0: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return a + b + 0;","line":2}
       ],

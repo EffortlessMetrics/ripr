@@ -187,6 +187,137 @@ pub(crate) fn ts_observation_guard_limitation(
     )
 }
 
+// ── Family↔oracle-kind matching (RIPR-SPEC-0104) ─────────────────────────────
+
+/// Returns `true` when `oracle_kind` can observe the seam identified by
+/// `probe_family`.
+///
+/// This is the single source of truth for the TS-adapter assertion-level
+/// family↔kind filter. It mirrors `oracle_kind_matches_seam_kind` from
+/// `test_grip_evidence.rs` (which operates on Rust `SeamKind`), adapted for
+/// the TypeScript `ProbeFamily` vocabulary.
+///
+/// ### Mapping table (RIPR-SPEC-0104 §3)
+///
+/// | ProbeFamily | Excluded OracleKinds (Strong-rank only — the honesty fix) |
+/// |---|---|
+/// | `ErrorPath` | `ExactValue`, `RelationalCheck`, `MockExpectation` |
+/// | `ReturnValue`, `Predicate`, `FieldConstruction`, `MatchArm` | `ExactErrorVariant`, `BroadError`, `MockExpectation` |
+/// | `SideEffect`, `CallDeletion` | *(handled by RIPR-SPEC-0098 observation guard — no additional exclusion here)* |
+/// | `StaticUnknown` | *(fail-open — all oracles admitted)* |
+///
+/// ### Design: fail-closed only at the cross-domain seam boundary
+///
+/// The HONESTY BUG addressed by this function is specifically the case where a
+/// **Strong wrong-domain** oracle is credited to a seam whose family it cannot
+/// observe:
+///
+/// - An `ExactErrorVariant` oracle (`.toThrow(DiscountError)`) is an error-path
+///   discriminator. It MUST NOT count as a strong match for a `ReturnValue` or
+///   `Predicate` seam — these seams emit a value, not an error.
+/// - An `ExactValue` oracle (`.toBe(90)`) is a value discriminator. It MUST NOT
+///   count as a strong match for an `ErrorPath` seam — the seam throws, not returns.
+///
+/// ### Composing with RIPR-SPEC-0098 (SideEffect observation guard)
+///
+/// For `SideEffect` and `CallDeletion` families, RIPR-SPEC-0098 already provides
+/// a dedicated observation guard (`ts_changed_value_is_observed`) that correctly
+/// handles the case where a value-shaped `ExactValue` assertion observes the owner
+/// RETURN value (not the call effect). That guard fires in the
+/// `else if strongest_strength >= Strong.rank()` arm of the classifier.
+/// To preserve that path, `ExactValue` is NOT excluded from `SideEffect` /
+/// `CallDeletion` by this function — SPEC-0098 handles those seams independently.
+/// The two specs compose: SPEC-0104 handles cross-domain value↔error exclusion;
+/// SPEC-0098 handles the same-domain but wrong-target SideEffect case.
+///
+/// ### Weak oracle kinds are always admitted
+///
+/// `SmokeOnly`, `Unknown`, `BroadError` (for non-error families),
+/// `RelationalCheck` (for non-error families) are admitted for all concrete
+/// families because they are weak/absent and do NOT contradict any family.
+/// Their rank (Smoke / Unknown / Weak) prevents them from triggering
+/// `Exposed` promotion regardless. Admitting them preserves accurate
+/// per-kind messaging in `weak_oracle_missing_summary`.
+pub(crate) fn ts_oracle_kind_matches_seam(
+    oracle_kind: &OracleKind,
+    probe_family: &ProbeFamily,
+) -> bool {
+    match probe_family {
+        // ErrorPath seams: exclude STRONG VALUE oracles (ExactValue, RelationalCheck)
+        // and MockExpectation.  BroadError, ExactErrorVariant, Snapshot all observe
+        // an error-path change.  SmokeOnly/Unknown are weak and admitted.
+        ProbeFamily::ErrorPath => !matches!(
+            oracle_kind,
+            OracleKind::ExactValue | OracleKind::RelationalCheck | OracleKind::MockExpectation
+        ),
+        // Value-family seams: exclude STRONG ERROR oracle (ExactErrorVariant)
+        // and BroadError, MockExpectation.  ExactValue, WholeObjectEquality,
+        // Snapshot, RelationalCheck, SmokeOnly, Unknown all admitted.
+        // THIS IS THE PRIMARY FIX: ExactErrorVariant must not credit a ReturnValue seam.
+        ProbeFamily::ReturnValue
+        | ProbeFamily::Predicate
+        | ProbeFamily::FieldConstruction
+        | ProbeFamily::MatchArm => !matches!(
+            oracle_kind,
+            OracleKind::ExactErrorVariant | OracleKind::BroadError | OracleKind::MockExpectation
+        ),
+        // SideEffect / CallDeletion: defer to RIPR-SPEC-0098 observation guard.
+        // All oracle kinds admitted here so that `strongest_strength` reflects
+        // the actual oracle rank, letting the observation guard run in the
+        // `else if strongest_strength >= Strong.rank()` arm.
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => true,
+        // Fail-open for genuinely-unknown family: we cannot determine the
+        // match — do not over-correct by blocking a potentially valid oracle.
+        ProbeFamily::StaticUnknown => true,
+    }
+}
+
+/// Compute the strongest oracle kind and strength that MATCHES the changed
+/// seam's probe family, by iterating assertions at the assertion level across
+/// oracle-eligible candidates (RIPR-SPEC-0104).
+///
+/// This is the family-aware replacement for the former per-test max over
+/// `related: Vec<RelatedTest>` (which collapsed each test to one
+/// `oracle_kind` via `strongest_assertion`). The collapsed kind may be
+/// wrong-family (e.g., a test with both `.toThrow(DiscountError)` and
+/// `.toBeGreaterThan(0)` collapses to `ExactErrorVariant` / Strong — but
+/// `ExactErrorVariant` does NOT match a `ReturnValue` seam).
+///
+/// By filtering at the assertion level before taking the max, a multi-assertion
+/// test can still contribute its family-matching assertion even when its
+/// overall-strongest assertion is wrong-family — the anti-over-correction
+/// invariant (RIPR-SPEC-0104 control 4).
+///
+/// Returns `(rank: u8, kind: OracleKind)` where rank is the
+/// `oracle_strength.rank()` of the best matching assertion, and kind is its
+/// `oracle_kind`. Returns `(0, OracleKind::Unknown)` when there are no
+/// oracle-eligible candidates or no family-matching assertion.
+pub(crate) fn strongest_family_matching_oracle(
+    probe_family: &ProbeFamily,
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+) -> (u8, OracleKind) {
+    let mut best_rank: u8 = 0;
+    let mut best_kind = OracleKind::Unknown;
+
+    for candidate in candidates {
+        if !candidate.relation.uses_oracle() {
+            continue;
+        }
+        for assertion in &candidate.test.assertions {
+            if !ts_oracle_kind_matches_seam(&assertion.oracle_kind, probe_family) {
+                continue;
+            }
+            let rank = assertion.oracle_strength.rank();
+            if rank > best_rank {
+                best_rank = rank;
+                best_kind = assertion.oracle_kind.clone();
+            }
+        }
+    }
+
+    (best_rank, best_kind)
+}
+
 /// Classify a changed TypeScript/JavaScript line and return a finding.
 ///
 /// `workspace_root` enforces package-local ownership when `Some`: a test in
@@ -275,16 +406,23 @@ pub(crate) fn classify_change(
         .any(|candidate| candidate.relation.uses_oracle());
     let probe_shape = classify_probe_shape_detail(line_text);
 
-    let strongest_strength = related
-        .iter()
-        .map(|test| test.oracle_strength.rank())
-        .max()
-        .unwrap_or(0);
-    let strongest_kind = related
-        .iter()
-        .max_by_key(|test| test.oracle_strength.rank())
-        .map(|test| test.oracle_kind.clone())
-        .unwrap_or(OracleKind::Unknown);
+    // RIPR-SPEC-0104: compute strongest_strength/strongest_kind at the
+    // ASSERTION level, filtered by probe_family↔oracle_kind match.
+    //
+    // The former approach iterated `related: Vec<RelatedTest>` whose oracle_kind
+    // was already collapsed to the test's overall-strongest assertion via
+    // `strongest_assertion()`. That collapsed kind may be wrong-family:
+    // e.g. a test with `.toThrow(DiscountError)` (Strong, ErrorPath-matching)
+    // AND `.toBeGreaterThan(0)` (Weak, ReturnValue-matching) collapses to
+    // `ExactErrorVariant/Strong`, which then falsely promoted a ReturnValue
+    // seam to `Exposed / strong_oracle_observed`.
+    //
+    // We now iterate `related_candidates` (which carry the full `.test.assertions`
+    // slice) and filter each assertion by `ts_oracle_kind_matches_seam`. This
+    // lets a multi-assertion test contribute its family-matching assertion even
+    // when its overall-strongest assertion is wrong-family (anti-over-correction).
+    let (strongest_strength, strongest_kind) =
+        strongest_family_matching_oracle(&probe_shape.family, &related_candidates);
     let mock_payload_oracle = related_mock_payload_oracle(&related);
 
     // Move flow_sink computation here so it is available to the observation

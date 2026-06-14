@@ -37,7 +37,7 @@ Evidence
   - reach yes: 1 related test(s) found for owner `add`
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == a + b + 0`.
   - local flow reaches returned value: return a + b + 0; (line 2)
   - related test tests/math.test.ts:4 add returns sum uses unknown unknown oracle

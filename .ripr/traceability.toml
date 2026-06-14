@@ -5874,3 +5874,25 @@ outputs = [
 metrics = [
   "error_seam_exemplar_honesty",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0104"
+name = "TypeScript oracle seam-family match (assertion-level)"
+spec = "docs/specs/RIPR-SPEC-0104-typescript-oracle-seam-family-match.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs::spec_0104_repro_cross_family_error_oracle_does_not_promote_return_value_seam",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::spec_0104_no_over_correct_return_value_with_exact_value_stays_exposed",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::spec_0104_no_over_correct_error_path_with_exact_error_variant_stays_exposed",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::spec_0104_single_test_both_assertions_retains_matching_family_assertion_stays_exposed",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::spec_0104_ts_oracle_kind_matches_seam_mapping_table",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/language/typescript/classifier.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0104-typescript-oracle-seam-family-match.md",
+]
+metrics = [
+  "typescript_oracle_seam_family_honesty",
+]

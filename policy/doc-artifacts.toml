@@ -441,3 +441,11 @@ path = "docs/specs/RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Honesty fix for Rust primary-language issue #1168 (slice 1): kind-gate the exemplar selector so nearest_strong_test_to_imitate returns null for an ErrorVariant seam when no related Strong test has ExactErrorVariant oracle kind, rather than nominating a misleading success-path exact_value test; oracle_kind_matches_seam_kind extracted as single source of truth; 7 unit controls; no schema bump; grip class unchanged."
+
+[[artifact]]
+id = "RIPR-SPEC-0104"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0104-typescript-oracle-seam-family-match.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "TypeScript honesty fix for issue #1246: assertion-level family↔oracle-kind filter (ts_oracle_kind_matches_seam + strongest_family_matching_oracle) so a cross-family Strong oracle (ExactErrorVariant on .toThrow) cannot promote a ReturnValue/Predicate seam to Exposed; SideEffect/CallDeletion families defer to RIPR-SPEC-0098 observation guard (two specs compose); 4 behavioral controls including single-test-both-assertions over-correction guard; mapping table unit test; no schema bump; no new class; TS stays preview."

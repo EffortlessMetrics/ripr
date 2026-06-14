@@ -37,7 +37,7 @@ Evidence
   - reach yes: 1 related test(s) found for owner `buildUrl`
   - infection unknown: TypeScript preview adapter does not yet model infection.
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == `${base}/${path}/``.
   - local flow reaches returned value: return `${base}/${path}/`; (line 2)
   - related test tests/fetch.test.ts:4 buildUrl joins base and path uses unknown unknown oracle
