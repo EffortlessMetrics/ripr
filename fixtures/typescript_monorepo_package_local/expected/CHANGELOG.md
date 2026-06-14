@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive typescript_test_runner evidence field (TS must-use roadmap item 3)
+
+Command:
+`cargo xtask goldens bless typescript_monorepo_package_local --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -59,6 +59,10 @@ impl PackageDiscovery {
         }
         if let Some(fw) = &self.framework_hint {
             lines.push(format!("typescript_framework_hint: {}", fw.as_str()));
+            // `typescript_test_runner` is the detected test framework name — a
+            // separate, dedicated evidence field (additive) that later steps
+            // use to infer verify commands without re-parsing the manifest.
+            lines.push(format!("typescript_test_runner: {}", fw.as_str()));
         }
         if let Some(runner) = &self.runner_hint {
             lines.push(format!("typescript_runner_hint: {}", runner.as_str()));
@@ -87,6 +91,8 @@ pub(crate) enum TsFramework {
     Bun,
     Mocha,
     NodeTest,
+    /// Ava test runner (<https://github.com/avajs/ava>).
+    Ava,
 }
 
 impl TsFramework {
@@ -97,6 +103,7 @@ impl TsFramework {
             Self::Bun => "bun",
             Self::Mocha => "mocha",
             Self::NodeTest => "node_test",
+            Self::Ava => "ava",
         }
     }
 }
@@ -340,7 +347,16 @@ fn find_workspace_root(pkg_root: &Path, stop_at: &Path) -> Option<PathBuf> {
 
 /// Detect the test framework from `package.json` content.
 ///
-/// Priority (first match wins): jest > vitest > bun-types > mocha > @types/node
+/// Priority (first match wins): jest > vitest > bun-types > ava > mocha > @types/node.
+///
+/// Two complementary signals are checked:
+/// 1. `devDependencies` / `dependencies` keys — evidence-backed dep names.
+/// 2. `scripts.test` value — first known framework name found in the script
+///    command wins (handles composite scripts like `"xo && npm run build && ava"`).
+///
+/// Dependency signal wins when present; script-name fallback activates only
+/// when no dep match is found.  Fail-closed: `None` when neither signal
+/// matches a known framework.
 fn detect_framework(pkg_json: &str) -> Option<TsFramework> {
     // Gather dep names from dependencies and devDependencies sections.
     // We use simple string matching rather than full JSON parsing to keep
@@ -354,6 +370,7 @@ fn detect_framework(pkg_json: &str) -> Option<TsFramework> {
         lower.contains(&pattern)
     };
 
+    // ── Dependency-signal priority (most reliable) ──────────────────────────
     if has_dep("jest") || has_dep("@types/jest") || has_dep("ts-jest") || has_dep("babel-jest") {
         return Some(TsFramework::Jest);
     }
@@ -363,13 +380,89 @@ fn detect_framework(pkg_json: &str) -> Option<TsFramework> {
     if has_dep("bun-types") {
         return Some(TsFramework::Bun);
     }
+    if has_dep("ava") {
+        return Some(TsFramework::Ava);
+    }
     if has_dep("mocha") || has_dep("@types/mocha") {
         return Some(TsFramework::Mocha);
     }
     if has_dep("@types/node") {
         return Some(TsFramework::NodeTest);
     }
+
+    // ── Script-name fallback (handles composite scripts like "xo && ava") ───
+    // Only activates when no dep match was found above (fail-closed).
+    detect_framework_from_test_script(pkg_json)
+}
+
+/// Secondary framework detector: scan `scripts.test` for known framework
+/// invocation names.  Called only when dep-key detection yields `None`.
+///
+/// Inspects the raw (case-folded) script command; first confident match wins.
+/// "ava" is the primary new target (Ky: `"xo && npm run build && ava"`),
+/// but all known frameworks are checked so the fallback is symmetric.
+fn detect_framework_from_test_script(pkg_json: &str) -> Option<TsFramework> {
+    let lower = pkg_json.to_lowercase();
+    let test_script = extract_test_script_value(&lower)?;
+
+    // Check for whole-word occurrences using simple word-boundary heuristics
+    // (space/start/end/& before and after).  Avoid matching e.g. "java" for
+    // "jest" or "avante" for "ava".
+    let script_has_word = |word: &str| -> bool {
+        let mut haystack: &str = test_script.as_str();
+        while let Some(pos) = haystack.find(word) {
+            let before_ok = pos == 0
+                || haystack
+                    .as_bytes()
+                    .get(pos - 1)
+                    .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-');
+            let after = pos + word.len();
+            let after_ok = after >= haystack.len()
+                || haystack
+                    .as_bytes()
+                    .get(after)
+                    .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-');
+            if before_ok && after_ok {
+                return true;
+            }
+            haystack = &haystack[pos + 1..];
+        }
+        false
+    };
+
+    if script_has_word("jest") {
+        return Some(TsFramework::Jest);
+    }
+    if script_has_word("vitest") {
+        return Some(TsFramework::Vitest);
+    }
+    if script_has_word("ava") {
+        return Some(TsFramework::Ava);
+    }
+    if script_has_word("mocha") {
+        return Some(TsFramework::Mocha);
+    }
+    // "node --test" or "node:test" patterns
+    if test_script.contains("node --test") || test_script.contains("node:test") {
+        return Some(TsFramework::NodeTest);
+    }
+    // "bun test" pattern (script-only; dep signal already caught bun-types above)
+    if test_script.contains("bun test") || test_script.starts_with("bun ") {
+        return Some(TsFramework::Bun);
+    }
     None
+}
+
+/// Extract the lowercased value of `scripts.test` from a package.json string.
+///
+/// Returns `None` when the key is absent or the value is not a quoted string.
+fn extract_test_script_value(lower_pkg_json: &str) -> Option<String> {
+    let key_idx = lower_pkg_json.find("\"test\":")?;
+    let after_key = &lower_pkg_json[key_idx + "\"test\":".len()..];
+    let trimmed = after_key.trim_start();
+    let inner = trimmed.strip_prefix('"')?;
+    let end = inner.find('"')?;
+    Some(inner[..end].to_string())
 }
 
 /// Detect the runner from `scripts.test` in `package.json`.
@@ -377,14 +470,7 @@ fn detect_runner_from_scripts(pkg_json: &str) -> Option<TsRunner> {
     // Look for the "test" script entry.  We search for `"test":` then extract
     // the command string that follows.
     let lower = pkg_json.to_lowercase();
-    let test_script_idx = lower.find("\"test\":")?;
-    let after_key = &lower[test_script_idx + "\"test\":".len()..];
-    // Skip whitespace.
-    let trimmed = after_key.trim_start();
-    // Expect a quoted string next.
-    let inner = trimmed.strip_prefix('"')?;
-    let end = inner.find('"')?;
-    let script = &inner[..end];
+    let script = extract_test_script_value(&lower)?;
 
     if script.contains("bun ") || script.starts_with("bun") {
         return Some(TsRunner::Bun);
@@ -479,6 +565,7 @@ pub(crate) fn verify_command_for_discovery(
         Some(TsFramework::Vitest) => format!("vitest run {file_str}"),
         Some(TsFramework::Jest) => format!("jest {file_str}"),
         Some(TsFramework::NodeTest) => format!("node --test {file_str}"),
+        Some(TsFramework::Ava) => format!("ava {file_str}"),
         // Mocha does not have a simple file-target form in the spec table;
         // fall through to runner fallback.
         Some(TsFramework::Mocha) | None => {
@@ -621,6 +708,98 @@ mod tests {
     fn detect_framework_node_test() {
         let result = detect_framework(r#"{"devDependencies":{"@types/node":"^20.0.0"}}"#);
         assert_eq!(result, Some(TsFramework::NodeTest));
+    }
+
+    #[test]
+    fn detect_framework_ava_from_dev_dep() {
+        let result =
+            detect_framework(r#"{"devDependencies":{"ava":"^6.0.0","typescript":"^5.0.0"}}"#);
+        assert_eq!(result, Some(TsFramework::Ava));
+    }
+
+    #[test]
+    fn detect_framework_ava_from_script_composite_ky_pattern() {
+        // Ky-style composite script: ava is the runner but not a dep key.
+        let pkg = r#"{"name":"ky","scripts":{"test":"xo && npm run build && ava"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, Some(TsFramework::Ava));
+    }
+
+    #[test]
+    fn detect_framework_ava_from_script_only() {
+        // ava in scripts.test only (no devDep)
+        let pkg = r#"{"scripts":{"test":"ava"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, Some(TsFramework::Ava));
+    }
+
+    #[test]
+    fn detect_framework_dep_wins_over_script_for_jest_with_ava_script() {
+        // jest devDep wins even if ava appears in script (dep-key priority)
+        let pkg = r#"{"devDependencies":{"jest":"^29.0.0"},"scripts":{"test":"ava"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, Some(TsFramework::Jest));
+    }
+
+    #[test]
+    fn detect_framework_no_match_no_guess() {
+        // No known framework dep or script → fail-closed, no guess
+        let pkg = r#"{"scripts":{"test":"xo && npm run build"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, None, "must not guess a runner that isn't there");
+    }
+
+    #[test]
+    fn detect_framework_vitest_from_script_only() {
+        let pkg = r#"{"scripts":{"test":"vitest run"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, Some(TsFramework::Vitest));
+    }
+
+    #[test]
+    fn detect_framework_node_test_from_script() {
+        let pkg = r#"{"scripts":{"test":"node --test"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(result, Some(TsFramework::NodeTest));
+    }
+
+    #[test]
+    fn evidence_lines_emits_typescript_test_runner_when_framework_detected() {
+        // When framework_hint is Some, evidence_lines() must include
+        // typescript_test_runner: <name> as an additive field.
+        let discovery = PackageDiscovery {
+            package_root: Some(PathBuf::from(".")),
+            workspace_root: Some(PathBuf::from(".")),
+            framework_hint: Some(TsFramework::Ava),
+            runner_hint: None,
+            confidence: TsPackageConfidence::Medium,
+            limitations: Vec::new(),
+        };
+        let lines = discovery.evidence_lines();
+        assert!(
+            lines.iter().any(|l| l == "typescript_test_runner: ava"),
+            "expected typescript_test_runner: ava in evidence lines; got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evidence_lines_no_typescript_test_runner_when_no_framework() {
+        // When framework_hint is None, no typescript_test_runner line is emitted.
+        let discovery = PackageDiscovery {
+            package_root: None,
+            workspace_root: None,
+            framework_hint: None,
+            runner_hint: None,
+            confidence: TsPackageConfidence::None,
+            limitations: vec![TsPackageLimitation::PackageRootNotFound],
+        };
+        let lines = discovery.evidence_lines();
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.starts_with("typescript_test_runner: ")),
+            "must not emit typescript_test_runner when no framework: {lines:?}"
+        );
     }
 
     // ── Unit tests: runner detection ──────────────────────────────────────────
@@ -898,6 +1077,13 @@ mod tests {
         let discovery = make_discovery(Some("."), Some(TsFramework::NodeTest), Some(TsRunner::Npm));
         let result = verify_command_for_discovery(&discovery, Path::new("tests/core.test.mjs"));
         assert_eq!(result, Some("node --test tests/core.test.mjs".to_string()));
+    }
+
+    #[test]
+    fn verify_command_framework_ava_produces_ava_command() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Ava), None);
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(result, Some("ava tests/math.test.ts".to_string()));
     }
 
     #[test]

@@ -47,3 +47,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+additive typescript_test_runner evidence field (TS must-use roadmap item 3)
+
+Command:
+`cargo xtask goldens bless ts_dynamic_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

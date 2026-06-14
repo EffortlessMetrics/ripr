@@ -199,9 +199,14 @@ impl LanguageAdapter for TypeScriptAdapter {
                         finding
                             .evidence
                             .push(format!("typescript_verify_command: {cmd}"));
-                    } else {
-                        // No command resolved — emit the named limitation so
-                        // the card surface shows the correct gap.
+                    } else if pkg_discovery.framework_hint.is_none() {
+                        // No command resolved AND no framework detected — emit
+                        // the named limitation so the card surface shows the
+                        // correct gap.  When a framework IS detected (e.g. ava)
+                        // the `typescript_test_runner: <name>` evidence line was
+                        // already injected via `discovery_evidence` above;
+                        // suppress the unresolved limitation so consumers see the
+                        // detected runner name instead of a false negative.
                         finding.evidence.push(
                             "typescript_package_limitation: typescript_test_runner_unresolved"
                                 .to_string(),

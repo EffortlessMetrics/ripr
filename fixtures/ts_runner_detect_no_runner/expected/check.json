@@ -2,37 +2,37 @@
   "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
-  "root": "fixtures/ts_pkg_discovery_single_package/input",
+  "root": "fixtures/ts_runner_detect_no_runner/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_math.ts:typescript_preview:025f98d6",
+      "id": "probe:src_util.ts:typescript_preview:b86d22a2",
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_math.ts:typescript_preview:025f98d6",
+        "id": "probe:src_util.ts:typescript_preview:b86d22a2",
         "family": "return_value",
         "delta": "value",
-        "file": "src/math.ts",
+        "file": "src/util.ts",
         "line": 2,
-        "expression": "    return a + b + 0;",
-        "owner": "typescript:src/math.ts::add"
+        "expression": "    return String(value) + '';",
+        "owner": "typescript:src/util.ts::format"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `add`"},
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `format`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `add`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return a + b + 0; (line 2)", "related test tests/math.test.ts:3 add returns sum uses strong exact value oracle: expect(...).toBe(...)"],
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `format`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return String(value) + ''; (line 2)", "related test tests/util.test.ts:4 format returns string uses strong exact value oracle: expect(...).toBe(...)"],
       "flow_sinks": [
-        {"kind":"return_value","text":"return a + b + 0;","line":2}
+        {"kind":"return_value","text":"return String(value) + '';","line":2}
       ],
-      "evidence": ["owner: add", "typescript_oracle_observed: result", "typescript_oracle_expected: 3", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/math.test.ts:5", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/math.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_math.ts:typescript_preview:025f98d6;owner=add", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_test_runner: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: jest tests/math.test.ts"],
-      "missing": ["Related test reaches `add` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "evidence": ["owner: format", "typescript_oracle_observed: result", "typescript_oracle_expected: '42'", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/util.test.ts:6", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/util.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_util.ts:typescript_preview:b86d22a2;owner=format", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_package_confidence: low", "typescript_package_limitation: typescript_framework_hint_unresolved", "typescript_package_limitation: typescript_runner_hint_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Related test reaches `format` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "assertion_texts": {
       },
       "activation": {
@@ -48,9 +48,9 @@
       "related_tests_total": 1,
       "related_tests": [
         {
-          "name": "add returns sum",
-          "file": "tests/math.test.ts",
-          "line": 3,
+          "name": "format returns string",
+          "file": "tests/util.test.ts",
+          "line": 4,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
           "oracle": "expect(...).toBe(...)",
@@ -62,7 +62,7 @@
         "authority_boundary": "preview_advisory_only",
         "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
-        "changed_behavior": "return_value changed at src/math.ts:2: `return a + b + 0;`",
+        "changed_behavior": "return_value changed at src/util.ts:2: `return String(value) + '';`",
         "language": "typescript",
         "language_status": "preview",
         "limits": [
@@ -73,13 +73,13 @@
         "missing_discriminator": null,
         "oracle_kind": "exact_value",
         "oracle_strength": "strong",
-        "owner": "add",
+        "owner": "format",
         "owner_kind": "function",
         "probe_family": "return_value",
         "related_test": {
-          "file": "tests/math.test.ts",
-          "line": 3,
-          "name": "add returns sum"
+          "file": "tests/util.test.ts",
+          "line": 4,
+          "name": "format returns string"
         },
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
@@ -87,7 +87,7 @@
         "static_limits": [],
         "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
         "verify": {
-          "command": "jest tests/math.test.ts"
+          "command": null
         },
         "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
       },
@@ -100,14 +100,14 @@
         "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
-            "file": "src/math.ts",
+            "file": "src/util.ts",
             "kind": "typescript_preview_probe",
             "leg": null,
             "line": 2,
-            "owner": "add",
-            "raw": "file=src/math.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_math.ts:typescript_preview:025f98d6;owner=add",
+            "owner": "format",
+            "raw": "file=src/util.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_util.ts:typescript_preview:b86d22a2;owner=format",
             "sample": null,
-            "source_id": "probe:src_math.ts:typescript_preview:025f98d6"
+            "source_id": "probe:src_util.ts:typescript_preview:b86d22a2"
           }
         ],
         "repair_packet_ready": false,
@@ -129,7 +129,7 @@
     {
       "language": "typescript",
       "file_count": 1,
-      "sample_paths": ["src/math.ts"],
+      "sample_paths": ["src/util.ts"],
       "enabled": true,
       "analyzed": true,
       "category": "preview_language_advisory",

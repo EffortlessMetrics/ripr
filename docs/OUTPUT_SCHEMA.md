@@ -588,9 +588,18 @@ The evidence-first fields are additive in schema `0.2`:
   - `typescript_workspace_root: <path>` — nearest ancestor with a
     `pnpm-workspace.yaml` or a `package.json` `"workspaces"` field; falls
     back to `package_root`. Absent when `package_root` is unresolved.
-  - `typescript_framework_hint: <jest|vitest|bun|mocha|node_test>` — test
+  - `typescript_framework_hint: <jest|vitest|bun|mocha|node_test|ava>` — test
     framework detected from `package.json` deps/devDeps. Absent when no
     evidence-backed framework is found.
+  - `typescript_test_runner: <jest|vitest|bun|mocha|node_test|ava>` — dedicated
+    evidence field for the detected test runner name. Always co-emitted with
+    `typescript_framework_hint` when a framework is detected. Absent when no
+    framework is found (fail-closed). Detected from `devDependencies`,
+    `dependencies`, and `scripts.test` value (script-name fallback handles
+    composite scripts like `"xo && npm run build && ava"`). Additive: does not
+    change any existing field. A later item uses this field to infer verify
+    commands for runners not yet handled by `verify_command_for_discovery`
+    (TS must-use roadmap item 3; RIPR-SPEC-0085).
   - `typescript_runner_hint: <bun|pnpm|yarn|npm>` — package runner detected
     from lockfile presence or `scripts.test`. Absent when no evidence-backed
     runner is found.
@@ -614,7 +623,7 @@ The evidence-first fields are additive in schema `0.2`:
     emitted, `typescript_preview_card.verify.command` reflects the same value.
     Command forms (RIPR-SPEC-0085 PR 3):
     `jest <file>`, `vitest run <file>`, `bun test <file>`,
-    `node --test <file>`, `npm test -- <file>`, `pnpm test -- <file>`,
+    `ava <file>`, `node --test <file>`, `npm test -- <file>`, `pnpm test -- <file>`,
     `yarn test <file>`.
   - `typescript_limitation: <name>` — ADDITIVE evidence line (RIPR-SPEC-0085
     §PR4, named limitation taxonomy). Emitted only when a REAL detected
