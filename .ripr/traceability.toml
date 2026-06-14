@@ -5770,3 +5770,31 @@ metrics = [
   "tsconfig_alias_multi_entry_fail_closed",
   "tsconfig_alias_non_owner_no_disclosure",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0100"
+name = "LSP related-test codeLens"
+spec = "docs/specs/RIPR-SPEC-0100-lsp-related-test-codelens.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::capabilities_advertise_code_lens_provider",
+  "crates/ripr/src/lsp/tests.rs::backend_code_lens_handler_delegates_to_lens_helper",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_no_snapshot_emits_nothing",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_filters_to_requested_file",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_zero_related_tests_is_honest",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_reports_real_related_test_count",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_preview_finding_softens",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_uncertain_class_does_not_claim_grip",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_static_language_clean",
+]
+code = [
+  "crates/ripr/src/lsp/lens.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0100-lsp-related-test-codelens.md",
+]
+metrics = [
+  "lsp_code_lens_advisory_count_per_document",
+]

@@ -9,6 +9,7 @@ use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
+use super::lens::code_lens_response;
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -36,10 +37,10 @@ use std::time::Instant;
 use tokio::sync::Mutex as AsyncMutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
-    CodeActionParams, CodeActionResponse, Diagnostic, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    ExecuteCommandParams, Hover, HoverParams, InitializeParams, InitializeResult, LSPAny,
-    MessageType, Uri,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Diagnostic,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams, InitializeParams,
+    InitializeResult, LSPAny, MessageType, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -553,6 +554,24 @@ impl LanguageServer for Backend {
             .ok()
             .and_then(|value| value.clone());
         Ok(Some(code_action_response(&params, snapshot.as_ref())))
+    }
+
+    /// Advisory `textDocument/codeLens` handler (RIPR-SPEC-0099).
+    ///
+    /// Locks `latest_analysis` read-only exactly like `hover_for_position` and
+    /// `code_action`, then delegates to the pure `code_lens_response` helper in
+    /// `lsp/lens.rs`. Returns `Some([])` (not `None`) so the client removes any
+    /// stale lenses from a previous snapshot. Returns an empty Vec when no
+    /// snapshot is available — absence of analysis is not absence of tests, and
+    /// we must not fabricate a 0-count lens.
+    async fn code_lens(&self, params: CodeLensParams) -> LspResult<Option<Vec<CodeLens>>> {
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        let uri = &params.text_document.uri;
+        Ok(Some(code_lens_response(uri, snapshot.as_ref())))
     }
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {

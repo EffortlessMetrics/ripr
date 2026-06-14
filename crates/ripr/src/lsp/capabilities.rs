@@ -6,8 +6,8 @@ use super::{
 };
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
-    CodeActionProviderCapability, ExecuteCommandOptions, HoverProviderCapability, InitializeParams,
-    InitializeResult, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    CodeActionProviderCapability, CodeLensOptions, ExecuteCommandOptions, HoverProviderCapability,
+    InitializeParams, InitializeResult, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
     TextDocumentSyncKind,
 };
 
@@ -17,6 +17,12 @@ pub(super) fn initialize_result() -> InitializeResult {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            // Advisory codeLens: resolve is disabled; lenses are display-only
+            // text hints citing the cached related-test count. No resolve
+            // round-trip is needed (RIPR-SPEC-0099).
+            code_lens_provider: Some(CodeLensOptions {
+                resolve_provider: Some(false),
+            }),
             execute_command_provider: Some(ExecuteCommandOptions {
                 commands: vec![
                     REFRESH_COMMAND.to_string(),
