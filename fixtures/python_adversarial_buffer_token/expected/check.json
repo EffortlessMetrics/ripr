@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_buffer_token/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pack.py:python_preview:cfc61771",
+      "canonical_gap_id": "gap:python:src/pack.py:pack:predicate_boundary:predicate:len_buffer<=limit",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pack.py:pack:predicate_boundary:predicate:len_buffer<=limit",
+        "language": "python",
+        "file": "src/pack.py",
+        "owner": "pack",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "len_buffer<=limit"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pack.py:python_preview:cfc61771",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pack.py",
+        "line": 3,
+        "expression": "    if len(buffer) <= limit:",
+        "owner": "python:src/pack.py::pack"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `pack`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `pack`", "infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if len(buffer) <= limit: (line 3)", "related test tests/test_pack.py:4 test_pack_returns_list uses strong exact value oracle: assert buffered_output == [1, 2]", "missing discriminator buffer == limit: changed Python equality-boundary at line 3 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if len(buffer) <= limit:","line":3}
+      ],
+      "evidence": ["owner: pack", "owner_kind: function", "missing_discriminator: buffer == limit", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pack.py", "suggested_test_name: test_pack_returns_list", "suggested_test_node_id: tests/test_pack.py::test_pack_returns_list", "suggested_verify_command: pytest tests/test_pack.py::test_pack_returns_list", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_pack_returns_list)", "test_verify_command: pytest tests/test_pack.py::test_pack_returns_list (test_pack_returns_list)", "related_test_relation: syntactic_call (test_pack_returns_list)", "test_oracle: exact_value strong (test_pack_returns_list)"],
+      "missing": ["A strong Python oracle reaches `pack`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "buffer == limit",
+            "reason": "changed Python equality-boundary at line 3 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if len(buffer) <= limit:","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "buffer == limit",
+          "reason": "changed Python equality-boundary at line 3 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if len(buffer) <= limit:","line":3}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_pack_returns_list",
+          "file": "tests/test_pack.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert buffered_output == [1, 2]"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_pack.py",
+        "suggested_test_name": "test_pack_returns_list",
+        "suggested_test_node_id": "tests/test_pack.py::test_pack_returns_list",
+        "verify_command": "pytest tests/test_pack.py::test_pack_returns_list",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/pack.py:pack:predicate_boundary:predicate:len_buffer<=limit",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "pack",
+        "changed_behavior": "predicate_boundary changed at src/pack.py:3: `if len(buffer) <= limit:`",
+        "current_test_evidence": "tests/test_pack.py:4 test_pack_returns_list currently has oracle_strength=strong, oracle_kind=exact_value: assert buffered_output == [1, 2]",
+        "missing_discriminator": "buffer == limit",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `buffer == limit`. Keep the equality case as the minimum repair; optional pytest parameterization can add `limit - 1`, `limit`, and `limit + 1` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `buffer == limit` first. Optional pytest shape: @pytest.mark.parametrize(\"buffer, expected\", [(limit - 1, ...), (limit, ...), (limit + 1, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_pack.py",
+          "test_name": "test_pack_returns_list",
+          "pytest_node_id": "tests/test_pack.py::test_pack_returns_list"
+         },
+        "verify": {
+          "command": "pytest tests/test_pack.py::test_pack_returns_list",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `buffer == limit`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `buffer == limit`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "len, buffer, limit",
+      "observed_sink": "assert buffered_output == [1, 2]",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/pack.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+diff --git a/src/notifier.py b/src/notifier.py
+index 0000000..1111111 100644
+--- a/src/notifier.py
++++ b/src/notifier.py
+@@ -1,2 +1,2 @@
+ def send_alert(client, level):
+-    return client.post("/alerts", {"level": level, "priority": "high"})
++    return client.post("/alerts", {"level": level, "priority": "critical"})

@@ -1,0 +1,143 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_mock_call_not_value/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_notifier.py:python_preview:3c36f1be",
+      "canonical_gap_id": "gap:python:src/notifier.py:send_alert:return_value:return_value:client.post/alerts_level_level_priority_critical",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/notifier.py:send_alert:return_value:return_value:client.post/alerts_level_level_priority_critical",
+        "language": "python",
+        "file": "src/notifier.py",
+        "owner": "send_alert",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "client.post/alerts_level_level_priority_critical"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_notifier.py:python_preview:3c36f1be",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/notifier.py",
+        "line": 2,
+        "expression": "    return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+        "owner": "python:src/notifier.py::send_alert"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `send_alert`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_alert`", "infection yes: Changed Python return expression can alter the owner return value: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.", "local flow reaches returned value: return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"}) (line 2)", "related test tests/test_notifier.py:6 test_send_alert_calls_post uses medium mock expectation oracle: client.post.assert_called_once()", "missing discriminator return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"}): changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
+      ],
+      "evidence": ["owner: send_alert", "owner_kind: function", "missing_discriminator: return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifier.py", "suggested_test_name: test_send_alert_calls_post", "suggested_test_node_id: tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_send_alert_calls_post)", "test_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post (test_send_alert_calls_post)", "related_test_relation: syntactic_call (test_send_alert_calls_post)", "test_oracle: mock_expectation medium (test_send_alert_calls_post)", "test_oracle_shape: mock_expectation (test_send_alert_calls_post)"],
+      "missing": ["Related Python test reaches `send_alert` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the returned value."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+            "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+          "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_send_alert_calls_post",
+          "file": "tests/test_notifier.py",
+          "line": 6,
+          "oracle_strength": "medium",
+          "oracle_kind": "mock_expectation",
+          "oracle": "client.post.assert_called_once()"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_notifier.py",
+        "suggested_test_name": "test_send_alert_calls_post",
+        "suggested_test_node_id": "tests/test_notifier.py::test_send_alert_calls_post",
+        "verify_command": "pytest tests/test_notifier.py::test_send_alert_calls_post",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/notifier.py:send_alert:return_value:return_value:client.post/alerts_level_level_priority_critical",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "send_alert",
+        "changed_behavior": "return_value changed at src/notifier.py:2: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`",
+        "current_test_evidence": "tests/test_notifier.py:6 test_send_alert_calls_post currently has oracle_strength=medium, oracle_kind=mock_expectation: client.post.assert_called_once()",
+        "missing_discriminator": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_notifier.py",
+          "test_name": "test_send_alert_calls_post",
+          "pytest_node_id": "tests/test_notifier.py::test_send_alert_calls_post"
+         },
+        "verify": {
+          "command": "pytest tests/test_notifier.py::test_send_alert_calls_post",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "mock_expectation",
+      "oracle_strength": "medium",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "client, post, alerts, level, priority, critical, /alerts",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/notifier.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

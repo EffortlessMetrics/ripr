@@ -229,3 +229,36 @@ commands = [
   "cargo xtask check-public-api",
   "cargo xtask check-pr",
 ]
+
+[[work_item]]
+id = "eval/python-adversarial-false-exposed-guards-v1"
+status = "done"
+branch = "dogfood/py-adversarial-false-exposed-panel"
+acceptance = "DONE 2026-06-14 (v1 GUARD SEEDING — NOT the whole adversarial program). Seeded the adversarial false-exposed guards as end-to-end golden fixtures that PIN conservative (non-exposed) classification: python_adversarial_buffer_token (token coincidence buffer⊂buffered_output stays weakly_exposed/orthogonal end-to-end — a #1224 regression guard at the fixture level) and python_adversarial_mock_call_not_value (a mock assert_called_once observes the CALL not the changed return value; mock_expectation/medium never reaches the exposed branch). Both verified against the real binary, blessed, goldens+fixture-contracts green. FOUND a live false-exposed building the same-method-different-class case — split to analysis/python-false-exposed-attribute-call-owner-name (do NOT pin a bug). The broader panel is now MORE important, not complete — see eval/python-adversarial-false-exposed-panel (v2)."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-adversarial-false-exposed-panel"
+status = "ready"
+branch = "dogfood/py-adversarial-false-exposed-panel-v2"
+acceptance = "Expand the adversarial false-exposed panel beyond the v1 guards (eval/python-adversarial-false-exposed-guards-v1). Add same-token/different-owner methods, same method name on different classes, owner-name coincidence, nearby unrelated strong oracles, mock/call assertions that observe calls but not changed values, and framework-dispatch traps — each a pinned should-stay-conservative golden. The panel measures silent over-credit (false-exposed) separately from visible false-actionable noise. Standing requirement: support-tier promotion gates on 0 known adversarial false-exposed in the current panel — natural sweeps cannot certify the silent class (see docs/LEARNINGS.md § Token coincidence)."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-false-exposed-attribute-call-owner-name"
+status = "next"
+branch = "fix/py-false-exposed-attribute-call-owner-name"
+acceptance = "HIGH PRIORITY — close a LIVE analyzer false-exposed found 2026-06-14 by the v1 guards. This is an ANALYZER bug, not just an eval finding. Repro: owner `TokenValidator.validate` (src/auth.py) changed `token` -> `token.strip()`; the ONLY related test `test_billing_validate` tests a DIFFERENT class `PaymentProcessor.validate` (src/billing.py), never importing or naming TokenValidator. ripr reads `exposed` (summary.exposed=1). Chain: (1) body_calls_owner links a syntactic_call via contains_any_attribute_call(body, owner.name) — a bare `.validate(` with ANY receiver; (2) classify_sink_alignment credits oracle_alignment=direct / strong_oracle_observes_owner_name because the strong `== True` oracle text contains the owner's BARE METHOD-NAME token `validate`. Fix: for method/classmethod owners, bare method-name overlap or any `.validate(` receiver is NOT enough to credit `exposed` — require owner IDENTITY evidence (owner-class token observed, import/alias of the owner class, inline construct call, local binding, or a receiver statically bound to the owner). Else downgrade to weakly_exposed/orthogonal. Trades a little false-actionable to close a false-exposed (contract-prioritized). REQUIRES careful golden review — must PRESERVE python_strong_oracle (free-function exact-value stays exposed), python_cross_file_construct_call (#1228 inline construct stays exposed), python_adversarial_buffer_token (#1224 guard), and python_local_callable_binding (#1242 weakly_exposed/smoke). Then the same-method fixture (repro under target/ripr/found-false-exposed/) flips to weakly_exposed and is added as a pinned guard."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]

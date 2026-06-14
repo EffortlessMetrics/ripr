@@ -1,0 +1,11 @@
+diff --git a/src/pack.py b/src/pack.py
+index 0000000..1111111 100644
+--- a/src/pack.py
++++ b/src/pack.py
+@@ -1,5 +1,5 @@
+ def pack(items, limit):
+     buffer = list(items)
+-    if len(buffer) < limit:
++    if len(buffer) <= limit:
+         return buffer
+     return buffer[:limit]
