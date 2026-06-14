@@ -213,6 +213,21 @@ impl LanguageAdapter for TypeScriptAdapter {
                         finding
                             .evidence
                             .push(format!("typescript_verify_command: {cmd}"));
+                        // The runner resolved: drop `verify_command` from the
+                        // static `missing_actionability_fields` list so the JSON
+                        // output does not self-contradict (claiming a field is
+                        // missing while also carrying its value two lines over).
+                        // Fail-closed: this path is only reached when
+                        // `inferred_cmd.is_some()` — when the runner is
+                        // unresolved the `missing_actionability_fields` line is
+                        // left intact so consumers see the correct gap.
+                        // (RIPR-SPEC cockpit delta #5 / issue #1245)
+                        for ev in &mut finding.evidence {
+                            if ev.starts_with("missing_actionability_fields:") {
+                                *ev = remove_field_from_missing_list(ev, "verify_command");
+                            }
+                        }
+                        finding.evidence.retain(|ev| !ev.is_empty());
                     } else if pkg_discovery.framework_hint.is_none() {
                         // No command resolved AND no framework detected — emit
                         // the named limitation so the card surface shows the

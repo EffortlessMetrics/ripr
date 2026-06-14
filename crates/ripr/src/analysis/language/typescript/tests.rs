@@ -6593,3 +6593,272 @@ fn spec_0104_ts_oracle_kind_matches_seam_mapping_table() {
         );
     }
 }
+
+// ── Helpers for cockpit-delta-5 / issue-#1245 tests ──────────────────────────
+
+fn ts_unique_tempdir(label: &str) -> Result<PathBuf, String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|err| format!("system time: {err}"))?
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "ripr-ts-delta5-{label}-{}-{nanos}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("create_dir_all({}): {err}", dir.display()))?;
+    Ok(dir)
+}
+
+fn ts_write_file(path: &Path, contents: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create_dir_all({}): {err}", parent.display()))?;
+    }
+    std::fs::write(path, contents).map_err(|err| format!("write({}): {err}", path.display()))
+}
+
+/// Control 1 (cockpit delta #5, issue #1245):
+/// When the test runner IS resolved (Vitest detected from package.json) and a
+/// related test exists, the emitted evidence MUST carry
+/// `typescript_verify_command` AND must NOT list `verify_command` in
+/// `missing_actionability_fields`.  Fail-open before this fix; fail-closed now.
+#[test]
+fn delta5_verify_command_absent_from_missing_list_when_runner_resolved() -> Result<(), String> {
+    let root = ts_unique_tempdir("derived")?;
+
+    // package.json with vitest in devDependencies — enough for framework detection.
+    ts_write_file(
+        &root.join("package.json"),
+        r#"{"name":"pkg","scripts":{"test":"vitest"},"devDependencies":{"vitest":"^1.0.0"}}"#,
+    )?;
+    // Lockfile — its presence lets runner detection via lockfile fire; the
+    // framework hint already suffices for verify_command but having a lockfile
+    // also exercises the medium-confidence path.
+    ts_write_file(&root.join("package-lock.json"), "{}")?;
+
+    // Production file: a simple function in a named owner block.
+    ts_write_file(
+        &root.join("src/lib.ts"),
+        "export function applyDiscount(amount: number, threshold: number): number {\n  if (amount >= threshold) {\n    return amount - 10;\n  }\n  return amount;\n}\n",
+    )?;
+
+    // Test file: calls applyDiscount directly → DirectOwnerCall relation.
+    ts_write_file(
+        &root.join("tests/lib.test.ts"),
+        "import { applyDiscount } from '../src/lib';\ntest('applies discount when above threshold', () => {\n  const result = applyDiscount(50, 100);\n  expect(result).toBeTruthy();\n});\n",
+    )?;
+
+    let adapter = TypeScriptAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("src/lib.ts"),
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "  if (amount >= threshold) {".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let _ = std::fs::remove_dir_all(&root);
+    let result = result?;
+
+    if result.findings.is_empty() {
+        return Err(format!(
+            "expected at least one finding; got none (changed_files={})",
+            result.changed_files
+        ));
+    }
+    let finding = &result.findings[0];
+
+    // verify_command evidence MUST be present (runner resolved).
+    let has_verify_cmd = finding
+        .evidence
+        .iter()
+        .any(|ev| ev.starts_with("typescript_verify_command:"));
+    if !has_verify_cmd {
+        return Err(format!(
+            "expected typescript_verify_command evidence when runner resolves; evidence={:?}",
+            finding.evidence
+        ));
+    }
+
+    // missing_actionability_fields MUST NOT list verify_command.
+    let bad_line = finding.evidence.iter().find(|ev| {
+        ev.starts_with("missing_actionability_fields:") && ev.contains("verify_command")
+    });
+    if let Some(line) = bad_line {
+        return Err(format!(
+            "missing_actionability_fields still lists verify_command even though typescript_verify_command is present (self-contradiction): {line:?}"
+        ));
+    }
+
+    // receipt_command and canonical_gap_id MUST still be in missing list
+    // (they are genuinely unprojected — fail-closed).
+    let missing_line = finding
+        .evidence
+        .iter()
+        .find(|ev| ev.starts_with("missing_actionability_fields:"));
+    if let Some(line) = missing_line {
+        // receipt_command is in all blocked categories that include verify_command.
+        if !line.contains("receipt_command") {
+            return Err(format!(
+                "receipt_command should still be in missing_actionability_fields: {line:?}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Control 2 (cockpit delta #5, issue #1245 — fail-closed):
+/// When the test runner is NOT resolved (no package.json, no framework), the
+/// emitted evidence MUST NOT carry `typescript_verify_command` and MUST still
+/// list `verify_command` in `missing_actionability_fields`.
+#[test]
+fn delta5_verify_command_stays_in_missing_list_when_runner_unresolved() -> Result<(), String> {
+    let root = ts_unique_tempdir("unresolved")?;
+
+    // No package.json / no framework — runner cannot be inferred.
+    ts_write_file(
+        &root.join("src/lib.ts"),
+        "export function applyDiscount(amount: number, threshold: number): number {\n  if (amount >= threshold) {\n    return amount - 10;\n  }\n  return amount;\n}\n",
+    )?;
+    ts_write_file(
+        &root.join("tests/lib.test.ts"),
+        "import { applyDiscount } from '../src/lib';\ntest('stub', () => {\n  applyDiscount(50, 100);\n});\n",
+    )?;
+
+    let adapter = TypeScriptAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("src/lib.ts"),
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "  if (amount >= threshold) {".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let _ = std::fs::remove_dir_all(&root);
+    let result = result?;
+
+    if result.findings.is_empty() {
+        return Err(format!(
+            "expected at least one finding; got none (changed_files={})",
+            result.changed_files
+        ));
+    }
+    let finding = &result.findings[0];
+
+    // typescript_verify_command MUST NOT be present (fail-closed).
+    let invented_cmd = finding
+        .evidence
+        .iter()
+        .find(|ev| ev.starts_with("typescript_verify_command:"));
+    if let Some(cmd) = invented_cmd {
+        return Err(format!(
+            "runner unresolved: no command should be invented, but got: {cmd:?}"
+        ));
+    }
+
+    // missing_actionability_fields MUST still list verify_command.
+    let missing_line = finding
+        .evidence
+        .iter()
+        .find(|ev| ev.starts_with("missing_actionability_fields:"));
+    match missing_line {
+        None => {
+            // No missing_actionability_fields line at all: acceptable only if
+            // the finding is strong_oracle_observed (empty missing list). In
+            // that case verify_command absence is trivially correct.
+        }
+        Some(line) if line.contains("verify_command") => {
+            // Good — verify_command is still listed as missing.
+        }
+        Some(line) => {
+            return Err(format!(
+                "runner unresolved: verify_command should be in missing_actionability_fields, but got: {line:?}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Control 3 (cockpit delta #5, issue #1245 — unchanged-case guard):
+/// `remove_field_from_missing_list` unit tests: correct removal, idempotency,
+/// and leave-alone for non-matching input.
+#[test]
+fn remove_field_from_missing_list_unit() {
+    // Removes the named field from the middle of the list.
+    assert_eq!(
+        remove_field_from_missing_list(
+            "missing_actionability_fields: canonical_gap_id, verify_command, receipt_command",
+            "verify_command"
+        ),
+        "missing_actionability_fields: canonical_gap_id, receipt_command"
+    );
+
+    // Removes from the start of the list.
+    assert_eq!(
+        remove_field_from_missing_list(
+            "missing_actionability_fields: verify_command, receipt_command",
+            "verify_command"
+        ),
+        "missing_actionability_fields: receipt_command"
+    );
+
+    // Removes from the end of the list.
+    assert_eq!(
+        remove_field_from_missing_list(
+            "missing_actionability_fields: canonical_gap_id, verify_command",
+            "verify_command"
+        ),
+        "missing_actionability_fields: canonical_gap_id"
+    );
+
+    // Field absent — line returned unchanged.
+    assert_eq!(
+        remove_field_from_missing_list(
+            "missing_actionability_fields: canonical_gap_id, receipt_command",
+            "verify_command"
+        ),
+        "missing_actionability_fields: canonical_gap_id, receipt_command"
+    );
+
+    // Wrong prefix — line returned unchanged.
+    assert_eq!(
+        remove_field_from_missing_list("gap_state: advisory", "verify_command"),
+        "gap_state: advisory"
+    );
+
+    // Removing another field leaves verify_command intact.
+    assert_eq!(
+        remove_field_from_missing_list(
+            "missing_actionability_fields: canonical_gap_id, verify_command, receipt_command",
+            "canonical_gap_id"
+        ),
+        "missing_actionability_fields: verify_command, receipt_command"
+    );
+}

@@ -174,6 +174,33 @@ pub(crate) fn typescript_actionability_for(
     }
 }
 
+/// Remove a single named field from a `missing_actionability_fields: f1, f2, f3`
+/// evidence line.  Returns the original string when the field is not present or
+/// the line does not have the expected prefix.
+///
+/// Called by `mod.rs` at the assembly point where `inferred_cmd` is known, so
+/// that the emitted JSON does not claim `verify_command` is missing while also
+/// carrying `typescript_verify_command: <cmd>` two lines over.
+pub(crate) fn remove_field_from_missing_list(line: &str, field: &str) -> String {
+    const PREFIX: &str = "missing_actionability_fields: ";
+    let Some(rest) = line.strip_prefix(PREFIX) else {
+        return line.to_string();
+    };
+    let updated: Vec<&str> = rest.split(", ").filter(|f| f.trim() != field).collect();
+    if updated.is_empty() {
+        // All fields removed — omit the key entirely by returning an empty
+        // sentinel; the caller's `!is_empty()` guard in `evidence()` handles
+        // the normal `Vec<&'static str>` path, but here we are operating on
+        // the already-emitted string. Return an empty string so the caller
+        // can filter it out if desired; in practice at least `receipt_command`
+        // and `canonical_gap_id` remain so this branch is unreachable under
+        // the current blocked-category field lists.
+        String::new()
+    } else {
+        format!("{PREFIX}{}", updated.join(", "))
+    }
+}
+
 pub(crate) fn normalize_repair_route(route: &str) -> String {
     route
         .strip_prefix("Repair route: ")
