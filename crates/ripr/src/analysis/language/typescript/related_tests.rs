@@ -305,6 +305,20 @@ pub(crate) fn owner_call_relation(
     {
         return Some(TypeScriptRelationKind::DirectOwnerCall);
     }
+    // Non-namespace alias-rename: `import { OriginalName as local }` from the
+    // owner file and `local(...)` in the test body.  Shadow guard: if `local`
+    // is re-declared inside the test body the `cv(...)` call reaches the shadow,
+    // not the owner — do NOT credit `ImportAliasOwnerCall` in that case.
+    if let Some(_import) = test.imports_in_file.iter().find(|import| {
+        !import.namespace
+            && import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
+            && import.imported.as_deref() == Some(owner.name.as_str())
+            && import.local != owner.name
+            && contains_call_name(&test.body_text, &import.local)
+            && !local_identifier_declared_in_test_body(&test.body_text, &import.local)
+    }) {
+        return Some(TypeScriptRelationKind::ImportAliasOwnerCall);
+    }
     if test.imports_in_file.iter().any(|import| {
         import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
             && import_references_owner_call(import, &test.body_text, owner)
@@ -631,6 +645,10 @@ fn ts_relation_to_domain(
     use crate::domain::{RelationConfidence, RelationReason};
     let reason = match kind {
         TypeScriptRelationKind::DirectOwnerCall => RelationReason::DirectOwnerCall,
+        // Alias-rename import (`{ X as local }`) + verified body call: the
+        // rename is syntactically explicit and the call is to the local alias —
+        // same certainty as DirectOwnerCall.
+        TypeScriptRelationKind::ImportAliasOwnerCall => RelationReason::DirectOwnerCall,
         TypeScriptRelationKind::ImportedOwnerCall => RelationReason::ImportPathAffinity,
         TypeScriptRelationKind::ModuleValueReference => RelationReason::DirectOwnerCall,
         TypeScriptRelationKind::ReceiverOwnerCall => RelationReason::DirectOwnerCall,
@@ -644,6 +662,7 @@ fn ts_relation_to_domain(
     };
     let confidence = match kind {
         TypeScriptRelationKind::DirectOwnerCall
+        | TypeScriptRelationKind::ImportAliasOwnerCall
         | TypeScriptRelationKind::ModuleValueReference
         | TypeScriptRelationKind::ReceiverOwnerCall
         | TypeScriptRelationKind::ClassMethodCall => RelationConfidence::High,

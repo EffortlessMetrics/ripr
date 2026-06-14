@@ -419,6 +419,14 @@ owner = "product-swarm"
 standalone_reason = "Honesty-clarity fix for TypeScript preview issue #1239: rewords misleading typescript_runner_hint_unresolved to typescript_package_manager_unresolved when a framework is known (verify command IS available via framework binary); preserves strong fail-closed typescript_runner_hint_unresolved for genuinely-unresolvable case (no framework AND no runner); 3 unit controls; no schema bump; language_status stays Preview."
 
 [[artifact]]
+id = "RIPR-SPEC-0102"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0102-typescript-import-alias-owner-call.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Under-emit honesty fix for TypeScript preview issue #1239 (gap 1): alias-rename import (import { X as local }) + verified body call upgraded from ImportedOwnerCall/import_path_affinity/Medium to ImportAliasOwnerCall/direct_owner_call/High; shadow guard via local_identifier_declared_in_test_body prevents over-claim when local is re-declared in test body; no new domain RelationReason variant; no schema_version bump; 5 unit controls; language_status stays Preview."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

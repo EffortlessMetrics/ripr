@@ -2025,10 +2025,186 @@ test("alias import observes threshold", () => {
 "#,
     );
 
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
     let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
+    // RIPR-SPEC-0102: alias-rename import must produce ImportAliasOwnerCall,
+    // which maps to relation_reason=direct_owner_call / relation_confidence=high.
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alias import observes threshold");
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::ImportAliasOwnerCall,
+        "alias-rename import must be classified as ImportAliasOwnerCall"
+    );
+    assert_eq!(
+        related[0].relation_reason,
+        Some(crate::domain::RelationReason::DirectOwnerCall),
+        "alias-rename import maps to domain DirectOwnerCall"
+    );
+    assert_eq!(
+        related[0].relation_confidence,
+        Some(crate::domain::RelationConfidence::High),
+        "alias-rename import must have High relation confidence"
+    );
+}
+
+/// RIPR-SPEC-0102 control 2: wrong-name alias (`import { otherFn as cv }`,
+/// otherFn != owner) must NOT be credited as ImportAliasOwnerCall.
+#[test]
+fn find_related_tests_alias_wrong_name_not_credited() {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/pricing.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/pricing.test.ts"),
+        r#"import { otherFn as cv } from "../src/pricing";
+
+test("wrong-name alias", () => {
+    expect(cv(100)).toBe(90);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert!(
+        candidates
+            .iter()
+            .all(|c| c.relation != TypeScriptRelationKind::ImportAliasOwnerCall),
+        "wrong-name alias (otherFn != owner) must not produce ImportAliasOwnerCall"
+    );
+}
+
+/// RIPR-SPEC-0102 control 3: shadowed local binding — the test re-declares
+/// the alias in the body (`const cv = ...`), so `cv(...)` reaches the shadow,
+/// not the owner.  Must NOT be credited at High confidence.
+#[test]
+fn find_related_tests_alias_shadowed_local_not_credited_high() {
+    let owner = TypeScriptOwner {
+        name: "computeValue".to_string(),
+        file: PathBuf::from("src/compute.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/compute.test.ts"),
+        r#"import { computeValue as cv } from "../src/compute";
+
+test("shadow guard", () => {
+    const cv = () => 42;
+    expect(cv(5)).toBe(42);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert!(
+        candidates
+            .iter()
+            .all(|c| c.relation != TypeScriptRelationKind::ImportAliasOwnerCall),
+        "shadowed local alias must not produce ImportAliasOwnerCall (shadow guard)"
+    );
+}
+
+/// RIPR-SPEC-0102 control 4: non-alias import (`import { computeValue }`)
+/// still produces DirectOwnerCall via the existing path.
+#[test]
+fn find_related_tests_non_alias_import_still_direct_owner_call() {
+    let owner = TypeScriptOwner {
+        name: "computeValue".to_string(),
+        file: PathBuf::from("src/compute.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/compute.test.ts"),
+        r#"import { computeValue } from "../src/compute";
+
+test("non-alias direct call", () => {
+    expect(computeValue(5)).toBe(10);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::DirectOwnerCall,
+        "non-alias import must remain DirectOwnerCall, not ImportAliasOwnerCall"
+    );
+    assert_eq!(
+        related[0].relation_reason,
+        Some(crate::domain::RelationReason::DirectOwnerCall)
+    );
+    assert_eq!(
+        related[0].relation_confidence,
+        Some(crate::domain::RelationConfidence::High)
+    );
+}
+
+/// RIPR-SPEC-0102 control 5: namespace import (`import * as ns`) still
+/// produces ImportedOwnerCall (out of scope for alias upgrade) → import_path_affinity/medium.
+#[test]
+fn find_related_tests_namespace_import_unchanged_imported_owner_call() {
+    let owner = TypeScriptOwner {
+        name: "computeValue".to_string(),
+        file: PathBuf::from("src/compute.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/compute.test.ts"),
+        r#"import * as ns from "../src/compute";
+
+test("namespace import member call", () => {
+    expect(ns.computeValue(5)).toBe(10);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::ImportedOwnerCall,
+        "namespace import must remain ImportedOwnerCall (out of scope for alias upgrade)"
+    );
+    assert_eq!(
+        related[0].relation_reason,
+        Some(crate::domain::RelationReason::ImportPathAffinity),
+        "namespace import must still map to import_path_affinity"
+    );
+    assert_eq!(
+        related[0].relation_confidence,
+        Some(crate::domain::RelationConfidence::Medium),
+        "namespace import must remain Medium confidence"
+    );
 }
 
 #[test]

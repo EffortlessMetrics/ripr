@@ -76,6 +76,13 @@ pub(crate) struct TypeScriptParseLimit {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TypeScriptRelationKind {
     DirectOwnerCall,
+    /// Test imports the owner under an explicit `{ OriginalName as local }`
+    /// renaming alias from the owner file and calls `local(...)` in the body.
+    /// Syntactically equivalent certainty to `DirectOwnerCall`: the rename is
+    /// explicit and the body verifiably calls the local alias.
+    /// Shadow guard applied: if `local` is re-declared inside the test body,
+    /// falls through (not credited at High).
+    ImportAliasOwnerCall,
     ImportedOwnerCall,
     ModuleValueReference,
     ReceiverOwnerCall,
@@ -93,7 +100,7 @@ pub(crate) enum TypeScriptRelationKind {
 impl TypeScriptRelationKind {
     pub(crate) fn rank(self) -> u8 {
         match self {
-            Self::DirectOwnerCall => 5,
+            Self::DirectOwnerCall | Self::ImportAliasOwnerCall => 5,
             Self::ImportedOwnerCall => 4,
             Self::ModuleValueReference => 4,
             Self::ReceiverOwnerCall => 4,
@@ -111,6 +118,7 @@ impl TypeScriptRelationKind {
         matches!(
             self,
             Self::DirectOwnerCall
+                | Self::ImportAliasOwnerCall
                 | Self::ImportedOwnerCall
                 | Self::ModuleValueReference
                 | Self::ReceiverOwnerCall
@@ -126,6 +134,7 @@ impl TypeScriptRelationKind {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::DirectOwnerCall => "direct_owner_call",
+            Self::ImportAliasOwnerCall => "import_alias_owner_call",
             Self::ImportedOwnerCall => "imported_owner_call",
             Self::ModuleValueReference => "module_value_reference",
             Self::ReceiverOwnerCall => "receiver_owner_call",

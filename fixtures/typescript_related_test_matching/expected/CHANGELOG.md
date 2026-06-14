@@ -203,3 +203,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0102: alias-rename import upgraded from import_path_affinity/medium to direct_owner_call/high; golden reflects the honesty upgrade
+
+Command:
+`cargo xtask goldens bless typescript_related_test_matching --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

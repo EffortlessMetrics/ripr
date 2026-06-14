@@ -5823,3 +5823,26 @@ outputs = [
 metrics = [
   "typescript_package_manager_unresolved_disclosure_honesty",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0102"
+name = "TypeScript import-alias owner-call confidence upgrade"
+spec = "docs/specs/RIPR-SPEC-0102-typescript-import-alias-owner-call.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs::find_related_tests_matches_named_import_alias_calls",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::find_related_tests_alias_wrong_name_not_credited",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::find_related_tests_alias_shadowed_local_not_credited_high",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::find_related_tests_non_alias_import_still_direct_owner_call",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::find_related_tests_namespace_import_unchanged_imported_owner_call",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/language/typescript/types.rs",
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0102-typescript-import-alias-owner-call.md",
+]
+metrics = [
+  "typescript_import_alias_owner_call_confidence_honesty",
+]
