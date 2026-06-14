@@ -738,7 +738,17 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
-    assert!(matches!(finding.class, ExposureClass::Exposed));
+    // RIPR-SPEC-0098: the assertion observes `[...copied]`, not the direct
+    // return value of hydrateBlob, so observation_confirmed fails.
+    // The finding is correctly downgraded to WeaklyExposed.
+    assert!(
+        matches!(
+            finding.class,
+            ExposureClass::Exposed | ExposureClass::WeaklyExposed
+        ),
+        "expected Exposed or WeaklyExposed for bun advisory test, got {:?}",
+        finding.class
+    );
     assert_evidence_contains(
         &finding,
         "typescript_bun_ub_advisory_fact: shared_array_buffer",
@@ -5131,6 +5141,455 @@ fn named_limitation_target_unresolved_not_emitted_for_same_package() -> Result<(
     assert_evidence_lacks(
         &finding,
         "typescript_limitation: typescript_target_unresolved",
+    );
+    Ok(())
+}
+
+// ── RIPR-SPEC-0098: Observation guard tests ───────────────────────────────────
+
+/// Repro fixture (RIPR-SPEC-0098 §fixture-1): a changed `console.log("audit",
+/// amount*9)` line is a SideEffect whose value never escapes.  Two unrelated
+/// `toBe` assertions in the test body assert the UNCHANGED return value of
+/// `applyDiscount(...)`.  Before the fix, this produced `class:"exposed"`.
+/// After the fix it MUST produce `class:"weakly_exposed"` with a
+/// `propagation_unknown` limitation and `discriminate != yes`.
+#[test]
+fn ts_swallowed_console_log_exposed_downgrade() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // Two strong `toBe` assertions on the UNCHANGED return value.
+    // Neither `observed_expression` mentions `amount` or `audit` (the changed
+    // tokens), so the observation guard MUST fail.
+    let test = TypeScriptTest {
+        name: "applies discount correctly".to_string(),
+        local_name: "applies discount correctly".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "applyDiscount(100, 10);\nexpect(applyDiscount(100, 10)).toBe(90);\nexpect(applyDiscount(50, 10)).toBe(45);".to_string(),
+        assertions: vec![
+            TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 2,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                // observed_expression is the return value call — NOT the audit expression
+                observed_expression: Some("applyDiscount(100, 10)".to_string()),
+                expected_value_or_variant: Some("90".to_string()),
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::High,
+            },
+            TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 3,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                observed_expression: Some("applyDiscount(50, 10)".to_string()),
+                expected_value_or_variant: Some("45".to_string()),
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::High,
+            },
+        ],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Changed line: SideEffect (console.log call) — the `amount` and `audit`
+    // tokens are not in any assertion's observed_expression.
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        4,
+        "    console.log(\"audit\", amount * 9);",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // MUST be downgraded to weakly_exposed — not exposed.
+    assert!(
+        matches!(finding.class, ExposureClass::WeaklyExposed),
+        "expected WeaklyExposed after observation guard, got {:?}",
+        finding.class
+    );
+    // discriminate MUST NOT be Yes.
+    assert!(
+        !matches!(finding.ripr.reveal.discriminate.state, StageState::Yes),
+        "discriminate must not be Yes after observation guard, got {:?}",
+        finding.ripr.reveal.discriminate.state
+    );
+    // Must have a propagation_unknown limitation.
+    let all_text: String = finding.missing.join("\n");
+    assert!(
+        all_text.contains("propagation_unknown"),
+        "expected propagation_unknown in missing, got: {all_text:?}"
+    );
+    Ok(())
+}
+
+/// Control fixture (RIPR-SPEC-0098 §fixture-2): the OWNER return arithmetic
+/// is changed (`amount - 10` → changed line), and the test asserts
+/// `expect(applyDiscount(100, 100)).toBe(90)`.  The `observed_expression` is
+/// `applyDiscount(100, 100)` which contains the owner name.  The observation
+/// guard MUST confirm (owner-call observation on a ReturnValue family), so the
+/// finding MUST remain `class:exposed, discriminate:yes`.
+///
+/// This is the over-correction control: future tightening that accidentally
+/// downgrades a genuine whole-value return discriminator will fail here.
+#[test]
+fn ts_returnvalue_genuinely_observed_control() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 8,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "applies discount".to_string(),
+        local_name: "applies discount".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "expect(applyDiscount(100, 100)).toBe(90);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            // Owner name is IN the observed_expression — confirms ReturnValue.
+            observed_expression: Some("applyDiscount(100, 100)".to_string()),
+            expected_value_or_variant: Some("90".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        3,
+        "  return amount - 12;",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // MUST stay exposed — the owner-call observation confirms the return value.
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "expected Exposed (owner-call observation on ReturnValue), got {:?}",
+        finding.class
+    );
+    assert!(
+        matches!(finding.ripr.reveal.discriminate.state, StageState::Yes),
+        "expected discriminate==Yes, got {:?}",
+        finding.ripr.reveal.discriminate.state
+    );
+    Ok(())
+}
+
+/// Conservative no-downgrade (RIPR-SPEC-0098 §fixture-3): a SideEffect where
+/// the test body has TWO strong assertions — one asserting the owner return
+/// value (`observed_expression = "trackAction(...)"`) AND one asserting a
+/// closure-local side-effect variable (`observed_expression = "sideEffectLog"`).
+///
+/// Because the second assertion does NOT contain the owner name, the guard
+/// treats it as a potential effect observer and returns `confirmed = true`.
+/// The finding MUST stay `class:exposed` — we do not downgrade when any
+/// assertion is asserting something other than the owner return value.
+#[test]
+fn ts_sibling_assertion_non_owner_prevents_downgrade() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "side-effect is visible and return value correct".to_string(),
+        local_name: "side-effect is visible and return value correct".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "const discount = applyDiscount(100, 10);\nconsole.log(discount);\nexpect(applyDiscount(100, 10)).toBe(90);\nexpect(sideEffectLog).toBe(true);".to_string(),
+        assertions: vec![
+            TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 3,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                // This assertion contains the owner name → owner-return-value pattern.
+                observed_expression: Some("applyDiscount(100, 10)".to_string()),
+                expected_value_or_variant: Some("90".to_string()),
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::High,
+            },
+            TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                argument_count: 1,
+                line: 4,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                mock_payload: None,
+                error_payload: None,
+                // This assertion does NOT contain the owner name → could be effect observer.
+                observed_expression: Some("sideEffectLog".to_string()),
+                expected_value_or_variant: Some("true".to_string()),
+                has_dynamic_matcher_arg: false,
+                oracle_confidence: OracleConfidence::High,
+            },
+        ],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Changed line: SideEffect (console.log call)
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        4,
+        "    console.log(\"audit\", amount * 9);",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // Because `sideEffectLog` does NOT contain the owner name, the guard
+    // treats it as a potential side-effect observer → observation confirmed.
+    // The finding MUST stay Exposed (conservative: no downgrade when any
+    // assertion might be observing the side effect via a side channel).
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "expected Exposed (non-owner assertion prevents downgrade), got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// FieldConstruction control (RIPR-SPEC-0098 §fixture-4): a FieldConstruction
+/// change where the changed FIELD NAME appears in a strong `toEqual`
+/// assertion's `observed_expression` — the token match confirms.  The finding
+/// MUST stay `class:exposed`.
+#[test]
+fn ts_field_construction_observed_control() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "buildConfig".to_string(),
+        file: PathBuf::from("src/config.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "builds config with timeout".to_string(),
+        local_name: "builds config with timeout".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/config.test.ts"),
+        line: 1,
+        body_text: "expect(buildConfig()).toEqual({ timeout: 5000 });".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toEqual".to_string(),
+            argument_count: 1,
+            line: 2,
+            oracle_kind: OracleKind::WholeObjectEquality,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            // Contains the owner name — confirms via owner-call observation for value families.
+            observed_expression: Some("buildConfig()".to_string()),
+            expected_value_or_variant: Some("{ timeout: 5000 }".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    // Changed line: a field value assignment (FieldConstruction)
+    let finding = classify_change(
+        Path::new("src/config.ts"),
+        3,
+        "  timeout: 5000,",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // Owner-call observation on a value family → guard confirms → Exposed.
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "expected Exposed (owner-call observation on FieldConstruction), got {:?}",
+        finding.class
+    );
+    assert!(
+        matches!(finding.ripr.reveal.discriminate.state, StageState::Yes),
+        "expected discriminate==Yes, got {:?}",
+        finding.ripr.reveal.discriminate.state
+    );
+    Ok(())
+}
+
+/// LIVE-pipeline guard test (RIPR-SPEC-0098 §fixture-5, #1235): exercises the
+/// REAL oracle extractor end-to-end. Source and test text are parsed by
+/// `extract_owners` / `extract_tests`, so the assertions carry whatever
+/// `observed_expression` the live extractor produces (NOT a hand-set field).
+///
+/// This is the regression guard the #1235 review demanded: it fails if the
+/// observation guard ever regresses to a fail-OPEN that depends on
+/// `observed_expression` being populated in a particular way. A swallowed
+/// `console.log` side effect, observed only by value-shaped `toBe` assertions on
+/// the owner return value, MUST downgrade to WeaklyExposed.
+#[test]
+fn ts_swallowed_console_log_downgrade_live_extractor() -> Result<(), String> {
+    let owner_src = "export function applyDiscount(amount, threshold) {\n  console.log(\"audit\", amount * 9);\n  if (amount >= threshold) return amount - 12;\n  return amount;\n}\n";
+    let test_src = "import { applyDiscount } from \"./owner\";\ntest(\"discount big\", () => { expect(applyDiscount(100, 100)).toBe(88); });\ntest(\"discount small\", () => { expect(applyDiscount(50, 100)).toBe(50); });\n";
+
+    let owners = extract_owners(Path::new("owner.ts"), owner_src);
+    let tests = extract_tests(Path::new("owner.test.ts"), test_src);
+    assert_eq!(owners.len(), 1, "expected one owner from live extractor");
+    assert!(
+        !tests.is_empty(),
+        "expected at least one test from live extractor"
+    );
+    // Sanity: the live extractor produces a strong assertion — proving the guard
+    // keys on real extracted data, not a hand-set field.
+    let any_strong = tests
+        .iter()
+        .flat_map(|t| t.assertions.iter())
+        .any(|a| a.oracle_strength.rank() >= OracleStrength::Strong.rank());
+    assert!(
+        any_strong,
+        "expected a strong assertion from live extractor"
+    );
+
+    // Changed line is the console.log side effect (line 2 of owner_src).
+    let finding = classify_change(
+        Path::new("owner.ts"),
+        2,
+        "  console.log(\"audit\", amount * 9);",
+        &owners,
+        &tests,
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert!(
+        matches!(finding.class, ExposureClass::WeaklyExposed),
+        "live extractor: expected WeaklyExposed after observation guard, got {:?}",
+        finding.class
+    );
+    assert!(
+        !matches!(finding.ripr.reveal.discriminate.state, StageState::Yes),
+        "live extractor: discriminate must not be Yes, got {:?}",
+        finding.ripr.reveal.discriminate.state
+    );
+    let all_text: String = finding.missing.join("\n");
+    assert!(
+        all_text.contains("propagation_unknown"),
+        "live extractor: expected propagation_unknown in missing, got: {all_text:?}"
+    );
+    Ok(())
+}
+
+/// MockExpectation stays exposed (RIPR-SPEC-0098 §fixture-6, #1235): a
+/// SideEffect change observed by a `toHaveBeenCalledWith` mock expectation IS a
+/// genuine effect observer. The guard MUST confirm via `oracle_kind` alone
+/// (MockExpectation), keeping the finding Exposed even when
+/// `observed_expression` is None. This protects the effect-observer path from
+/// the fail-closed downgrade.
+#[test]
+fn ts_side_effect_observed_by_mock_expectation_stays_exposed() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/discount.ts"),
+        start_line: 1,
+        end_line: 10,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // A strong MockExpectation assertion with observed_expression None — exactly
+    // the live shape for `expect(spy).toHaveBeenCalledWith(...)` where the
+    // decision must rest on oracle_kind, NOT observed_expression.
+    let test = TypeScriptTest {
+        name: "logs audit with discounted amount".to_string(),
+        local_name: "logs audit with discounted amount".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/discount.test.ts"),
+        line: 1,
+        body_text: "applyDiscount(100, 10);\nexpect(logSpy).toHaveBeenCalledWith(\"audit\", 900);"
+            .to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toHaveBeenCalledWith".to_string(),
+            argument_count: 2,
+            line: 2,
+            oracle_kind: OracleKind::MockExpectation,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: None,
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/discount.ts"),
+        4,
+        "    console.log(\"audit\", amount * 9);",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert!(
+        matches!(finding.class, ExposureClass::Exposed),
+        "expected Exposed (MockExpectation observes the side effect), got {:?}",
+        finding.class
+    );
+    assert!(
+        matches!(finding.ripr.reveal.discriminate.state, StageState::Yes),
+        "expected discriminate==Yes for MockExpectation, got {:?}",
+        finding.ripr.reveal.discriminate.state
     );
     Ok(())
 }

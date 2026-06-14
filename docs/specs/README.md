@@ -108,3 +108,4 @@ observable behavior.
 | [RIPR-SPEC-0095](RIPR-SPEC-0095-typescript-reexport-test-discovery.md) | accepted | TypeScript single-hop re-export test discovery |
 | [RIPR-SPEC-0096](RIPR-SPEC-0096-infect-propagate-fail-closed.md) | proposed | INFECT/PROPAGATE fail-closed: wildcard discard, swallowed tails, stdout macros (parts A/B/C of #1219) |
 | [RIPR-SPEC-0097](RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md) | accepted | TypeScript toThrow exact-payload oracle upgrade: string/object/class → ExactErrorVariant/strong; bare toThrow stays weak |
+| [RIPR-SPEC-0098](RIPR-SPEC-0098-typescript-exposed-observation-guard.md) | accepted | TypeScript exposed observation guard: downgrade exposed→weakly_exposed when no strong assertion's observed_expression flows from the changed sub-expression (console.log repro fix) |

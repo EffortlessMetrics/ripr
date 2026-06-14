@@ -2,6 +2,191 @@
 
 use super::*;
 
+// ── Observation guard (RIPR-SPEC-0098) ───────────────────────────────────────
+
+/// Tokenize an expression string into identifier tokens longer than 3 chars.
+///
+/// Only ASCII alphanumeric / underscore segments are kept; dot-qualifier and
+/// `::` segments are excluded so that shared qualifiers (e.g. `"amount"` from
+/// both `amount * 9` and an unrelated `amount * 2`) do not spuriously confirm.
+fn identifier_tokens(expr: &str) -> Vec<String> {
+    expr.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|tok| tok.len() > 3)
+        .map(|tok| tok.to_string())
+        .collect()
+}
+
+/// Strip the synthesized prefix that `typescript_missing_discriminator_value`
+/// adds so we recover the raw changed sub-expression.
+fn strip_synthesized_prefix(discriminator_value: &str) -> &str {
+    // Prefixes added by probe_shape.rs:
+    //   "return value == "  (ReturnValue)
+    //   "<lhs> == "         (Predicate/FieldConstruction)
+    //   "call ... includes " (SideEffect)
+    //   "log contains "     (SideEffect console.log)
+    //   "call "             (SideEffect bare call name)
+    //   "throws "           (ErrorPath)
+    for prefix in &["return value == ", "log contains ", "call ", "throws "] {
+        if let Some(rest) = discriminator_value.strip_prefix(prefix) {
+            return rest;
+        }
+    }
+    // "<lhs> == <rhs>" form from boundary/field discriminator
+    if let Some(idx) = discriminator_value.find(" == ") {
+        // Return the right-hand side (the changed value)
+        return &discriminator_value[idx + 4..];
+    }
+    discriminator_value
+}
+
+/// Returns `true` when there is static evidence that a strong assertion in one
+/// of the oracle-eligible related tests observes the specific changed
+/// sub-expression — not just some other part of the same function body.
+///
+/// This is the RIPR-SPEC-0098 observation guard, scoped to **effect families**
+/// (SideEffect and CallDeletion) where the false-exposed pattern is clearest:
+/// a call side-effect (e.g. `console.log("audit", amount*9)`) was being promoted
+/// to Exposed by value-based `toBe`/`toEqual` assertions in the same test body
+/// that assert the owner's UNCHANGED return value.
+///
+/// ### What the guard checks
+///
+/// The confirmation decision keys on **`oracle_kind`** — which the live oracle
+/// extractor always populates (`oracle.rs`) — rather than relying on
+/// `observed_expression`, which is optional metadata. For SideEffect /
+/// CallDeletion families a strong assertion CONFIRMS (returns `true`,
+/// stays Exposed) only when it actually witnesses a call effect:
+/// 1. It is an effect-shape oracle
+///    (`MockExpectation` | `Snapshot` | `WholeObjectEquality`) — these capture
+///    mock-call expectations, serialized snapshots, or persisted whole-object
+///    state, all of which observe side effects directly; OR
+/// 2. It carries an `observed_expression` that either contains a changed token
+///    (> 3 chars) or names a side-channel (an expression that does NOT name the
+///    owner — e.g. a closure-local side-effect variable or a captured mock).
+///
+/// Value-shaped strong oracles (`ExactValue` / `ExactErrorVariant`) that observe
+/// the owner's RETURN VALUE do NOT witness a `console.log`/side-effect change, so
+/// they do not confirm. When the only strong oracles are value-shaped (or no
+/// observed-expression metadata is available to prove a side-channel), the guard
+/// **fails closed** and returns `false`, downgrading to WeaklyExposed.
+///
+/// For all other families the guard always returns `true` (pre-guard behaviour).
+///
+/// ### Fail-closed default (RIPR-SPEC-0098 hardening, #1235)
+///
+/// Earlier revisions returned `true` ("confirmed") when no strong assertion
+/// carried `observed_expression` metadata. That was a fail-OPEN fallback:
+/// "can't tell what's observed → assume observed → exposed", which is exactly the
+/// over-claim this guard exists to kill. It is removed. The decision now keys on
+/// `oracle_kind` (always populated live) plus an optional `observed_expression`
+/// token / side-channel check; absence of `observed_expression` no longer
+/// re-promotes a swallowed side effect to Exposed.
+pub(crate) fn ts_changed_value_is_observed(
+    probe_shape: &TypeScriptProbeShape,
+    line_text: &str,
+    owner_name: &str,
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+) -> bool {
+    // Only apply the guard to SideEffect / CallDeletion families.
+    // All other families keep the pre-guard (always-confirmed) behaviour.
+    if !matches!(
+        probe_shape.family,
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion
+    ) {
+        return true;
+    }
+
+    // Collect changed identifier tokens from the discriminator value.
+    let raw_discriminator = typescript_missing_discriminator_value(&probe_shape.family, line_text);
+    let changed_tokens: Vec<String> = if let Some(ref disc) = raw_discriminator {
+        let raw_expr = strip_synthesized_prefix(disc);
+        identifier_tokens(raw_expr)
+    } else {
+        Vec::new()
+    };
+
+    // Fail-CLOSED: confirmation must be affirmatively established by at least one
+    // strong assertion that actually witnesses a call effect. We scan every
+    // strong assertion in the oracle-eligible candidates and return `true` the
+    // moment one of them qualifies. If none qualify, we downgrade — including the
+    // case where no `observed_expression` metadata is available at all (the
+    // former fail-OPEN `return true` fallback is deliberately gone: absence of
+    // proof is not proof of observation).
+    for candidate in candidates {
+        if !candidate.relation.uses_oracle() {
+            continue;
+        }
+        for assertion in &candidate.test.assertions {
+            if assertion.oracle_strength.rank() < OracleStrength::Strong.rank() {
+                continue;
+            }
+            // (1) Effect-shape oracle kinds confirm unconditionally: these ARE
+            // effect observers (mock call expectation, snapshot, whole-object
+            // equality capturing persisted state). This decision keys ONLY on
+            // `oracle_kind`, which the live extractor always populates.
+            if matches!(
+                assertion.oracle_kind,
+                OracleKind::MockExpectation
+                    | OracleKind::Snapshot
+                    | OracleKind::WholeObjectEquality
+            ) {
+                return true;
+            }
+            // (2) Optional `observed_expression` checks — only when the live
+            // extractor retained the `expect(<expr>)` argument text. These can
+            // only ADD confirmations; their absence never re-promotes.
+            if let Some(ref observed) = assertion.observed_expression {
+                // Token match: a changed token appears in the observed
+                // expression → this assertion observes the changed value.
+                if !changed_tokens.is_empty()
+                    && changed_tokens
+                        .iter()
+                        .any(|tok| observed.contains(tok.as_str()))
+                {
+                    return true;
+                }
+                // Side-channel: the observed expression does NOT name the owner,
+                // so it is asserting something other than the owner return value
+                // (a closure-local side-effect variable, a captured mock result,
+                // or any side-channel) — conservatively treat it as observing
+                // the effect.
+                if !observed.contains(owner_name) {
+                    return true;
+                }
+            }
+            // Otherwise this strong assertion is value-shaped (ExactValue /
+            // ExactErrorVariant) observing the owner return value, or carries no
+            // observed_expression to prove a side-channel: it does NOT witness
+            // the call effect. Keep scanning for a qualifying assertion.
+        }
+    }
+
+    // No strong assertion witnessed the call effect: fail closed → downgrade.
+    false
+}
+
+/// Build the named limitation message for the RIPR-SPEC-0098 downgrade arm.
+///
+/// Only fires for SideEffect / CallDeletion families (the guard is scoped to
+/// effect families only). Emits a `propagation_unknown` limitation.
+pub(crate) fn ts_observation_guard_limitation(
+    probe_shape: &TypeScriptProbeShape,
+    line_text: &str,
+) -> String {
+    // Describe the non-escaping sink where possible.
+    let sink_hint = typescript_missing_discriminator_value(&probe_shape.family, line_text)
+        .map(|disc| {
+            let raw = strip_synthesized_prefix(&disc);
+            format!(" (`{raw}`)")
+        })
+        .unwrap_or_default();
+    format!(
+        "propagation_unknown: changed value sinks to a non-escaping call effect{sink_hint}; \
+         all strong assertions observe the owner return value, not this call effect; \
+         propagation unknown"
+    )
+}
+
 /// Classify a changed TypeScript/JavaScript line and return a finding.
 ///
 /// `workspace_root` enforces package-local ownership when `Some`: a test in
@@ -79,6 +264,17 @@ pub(crate) fn classify_change(
         .unwrap_or(OracleKind::Unknown);
     let mock_payload_oracle = related_mock_payload_oracle(&related);
 
+    // Move flow_sink computation here so it is available to the observation
+    // guard and the missing_discriminators gate below (RIPR-SPEC-0098).
+    let flow_sink = typescript_flow_sink_for(&probe_shape, owner, line, line_text);
+
+    // RIPR-SPEC-0098: observation guard — fires BEFORE promoting to Exposed.
+    // When the strong-oracle precondition would hold, verify that at least one
+    // strong assertion actually observes the changed sub-expression.  When this
+    // proof fails, fall through to the downgraded WeaklyExposed arm instead.
+    let observation_confirmed = strongest_strength >= OracleStrength::Strong.rank()
+        && ts_changed_value_is_observed(&probe_shape, line_text, &owner.name, &related_candidates);
+
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if related.is_empty()
     {
         (
@@ -99,7 +295,7 @@ pub(crate) fn classify_change(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank() {
+    } else if strongest_strength >= OracleStrength::Strong.rank() && observation_confirmed {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -110,6 +306,17 @@ pub(crate) fn classify_change(
                 owner.name,
                 strongest_kind.as_str()
             )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        // Strong oracle exists but observation guard failed: downgrade to
+        // WeaklyExposed with a named limitation (RIPR-SPEC-0098).
+        let named_limitation = ts_observation_guard_limitation(&probe_shape, line_text);
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![named_limitation],
         )
     } else {
         (
@@ -129,7 +336,6 @@ pub(crate) fn classify_change(
         missing.push(limit.missing.clone());
     }
 
-    let flow_sink = typescript_flow_sink_for(&probe_shape, owner, line, line_text);
     let missing_discriminators = if matches!(class, ExposureClass::WeaklyExposed)
         && has_oracle_eligible_relation
         && static_limit.is_none()
@@ -208,11 +414,16 @@ pub(crate) fn classify_change(
         strongest_strength
     );
     let observe = StageEvidence::new(observe_state, Confidence::Low, &observe_summary);
-    let discriminate_summary = if strongest_strength >= OracleStrength::Strong.rank() {
+    let discriminate_summary = if strongest_strength >= OracleStrength::Strong.rank()
+        && observation_confirmed
+    {
         format!(
             "Related test uses a `{}` oracle; static evidence suggests the changed behavior is discriminated.",
             strongest_kind.as_str()
         )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        // RIPR-SPEC-0098: strong oracle exists but observation guard failed.
+        "TypeScript preview adapter: strong oracle found but no assertion's observed_expression flows from the changed sub-expression; observation_unverified — discriminate unknown.".to_string()
     } else if let Some(discriminator) = missing_discriminators.first() {
         format!(
             "TypeScript preview adapter found no strong discriminator; missing proof: `{}`.",

@@ -5714,3 +5714,29 @@ outputs = [
 metrics = [
   "tothrow_exact_payload_upgrades_to_exact_error_variant",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0098"
+name = "TypeScript exposed observation guard"
+spec = "docs/specs/RIPR-SPEC-0098-typescript-exposed-observation-guard.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_swallowed_console_log_exposed_downgrade",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_returnvalue_genuinely_observed_control",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_sibling_assertion_non_owner_prevents_downgrade",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_field_construction_observed_control",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_swallowed_console_log_downgrade_live_extractor",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::ts_side_effect_observed_by_mock_expectation_stays_exposed",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/classifier.rs",
+  "crates/ripr/src/analysis/language/typescript/types.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0098-typescript-exposed-observation-guard.md",
+]
+metrics = [
+  "ts_exposed_observation_guard_downgrades_to_weakly_exposed",
+  "ts_returnvalue_non_effect_family_bypasses_guard",
+  "ts_non_owner_assertion_prevents_downgrade",
+  "ts_field_construction_non_effect_family_bypasses_guard",
+]
