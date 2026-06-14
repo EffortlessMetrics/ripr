@@ -1322,3 +1322,64 @@ fix, not a classification change — chasing `exposed` there would drift `ripr`
 back toward coverage. Reserve `exposed` flips for missed *strong, sink-aligned*
 oracles. See the "verify the artifact, not the proxy" entry above — an agent panel's plausible
 plan was disproved only by reading the classifier and the golden, not the plan.
+
+## 2026-06-13: The first false-`exposed` — substring token alignment over-credits
+
+An adversarial sweep across eight cloned Python repos found `ripr`'s first
+confirmed false-`exposed` (the silent over-credit direction the whole product
+exists to avoid). In anyio, changing `len(buffer) < max_buffer_size` to `<=` in
+`send_nowait` read `exposed`/`changed_sink_token` even though no *strong* oracle
+observes that boundary — because `classify_sink_alignment` matched changed-sink
+tokens by **substring** (`text.contains(token)`), and the changed token `buffer`
+is a substring of an unrelated `buffered_stream` oracle from a *different class*.
+Crediting coincidental co-occurrence as discrimination is exactly the "drift back
+to coverage" this log keeps warning about — and short, common tokens (`buffer`,
+`len`, `key`, `_state`) are the worst offenders. Fix (#1224): match tokens only at
+Python identifier boundaries (`oracle_text_observes_token`). `buffer` no longer
+matches `buffered_stream`; whole words like `key` in `Invalid key` still observe.
+
+Two durable points:
+
+- **Verify an agent's count, not just its claims.** The sweep agents reported "6
+  confirmed false-`exposed`." Reading the actual `ripr` output cut it to **one**:
+  four were conservative classes (`static_unknown`/`weakly_exposed`) the agents
+  mislabeled as over-credit, and one was a *correct* `exposed` they flagged in
+  error. A false-`exposed` is only real when `ripr` actually emits `exposed`;
+  bake that into the adjudication prompt or the agents conflate "the test doesn't
+  discriminate" with "`ripr` over-credited." Re-running the sweep with the strict
+  definition on the fixed binary returned **0** across the corpus, confirming the
+  vector closed with no siblings.
+- **The natural sweep stayed clean; this needed adversarial construction.** The
+  honest claim is "0 false-`exposed` on natural single-diff sweeps; one found
+  under adversarial token-coincidence probing, now closed." Both halves matter:
+  the safety result is real, *and* the heuristic had a reachable hole.
+
+**How to apply:** any token/substring match feeding `exposed` (alignment, escape
+hatches, relation heuristics) must use identifier boundaries, never raw
+`contains`. Guard new alignment code with a should-stay-`weakly_exposed` fixture
+built from a *coincidental* substring (proven `exposed` without the guard,
+`weakly_exposed` with it) — see `fixtures/python_substring_sink_alignment`.
+
+## 2026-06-13: Cross-file inline construct-call — the precision lever that *is* contract-safe
+
+The companion to the smoke-oracle reframing above: the Tier B false-actionables
+that legitimately flip to `exposed` are missed **strong** oracles, and the
+tractable one was a *relation* miss, not an alignment miss. structlog's
+`LogfmtRenderer.__call__` change was discriminated by
+`pytest.raises(ValueError, match='Invalid key…')` calling `LogfmtRenderer()(…)` —
+an exact-error oracle — but `ripr` linked the wrong test file by name proximity
+and never saw it. The fix (#1228) adds a `ConstructCall` relation that recognises
+an **inline** construct-call `OwnerClass(…)(…)` on a `__call__` owner, so the
+strong oracle is found and `key` aligns (post-#1224, as a whole word). structlog
+flips `weakly_exposed → exposed`, correctly.
+
+The discipline that kept it safe is the same boundary thinking: it is gated to
+`__call__` owners (Guard A), requires the test to *import* the class (Guard B,
+blocking same-name cross-module collisions), and an inline-only balanced-paren
+check distinguishes `C()(…)` from the bound local `x = C(); x(…)` — so
+`python_local_callable_binding` and `python_broad_boolean_assertion` stay
+`weakly_exposed`, preserving the contract from the entry above. This is the shape
+of a *good* `exposed` flip: a missed **strong, sink-aligned** oracle, linked
+without widening the net. jinja (framework filter-dispatch) and anyio
+(function-result binding + async non-value oracle) remain defensible limitations,
+not bugs.
