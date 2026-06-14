@@ -207,6 +207,15 @@ Prefer small, high-signal changes:
 - Do not credit reach-plus-a-strong-oracle as `exposed`: a strong oracle must
   observe the changed sink (see `docs/STATIC_EXPOSURE_MODEL.md` § Discrimination
   vs Coverage). Crediting proximity as discrimination is the coverage mistake.
+- Align on identity, not tokens. Before crediting `exposed` from a name match,
+  resolve that the test reaches the *same entity*, not just the same *string*: a
+  bare `.method(` on any receiver, or the owner's bare method-name appearing in an
+  oracle, can belong to a different class. Token coincidence — substring
+  (`buffer⊂buffered_stream`) or whole-word-wrong-owner — is the recurring
+  false-`exposed` family; when you touch one token-matching alignment/relation
+  site, audit the others, and pin each confirmed over-credit as a
+  should-stay-`weakly_exposed` golden (see `docs/LEARNINGS.md` § Token coincidence
+  is a false-`exposed` family).
 - Real producers only: do not flip a not-available field to a fabricated
   taxonomy or a fake-zero. Until a real production condition populates the
   inspected field, defer the named limitation to a code comment rather than

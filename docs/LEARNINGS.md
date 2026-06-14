@@ -1383,3 +1383,63 @@ of a *good* `exposed` flip: a missed **strong, sink-aligned** oracle, linked
 without widening the net. jinja (framework filter-dispatch) and anyio
 (function-result binding + async non-value oracle) remain defensible limitations,
 not bugs.
+
+## 2026-06-14: Token coincidence is a false-`exposed` *family*, not one bug — and "no siblings" was premature
+
+The substring entry above closed the `buffer ⊂ buffered_stream` vector (#1224)
+and concluded the fixed re-run found "no siblings." Adversarial construction on
+2026-06-14 disproved that: a second, structurally distinct false-`exposed`
+exists, and it is the same disease.
+
+The new vector (found while building the adversarial guard panel, #1244): owner
+`TokenValidator.validate` changes `token` → `token.strip()`; the only related
+test calls `proc.validate(...)` on an **unrelated class** `PaymentProcessor` and
+asserts `== True`. `ripr` reads `exposed`. Two token-only steps compound:
+
+- `body_calls_owner` links a `syntactic_call` via
+  `contains_any_attribute_call(body, owner.name)` — a bare `.validate(` on *any*
+  receiver, no type resolution.
+- `classify_sink_alignment` credits `direct` /
+  `strong_oracle_observes_owner_name` because the strong oracle text contains the
+  owner's **bare method-name** token `validate`.
+
+The unifying root cause is **alignment matches tokens, not entities**.
+`buffer⊂buffered_stream` was a *substring* failure; this is a *whole-word* failure
+where the word matches the *wrong owner*. Identifier-boundary matching (#1224)
+does not help — `validate` is a whole word; it just belongs to a different class.
+So the family is larger than "substring": **every alignment/relation site that
+credits `exposed` on a name match without resolving identity is a latent
+false-`exposed`.** The token-only sites today: `oracle_text_observes_token`
+(owner-name / changed-sink), `contains_any_attribute_call` (bare `.method(`), and
+same-stem relation.
+
+Two durable points:
+
+- **A closed-corpus "no siblings" is a statement about the corpus, not the
+  analyzer.** Silent over-credit is found only by *construction* — engineering an
+  input that *should* stay quiet — never by re-sampling. The first sweep's clean
+  re-run was real; it just could not see a vector no diff in the corpus
+  exercised. Read every "0 false-`exposed`" as conditional on the probe set.
+- **Each confirmed false-`exposed` graduates into a pinned golden fixture.** #1244
+  ships `fixtures/python_adversarial_buffer_token` and
+  `python_adversarial_mock_call_not_value` as end-to-end goldens that fail CI if
+  the coincidence ever credits `exposed` again — the unit test for
+  `oracle_text_observes_token` is not enough; pin it at the *classifier output*.
+  The owner-name vector
+  (`fix/py-false-exposed-attribute-call-owner-name`) has its first guard pinned
+  this way — `python_adversarial_same_method_other_class` is held at
+  `weakly_exposed` — but this is a **partial hardening, not a closure**. The
+  shipped gate requires owner-*class* identity for method owners; oppositional
+  review found the same token-only disease still open on sibling vectors
+  (free-function module identity, changed-sink receiver identity). The proper
+  closure — resolving *receiver* identity at the relation layer — is deferred to
+  `analysis/python-method-owner-receiver-binding-identity`, which supersedes the
+  token-guard approach. Read this family as in-progress, not done.
+
+**How to apply:** before crediting `exposed` from any name/token match, ask "does
+this resolve to the *same entity*, or only the same *string*?" For a method
+owner, the bare method name is too collision-prone to credit `direct` alone —
+require the owner's class token / a receiver bound to it. When you touch one
+token-matching site, audit the others; they share the disease. Prefer downgrading
+token-only credit to a *visible* `weakly_exposed` over a *silent* `exposed` —
+visible over-suggestion is the recoverable error.
