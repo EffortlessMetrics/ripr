@@ -933,9 +933,10 @@ fn recommendation_for(
     let assertion_shape =
         actionable.then(|| assertion_shape_record(assertion_shape_for_entry(entry)));
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
-    let nearest_test_to_imitate = nearest_strong_test_to_imitate(&entry.evidence)
-        .or_else(|| entry.evidence.related_tests.first())
-        .map(|test| related_test_record(test, entry.seam.kind()));
+    let nearest_test_to_imitate =
+        nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence)
+            .or_else(|| entry.evidence.related_tests.first())
+            .map(|test| related_test_record(test, entry.seam.kind()));
 
     EvidenceRecordRecommendation {
         action: action.to_string(),

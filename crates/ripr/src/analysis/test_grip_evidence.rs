@@ -3837,23 +3837,33 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
     StageEvidence::new(state, Confidence::Medium, summary)
 }
 
-fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
-    match seam.kind() {
+/// Returns true when `oracle_kind` is an acceptable discriminator for `seam_kind`.
+///
+/// This is the single source of truth for the kind-matching rule used by both
+/// the grader (via `oracle_kind_matches_seam`) and the exemplar selector in
+/// `output::agent_seam_packets::nearest_strong_test_to_imitate`.
+/// Do not duplicate this rule — call this function instead.
+pub(crate) fn oracle_kind_matches_seam_kind(seam_kind: SeamKind, oracle_kind: &OracleKind) -> bool {
+    match seam_kind {
         SeamKind::PredicateBoundary
         | SeamKind::ReturnValue
         | SeamKind::MatchArm
         | SeamKind::FieldConstruction => matches!(
-            oracle,
+            oracle_kind,
             OracleKind::ExactValue
                 | OracleKind::WholeObjectEquality
                 | OracleKind::Snapshot
                 | OracleKind::RelationalCheck
         ),
-        SeamKind::ErrorVariant => matches!(oracle, OracleKind::ExactErrorVariant),
+        SeamKind::ErrorVariant => matches!(oracle_kind, OracleKind::ExactErrorVariant),
         SeamKind::SideEffect | SeamKind::CallPresence => {
-            matches!(oracle, OracleKind::MockExpectation)
+            matches!(oracle_kind, OracleKind::MockExpectation)
         }
     }
+}
+
+fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
+    oracle_kind_matches_seam_kind(seam.kind(), oracle)
 }
 
 pub(crate) fn oracle_semantics_for(
@@ -14420,5 +14430,90 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 .unwrap_or_default(),
             vec![0]
         );
+    }
+
+    // RIPR-SPEC-0103 fixture 5: parity table for oracle_kind_matches_seam_kind.
+    // ErrorVariant accepts ONLY ExactErrorVariant; rejects all value/mock oracles.
+    // Value seams accept ExactValue/WholeObjectEquality/Snapshot/RelationalCheck.
+    // SideEffect/CallPresence accept ONLY MockExpectation.
+    #[test]
+    fn oracle_kind_matches_seam_kind_error_variant_accepts_only_exact_error_variant() {
+        use crate::domain::OracleKind;
+        // ErrorVariant + ExactErrorVariant → true
+        assert!(
+            oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &OracleKind::ExactErrorVariant),
+            "ErrorVariant must accept ExactErrorVariant"
+        );
+        // ErrorVariant rejects all other kinds
+        for rejected in [
+            OracleKind::ExactValue,
+            OracleKind::WholeObjectEquality,
+            OracleKind::Snapshot,
+            OracleKind::RelationalCheck,
+            OracleKind::MockExpectation,
+            OracleKind::BroadError,
+            OracleKind::SmokeOnly,
+        ] {
+            assert!(
+                !oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &rejected),
+                "ErrorVariant must reject {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_kind_matches_seam_kind_value_seams_accept_exact_value() {
+        use crate::domain::OracleKind;
+        for value_seam in [
+            SeamKind::PredicateBoundary,
+            SeamKind::ReturnValue,
+            SeamKind::MatchArm,
+            SeamKind::FieldConstruction,
+        ] {
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::ExactValue),
+                "{value_seam:?} must accept ExactValue"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::WholeObjectEquality),
+                "{value_seam:?} must accept WholeObjectEquality"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::Snapshot),
+                "{value_seam:?} must accept Snapshot"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::RelationalCheck),
+                "{value_seam:?} must accept RelationalCheck"
+            );
+            // Value seams must reject error-kind and mock-kind oracles
+            assert!(
+                !oracle_kind_matches_seam_kind(value_seam, &OracleKind::ExactErrorVariant),
+                "{value_seam:?} must reject ExactErrorVariant"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(value_seam, &OracleKind::MockExpectation),
+                "{value_seam:?} must reject MockExpectation"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_kind_matches_seam_kind_side_effect_accepts_only_mock_expectation() {
+        use crate::domain::OracleKind;
+        for effect_seam in [SeamKind::SideEffect, SeamKind::CallPresence] {
+            assert!(
+                oracle_kind_matches_seam_kind(effect_seam, &OracleKind::MockExpectation),
+                "{effect_seam:?} must accept MockExpectation"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(effect_seam, &OracleKind::ExactValue),
+                "{effect_seam:?} must reject ExactValue"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(effect_seam, &OracleKind::ExactErrorVariant),
+                "{effect_seam:?} must reject ExactErrorVariant"
+            );
+        }
     }
 }

@@ -433,3 +433,11 @@ path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"
 status = "proposed"
 owner = "language-adapter-swarm"
 standalone_reason = "Cross-language architectural constraint that every actionable-packet adapter reuses the single validate_agent_gap_record_packet authority and shared agent-seam renderers, enforced by validator_parity_* tests; generalizes the pattern established in the RIPR-SPEC-0087/0088 TypeScript wave; no separate proposal artifact preceded it."
+
+[[artifact]]
+id = "RIPR-SPEC-0103"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty fix for Rust primary-language issue #1168 (slice 1): kind-gate the exemplar selector so nearest_strong_test_to_imitate returns null for an ErrorVariant seam when no related Strong test has ExactErrorVariant oracle kind, rather than nominating a misleading success-path exact_value test; oracle_kind_matches_seam_kind extracted as single source of truth; 7 unit controls; no schema bump; grip class unchanged."

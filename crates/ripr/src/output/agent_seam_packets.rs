@@ -1430,7 +1430,7 @@ fn push_packet_json(
     ));
     out.push_str("},\n");
 
-    let nearest_strong = nearest_strong_test_to_imitate(evidence);
+    let nearest_strong = nearest_strong_test_to_imitate(seam.kind(), evidence);
     out.push_str("      \"nearest_strong_test_to_imitate\": ");
     if let Some(test) = nearest_strong {
         push_related_test_reference(out, test, "nearest strong related test by ranked evidence");
@@ -1708,7 +1708,7 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
             ),
         };
     }
-    if let Some(test) = nearest_strong_test_to_imitate(&entry.evidence) {
+    if let Some(test) = nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence) {
         return RecommendedTest {
             name,
             file: display_path(&test.file),
@@ -1910,12 +1910,16 @@ fn snake_case_token(raw: &str) -> String {
 }
 
 pub(crate) fn nearest_strong_test_to_imitate(
+    seam_kind: SeamKind,
     evidence: &TestGripEvidence,
 ) -> Option<&crate::analysis::test_grip_evidence::RelatedTestGrip> {
-    evidence
-        .related_tests
-        .iter()
-        .find(|test| test.oracle_strength == crate::domain::OracleStrength::Strong)
+    evidence.related_tests.iter().find(|test| {
+        test.oracle_strength == crate::domain::OracleStrength::Strong
+            && crate::analysis::test_grip_evidence::oracle_kind_matches_seam_kind(
+                seam_kind,
+                &test.oracle_kind,
+            )
+    })
 }
 
 fn push_related_test_reference(
@@ -4468,5 +4472,155 @@ mod tests {
             json.contains("\"limit_source\": \"configured\""),
             "expected limit_source=configured: {json}"
         );
+    }
+
+    // RIPR-SPEC-0103 fixtures: error-seam exemplar kind-gate.
+
+    fn error_variant_seam() -> RepoSeam {
+        seam_with(
+            "auth::authenticate",
+            SeamKind::ErrorVariant,
+            crate::analysis::seams::RequiredDiscriminator::ErrorVariant {
+                variant: "AuthError::RevokedToken".to_string(),
+            },
+            ExpectedSink::ErrorChannel,
+        )
+    }
+
+    // Fixture 1 (+ fixture 6 static-language guard):
+    // ErrorVariant seam with ONLY a success-path Strong exact_value related test
+    // → nearest_strong_test_to_imitate == null  AND  current_grip == weakly_gripped.
+    #[test]
+    fn kind_gate_error_variant_seam_with_only_exact_value_strong_test_yields_null_exemplar()
+    -> Result<(), String> {
+        let success_path_strong = related_test_with(
+            "authenticate_succeeds",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![success_path_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        for needle in [
+            "\"current_grip\": \"weakly_gripped\"",
+            "\"nearest_strong_test_to_imitate\": null",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 1: expected {needle:?} in: {json}"
+                ));
+            }
+        }
+        // Fixture 6: static-language guard — no forbidden vocab in the rendered packet.
+        let static_language_forbidden = [
+            "killed", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "survived", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "untested", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "proven", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "adequate", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+        ];
+        for forbidden in static_language_forbidden {
+            if json.contains(forbidden) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 6 (static-language): forbidden word {forbidden:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    // Fixture 2 (must-not-over-withdraw control):
+    // PredicateBoundary seam with a Strong exact_value related test
+    // → that test IS still nominated (kind gate only withdraws when kind mismatches).
+    #[test]
+    fn kind_gate_predicate_boundary_seam_with_exact_value_strong_test_still_nominated()
+    -> Result<(), String> {
+        let strong_exact_value = related_test_with(
+            "below_threshold_has_no_discount",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let seam = boundary_seam();
+        let classified =
+            classified_with(seam, SeamGripClass::WeaklyGripped, vec![strong_exact_value]);
+        let json = render_agent_seam_packets_json(&[classified], None);
+        if json.contains("\"nearest_strong_test_to_imitate\": null") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 2: predicate_boundary seam must nominate exact_value strong test, not null; got: {json}"
+            ));
+        }
+        if !json.contains("\"name\": \"below_threshold_has_no_discount\"") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 2: expected nominated test name in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    // Fixture 3 (positive: kind matches):
+    // ErrorVariant seam whose related Strong test has oracle_kind ExactErrorVariant
+    // → that test IS nominated (kind matches → not withdrawn).
+    #[test]
+    fn kind_gate_error_variant_seam_with_exact_error_variant_strong_test_is_nominated()
+    -> Result<(), String> {
+        let exact_error_variant_strong = related_test_with(
+            "authenticate_revoked_token_returns_exact_variant",
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![exact_error_variant_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        if json.contains("\"nearest_strong_test_to_imitate\": null") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 3: ExactErrorVariant strong test must be nominated for ErrorVariant seam, not null; got: {json}"
+            ));
+        }
+        if !json.contains("\"name\": \"authenticate_revoked_token_returns_exact_variant\"") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 3: expected nominated test name in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    // Fixture 4 (must-not-over-credit control):
+    // ErrorVariant seam with a Strong relational/whole-object test and NO ExactErrorVariant test
+    // → nearest_strong == null, grip stays weakly_gripped.
+    #[test]
+    fn kind_gate_error_variant_seam_with_relational_strong_test_yields_null_exemplar()
+    -> Result<(), String> {
+        let relational_strong = related_test_with(
+            "authenticate_always_fails_for_revoked",
+            OracleKind::RelationalCheck,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![relational_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        for needle in [
+            "\"current_grip\": \"weakly_gripped\"",
+            "\"nearest_strong_test_to_imitate\": null",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 4: expected {needle:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
     }
 }

@@ -685,7 +685,7 @@ fn review_recommendation_json(
     let seam = &entry.seam;
     let missing = missing_records_for(entry);
     let recommended = agent_seam_packets::recommended_test_for(entry);
-    let nearest = agent_seam_packets::nearest_strong_test_to_imitate(&entry.evidence);
+    let nearest = agent_seam_packets::nearest_strong_test_to_imitate(seam.kind(), &entry.evidence);
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
     let assertion_shape =
         agent_seam_packets::assertion_shape_for(seam.kind(), seam.owner(), &entry.evidence);

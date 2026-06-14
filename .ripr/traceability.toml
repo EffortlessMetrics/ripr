@@ -5846,3 +5846,31 @@ outputs = [
 metrics = [
   "typescript_import_alias_owner_call_confidence_honesty",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0103"
+name = "Error-seam exemplar kind-gate"
+spec = "docs/specs/RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md"
+tests = [
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::kind_gate_error_variant_seam_with_only_exact_value_strong_test_yields_null_exemplar",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::kind_gate_predicate_boundary_seam_with_exact_value_strong_test_still_nominated",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::kind_gate_error_variant_seam_with_exact_error_variant_strong_test_is_nominated",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::kind_gate_error_variant_seam_with_relational_strong_test_yields_null_exemplar",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_kind_matches_seam_kind_error_variant_accepts_only_exact_error_variant",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_kind_matches_seam_kind_value_seams_accept_exact_value",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_kind_matches_seam_kind_side_effect_accepts_only_mock_expectation",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/output/agent_brief.rs",
+  "crates/ripr/src/output/review_comments.rs",
+  "crates/ripr/src/output/evidence_record.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md",
+]
+metrics = [
+  "error_seam_exemplar_honesty",
+]
