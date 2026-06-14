@@ -19,3 +19,6 @@ pub(in crate::analysis) use infection::infection_evidence;
 pub(in crate::analysis) use reach::reach_evidence;
 pub(in crate::analysis) use related_tests::find_related_tests;
 pub(in crate::analysis) use reveal::reveal_evidence;
+// RIPR-SPEC-0106: re-export the variant parsers so test_grip_evidence.rs can
+// apply variant-binding without reaching into the private `text` submodule.
+pub(in crate::analysis) use text::{enum_variant_values, exact_error_variant};

@@ -14,6 +14,7 @@ use crate::analysis::rust_index::{
     PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, TestFact,
     classify_assertion, extract_call_facts, extract_identifier_tokens,
     extract_line_scanned_oracles, extract_literal_facts, extract_return_facts,
+    is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
 };
 
 impl RustSyntaxAdapter for RaRustSyntaxAdapter {
@@ -621,6 +622,12 @@ fn extract_parser_oracles(
     text: &str,
     line_index: &LineIndex,
 ) -> Vec<OracleFact> {
+    // RIPR-SPEC-0106 (Part A): pre-scan the function body for `unwrap_err`/
+    // `expect_err` variable bindings so assertions on those variables can be
+    // upgraded to ExactErrorVariant.
+    let function_text = function.syntax().text().to_string();
+    let bound_error_vars = unwrap_err_bound_variables(&function_text);
+
     let mut assertions = Vec::new();
     for macro_call in function
         .syntax()
@@ -636,7 +643,16 @@ fn extract_parser_oracles(
         }
         let range = macro_call.syntax().text_range();
         let assertion_text = slice_macro_call_text(text, range.start(), range.end());
-        let classification = classify_assertion(&assertion_text);
+        let mut classification = classify_assertion(&assertion_text);
+        // Upgrade ExactValue assertions on unwrap_err-bound variables to
+        // ExactErrorVariant when the assertion names a specific error variant
+        // (RIPR-SPEC-0106, Part A).
+        if classification.kind == OracleKind::ExactValue
+            && is_unwrap_err_bound_error_assertion(&assertion_text, &bound_error_vars)
+        {
+            classification.kind = OracleKind::ExactErrorVariant;
+            classification.strength = OracleStrength::Strong;
+        }
         assertions.push(OracleFact {
             line: line_index.line(range.start()),
             kind: classification.kind,

@@ -154,6 +154,15 @@ fn analyze_related_assertions(
     } else {
         Vec::new()
     };
+    // For ErrorPath: collect the variant-only token (the identifier after the
+    // last `::` in `Err(Type::Variant)`) so that a sibling-variant assertion
+    // that pins a different variant of the same error type cannot spuriously
+    // match this probe. RIPR-SPEC-0106 (Part B).
+    let error_path_variant = if matches!(probe.family, ProbeFamily::ErrorPath) {
+        error_path_variant_token(&probe.expression)
+    } else {
+        None
+    };
     let confirm_required = needs_token_confirmation(&probe.family);
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
@@ -183,6 +192,7 @@ fn analyze_related_assertions(
             let (matched, has_token_match) = assertion_matches_probe_detail(
                 &probe_tokens,
                 &match_arm_variants,
+                error_path_variant.as_deref(),
                 &probe.family,
                 assertion,
                 test.assertions.len(),
@@ -240,6 +250,30 @@ fn analyze_related_assertions(
     }
 }
 
+/// Extracts the variant identifier from an error-path probe expression.
+///
+/// For `return Err(CalcError::TooLarge);` → `Some("TooLarge")`.
+/// For `return Err(anyhow!("..."));` → `None` (no qualified variant).
+///
+/// Used by RIPR-SPEC-0106 (Part B) to restrict `ExactErrorVariant` assertion
+/// matching to the probe's specific variant, preventing sibling-variant
+/// over-credit.
+fn error_path_variant_token(expression: &str) -> Option<String> {
+    use super::text::exact_error_variant;
+    let variant_path = exact_error_variant(expression)?;
+    // Last component after the final `::`.
+    let last = variant_path.rsplit("::").next()?;
+    if last
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+    {
+        Some(last.to_string())
+    } else {
+        None
+    }
+}
+
 /// Returns `(matched, has_token_match)`.
 ///
 /// `matched` is true when the assertion should be associated with this probe
@@ -256,16 +290,26 @@ fn analyze_related_assertions(
 /// When the expression contains no `::` (e.g. `None => 0,`), the variant
 /// token list is empty and `has_token_match` is always false, reflecting that
 /// the probe has no arm-specific identifier.
+///
+/// For `ErrorPath` probes with `ExactErrorVariant` assertions (RIPR-SPEC-0106,
+/// Part B): when `error_path_variant` is `Some`, an `ExactErrorVariant` oracle
+/// only `matched` when the assertion text contains the probe's specific variant
+/// token. This prevents a sibling-variant assertion (`CalcError::Negative`)
+/// from matching a `CalcError::TooLarge` probe — both share the `CalcError`
+/// qualifier token, but only the variant token (`TooLarge`) is specific.
+/// Without `error_path_variant` (probe has no qualified variant), falls back
+/// to the standard `token_match` behavior.
 fn assertion_matches_probe_detail(
     probe_tokens: &[String],
     match_arm_variants: &[String],
+    error_path_variant: Option<&str>,
     family: &ProbeFamily,
     assertion: &OracleFact,
     assertion_count: usize,
 ) -> (bool, bool) {
     let token_match = probe_tokens
         .iter()
-        .any(|token| token.len() > 3 && assertion.text.contains(token));
+        .any(|token| token.len() > 3 && assertion.text.contains(token.as_str()));
     // For MatchArm probes, restrict the confirmation check to variant-only
     // tokens (post-`::`). The qualifier ("Mode" in "Mode::Frozen") is shared
     // across all arms and therefore cannot confirm this specific arm.
@@ -276,6 +320,18 @@ fn assertion_matches_probe_detail(
     } else {
         token_match
     };
+    // For ErrorPath probes with ExactErrorVariant assertions: restrict `matched`
+    // to require the probe's specific variant token, not just the qualifier.
+    // Fail-closed: if error_path_variant is None (no parseable variant in the
+    // probe), fall through to the standard token_match + family_match check.
+    if matches!(family, ProbeFamily::ErrorPath)
+        && matches!(assertion.kind, OracleKind::ExactErrorVariant)
+        && let Some(variant) = error_path_variant
+    {
+        let variant_matches = variant.len() > 3 && assertion.text.contains(variant);
+        return (variant_matches, variant_matches);
+        // Probe has no parseable variant: falls through to standard match below.
+    }
     let family_match = oracle_matches_family(family, assertion);
     let matched = token_match || family_match || assertion_count == 1;
     (matched, has_token_match)
@@ -577,6 +633,7 @@ mod tests {
         let (matched, has_token) = assertion_matches_probe_detail(
             &["score".to_string()],
             &[],
+            None,
             &ProbeFamily::StaticUnknown,
             &token_assertion,
             2,
@@ -592,6 +649,7 @@ mod tests {
         let (matched, has_token) = assertion_matches_probe_detail(
             &["err".to_string()],
             &[],
+            None,
             &ProbeFamily::ErrorPath,
             &family_assertion,
             2,
@@ -607,6 +665,7 @@ mod tests {
         let (matched, has_token) = assertion_matches_probe_detail(
             &["run".to_string()],
             &[],
+            None,
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
             1,
@@ -620,11 +679,67 @@ mod tests {
         let (matched, _) = assertion_matches_probe_detail(
             &["run".to_string()],
             &[],
+            None,
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
             2,
         );
         assert!(!matched, "fallback must not fire for assertion_count > 1");
+    }
+
+    // RIPR-SPEC-0106 Control 2 (SIBLING-VARIANT): a Negative-pinning assertion
+    // must not match a TooLarge error_path probe.
+    #[test]
+    fn sibling_variant_assertion_does_not_match_too_large_probe() {
+        let sibling_assertion = oracle(
+            "assert_eq!(err, CalcError::Negative);",
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+        );
+        // Probe expression names TooLarge; error_path_variant = Some("TooLarge").
+        let (matched, has_token) = assertion_matches_probe_detail(
+            &["CalcError".to_string(), "TooLarge".to_string()],
+            &[],
+            Some("TooLarge"),
+            &ProbeFamily::ErrorPath,
+            &sibling_assertion,
+            2,
+        );
+        assert!(
+            !matched,
+            "sibling-variant Negative assertion must not match TooLarge probe"
+        );
+        assert!(
+            !has_token,
+            "sibling-variant assertion must not set has_token_match for TooLarge probe"
+        );
+    }
+
+    // RIPR-SPEC-0106 Control 1 (POSITIVE): exact variant assertion DOES match
+    // the probe when the specific variant token is present.
+    #[test]
+    fn exact_variant_assertion_matches_matching_probe() {
+        let exact_assertion = oracle(
+            "assert_eq!(err, CalcError::Negative);",
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+        );
+        let (matched, has_token) = assertion_matches_probe_detail(
+            &["CalcError".to_string(), "Negative".to_string()],
+            &[],
+            Some("Negative"),
+            &ProbeFamily::ErrorPath,
+            &exact_assertion,
+            2,
+        );
+        assert!(
+            matched,
+            "exact variant assertion must match the probe when variant token matches"
+        );
+        assert!(
+            has_token,
+            "matching variant assertion must set has_token_match"
+        );
     }
 
     #[test]

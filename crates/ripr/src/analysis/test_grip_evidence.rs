@@ -3816,7 +3816,10 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
             if oracle.strength.rank() > best.rank() {
                 best = oracle.strength.clone();
             }
-            if oracle_kind_matches_seam(seam, &oracle.kind) {
+            // RIPR-SPEC-0106 (Part B): for ErrorVariant seams, oracle_kind_matches_seam
+            // is necessary but not sufficient — the oracle must also structurally pin
+            // the seam's specific variant. oracle_discriminates_seam checks both.
+            if oracle_discriminates_seam(seam, oracle) {
                 best_kind_matches_seam = true;
             }
         }
@@ -3835,6 +3838,79 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
         best_kind_matches_seam
     );
     StageEvidence::new(state, Confidence::Medium, summary)
+}
+
+/// Returns true when `oracle` is a discriminating match for `seam`.
+///
+/// For non-ErrorVariant seams this is identical to `oracle_kind_matches_seam`
+/// (the existing kind-category check).
+///
+/// For `ErrorVariant` seams (RIPR-SPEC-0106, Part B) the oracle must also
+/// structurally pin the seam's specific variant:
+/// - The oracle kind must be `ExactErrorVariant`.
+/// - The oracle text must contain the seam's variant token
+///   (from `RequiredDiscriminator::ErrorVariant { variant }`).
+/// - If the seam variant cannot be parsed from the discriminator, or the
+///   oracle text does not contain it, the oracle is NOT credited (fail-closed).
+///
+/// This is the over-credit guard: a test that pins `MyError::Negative` does
+/// NOT discriminate a `MyError::TooLarge` seam.
+fn oracle_discriminates_seam(seam: &RepoSeam, oracle: &super::facts::OracleFact) -> bool {
+    if !oracle_kind_matches_seam(seam, &oracle.kind) {
+        return false;
+    }
+    if seam.kind() != SeamKind::ErrorVariant {
+        return true;
+    }
+    // ErrorVariant seam: require variant-level structural match.
+    error_variant_oracle_matches_seam_variant(seam, &oracle.text)
+}
+
+/// Returns true when the oracle text structurally pins the same error variant
+/// as the seam requires.
+///
+/// The seam variant is extracted from `RequiredDiscriminator::ErrorVariant { variant }`
+/// (which holds the full `Err(<variant>)` expression such as
+/// `"return Err(MyError::TooLarge)"`). The assertion variant is extracted from
+/// the oracle text using the same `exact_error_variant` + `enum_variant_values`
+/// parsers.
+///
+/// Fail-closed: returns `false` whenever either side cannot be parsed or they
+/// do not share a common variant value.
+fn error_variant_oracle_matches_seam_variant(seam: &RepoSeam, oracle_text: &str) -> bool {
+    use super::classify::{enum_variant_values, exact_error_variant};
+    use crate::analysis::seams::RequiredDiscriminator;
+
+    // Extract the seam's required variant from the discriminator expression.
+    let seam_variant = match seam.required_discriminator() {
+        RequiredDiscriminator::ErrorVariant { variant } => {
+            // The `variant` field is the full expression such as
+            // `"return Err(MyError::TooLarge);"` — extract the inner variant.
+            // Fail-closed: if unparseable, return false.
+            match exact_error_variant(variant) {
+                Some(v) => v,
+                None => return false,
+            }
+        }
+        _ => return false,
+    };
+
+    // Extract the variant(s) named in the oracle assertion text.
+    // For `assert_eq!(err, MyError::Negative)` there is no `Err(` in the text,
+    // so we use `enum_variant_values` directly on the full oracle text.
+    let oracle_variants = if oracle_text.contains("Err(") {
+        // Classic inline form: `assert_matches!(result, Err(MyError::Negative))`
+        match exact_error_variant(oracle_text) {
+            Some(v) => vec![v],
+            None => return false,
+        }
+    } else {
+        // Unwrap_err-bound form: `assert_eq!(err, MyError::Negative)`
+        enum_variant_values(oracle_text)
+    };
+
+    // Credit only when the oracle names the seam's exact variant.
+    oracle_variants.iter().any(|v| v == &seam_variant)
 }
 
 /// Returns true when `oracle_kind` is an acceptable discriminator for `seam_kind`.
