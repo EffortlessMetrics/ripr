@@ -1,0 +1,8 @@
+[package]
+name = "error_path_sibling_oracle_fake_clean_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "error_path_sibling_oracle_fake_clean_fixture"
+path = "src/lib.rs"

@@ -55,7 +55,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::Negative)
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 17)
   - related test tests/errors.rs:6 negative_input_returns_some_error uses weak relational check oracle: assert!(err.to_string().contains("error"));
   - observed function argument value x = -1 at line 7

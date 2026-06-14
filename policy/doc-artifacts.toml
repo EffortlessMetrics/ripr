@@ -457,3 +457,11 @@ path = "docs/specs/RIPR-SPEC-0105-lsp-defer-seam-inventory.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "LSP performance + disclosure fix for issue #1245 (cockpit dogfood gap #1): defer the expensive 336s cold / 31s warm full-repo seam inventory off the interactive did_open/did_save path; diff-scoped findings (33ms–11s) always produced; seams computed only on explicit ripr.refreshDiagnostics; disclosed via new seams_deferred run_status value (member of limited family); limited policy applied (severity downgrade + gap suppression); 4 unit controls; additive seams_deferred: bool field on AnalysisSnapshot; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0107"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty fix: add ErrorPath to needs_token_confirmation in classify/reveal.rs so sibling ExactValue and broad is_err() oracles no longer promote error_path seams to exposed via observation_unverified; genuine variant-pinning ExactErrorVariant oracle (matching token) still clears guard and keeps seam exposed; reuses RIPR-SPEC-0094 + RIPR-SPEC-0106 machinery; one-line production delta; no schema bump; no version bump."

@@ -191,3 +191,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0107: error_path requires a variant-observing oracle; sibling/broad oracle no longer promotes exposed. The broad assert!(authenticate("").is_err()) oracle has no variant token (AuthError, RevokedToken are not in is_err() text), so discriminate message correctly changes to observation_unverified. Classification stays weakly_exposed.
+
+Command:
+`cargo xtask goldens bless weak_error_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

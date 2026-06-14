@@ -358,9 +358,19 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only broad error oracle found; is_err() does not discriminate exact error variants"
+        // RIPR-SPEC-0107: ErrorPath now in needs_token_confirmation. A broad
+        // is_err() oracle has no variant token (AuthError/RevokedToken) in its
+        // text, so observation_unverified fires instead of the oracle-strength
+        // "Only broad error oracle found" message.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "broad is_err() oracle must emit observation_unverified for error_path after RIPR-SPEC-0107: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert_eq!(
             finding.related_tests[0].oracle_strength,

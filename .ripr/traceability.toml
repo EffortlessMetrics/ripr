@@ -5955,3 +5955,29 @@ metrics = [
   "unwrap_err_variant_grip_raise",
   "sibling_variant_no_credit",
 ]
+[[behavior]]
+id = "RIPR-SPEC-0107"
+name = "ErrorPath requires a variant-observing oracle"
+spec = "docs/specs/RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.md"
+tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_broad_oracle_only_downgrades_discriminate_to_weak",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_sibling_exact_value_oracle_downgrades_discriminate_to_weak",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_exact_variant_oracle_keeps_discriminate_yes",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_matches_variant_oracle_keeps_discriminate_yes",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_is_not_effect_family",
+  "crates/ripr/src/analysis/classifier.rs::tests::given_broad_is_err_assertion_when_error_variant_changes_then_oracle_is_weak",
+]
+fixtures = [
+  "fixtures/error_path_sibling_oracle_fake_clean",
+]
+code = [
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classifier.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.md",
+]
+metrics = [
+  "error_path_variant_confirmation_required",
+  "error_path_variant_positive_unchanged",
+]

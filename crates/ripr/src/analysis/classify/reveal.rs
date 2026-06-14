@@ -44,16 +44,21 @@ struct RevealAssertionAnalysis {
     /// no such match has fired yet.
     ///
     /// Applies to: `MatchArm`, `ReturnValue`, `FieldConstruction`, `SideEffect`,
-    /// `CallDeletion`. For each of these families, the broad `family_match` or
-    /// `assertion_count == 1` matcher alone is insufficient: it tells us an
-    /// oracle of the right shape exists in a reachable test, but cannot confirm
-    /// it observes *this particular* changed expression (vs. a sibling, an
-    /// unrelated field, or a different call site).
+    /// `CallDeletion`, `ErrorPath`. For each of these families, the broad
+    /// `family_match` or `assertion_count == 1` matcher alone is insufficient:
+    /// it tells us an oracle of the right shape exists in a reachable test, but
+    /// cannot confirm it observes *this particular* changed expression (vs. a
+    /// sibling, an unrelated field, or a different call site).
     ///
     /// Confirmation differs by family:
-    /// - **Value** families (MatchArm, ReturnValue, FieldConstruction): the only
-    ///   static signal of specificity is a `token_match` — an assertion whose
-    ///   text contains an identifier token from the probe expression.
+    /// - **Value** families (MatchArm, ReturnValue, FieldConstruction,
+    ///   ErrorPath): the only static signal of specificity is a `token_match` —
+    ///   an assertion whose text contains an identifier token from the probe
+    ///   expression. For `ErrorPath`, `assertion_matches_probe_detail`'s
+    ///   `ExactErrorVariant` fast-path returns `has_token_match=true` when the
+    ///   assertion text contains the probe's specific variant token (RIPR-SPEC-0106,
+    ///   Part B), so a genuine variant-pinning oracle clears this guard. A sibling
+    ///   variant, a broad `is_err()`, or a non-variant exact-value oracle does not.
     /// - **Effect** families (SideEffect, CallDeletion): the canonical observer
     ///   is a mock/expectation/snapshot that kind-matches the seam without
     ///   sharing a token, so a genuine effect observer (`effect_observer_confirms`)
@@ -65,11 +70,16 @@ struct RevealAssertionAnalysis {
 
 /// Returns true for families where an assertion must specifically reference the
 /// changed sub-expression to confirm observation. For **value** families
-/// (MatchArm, ReturnValue, FieldConstruction) the only static confirmation
-/// signal is a `token_match`. For **effect** families (SideEffect, CallDeletion)
-/// the legitimate observer is often a mock/expectation that **kind-matches the
-/// seam** without sharing any probe token; for those, a seam-kind match also
-/// confirms observation (see `effect_observer_confirms`).
+/// (MatchArm, ReturnValue, FieldConstruction, ErrorPath) the only static
+/// confirmation signal is a `token_match`. For `ErrorPath`, a genuine
+/// variant-pinning oracle (`ExactErrorVariant` whose text contains the probe's
+/// specific variant token) sets `has_token_match=true` in
+/// `assertion_matches_probe_detail` (RIPR-SPEC-0106, Part B), clearing this
+/// guard. A broad `is_err()` or an exact-value oracle on a sibling result does
+/// not. For **effect** families (SideEffect, CallDeletion) the legitimate
+/// observer is often a mock/expectation that **kind-matches the seam** without
+/// sharing any probe token; for those, a seam-kind match also confirms
+/// observation (see `effect_observer_confirms`).
 fn needs_token_confirmation(family: &ProbeFamily) -> bool {
     matches!(
         family,
@@ -78,6 +88,7 @@ fn needs_token_confirmation(family: &ProbeFamily) -> bool {
             | ProbeFamily::FieldConstruction
             | ProbeFamily::SideEffect
             | ProbeFamily::CallDeletion
+            | ProbeFamily::ErrorPath
     )
 }
 
@@ -1561,7 +1572,7 @@ mod tests {
         );
     }
 
-    // --- Predicate and ErrorPath must NOT be affected ---
+    // --- Predicate must NOT be affected; ErrorPath now requires token/variant confirmation ---
 
     /// Predicate probes do not require token confirmation and must not be
     /// affected by the observation_unverified logic.
@@ -1588,10 +1599,15 @@ mod tests {
         );
     }
 
-    /// ErrorPath probes do not require token confirmation and must not be
-    /// affected by the observation_unverified logic.
+    // --- RIPR-SPEC-0107: ErrorPath now requires variant/token confirmation ---
+
+    /// RIPR-SPEC-0107 Control A (REPRO): an ErrorPath probe with ONLY a broad
+    /// `is_err()` oracle and a sibling `ExactValue` result (no variant-pinning
+    /// oracle) must downgrade to `weakly_exposed` via `observation_unverified`.
+    /// This is the fake-clean being fixed: the sibling oracle cannot confirm the
+    /// changed error variant is specifically observed.
     #[test]
-    fn error_path_probe_family_match_only_keeps_discriminate_yes() {
+    fn error_path_broad_oracle_only_downgrades_discriminate_to_weak() {
         let probe = probe(ProbeFamily::ErrorPath, "Err(AuthError::RevokedToken)");
         let test = test_with_assertions(
             "revoked_token_fails",
@@ -1604,10 +1620,115 @@ mod tests {
         let (_observe, discriminate, _related) =
             reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
 
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "ErrorPath probe with only a broad is_err() oracle must downgrade to Weak (observation_unverified)"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "broad is_err() must emit observation_unverified for ErrorPath: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// RIPR-SPEC-0107 Control A continued: an ErrorPath probe with a sibling
+    /// `ExactValue` oracle (no variant token in assertion) must also downgrade.
+    /// An `assert_eq!(validate_or_default(""), "guest")` oracle credits the
+    /// happy-path return value, not the error variant — it must NOT promote
+    /// the error_path seam to `exposed`.
+    #[test]
+    fn error_path_sibling_exact_value_oracle_downgrades_discriminate_to_weak() {
+        let probe = probe(ProbeFamily::ErrorPath, "Err(ParseError::TooLong(len))");
+        let test = test_with_assertions(
+            "default_value_returned",
+            vec![oracle(
+                "assert_eq!(validate_or_default(\"\"), \"guest\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "ErrorPath probe with a sibling ExactValue oracle (no variant token) must downgrade to Weak"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "sibling ExactValue oracle must emit observation_unverified for ErrorPath: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// RIPR-SPEC-0107 Control B (MUST-NOT-OVER-CORRECT): an ErrorPath probe
+    /// backed by a real variant-pinning oracle (`assert_eq!(err, ParseError::TooLong(12))`)
+    /// must STAY `exposed`. The RIPR-SPEC-0106/#1252 variant-credit path sets
+    /// `has_token_match=true` for a genuine `ExactErrorVariant` oracle whose
+    /// text contains the probe's specific variant token, clearing
+    /// `observation_unverified`.
+    #[test]
+    fn error_path_exact_variant_oracle_keeps_discriminate_yes() {
+        // Probe: Err(ParseError::TooLong(len)) — variant token "TooLong".
+        // Assertion: assert_eq!(err, ParseError::TooLong(12)) — contains "TooLong".
+        let probe = probe(ProbeFamily::ErrorPath, "Err(ParseError::TooLong(len))");
+        let test = test_with_assertions(
+            "too_long_error_pinned",
+            vec![oracle(
+                "assert_eq!(err, ParseError::TooLong(12));",
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "ErrorPath probe with a genuine variant-pinning ExactErrorVariant oracle must stay exposed (no over-correction)"
+        );
         assert!(
             !discriminate.summary.contains("observation_unverified"),
-            "ErrorPath probe must not emit observation_unverified: got `{}`",
+            "variant-confirmed oracle must NOT emit observation_unverified: got `{}`",
             discriminate.summary
+        );
+    }
+
+    /// RIPR-SPEC-0107 Control B continued: `matches!(err, ParseError::TooLong(_))`
+    /// also pins the variant token and must keep the seam `exposed`.
+    #[test]
+    fn error_path_matches_variant_oracle_keeps_discriminate_yes() {
+        let probe = probe(ProbeFamily::ErrorPath, "Err(ParseError::TooLong(len))");
+        let test = test_with_assertions(
+            "too_long_error_matches",
+            vec![oracle(
+                "assert!(matches!(err, ParseError::TooLong(_)));",
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "ErrorPath probe with a matches! variant oracle must stay exposed"
+        );
+    }
+
+    /// RIPR-SPEC-0107 Control C (CROSS-SURFACE / IS-EFFECT-FAMILY guard):
+    /// `is_effect_family` must return false for `ErrorPath`, ensuring that a
+    /// mock/snapshot cannot clear `observation_unverified` for an error seam.
+    /// Only a genuine variant-pinning oracle may confirm it.
+    #[test]
+    fn error_path_is_not_effect_family() {
+        assert!(
+            !is_effect_family(&ProbeFamily::ErrorPath),
+            "ErrorPath must not be classified as an effect family (mocks must not clear observation_unverified)"
         );
     }
 }
