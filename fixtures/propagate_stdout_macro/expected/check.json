@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/propagate_stdout_macro/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":2,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:75eda2b6",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.51,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:75eda2b6",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/propagate_stdout_macro/input/src/lib.rs",
+        "line": 2,
+        "expression": "println!(\"amount is {}\", amount * 9);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach report: report_does_not_panic"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach report: report_does_not_panic", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)", "related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle", "observed function argument value amount = 5 at line 5"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"effect does not escape the function scope; propagation unknown","line":2}
+      ],
+      "evidence": ["No assertion found on related tests", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach report: report_does_not_panic", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink", "No relevant oracle was detected", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "report(5);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 5",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 5",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "report_does_not_panic",
+          "file": "tests/report_tests.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["proc_macro_opaque"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:side_effect:ea1b97e6",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.51,
+      "probe": {
+        "id": "probe:src_lib.rs:side_effect:ea1b97e6",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "fixtures/propagate_stdout_macro/input/src/lib.rs",
+        "line": 2,
+        "expression": "println!(\"amount is {}\", amount * 9);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach report: report_does_not_panic"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach report: report_does_not_panic", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)", "related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle", "observed function argument value amount = 5 at line 5"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"effect does not escape the function scope; propagation unknown","line":2}
+      ],
+      "evidence": ["No assertion found on related tests", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach report: report_does_not_panic", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink", "No relevant oracle was detected", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "report(5);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 5",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 5",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "report_does_not_panic",
+          "file": "tests/report_tests.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["proc_macro_opaque"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}

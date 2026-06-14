@@ -5631,3 +5631,56 @@ metrics = [
   "typescript_reexport_no_false_credit_stays_no_path",
   "typescript_reexport_two_hop_stays_no_path"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0096"
+name = "infect/propagate fail-closed (parts A, B, C)"
+spec = "docs/specs/RIPR-SPEC-0096-infect-propagate-fail-closed.md"
+tests = [
+  "crates/ripr/src/analysis/classify/infection.rs::tests::wildcard_discard_is_infection_unknown_even_with_related_tests",
+  "crates/ripr/src/analysis/classify/infection.rs::tests::typed_wildcard_discard_is_infection_unknown",
+  "crates/ripr/src/analysis/classify/infection.rs::tests::named_binding_is_not_a_discard_stays_yes",
+  "crates/ripr/src/analysis/classify/infection.rs::tests::return_value_read_into_tail_stays_exposed",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::swallowed_ok_tail_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::wildcard_discard_binding_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::drop_wrapper_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::returned_call_is_not_swallowed_stays_return_value",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::chained_ok_map_is_not_swallowed",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::println_macro_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::eprintln_macro_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::log_info_macro_stays_log_message_not_downgraded",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::local_vec_push_yields_unknown_sink",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::self_field_push_stays_state_write_not_downgraded"
+]
+fixtures = [
+  "fixtures/infect_wildcard_discard",
+  "fixtures/infect_value_returned",
+  "fixtures/propagate_swallowed_ok",
+  "fixtures/propagate_value_returned",
+  "fixtures/propagate_stdout_macro",
+  "fixtures/propagate_log_message"
+]
+code = [
+  "crates/ripr/src/analysis/classify/infection.rs",
+  "crates/ripr/src/analysis/classify/flow.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0096-infect-propagate-fail-closed.md",
+  "fixtures/infect_wildcard_discard/expected/check.json",
+  "fixtures/infect_wildcard_discard/expected/human.txt",
+  "fixtures/infect_value_returned/expected/check.json",
+  "fixtures/infect_value_returned/expected/human.txt",
+  "fixtures/propagate_swallowed_ok/expected/check.json",
+  "fixtures/propagate_swallowed_ok/expected/human.txt",
+  "fixtures/propagate_value_returned/expected/check.json",
+  "fixtures/propagate_value_returned/expected/human.txt",
+  "fixtures/propagate_stdout_macro/expected/check.json",
+  "fixtures/propagate_stdout_macro/expected/human.txt",
+  "fixtures/propagate_log_message/expected/check.json",
+  "fixtures/propagate_log_message/expected/human.txt"
+]
+metrics = [
+  "wildcard_discard_downgrades_to_infection_unknown",
+  "swallowed_ok_downgrades_to_propagation_unknown",
+  "stdout_macro_downgrades_to_propagation_unknown"
+]

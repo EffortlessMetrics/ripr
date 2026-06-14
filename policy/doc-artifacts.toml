@@ -371,6 +371,14 @@ owner = "product-swarm"
 standalone_reason = "Honesty fix generalizing the MatchArm arm_observation_unverified guard (RIPR-SPEC-0093) to ReturnValue, FieldConstruction, SideEffect, and CallDeletion families; also closes a type-blind token hole in the existing MatchArm guard via variant-scoped token_match; renames arm_observation_unverified->observation_unverified in message only; fixes #1216; no new JSON fields, no schema bump; fixture-backed by 9 new fixtures covering per-family blind/confirmed cases."
 
 [[artifact]]
+id = "RIPR-SPEC-0096"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0096-infect-propagate-fail-closed.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty fixes for false-exposed probes in INFECT/PROPAGATE stages (parts A, B, C of #1219): wildcard discard → infection_unknown, swallowed call-chain tails → propagation_unknown, stdout macros → propagation_unknown; no new JSON fields, no schema bump; fixture-backed by 6 new fixtures (3 downgrade proofs + 3 controls proving no over-correction); part D (confidence aggregation) deferred."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

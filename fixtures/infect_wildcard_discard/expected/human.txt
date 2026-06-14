@@ -1,0 +1,78 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/infect_wildcard_discard/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 2 unknown
+
+WARNING fixtures/infect_wildcard_discard/input/src/lib.rs:2
+
+Changed
+  before: amount
+  after:  let _ = compute_fee(amount * 9);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::process
+
+Static exposure
+  infection_unknown (warning, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
+  - infection unknown: Changed value is bound to a discard pattern; it cannot infect a sink
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches unknown sink: value is discarded at the call-chain tail; propagation unknown (line 2)
+  - related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);
+  - observed assertion argument value 42 at line 5
+  - observed function argument value amount = 42 at line 5
+
+Weakness
+  - Changed value is bound to a discard pattern; it cannot infect a sink
+  - No strong discriminator was detected
+
+Stop reasons:
+  - infection_evidence_unknown
+
+Next step
+  Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+
+NOTE fixtures/infect_wildcard_discard/input/src/lib.rs:3
+
+Changed
+  before: amount
+  after:  amount
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::process
+
+Static exposure
+  propagation_unknown (note, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches unknown sink: unknown sink (line 3)
+  - related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);
+  - observed assertion argument value 42 at line 5
+  - observed function argument value amount = 42 at line 5
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - No strong discriminator was detected
+
+Stop reasons:
+  - propagation_evidence_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+
+Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.

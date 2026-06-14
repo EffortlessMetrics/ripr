@@ -1,0 +1,8 @@
+[package]
+name = "infect_wildcard_discard_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "infect_wildcard_discard_fixture"
+path = "src/lib.rs"
