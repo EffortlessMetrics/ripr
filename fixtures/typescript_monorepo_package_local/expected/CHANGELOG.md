@@ -3,6 +3,17 @@
 ## Pending
 
 Reason:
+gap-3 honesty-clarity reword (RIPR-SPEC-0101): jest framework known, no lockfile → limitation reworden from typescript_runner_hint_unresolved to typescript_package_manager_unresolved; verify command unchanged.
+
+Command:
+`cargo xtask goldens bless typescript_monorepo_package_local --reason "gap-3 reword: framework-known case now emits typescript_package_manager_unresolved instead of typescript_runner_hint_unresolved (RIPR-SPEC-0101)"`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0085 PR6: new monorepo fixture demonstrating package-local ownership enforcement and typescript_target_unresolved limitation for cross-package test references
 
 Command:

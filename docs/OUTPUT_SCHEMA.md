@@ -611,7 +611,13 @@ The evidence-first fields are additive in schema `0.2`:
     evidence is absent. Current kinds:
     `typescript_package_root_unresolved` (no `package.json` found; value is
     never fabricated from the file extension alone),
-    `typescript_framework_hint_unresolved`, `typescript_runner_hint_unresolved`,
+    `typescript_framework_hint_unresolved`,
+    `typescript_package_manager_unresolved` (framework is known so a verify
+    command IS available via the framework binary, but no lockfile evidence
+    identified the package manager (npm/pnpm/yarn/bun); informational, not
+    blocking; per RIPR-SPEC-0101),
+    `typescript_runner_hint_unresolved` (no framework AND no lockfile/script
+    runner evidence; no verify command can be derived; strong fail-closed case),
     `typescript_test_runner_unresolved` (neither framework nor runner could be
     resolved to a bounded verify command; emitted when `verify_command_for_discovery`
     returns `None`; fail-closed per RIPR-SPEC-0085 §"Fail-closed").

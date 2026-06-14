@@ -165,7 +165,13 @@ pub(crate) enum TsPackageLimitation {
     /// A `package.json` was found but no framework dep was detected.
     /// Wire name: `typescript_framework_hint_unresolved`.
     FrameworkHintMissing,
-    /// A `package.json` was found but no lockfile/script runner evidence.
+    /// A `package.json` was found, a framework is known, but no
+    /// lockfile/script evidence identifies the package manager (npm/pnpm/yarn/bun).
+    /// A test command IS derivable directly from the framework binary.
+    /// Wire name: `typescript_package_manager_unresolved`.
+    PackageManagerUnresolved,
+    /// A `package.json` was found but no lockfile/script runner evidence AND
+    /// no framework was detected — genuinely no command can be derived.
     /// Wire name: `typescript_runner_hint_unresolved`.
     RunnerHintMissing,
 }
@@ -175,6 +181,7 @@ impl TsPackageLimitation {
         match self {
             Self::PackageRootNotFound => "typescript_package_root_unresolved",
             Self::FrameworkHintMissing => "typescript_framework_hint_unresolved",
+            Self::PackageManagerUnresolved => "typescript_package_manager_unresolved",
             Self::RunnerHintMissing => "typescript_runner_hint_unresolved",
         }
     }
@@ -262,7 +269,18 @@ pub(crate) fn resolve_package_discovery(
         limitations.push(TsPackageLimitation::FrameworkHintMissing);
     }
     if runner_hint.is_none() {
-        limitations.push(TsPackageLimitation::RunnerHintMissing);
+        if framework_hint.is_some() {
+            // Framework is known: the framework binary IS the test runner, so a
+            // verify command is derivable without the package manager.  Disclose
+            // only that the package manager (npm/pnpm/yarn/bun) could not be
+            // identified from lockfile evidence — this is an informational gap,
+            // not a blocking one.
+            limitations.push(TsPackageLimitation::PackageManagerUnresolved);
+        } else {
+            // Neither framework nor runner resolved: genuinely no command can be
+            // derived.  Emit the strong fail-closed limitation.
+            limitations.push(TsPackageLimitation::RunnerHintMissing);
+        }
     }
 
     // Determine confidence.
@@ -1171,5 +1189,131 @@ mod tests {
             cmd.contains("tests/auth/token.test.ts"),
             "expected normalized path: {cmd}"
         );
+    }
+
+    // ── Gap-3 honesty-clarity controls (RIPR-SPEC-0101) ──────────────────────
+
+    /// Control 1: vitest devDep + no lockfile.
+    ///
+    /// Reproduces issue #1239: framework=Vitest, runner=None.
+    /// `typescript_package_manager_unresolved` MUST be emitted (informational).
+    /// `typescript_runner_hint_unresolved` MUST NOT be emitted (misleading).
+    /// A `vitest run` command MUST be available.
+    #[test]
+    fn gap3_vitest_no_lockfile_emits_package_manager_unresolved_not_runner_unresolved() {
+        let root = unique_test_dir("gap3-vitest-no-lockfile");
+        // package.json has vitest devDep; no lockfile present.
+        setup_single_package(&root, vitest_pkg_json(), None);
+        let test_file = PathBuf::from("tests/math.test.ts");
+
+        let result = resolve_package_discovery(&test_file, &root);
+
+        // Framework known, runner absent.
+        assert_eq!(
+            result.framework_hint,
+            Some(TsFramework::Vitest),
+            "framework must be detected"
+        );
+        assert_eq!(result.runner_hint, None, "runner must be absent");
+
+        // New informational limitation emitted.
+        assert!(
+            result
+                .limitations
+                .contains(&TsPackageLimitation::PackageManagerUnresolved),
+            "expected typescript_package_manager_unresolved; got {:?}",
+            result.limitations
+        );
+        // Old strong fail-closed limitation must NOT be emitted.
+        assert!(
+            !result
+                .limitations
+                .contains(&TsPackageLimitation::RunnerHintMissing),
+            "typescript_runner_hint_unresolved must not be emitted when framework is known; got {:?}",
+            result.limitations
+        );
+
+        // A verify command must be derivable from the framework alone.
+        let cmd = verify_command_for_discovery(&result, &test_file);
+        assert!(
+            cmd.is_some(),
+            "verify command must be available when framework is known; got None"
+        );
+        let cmd_str = cmd.unwrap_or_default();
+        assert!(
+            cmd_str.starts_with("vitest run"),
+            "expected 'vitest run ...' command; got: {cmd_str}"
+        );
+    }
+
+    /// Control 2: package.json present, no known framework AND no lockfile.
+    ///
+    /// Genuinely unresolvable: `typescript_runner_hint_unresolved` (strong,
+    /// fail-closed) MUST be emitted; no verify command.
+    #[test]
+    fn gap3_no_framework_no_lockfile_emits_strong_runner_unresolved() {
+        let root = unique_test_dir("gap3-no-fw-no-lock");
+        // package.json with only typescript in devDeps — no known framework.
+        let minimal = r#"{"name":"no-fw","devDependencies":{"typescript":"^5.0.0"}}"#;
+        // No lockfile.
+        setup_single_package(&root, minimal, None);
+        let test_file = PathBuf::from("tests/foo.test.ts");
+
+        let result = resolve_package_discovery(&test_file, &root);
+
+        assert_eq!(result.framework_hint, None, "framework must be absent");
+        assert_eq!(result.runner_hint, None, "runner must be absent");
+
+        // Strong fail-closed limitation must be emitted.
+        assert!(
+            result
+                .limitations
+                .contains(&TsPackageLimitation::RunnerHintMissing),
+            "expected typescript_runner_hint_unresolved; got {:?}",
+            result.limitations
+        );
+        // Informational limitation must NOT be emitted (no framework to claim it's ok).
+        assert!(
+            !result
+                .limitations
+                .contains(&TsPackageLimitation::PackageManagerUnresolved),
+            "typescript_package_manager_unresolved must not be emitted when framework is absent; got {:?}",
+            result.limitations
+        );
+
+        // No verify command — genuinely fail-closed.
+        let cmd = verify_command_for_discovery(&result, &test_file);
+        assert_eq!(
+            cmd, None,
+            "no verify command must be emitted when neither framework nor runner resolves"
+        );
+    }
+
+    /// Control 3: vitest + pnpm-lock.yaml — both resolved, no limitation emitted.
+    #[test]
+    fn gap3_vitest_pnpm_lockfile_no_limitation() {
+        let root = unique_test_dir("gap3-vitest-pnpm");
+        setup_single_package(&root, vitest_pkg_json(), Some("pnpm-lock.yaml"));
+        let test_file = PathBuf::from("tests/math.test.ts");
+
+        let result = resolve_package_discovery(&test_file, &root);
+
+        assert_eq!(result.framework_hint, Some(TsFramework::Vitest));
+        assert_eq!(result.runner_hint, Some(TsRunner::Pnpm));
+        assert!(
+            !result
+                .limitations
+                .contains(&TsPackageLimitation::PackageManagerUnresolved),
+            "must not emit typescript_package_manager_unresolved when runner resolved"
+        );
+        assert!(
+            !result
+                .limitations
+                .contains(&TsPackageLimitation::RunnerHintMissing),
+            "must not emit typescript_runner_hint_unresolved when runner resolved"
+        );
+
+        let cmd = verify_command_for_discovery(&result, &test_file);
+        assert!(cmd.is_some(), "verify command must be available");
     }
 }

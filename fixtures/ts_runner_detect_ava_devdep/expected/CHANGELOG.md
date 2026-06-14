@@ -3,6 +3,17 @@
 ## Pending
 
 Reason:
+gap-3 honesty-clarity reword (RIPR-SPEC-0101): ava framework known, no lockfile → limitation reworden from typescript_runner_hint_unresolved to typescript_package_manager_unresolved; verify command unchanged.
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_devdep --reason "gap-3 reword: framework-known case now emits typescript_package_manager_unresolved instead of typescript_runner_hint_unresolved (RIPR-SPEC-0101)"`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
 Initial golden for ava devdep detection: typescript_test_runner: ava emitted from devDependencies; typescript_verify_command: ava tests/math.test.ts inferred. TS must-use roadmap item 3 (RIPR-SPEC-0085).
 
 Command:

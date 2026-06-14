@@ -411,6 +411,14 @@ owner = "product-swarm"
 standalone_reason = "Advisory-only LSP codeLens above changed symbols citing the cached related-test count; display-only (never a diagnostic or gate); honesty rules: snapshot==None→empty Vec, N==0→'no related tests found', count from related_tests.len() only, preview prefix for TS/Python; new lsp/lens.rs pure-helper module; zero VS Code extension changes; 10 unit tests (8 fixture + 2 wiring/capability)."
 
 [[artifact]]
+id = "RIPR-SPEC-0101"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0101-typescript-package-manager-unresolved-disclosure.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty-clarity fix for TypeScript preview issue #1239: rewords misleading typescript_runner_hint_unresolved to typescript_package_manager_unresolved when a framework is known (verify command IS available via framework binary); preserves strong fail-closed typescript_runner_hint_unresolved for genuinely-unresolvable case (no framework AND no runner); 3 unit controls; no schema bump; language_status stays Preview."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

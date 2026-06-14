@@ -5798,3 +5798,28 @@ outputs = [
 metrics = [
   "lsp_code_lens_advisory_count_per_document",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0101"
+name = "TypeScript package-manager-unresolved disclosure"
+spec = "docs/specs/RIPR-SPEC-0101-typescript-package-manager-unresolved-disclosure.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::gap3_vitest_no_lockfile_emits_package_manager_unresolved_not_runner_unresolved",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::gap3_no_framework_no_lockfile_emits_strong_runner_unresolved",
+  "crates/ripr/src/analysis/language/typescript/package.rs::tests::gap3_vitest_pnpm_lockfile_no_limitation",
+]
+fixtures = [
+  "fixtures/ts_runner_detect_ava_devdep",
+  "fixtures/ts_runner_detect_ava_script",
+  "fixtures/typescript_monorepo_package_local",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/package.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0101-typescript-package-manager-unresolved-disclosure.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "typescript_package_manager_unresolved_disclosure_honesty",
+]
