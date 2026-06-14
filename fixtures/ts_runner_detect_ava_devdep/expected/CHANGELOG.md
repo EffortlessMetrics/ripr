@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+text-only update: weak_oracle_missing_summary _-arm now mentions toThrow exact-payload forms (RIPR-SPEC-0097)
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_devdep --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

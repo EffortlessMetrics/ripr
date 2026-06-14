@@ -70,7 +70,7 @@ TypeScript repair packet (advisory)
   next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
-  TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.
+  TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; add an exact payload to `toThrow` (string, object, or class reference) and no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
 
 INFO src/profile.ts:10
 

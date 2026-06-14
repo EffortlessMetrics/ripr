@@ -42,7 +42,7 @@ Evidence
   - related test tests/calculator.test.ts:3 multiply returns expected for positive inputs uses weak relational check oracle: expect(...).toBeGreaterThan(...)
 
 Weakness
-  - Related test reaches `multiply` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `multiply` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator a == 0: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)

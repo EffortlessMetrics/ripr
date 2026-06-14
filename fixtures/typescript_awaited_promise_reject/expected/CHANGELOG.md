@@ -239,3 +239,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+text-only update: BroadError advisory text now mentions adding exact toThrow payload forms (RIPR-SPEC-0097)
+
+Command:
+`cargo xtask goldens bless typescript_awaited_promise_reject --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

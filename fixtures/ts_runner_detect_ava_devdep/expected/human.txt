@@ -43,7 +43,7 @@ Evidence
   - related test tests/math.test.ts:4 add returns sum uses unknown unknown oracle
 
 Weakness
-  - Related test reaches `add` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `add` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator return value == a + b + 0: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)

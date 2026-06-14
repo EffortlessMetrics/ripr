@@ -43,7 +43,7 @@ Evidence
   - related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle
 
 Weakness
-  - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)
@@ -111,7 +111,7 @@ Evidence
   - related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle
 
 Weakness
-  - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)

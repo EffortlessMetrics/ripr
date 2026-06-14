@@ -107,3 +107,4 @@ observable behavior.
 | [RIPR-SPEC-0094](RIPR-SPEC-0094-observation-unverified-guard-generalization.md) | proposed | observation_unverified guard generalization to ReturnValue/FieldConstruction/SideEffect/CallDeletion + MatchArm variant-scope fix |
 | [RIPR-SPEC-0095](RIPR-SPEC-0095-typescript-reexport-test-discovery.md) | accepted | TypeScript single-hop re-export test discovery |
 | [RIPR-SPEC-0096](RIPR-SPEC-0096-infect-propagate-fail-closed.md) | proposed | INFECT/PROPAGATE fail-closed: wildcard discard, swallowed tails, stdout macros (parts A/B/C of #1219) |
+| [RIPR-SPEC-0097](RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md) | accepted | TypeScript toThrow exact-payload oracle upgrade: string/object/class → ExactErrorVariant/strong; bare toThrow stays weak |

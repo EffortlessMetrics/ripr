@@ -56,7 +56,7 @@ pub(crate) fn weak_oracle_missing_summary(
             "Related test reaches `{owner_name}` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repair packet."
         ),
         _ => format!(
-            "Related test reaches `{owner_name}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.",
+            "Related test reaches `{owner_name}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).",
             oracle_kind.as_str()
         ),
     }
@@ -83,7 +83,7 @@ pub(crate) fn weak_oracle_recommendation(
                 ),
         ),
         OracleKind::BroadError => format!(
-            "TypeScript preview advisory: broad error evidence does not establish missing discriminator `{discriminator}`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields."
+            "TypeScript preview advisory: broad error evidence does not establish missing discriminator `{discriminator}`; add an exact payload to `toThrow` (string, object, or class reference) and no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available."
         ),
         _ => format!(
             "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `{discriminator}`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available."
@@ -329,20 +329,44 @@ pub(crate) fn error_payload_from_assertion(
 ) -> Option<TypeScriptErrorPayload> {
     match (async_modifier, matcher) {
         (None, "toThrow" | "toThrowError") if matcher_call.arguments.len() == 1 => {
-            let expected =
-                safe_error_literal_payload_text(matcher_call.arguments.first()?, source)?;
-            Some(TypeScriptErrorPayload {
-                expected,
-                kind: TypeScriptErrorPayloadKind::ThrowsLiteral,
-            })
+            let arg = matcher_call.arguments.first()?;
+            // Priority: string literal > object literal > class/constructor ref.
+            // Fail-closed: any form we can't confirm is exact stays None (→ BroadError).
+            if let Some(expected) = safe_error_literal_payload_text(arg, source) {
+                Some(TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::ThrowsLiteral,
+                })
+            } else if let Some(expected) = safe_error_object_payload_text(arg, source) {
+                Some(TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::ThrowsObject,
+                })
+            } else {
+                safe_error_class_payload_text(arg, source).map(|expected| TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::ThrowsClass,
+                })
+            }
         }
         (Some("rejects"), "toThrow" | "toThrowError") if matcher_call.arguments.len() == 1 => {
-            let expected =
-                safe_error_literal_payload_text(matcher_call.arguments.first()?, source)?;
-            Some(TypeScriptErrorPayload {
-                expected,
-                kind: TypeScriptErrorPayloadKind::RejectsThrowLiteral,
-            })
+            let arg = matcher_call.arguments.first()?;
+            if let Some(expected) = safe_error_literal_payload_text(arg, source) {
+                Some(TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::RejectsThrowLiteral,
+                })
+            } else if let Some(expected) = safe_error_object_payload_text(arg, source) {
+                Some(TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::RejectsThrowObject,
+                })
+            } else {
+                safe_error_class_payload_text(arg, source).map(|expected| TypeScriptErrorPayload {
+                    expected,
+                    kind: TypeScriptErrorPayloadKind::RejectsThrowClass,
+                })
+            }
         }
         (Some("rejects"), "toMatchObject") if matcher_call.arguments.len() == 1 => {
             let expected = safe_error_object_payload_text(matcher_call.arguments.first()?, source)?;
@@ -366,6 +390,38 @@ pub(crate) fn safe_error_object_payload_text(arg: &Argument<'_>, source: &str) -
         }
         _ => None,
     }
+}
+
+/// Extract a safe class / constructor reference from a `.toThrow(Arg)` argument.
+///
+/// Accepts only identifier or dotted-member-path expressions where **every
+/// segment** is a safe JavaScript identifier AND **the first segment starts
+/// with an ASCII uppercase letter** (the conventional PascalCase signal for
+/// error class names: `TypeError`, `AuthError`, `http.NotFoundError`).
+///
+/// The uppercase-first guard is the fail-closed gate that prevents upgrading
+/// `.toThrow(message)` where `message` is a plain camelCase variable.
+/// We cannot distinguish a class reference from a variable reference via the
+/// AST alone, so we conservatively treat only PascalCase paths as exact
+/// constructor assertions.
+///
+/// Fail-closed: template literals, call expressions, dynamic computed members,
+/// lowercase-first paths, and any non-path expression return `None`, keeping
+/// the oracle at BroadError (weak strength).
+pub(crate) fn safe_error_class_payload_text(arg: &Argument<'_>, source: &str) -> Option<String> {
+    let text = source_text_for_argument(arg, source)?;
+    if !is_safe_javascript_member_path(&text) {
+        return None;
+    }
+    // Require the first segment to start with an uppercase ASCII letter.
+    // This is the conventional PascalCase signal for error class names and
+    // prevents camelCase variable references from being promoted.
+    let first_segment = text.split('.').next().unwrap_or("");
+    first_segment
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+        .then_some(text)
 }
 
 pub(crate) fn safe_mock_target_text(arg: &Argument<'_>, source: &str) -> Option<String> {

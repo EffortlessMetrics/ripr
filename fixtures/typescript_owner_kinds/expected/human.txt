@@ -243,7 +243,7 @@ Evidence
   - related test tests/owners.test.ts:16 rate is visible uses weak relational check oracle: expect(...).toBeGreaterThan(...)
 
 Weakness
-  - Related test reaches `DEFAULT_RATE` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `DEFAULT_RATE` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
 
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1

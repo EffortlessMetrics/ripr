@@ -3164,6 +3164,198 @@ fn extract_tests_keeps_dynamic_rejects_match_object_unbounded() {
     assert!(tests[0].assertions[0].error_payload.is_none());
 }
 
+// --- toThrow exact-payload oracle upgrade tests (RIPR-SPEC-0097) ---
+
+#[test]
+fn extract_tests_maps_object_tothrow_to_exact_error_variant_oracle() {
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("throws with code", () => {
+    expect(() => parseUser("")).toThrow({ code: "ENOENT", message: "not found" });
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(tests[0].assertions[0].argument_count, 1);
+    assert_eq!(
+        tests[0].assertions[0].oracle_kind,
+        OracleKind::ExactErrorVariant
+    );
+    assert_eq!(
+        tests[0].assertions[0].oracle_strength,
+        OracleStrength::Strong
+    );
+    assert_eq!(
+        tests[0].assertions[0]
+            .error_payload
+            .as_ref()
+            .map(TypeScriptErrorPayload::oracle_text)
+            .as_deref(),
+        Some("expect(...).toThrow({ code: \"ENOENT\", message: \"not found\" })")
+    );
+}
+
+#[test]
+fn extract_tests_maps_class_tothrow_to_exact_error_variant_oracle() {
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("throws class", () => {
+    expect(() => parseUser("")).toThrow(TypeError);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(tests[0].assertions[0].argument_count, 1);
+    assert_eq!(
+        tests[0].assertions[0].oracle_kind,
+        OracleKind::ExactErrorVariant
+    );
+    assert_eq!(
+        tests[0].assertions[0].oracle_strength,
+        OracleStrength::Strong
+    );
+    assert_eq!(
+        tests[0].assertions[0]
+            .error_payload
+            .as_ref()
+            .map(TypeScriptErrorPayload::oracle_text)
+            .as_deref(),
+        Some("expect(...).toThrow(TypeError)")
+    );
+}
+
+#[test]
+fn extract_tests_maps_dotted_class_tothrow_to_exact_error_variant_oracle() {
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("throws namespaced class", () => {
+    expect(() => parseUser("")).toThrow(Errors.NotFoundError);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(
+        tests[0].assertions[0].oracle_kind,
+        OracleKind::ExactErrorVariant
+    );
+    assert_eq!(
+        tests[0].assertions[0].oracle_strength,
+        OracleStrength::Strong
+    );
+    assert_eq!(
+        tests[0].assertions[0]
+            .error_payload
+            .as_ref()
+            .map(TypeScriptErrorPayload::oracle_text)
+            .as_deref(),
+        Some("expect(...).toThrow(Errors.NotFoundError)")
+    );
+}
+
+#[test]
+fn extract_tests_keeps_lowercase_ident_tothrow_broad() {
+    // Control: lowercase-first identifier cannot be confirmed as a class ref.
+    // Fail-closed: stays BroadError / Weak.
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("throws", () => {
+    expect(() => parseUser("")).toThrow(message);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(tests[0].assertions[0].argument_count, 1);
+    assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::BroadError);
+    assert_eq!(tests[0].assertions[0].oracle_strength, OracleStrength::Weak);
+    assert!(tests[0].assertions[0].error_payload.is_none());
+}
+
+#[test]
+fn extract_tests_keeps_dynamic_object_tothrow_broad() {
+    // Control: object with shorthand (non-literal) value stays broad.
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("throws dynamic", () => {
+    expect(() => parseUser("")).toThrow({ code });
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(tests[0].assertions[0].argument_count, 1);
+    assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::BroadError);
+    assert_eq!(tests[0].assertions[0].oracle_strength, OracleStrength::Weak);
+    assert!(tests[0].assertions[0].error_payload.is_none());
+}
+
+#[test]
+fn extract_tests_maps_class_rejects_tothrow_to_exact_error_variant_oracle() {
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("async throws class", async () => {
+    await expect(loadProfile("")).rejects.toThrow(AuthError);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(
+        tests[0].assertions[0].oracle_kind,
+        OracleKind::ExactErrorVariant
+    );
+    assert_eq!(
+        tests[0].assertions[0].oracle_strength,
+        OracleStrength::Strong
+    );
+    assert_eq!(
+        tests[0].assertions[0]
+            .error_payload
+            .as_ref()
+            .map(TypeScriptErrorPayload::oracle_text)
+            .as_deref(),
+        Some("await expect(...).rejects.toThrow(AuthError)")
+    );
+}
+
+#[test]
+fn extract_tests_maps_object_rejects_tothrow_to_exact_error_variant_oracle() {
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"test("async throws with object", async () => {
+    await expect(loadProfile("")).rejects.toThrow({ code: "AUTH_FAILED" });
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].assertions.len(), 1);
+    assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+    assert_eq!(
+        tests[0].assertions[0].oracle_kind,
+        OracleKind::ExactErrorVariant
+    );
+    assert_eq!(
+        tests[0].assertions[0].oracle_strength,
+        OracleStrength::Strong
+    );
+    assert_eq!(
+        tests[0].assertions[0]
+            .error_payload
+            .as_ref()
+            .map(TypeScriptErrorPayload::oracle_text)
+            .as_deref(),
+        Some("await expect(...).rejects.toThrow({ code: \"AUTH_FAILED\" })")
+    );
+}
+
 #[test]
 fn oracle_for_matcher_covers_canonical_jest_vitest_set() {
     assert_eq!(

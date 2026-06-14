@@ -138,8 +138,8 @@
       "stop_reasons": [],
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
-      "recommended_next_step": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
-      "suggested_next_action": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; no actionable repair packet is emitted until error payload/variant support can name verify, receipt, and edit-boundary fields.",
+      "recommended_next_step": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; add an exact payload to `toThrow` (string, object, or class reference) and no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching \"missing id\"`; add an exact payload to `toThrow` (string, object, or class reference) and no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function"

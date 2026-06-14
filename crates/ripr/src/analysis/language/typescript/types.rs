@@ -253,10 +253,14 @@ pub(crate) struct TypeScriptErrorPayload {
 impl TypeScriptErrorPayload {
     pub(crate) fn oracle_text(&self) -> String {
         match self.kind {
-            TypeScriptErrorPayloadKind::ThrowsLiteral => {
+            TypeScriptErrorPayloadKind::ThrowsLiteral
+            | TypeScriptErrorPayloadKind::ThrowsObject
+            | TypeScriptErrorPayloadKind::ThrowsClass => {
                 format!("expect(...).toThrow({})", self.expected)
             }
-            TypeScriptErrorPayloadKind::RejectsThrowLiteral => {
+            TypeScriptErrorPayloadKind::RejectsThrowLiteral
+            | TypeScriptErrorPayloadKind::RejectsThrowObject
+            | TypeScriptErrorPayloadKind::RejectsThrowClass => {
                 format!("await expect(...).rejects.toThrow({})", self.expected)
             }
             TypeScriptErrorPayloadKind::RejectsMatchObject => {
@@ -268,7 +272,21 @@ impl TypeScriptErrorPayload {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TypeScriptErrorPayloadKind {
+    /// `.toThrow("exact message")` — string literal payload.
     ThrowsLiteral,
+    /// `.toThrow({ code: "X" })` — object literal payload with only
+    /// literal-valued keys (fail-closed: shorthand / spread / dynamic
+    /// computed properties are rejected).
+    ThrowsObject,
+    /// `.toThrow(SomeError)` or `.toThrow(SomeError.SubClass)` — class /
+    /// constructor reference as a safe member path.
+    ThrowsClass,
+    /// `await expect(...).rejects.toThrow("exact message")`.
     RejectsThrowLiteral,
+    /// `await expect(...).rejects.toThrow({ code: "X" })`.
+    RejectsThrowObject,
+    /// `await expect(...).rejects.toThrow(SomeError)`.
+    RejectsThrowClass,
+    /// `await expect(...).rejects.toMatchObject({ code: "X" })`.
     RejectsMatchObject,
 }

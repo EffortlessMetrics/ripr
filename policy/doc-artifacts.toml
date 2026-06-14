@@ -379,6 +379,14 @@ owner = "product-swarm"
 standalone_reason = "Honesty fixes for false-exposed probes in INFECT/PROPAGATE stages (parts A, B, C of #1219): wildcard discard → infection_unknown, swallowed call-chain tails → propagation_unknown, stdout macros → propagation_unknown; no new JSON fields, no schema bump; fixture-backed by 6 new fixtures (3 downgrade proofs + 3 controls proving no over-correction); part D (confidence aggregation) deferred."
 
 [[artifact]]
+id = "RIPR-SPEC-0097"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty-safe oracle upgrade: toThrow with exact payload (string literal, all-literal object, PascalCase class ref) promotes BroadError/weak to ExactErrorVariant/strong, flipping weakly_exposed -> exposed; bare toThrow and camelCase identifier refs stay weak (fail-closed); TS stays preview-tier; no schema bump; fixture typescript_tothrow_exact_oracle + 7 unit tests."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"

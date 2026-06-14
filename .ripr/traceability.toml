@@ -5684,3 +5684,33 @@ metrics = [
   "swallowed_ok_downgrades_to_propagation_unknown",
   "stdout_macro_downgrades_to_propagation_unknown"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0097"
+name = "TypeScript toThrow exact-payload oracle upgrade"
+spec = "docs/specs/RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_maps_object_tothrow_to_exact_error_variant_oracle",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_maps_class_tothrow_to_exact_error_variant_oracle",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_maps_dotted_class_tothrow_to_exact_error_variant_oracle",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_keeps_lowercase_ident_tothrow_broad",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_keeps_dynamic_object_tothrow_broad",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_maps_class_rejects_tothrow_to_exact_error_variant_oracle",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_maps_object_rejects_tothrow_to_exact_error_variant_oracle",
+]
+fixtures = [
+  "fixtures/typescript_tothrow_exact_oracle",
+  "fixtures/typescript_broad_tothrow",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/oracle.rs",
+  "crates/ripr/src/analysis/language/typescript/types.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md",
+  "fixtures/typescript_tothrow_exact_oracle/expected/check.json",
+  "fixtures/typescript_tothrow_exact_oracle/expected/human.txt",
+]
+metrics = [
+  "tothrow_exact_payload_upgrades_to_exact_error_variant",
+]

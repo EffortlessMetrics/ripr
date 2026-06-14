@@ -42,7 +42,7 @@ Evidence
   - related test tests/pricing.test.ts:15 price is in expected range uses unknown unknown oracle: expect(...).toBeWithinRange(...)
 
 Weakness
-  - Related test reaches `computePrice` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `computePrice` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator base == 0: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)

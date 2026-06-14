@@ -43,7 +43,7 @@ Evidence
   - related test tests/discount.test.ts:11 far above threshold discounts uses unknown unknown oracle
 
 Weakness
-  - Related test reaches `applyDiscount` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `applyDiscount` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)

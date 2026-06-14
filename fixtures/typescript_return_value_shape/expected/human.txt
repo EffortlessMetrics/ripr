@@ -43,7 +43,7 @@ Evidence
   - related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle
 
 Weakness
-  - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
   - missing discriminator return value == Math.round(amount * 100) / 100: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator
 
 TypeScript preview card (advisory)
