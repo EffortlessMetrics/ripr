@@ -1989,6 +1989,7 @@ enum PythonRelationKind {
     ImportAliasCall,
     ApiClientRouteCall,
     ConstructCall,
+    LocalBinding,
     SameStem,
     TestNameSimilarity,
     FixtureName,
@@ -2001,6 +2002,7 @@ impl PythonRelationKind {
             Self::ImportAliasCall => 4,
             Self::ApiClientRouteCall => 4,
             Self::ConstructCall => 4,
+            Self::LocalBinding => 4,
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
@@ -2014,6 +2016,7 @@ impl PythonRelationKind {
                 | Self::ImportAliasCall
                 | Self::ApiClientRouteCall
                 | Self::ConstructCall
+                | Self::LocalBinding
         )
     }
 
@@ -2027,6 +2030,7 @@ impl PythonRelationKind {
             Self::ImportAliasCall => "import_alias_call",
             Self::ApiClientRouteCall => "api_client_route_call",
             Self::ConstructCall => "construct_call",
+            Self::LocalBinding => "local_binding",
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
@@ -2211,6 +2215,9 @@ fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<Pytho
     if construct_call_invokes_owner(test, owner) {
         return Some(PythonRelationKind::ConstructCall);
     }
+    if local_binding_calls_owner(test, owner) {
+        return Some(PythonRelationKind::LocalBinding);
+    }
     if same_stem_related(test, owner) {
         return Some(PythonRelationKind::SameStem);
     }
@@ -2301,6 +2308,127 @@ fn construct_result_is_called(text: &str, open_paren_idx: usize) -> bool {
         index += 1;
     }
     false
+}
+
+/// Detects a single unambiguous local binding `local = OwnerClass(...)` whose
+/// bound local is then called `local(...)`, invoking a changed `__call__` owner
+/// indirectly — the tenacity `stop = stop_after_attempt(3); assertTrue(stop(3))`
+/// shape that the Tier B judging measured as a false-actionable (#1160). The test
+/// genuinely reaches the owner, so the relation is *direct*: surfacing it lets the
+/// existing oracle on the bound call (here a broad-boolean smoke `assertTrue`) be
+/// reported instead of dropped, correcting the misleading "no direct test exists"
+/// diagnosis. This NEVER credits `exposed` — a smoke oracle stays below `Strong`,
+/// so the classification remains `weakly_exposed` (matching the sibling
+/// `python_broad_boolean_assertion` golden), only the relation/oracle/card change.
+///
+/// Strictly gated so it never over-links and never collides with `ConstructCall`
+/// (the inline `C()(...)` shape, which is checked first):
+///   A. the owner is a `__call__` method;
+///   B. the test imports the owner's class by name or alias (blocks a same-named
+///      class in an unrelated module);
+///   C. exactly one real `Class(` construction appears (call boundary, not a
+///      comment/string) and it is *not* called inline (inline is `ConstructCall`);
+///   D. that construction is a direct assignment `local = Class(` on its line —
+///      keyword-arg / wrapper shapes like `Retrying(stop=stop_after_attempt(3))`
+///      fail here and stay uncertain;
+///   E. the bound `local` is itself called `local(`, and it is assigned exactly
+///      once (a reassigned / rebound local is ambiguous and is rejected).
+fn local_binding_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    // Guard A: only callable-class `__call__` owners.
+    if owner.name != "__call__"
+        || !matches!(
+            owner.owner_kind,
+            Some(OwnerKind::Method | OwnerKind::ClassMethod)
+        )
+    {
+        return false;
+    }
+    let Some((class_name, _)) = owner.qualified_name.rsplit_once('.') else {
+        return false;
+    };
+    if class_name.is_empty() || !class_name.chars().all(is_python_identifier_char) {
+        return false;
+    }
+    // Guard B: the test must import the owner's class.
+    let imports_class = test
+        .imports
+        .iter()
+        .any(|import| import.imported == class_name || import.alias == class_name);
+    if !imports_class {
+        return false;
+    }
+    let body = &test.body_text;
+    let needle = format!("{class_name}(");
+    // Guard C: exactly one real, non-inline `Class(` construction.
+    let mut constructions = body.match_indices(&needle).filter(|(idx, _)| {
+        has_call_boundary(body, *idx) && !line_prefix_looks_like_comment_or_string(body, *idx)
+    });
+    let Some((idx, _)) = constructions.next() else {
+        return false;
+    };
+    if constructions.next().is_some() {
+        // More than one construction of the class — ambiguous; stay conservative.
+        return false;
+    }
+    // An inline `Class()(...)` is `ConstructCall` territory, not a bound local.
+    if construct_result_is_called(body, idx + needle.len() - 1) {
+        return false;
+    }
+    // Guard D: the construction is a direct assignment `local = Class(` on its line.
+    let Some(local_var) = binding_target_for_construction(body, idx) else {
+        return false;
+    };
+    // Guard E: the bound local is called, and assigned exactly once.
+    contains_call_name(body, &local_var) && assignment_count(body, &local_var) == 1
+}
+
+/// Given the byte index of a `Class(` construction, returns the single local
+/// variable it is directly assigned to on the same line — `local = Class(` yields
+/// `Some("local")`. Returns `None` for keyword-argument (`stop=Class(`), chained
+/// (`a = b = Class(`), augmented, attribute-target (`self.x = Class(`), or any
+/// non-bare-identifier assignment, so wrapper/dispatch shapes stay uncertain.
+fn binding_target_for_construction(body_text: &str, construction_idx: usize) -> Option<String> {
+    let line_start = body_text[..construction_idx]
+        .rfind('\n')
+        .map_or(0, |offset| offset + 1);
+    let prefix = body_text[line_start..construction_idx].trim();
+    // Require the line to be exactly `<identifier> =` immediately before `Class(`.
+    let assign = prefix.strip_suffix('=')?;
+    // Reject compound/comparison/augmented operators (`==`, `!=`, `<=`, `+=`, ...).
+    if assign.ends_with([
+        '=', '!', '<', '>', '+', '-', '*', '/', '%', '&', '|', '^', '~', ':',
+    ]) {
+        return None;
+    }
+    let name = assign.trim();
+    if name.is_empty()
+        || name.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+        || !name.chars().all(is_python_identifier_char)
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Counts direct assignments `name = ...` (whole-token target, not `==`, not an
+/// augmented assignment, not a substring of a longer identifier or an attribute
+/// like `self.name`) across the test body, so a reassigned binding is rejected.
+fn assignment_count(body_text: &str, name: &str) -> usize {
+    body_text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            let Some(rest) = trimmed.strip_prefix(name) else {
+                return false;
+            };
+            // Whole-token boundary: the char after `name` ends the identifier.
+            if rest.chars().next().is_some_and(is_python_identifier_char) {
+                return false;
+            }
+            let rest = rest.trim_start();
+            rest.starts_with('=') && !rest.starts_with("==")
+        })
+        .count()
 }
 
 fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -5424,6 +5552,136 @@ def test_build_user_smoke():
         // Plain construction with no following call.
         let plain = "r = Renderer()";
         assert!(!construct_result_is_called(plain, at(plain)));
+    }
+
+    fn call_owner(owners: &[PythonOwner]) -> Result<&PythonOwner, String> {
+        owners
+            .iter()
+            .find(|owner| owner.name == "__call__")
+            .ok_or_else(|| "fixture defines a __call__ owner".to_string())
+    }
+
+    const STOP_SOURCE: &str = "class stop_after_attempt:\n    def __init__(self, max_attempt_number):\n        self.max_attempt_number = max_attempt_number\n\n    def __call__(self, attempt_number):\n        return attempt_number >= self.max_attempt_number\n";
+
+    #[test]
+    fn local_binding_relation_links_direct_and_surfaces_smoke_oracle() -> Result<(), String> {
+        // The tenacity false-actionable shape: `stop = stop_after_attempt(3)`
+        // bound once and called via `stop(3)` under a broad-boolean smoke oracle.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "import unittest\n\nfrom src.stop import stop_after_attempt\n\n\nclass StopTest(unittest.TestCase):\n    def test_stop_after_attempt(self):\n        stop = stop_after_attempt(3)\n        self.assertTrue(stop(3))\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert_eq!(
+            related_test_relation(&tests[0], owner),
+            Some(PythonRelationKind::LocalBinding),
+            "single bound local called as `stop(3)` should link directly via local_binding"
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/stop.py"),
+            6,
+            "        return attempt_number >= self.max_attempt_number",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside __call__ should classify".to_string());
+        };
+        // Must STAY weakly_exposed — a smoke oracle never credits `exposed`.
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Smoke,
+            "the assertTrue(stop(3)) smoke oracle must be surfaced, not dropped to unknown"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_inline_construct_call() -> Result<(), String> {
+        // Inline `C()(...)` is ConstructCall territory, not a bound local.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\n\n\ndef test_inline():\n    assert stop_after_attempt(3)(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert_eq!(
+            related_test_relation(&tests[0], owner),
+            Some(PythonRelationKind::ConstructCall),
+            "inline construct-call must stay ConstructCall, not LocalBinding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_reassigned_binding() -> Result<(), String> {
+        // A rebound local is ambiguous: which construction is called is unclear.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\n\n\ndef test_reassigned():\n    stop = stop_after_attempt(3)\n    stop = stop_after_attempt(4)\n    assert stop(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "two constructions / reassigned binding must not link via local_binding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_wrapper_keyword_argument() -> Result<(), String> {
+        // `Retrying(stop=stop_after_attempt(3))` binds a wrapper, not the class —
+        // the assignment target is `retrying`, not `stop_after_attempt(...)`.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\nimport tenacity\n\n\ndef test_wrapper():\n    retrying = tenacity.Retrying(stop=stop_after_attempt(3))\n    assert retrying(lambda: None)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "a keyword-argument construction inside a wrapper must not link via local_binding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_requires_importing_the_owner_class() -> Result<(), String> {
+        // Guard B: a same-named local without importing the class must not link.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "def test_no_import():\n    stop = stop_after_attempt(3)\n    assert stop(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "without importing the owner class, local_binding must not fire (Guard B)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn binding_target_extracts_only_direct_identifier_assignment() {
+        // Direct `local = Class(` extracts the bare identifier.
+        let direct = "    stop = stop_after_attempt(3)\n";
+        let idx = direct.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(
+            binding_target_for_construction(direct, idx).as_deref(),
+            Some("stop")
+        );
+        // Keyword argument is not an assignment target.
+        let kwarg = "    retrying = Retrying(stop=stop_after_attempt(3))\n";
+        let kidx = kwarg.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(binding_target_for_construction(kwarg, kidx), None);
+        // Attribute target `self.x = Class(` is not a bare local.
+        let attr = "    self.stop = stop_after_attempt(3)\n";
+        let aidx = attr.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(binding_target_for_construction(attr, aidx), None);
     }
 
     #[test]

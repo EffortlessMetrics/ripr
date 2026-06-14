@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+surface smoke oracle via local_binding relation: corrects the misleading 'no direct test' card to 'strengthen existing smoke assertion'; class stays weakly_exposed (analysis/python-local-callable-instance-alignment)
+
+Command:
+`cargo xtask goldens bless python_local_callable_binding --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

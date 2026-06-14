@@ -24,16 +24,45 @@ Static exposure
   weakly_exposed (warning, confidence 0.40)
 
 Evidence
-  - reach weak: 1 heuristic Python test link(s) found for owner `__call__`; relation is uncertain
+  - reach yes: 1 related Python test(s) found for owner `__call__`
   - infection yes: Changed Python return expression can alter the owner return value: `return attempt_number >= self.max_attempt_number`
   - propagation yes: Changed Python return value is already at the owner output boundary.
-  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
+  - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == attempt_number >= self.max_attempt_number`.
   - local flow reaches returned value: return attempt_number >= self.max_attempt_number (line 6)
-  - related test tests/test_stop.py:7 test_stop_after_attempt uses unknown unknown oracle
+  - related test tests/test_stop.py:7 test_stop_after_attempt uses smoke smoke only oracle: self.assertTrue(stop(3))
 
 Weakness
-  - Only heuristic Python test links were found for `__call__`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
+  - Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.
+  - missing discriminator return value == attempt_number >= self.max_attempt_number: changed Python returned-value at line 6 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:return_value:return_value:attempt_number>=self.max_attempt_number
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: stop_after_attempt.__call__
+  changed behavior: return_value changed at src/stop.py:6: `return attempt_number >= self.max_attempt_number`
+  current test evidence: tests/test_stop.py:7 test_stop_after_attempt currently has oracle_strength=smoke, oracle_kind=smoke_only: self.assertTrue(stop(3))
+  missing discriminator: return value == attempt_number >= self.max_attempt_number
+  recommended test shape: Strengthen the existing unittest exact return-value assertion for `return value == attempt_number >= self.max_attempt_number`.
+  suggested assertion: Assert the returned value equals the expected value for the changed inputs.
+  suggested file: tests/test_stop.py
+  suggested test: test_stop_after_attempt
+  verify: python -m unittest tests.test_stop.StopTest.test_stop_after_attempt (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == attempt_number >= self.max_attempt_number`.
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

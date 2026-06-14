@@ -1,4 +1,4 @@
-# Fixture: python_local_callable_binding (documented limitation)
+# Fixture: python_local_callable_binding (resolved: direct relation, smoke oracle)
 
 Spec: RIPR-SPEC-0028
 
@@ -26,36 +26,34 @@ because `stop` is a single unambiguous binding to the owner's class.
 
 ## Then
 
-ripr classifies the changed predicate `weakly_exposed` (a known, conservative
-limitation). It links the test only by **`same_stem` name proximity** (an
-*uncertain* relation) and extracts **no oracle** (`oracle_strength: unknown`),
-because the test reaches the owner through the local binding `stop(3)` rather
-than naming `stop_after_attempt` / `__call__` directly — so neither the relation
-heuristic nor oracle extraction traces the local-callable binding.
+ripr classifies the changed predicate `weakly_exposed` and links the test via a
+**`local_binding`** relation — an *oracle-eligible, direct* relation that traces
+the single unambiguous binding `stop = stop_after_attempt(3)` to its call
+`stop(3)`. Because the relation is direct, the existing assertion is surfaced:
+`oracle_strength: smoke` / `oracle_kind: smoke_only` / `oracle:
+self.assertTrue(stop(3))`, and the repair card reads **"strengthen the existing
+unittest assertion"** (`repair_action: strengthen_existing_test`) rather than the
+misleading "no direct test found".
 
-The relation diagnosis is misleading (it implies no direct test exists), but the
-`weakly_exposed` classification is the **conservative direction** (under-credit /
-over-suggest, never over-credit). This fixture pins that current behavior
-honestly.
+The `weakly_exposed` classification is the correct **conservative direction**
+(under-credit / over-suggest, never over-credit): a single truthy check does not
+pin the `>`→`>=` boundary, so the oracle stays `smoke` and the class stays
+`weakly_exposed` *by contract*.
 
-**Correction (2026-06-13): the resolved state is NOT `exposed`.** The discriminating
-assertion here is `assertTrue(stop(3))` — a *broad boolean* oracle, which
-`oracle_for_call` classifies as `OracleStrength::Smoke`. The sibling golden
+**The resolved state is NOT `exposed`.** The discriminating assertion here is
+`assertTrue(stop(3))` — a *broad boolean* oracle, which `oracle_for_call`
+classifies as `OracleStrength::Smoke`. The sibling golden
 `python_broad_boolean_assertion` deliberately pins the same shape
 (`assert is_priority(100)`, a *direct* call on the changed predicate owner) as
-`weakly_exposed`/`smoke`: a single truthy check does not pin the boundary, so it
-is a weak oracle *by contract*. Flipping this fixture to `exposed` would
-contradict that golden and drift `ripr` back toward coverage. When the
-limitation is resolved (tracker
-`analysis/python-local-callable-instance-alignment`) — by tracing a single
-unambiguous `local = OwnerClass(...)` binding so the relation links **direct** —
-this fixture should resolve to `weakly_exposed` with `oracle_strength: smoke` and
-a **direct** relation (matching `python_broad_boolean_assertion`), and a repair
-card that says "strengthen this broad-boolean assertion into an exact-value
-assertion" rather than "no direct test found". It must **not** flip to `exposed`.
-The cases that legitimately flip to `exposed` are the *strong* missed oracles
-(exact-value / exact-error reached through indirect calls — see tracker
-`analysis/python-cross-file-strong-oracle-relation`), not this smoke case.
+`weakly_exposed`/`smoke`. Flipping this fixture to `exposed` would contradict that
+golden and drift `ripr` back toward coverage. The
+`analysis/python-local-callable-instance-alignment` work resolved the **relation
+diagnosis** (link direct, surface the smoke oracle, correct the card) WITHOUT
+changing the class — `exposed` would require a `Strong` oracle. The cases that
+legitimately flip to `exposed` are the *strong* missed oracles (exact-value /
+exact-error reached through indirect calls — see tracker
+`analysis/python-cross-file-strong-oracle-relation`, landed in #1228), not this
+smoke case.
 
 ## Must Not
 
