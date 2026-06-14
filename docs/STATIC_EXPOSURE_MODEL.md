@@ -175,6 +175,26 @@ or import alias) or the changed sink (the attribute, field, or value the change
 touches). A strong-but-orthogonal oracle downgrades to `weakly_exposed` with a
 typed reason and routes a repair, rather than being silently called covered.
 
+### Identity beats token overlap
+
+A changed owner or sink may share *words* with unrelated tests; that overlap is
+not proof. A test for `PaymentProcessor.validate` does not discriminate
+`TokenValidator.validate` just because both contain the token `validate`, and a
+`buffered_output` variable does not observe a changed `buffer` just because one
+string contains the other. Sink alignment matches *tokens*; tokens are not
+*identity*.
+
+So for method, classmethod, attribute, and other receiver-dependent owners, a
+bare method-name match is **not** sufficient to credit `exposed`. It requires
+owner-class identity: the test imports or constructs the owner's class, calls a
+known alias, binds a simple local receiver from the owner, or the oracle observes
+the owner's class token or the changed sink directly. Bare method-name or
+bare-`.method(` overlap is weaker evidence and must downgrade to `weakly_exposed`,
+never silently credit `exposed`. Token matching may *support* a relation; it must
+not *be* the identity. (Whole-word matching alone is not enough either — the word
+can belong to the wrong owner; see `docs/LEARNINGS.md` § Token coincidence is a
+false-`exposed` family.)
+
 ### Two error rates
 
 Trust in `ripr` rests on two error rates, not one:

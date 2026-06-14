@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_same_method_other_class/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_auth.py:python_preview:d982555b",
+      "canonical_gap_id": "gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid",
+        "language": "python",
+        "file": "src/auth.py",
+        "owner": "TokenValidator.validate",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "token.strip_in_self._valid"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_auth.py:python_preview:d982555b",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/auth.py",
+        "line": 6,
+        "expression": "        return token.strip() in self._valid",
+        "owner": "python:src/auth.py::TokenValidator.validate"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `validate`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return token.strip() in self._valid`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `validate`", "infection yes: Changed Python return expression can alter the owner return value: `return token.strip() in self._valid`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return token.strip() in self._valid (line 6)", "related test tests/test_billing.py:4 test_billing_validate uses strong exact value oracle: assert proc.validate(\"card1234 \") == True", "missing discriminator return value == token.strip() in self._valid: changed Python returned-value at line 6 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
+      ],
+      "evidence": ["owner: TokenValidator.validate", "owner_kind: method", "missing_discriminator: return value == token.strip() in self._valid", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_billing.py", "suggested_test_name: test_billing_validate", "suggested_test_node_id: tests/test_billing.py::test_billing_validate", "suggested_verify_command: pytest tests/test_billing.py::test_billing_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_billing_validate)", "test_verify_command: pytest tests/test_billing.py::test_billing_validate (test_billing_validate)", "related_test_relation: syntactic_call (test_billing_validate)", "test_oracle: exact_value strong (test_billing_validate)"],
+      "missing": ["A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == token.strip() in self._valid",
+            "reason": "changed Python returned-value at line 6 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == token.strip() in self._valid",
+          "reason": "changed Python returned-value at line 6 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_billing_validate",
+          "file": "tests/test_billing.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert proc.validate(\"card1234 \") == True"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_billing.py",
+        "suggested_test_name": "test_billing_validate",
+        "suggested_test_node_id": "tests/test_billing.py::test_billing_validate",
+        "verify_command": "pytest tests/test_billing.py::test_billing_validate",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "TokenValidator.validate",
+        "changed_behavior": "return_value changed at src/auth.py:6: `return token.strip() in self._valid`",
+        "current_test_evidence": "tests/test_billing.py:4 test_billing_validate currently has oracle_strength=strong, oracle_kind=exact_value: assert proc.validate(\"card1234 \") == True",
+        "missing_discriminator": "return value == token.strip() in self._valid",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == token.strip() in self._valid`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_billing.py",
+          "test_name": "test_billing_validate",
+          "pytest_node_id": "tests/test_billing.py::test_billing_validate"
+         },
+        "verify": {
+          "command": "pytest tests/test_billing.py::test_billing_validate",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == token.strip() in self._valid`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == token.strip() in self._valid`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "method",
+      "changed_sink": "token, strip, _valid",
+      "observed_sink": "assert proc.validate(\"card1234 \") == True",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/auth.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}
