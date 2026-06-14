@@ -1,5 +1,6 @@
 //! Related test candidate discovery for the TypeScript preview adapter.
 
+use super::tsconfig::TsAliasMap;
 use super::*;
 use std::collections::HashMap;
 
@@ -40,9 +41,14 @@ impl ReExportIndex {
     /// Only explicit named re-exports from relative paths are indexed;
     /// star-re-exports (`export * from`) and non-relative sources are ignored
     /// (fail-closed).
+    ///
+    /// `alias_map` is forwarded to `normalized_relative_import_module` so that
+    /// tsconfig.json-aliased sources (e.g. `@/owner`) can be followed through
+    /// re-exports when `resolve_tsconfig_paths` is enabled.
     pub(crate) fn build(
         workspace_files: &[PathBuf],
         workspace_root: &Path,
+        alias_map: Option<&TsAliasMap>,
         is_test: impl Fn(&Path) -> bool,
     ) -> Self {
         use oxc_allocator::Allocator;
@@ -75,13 +81,14 @@ impl ReExportIndex {
                     continue;
                 };
                 let source_str = re_source.value.to_string();
-                // Only relative paths — never follow node_modules
-                if !source_str.starts_with("./") && !source_str.starts_with("../") {
-                    continue;
-                }
-                // Resolve the source module relative to the intermediate file's dir
-                let Some(resolved) = normalized_relative_import_module(relative, &source_str)
-                else {
+                // Resolve the source module relative to the intermediate file's dir.
+                // Pass alias_map so tsconfig-aliased paths can be followed.
+                let Some(resolved) = normalized_relative_import_module(
+                    relative,
+                    &source_str,
+                    alias_map,
+                    Some(workspace_root),
+                ) else {
                     continue;
                 };
                 for specifier in &export.specifiers {
@@ -114,9 +121,12 @@ impl ReExportIndex {
         import_source: &str,
         imported_name: &str,
         owner: &TypeScriptOwner,
+        alias_map: Option<&TsAliasMap>,
+        workspace_root: Option<&Path>,
     ) -> bool {
         // Resolve the import source to a normalized module path.
-        let Some(intermediate_module) = normalized_relative_import_module(test_file, import_source)
+        let Some(intermediate_module) =
+            normalized_relative_import_module(test_file, import_source, alias_map, workspace_root)
         else {
             return false;
         };
@@ -210,11 +220,15 @@ pub(crate) fn same_package_root(
 /// the owner through an intermediate barrel file are credited when the chain
 /// can be resolved in-source in a single hop.  Pass `&ReExportIndex::empty()`
 /// to disable re-export tracing (backward-compatible default for unit tests).
+///
+/// `alias_map` enables tsconfig.json path alias resolution for non-relative
+/// specifiers.  Pass `None` when `resolve_tsconfig_paths` is `false` (default).
 pub(crate) fn related_test_candidates<'a>(
     owner: &TypeScriptOwner,
     all_tests: &'a [TypeScriptTest],
     workspace_root: Option<&Path>,
     reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
 ) -> Vec<TypeScriptRelatedCandidate<'a>> {
     let mut candidates: Vec<TypeScriptRelatedCandidate<'a>> = all_tests
         .iter()
@@ -224,7 +238,7 @@ pub(crate) fn related_test_candidates<'a>(
                 .unwrap_or(true)
         })
         .filter_map(|test| {
-            owner_call_relation(test, owner, reexport_index)
+            owner_call_relation(test, owner, reexport_index, alias_map, workspace_root)
                 .map(|relation| TypeScriptRelatedCandidate { test, relation })
         })
         .collect();
@@ -237,7 +251,7 @@ pub(crate) fn related_test_candidates<'a>(
                     .unwrap_or(true)
             })
             .filter_map(|test| {
-                heuristic_relation(test, owner)
+                heuristic_relation(test, owner, alias_map, workspace_root)
                     .map(|relation| TypeScriptRelatedCandidate { test, relation })
             })
             .collect();
@@ -271,26 +285,28 @@ pub(crate) fn owner_call_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
     reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> Option<TypeScriptRelationKind> {
     if owner.owner_kind == OwnerKind::ModuleFunction {
-        return module_initializer_observer_relation(test, owner)
+        return module_initializer_observer_relation(test, owner, alias_map, workspace_root)
             .then_some(TypeScriptRelationKind::ModuleValueReference);
     }
     if owner.owner_kind == OwnerKind::Method {
-        return receiver_owner_call_relation(test, owner)
+        return receiver_owner_call_relation(test, owner, alias_map, workspace_root)
             .then_some(TypeScriptRelationKind::ReceiverOwnerCall);
     }
     if owner.owner_kind == OwnerKind::ClassMethod {
-        return class_method_owner_call_relation(test, owner)
+        return class_method_owner_call_relation(test, owner, alias_map, workspace_root)
             .then_some(TypeScriptRelationKind::ClassMethodCall);
     }
     if contains_call_name(&test.body_text, &owner.name)
-        && !owner_name_shadowed_by_unrelated_import(test, owner)
+        && !owner_name_shadowed_by_unrelated_import(test, owner, alias_map, workspace_root)
     {
         return Some(TypeScriptRelationKind::DirectOwnerCall);
     }
     if test.imports_in_file.iter().any(|import| {
-        import_source_matches_owner(import, &test.file, owner)
+        import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
             && import_references_owner_call(import, &test.body_text, owner)
     }) {
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
@@ -314,7 +330,14 @@ pub(crate) fn owner_call_relation(
         if !contains_call_name(&test.body_text, local) {
             return false;
         }
-        reexport_index.resolve_to_owner(&test.file, &import.source, imported_name, owner)
+        reexport_index.resolve_to_owner(
+            &test.file,
+            &import.source,
+            imported_name,
+            owner,
+            alias_map,
+            workspace_root,
+        )
     }) {
         return Some(TypeScriptRelationKind::ReExportChainFollowed);
     }
@@ -324,8 +347,12 @@ pub(crate) fn owner_call_relation(
 pub(crate) fn module_initializer_observer_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> bool {
-    if owner.owner_kind != OwnerKind::ModuleFunction || test_mocks_owner_module(test, owner) {
+    if owner.owner_kind != OwnerKind::ModuleFunction
+        || test_mocks_owner_module(test, owner, alias_map, workspace_root)
+    {
         return false;
     }
     if normalized_module_path(&test.file) == normalized_module_path(&owner.file)
@@ -335,7 +362,7 @@ pub(crate) fn module_initializer_observer_relation(
         return true;
     }
     test.imports_in_file.iter().any(|import| {
-        if !import_source_matches_owner(import, &test.file, owner) {
+        if !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root) {
             return false;
         }
         if import.namespace {
@@ -347,11 +374,19 @@ pub(crate) fn module_initializer_observer_relation(
     })
 }
 
-pub(crate) fn receiver_owner_call_relation(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
-    if owner.owner_kind != OwnerKind::Method || test_mocks_owner_module(test, owner) {
+pub(crate) fn receiver_owner_call_relation(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    if owner.owner_kind != OwnerKind::Method
+        || test_mocks_owner_module(test, owner, alias_map, workspace_root)
+    {
         return false;
     }
-    let constructor_names = constructor_names_for_method_owner(test, owner);
+    let constructor_names =
+        constructor_names_for_method_owner(test, owner, alias_map, workspace_root);
     if constructor_names.is_empty() {
         return false;
     }
@@ -363,11 +398,15 @@ pub(crate) fn receiver_owner_call_relation(test: &TypeScriptTest, owner: &TypeSc
 pub(crate) fn class_method_owner_call_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> bool {
-    if owner.owner_kind != OwnerKind::ClassMethod || test_mocks_owner_module(test, owner) {
+    if owner.owner_kind != OwnerKind::ClassMethod
+        || test_mocks_owner_module(test, owner, alias_map, workspace_root)
+    {
         return false;
     }
-    let class_names = class_names_for_class_method_owner(test, owner);
+    let class_names = class_names_for_class_method_owner(test, owner, alias_map, workspace_root);
     if class_names.is_empty() {
         return false;
     }
@@ -379,6 +418,8 @@ pub(crate) fn class_method_owner_call_relation(
 pub(crate) fn class_names_for_class_method_owner(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> Vec<String> {
     let Some(class_name) = owner.class_name.as_deref() else {
         return Vec::new();
@@ -390,7 +431,9 @@ pub(crate) fn class_names_for_class_method_owner(
         push_unique_string(&mut names, class_name.to_string());
     }
     for import in &test.imports_in_file {
-        if import.namespace || !import_source_matches_owner(import, &test.file, owner) {
+        if import.namespace
+            || !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
+        {
             continue;
         }
         if import.imported.as_deref() == Some(class_name)
@@ -405,6 +448,8 @@ pub(crate) fn class_names_for_class_method_owner(
 pub(crate) fn constructor_names_for_method_owner(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> Vec<String> {
     let Some(class_name) = owner.class_name.as_deref() else {
         return Vec::new();
@@ -414,7 +459,9 @@ pub(crate) fn constructor_names_for_method_owner(
         push_unique_string(&mut names, class_name.to_string());
     }
     for import in &test.imports_in_file {
-        if import.namespace || !import_source_matches_owner(import, &test.file, owner) {
+        if import.namespace
+            || !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
+        {
             continue;
         }
         if import.imported.as_deref() == Some(class_name) {
@@ -476,9 +523,14 @@ pub(crate) fn contains_new_constructor_call(text: &str, constructor_name: &str) 
     })
 }
 
-fn test_mocks_owner_module(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+fn test_mocks_owner_module(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
     test.mocks_in_file.iter().any(|source| {
-        normalized_relative_import_module(&test.file, source)
+        normalized_relative_import_module(&test.file, source, alias_map, workspace_root)
             .is_some_and(|module| module == normalized_module_path(&owner.file))
     })
 }
@@ -486,11 +538,13 @@ fn test_mocks_owner_module(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bo
 fn heuristic_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> Option<TypeScriptRelationKind> {
     if !heuristic_owner_supported(owner) {
         return None;
     }
-    if !heuristic_relation_allowed(test, owner) {
+    if !heuristic_relation_allowed(test, owner, alias_map, workspace_root) {
         return None;
     }
     if same_file_proximity_related(test, owner) {
@@ -520,13 +574,17 @@ fn heuristic_owner_supported(owner: &TypeScriptOwner) -> bool {
 ///
 /// `reexport_index` enables single-hop re-export tracing.
 /// Pass `&ReExportIndex::empty()` to disable (backward-compatible default).
+///
+/// `alias_map` enables tsconfig.json path alias resolution for non-relative
+/// specifiers.  Pass `None` when `resolve_tsconfig_paths` is `false` (default).
 pub(crate) fn find_related_tests(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
     workspace_root: Option<&Path>,
     reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
 ) -> Vec<RelatedTest> {
-    related_test_candidates(owner, all_tests, workspace_root, reexport_index)
+    related_test_candidates(owner, all_tests, workspace_root, reexport_index, alias_map)
         .into_iter()
         .map(|candidate| {
             let strongest = candidate
@@ -598,9 +656,14 @@ fn ts_relation_to_domain(
     (Some(reason), Some(confidence))
 }
 
-fn heuristic_relation_allowed(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
-    !owner_name_shadowed_by_unrelated_import(test, owner)
-        && !owner_export_imported_from_unrelated_source(test, owner)
+fn heuristic_relation_allowed(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    !owner_name_shadowed_by_unrelated_import(test, owner, alias_map, workspace_root)
+        && !owner_export_imported_from_unrelated_source(test, owner, alias_map, workspace_root)
 }
 
 pub(crate) fn contains_call_name(body_text: &str, call_name: &str) -> bool {
@@ -619,13 +682,24 @@ fn has_call_boundary(body_text: &str, idx: usize) -> bool {
         .is_none_or(|ch| !is_javascript_identifier_char(ch) && ch != '.')
 }
 
-fn owner_name_shadowed_by_unrelated_import(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+fn owner_name_shadowed_by_unrelated_import(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
     test.imports_in_file
         .iter()
         .filter(|import| import.local == owner.name)
         .any(|import| {
             import.namespace
-                || !import_source_matches_owner(import, &test.file, owner)
+                || !import_source_matches_owner(
+                    import,
+                    &test.file,
+                    owner,
+                    alias_map,
+                    workspace_root,
+                )
                 || import.imported.as_deref().is_some_and(|imported| {
                     imported != owner.name.as_str() && imported != "default"
                 })
@@ -635,10 +709,12 @@ fn owner_name_shadowed_by_unrelated_import(test: &TypeScriptTest, owner: &TypeSc
 fn owner_export_imported_from_unrelated_source(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> bool {
     test.imports_in_file.iter().any(|import| {
         import.imported.as_deref() == Some(owner.name.as_str())
-            && !import_source_matches_owner(import, &test.file, owner)
+            && !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
     })
 }
 
@@ -658,31 +734,56 @@ fn import_source_matches_owner(
     import: &TypeScriptImport,
     test_file: &Path,
     owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> bool {
-    normalized_relative_import_module(test_file, &import.source)
+    normalized_relative_import_module(test_file, &import.source, alias_map, workspace_root)
         .is_some_and(|module| module == normalized_module_path(&owner.file))
 }
 
-fn normalized_relative_import_module(test_file: &Path, source: &str) -> Option<String> {
-    if !source.starts_with("./") && !source.starts_with("../") {
-        return None;
-    }
-    let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
-        .split('/')
-        .filter(|part| !part.is_empty() && *part != ".")
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let normalized_source = source.replace('\\', "/");
-    for part in normalized_source.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
+/// Resolve an import specifier relative to `test_file` to a normalized module
+/// path string (no extension, forward-slash separated).
+///
+/// For relative specifiers (`./` or `../`), performs the usual path-join.
+///
+/// For non-relative specifiers, consults `alias_map` when provided:
+/// - If the alias map successfully resolves the specifier to a unique workspace
+///   file, returns that file's normalized module path.
+/// - Otherwise returns `None` (fail-closed).
+pub(crate) fn normalized_relative_import_module(
+    test_file: &Path,
+    source: &str,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> Option<String> {
+    if source.starts_with("./") || source.starts_with("../") {
+        // Standard relative resolution.
+        let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let normalized_source = source.replace('\\', "/");
+        for part in normalized_source.split('/') {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                _ => parts.push(part.to_string()),
             }
-            _ => parts.push(part.to_string()),
         }
+        return Some(strip_typescript_module_extension(&parts.join("/")));
     }
-    Some(strip_typescript_module_extension(&parts.join("/")))
+
+    // Non-relative specifier — consult alias map if available.
+    let alias_map = alias_map?;
+    let root = workspace_root?;
+    let _ = root; // root is captured by alias_map already
+    let resolved_path = alias_map.resolve(source)?;
+    // Normalize the resolved workspace-relative path to a module string.
+    let normalized = normalized_path(&resolved_path);
+    Some(strip_typescript_module_extension(&normalized))
 }
 
 fn normalized_module_path(path: &Path) -> String {

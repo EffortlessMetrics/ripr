@@ -5740,3 +5740,33 @@ metrics = [
   "ts_non_owner_assertion_prevents_downgrade",
   "ts_field_construction_non_effect_family_bypasses_guard",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0099"
+name = "TypeScript tsconfig.json path-alias resolution"
+spec = "docs/specs/RIPR-SPEC-0099-typescript-tsconfig-path-aliases.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_resolution_flag_on_credits_test_as_exposed",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_resolution_flag_off_stays_no_static_path_with_disclosure",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_resolution_multi_entry_value_fails_closed",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_non_owner_import_emits_no_limitation",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/tsconfig.rs",
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs",
+  "crates/ripr/src/analysis/language/typescript/static_limit.rs",
+  "crates/ripr/src/analysis/language/typescript/classifier.rs",
+  "crates/ripr/src/analysis/language/typescript/mod.rs",
+  "crates/ripr/src/config.rs",
+  "crates/ripr/src/config/model.rs",
+  "crates/ripr/src/analysis/mod.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0099-typescript-tsconfig-path-aliases.md",
+]
+metrics = [
+  "tsconfig_alias_flag_on_exposed",
+  "tsconfig_alias_flag_off_disclosure",
+  "tsconfig_alias_multi_entry_fail_closed",
+  "tsconfig_alias_non_owner_no_disclosure",
+]

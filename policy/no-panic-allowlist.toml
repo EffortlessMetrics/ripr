@@ -414,10 +414,10 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
 
 [allow.last_seen]
-line = 223
+line = 254
 column = 19
 
 [[allow]]
@@ -433,10 +433,10 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
 
 [allow.last_seen]
-line = 239
+line = 271
 column = 23
 
 [[allow]]

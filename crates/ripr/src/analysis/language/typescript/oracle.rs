@@ -723,7 +723,8 @@ pub(crate) fn collect_related_mock_paths(
     all_tests: &[TypeScriptTest],
 ) -> Vec<String> {
     let mut paths: Vec<String> = Vec::new();
-    for candidate in related_test_candidates(owner, all_tests, None, &ReExportIndex::empty()) {
+    for candidate in related_test_candidates(owner, all_tests, None, &ReExportIndex::empty(), None)
+    {
         for path in &candidate.test.mocks_in_file {
             if !paths.iter().any(|existing| existing == path) {
                 paths.push(path.clone());

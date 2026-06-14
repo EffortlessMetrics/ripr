@@ -196,6 +196,13 @@ pub(crate) fn ts_observation_guard_limitation(
 ///
 /// `reexport_index` enables single-hop re-export tracing for test discovery.
 /// Pass `&ReExportIndex::empty()` to disable (backward-compatible for unit tests).
+// 8 parameters — all are structurally distinct context tokens required by the
+// TypeScript classifier pipeline; bundling them would force a heap allocation
+// per call.  The count is stable; no further parameters are planned.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "8 structurally-distinct context tokens; bundling forces heap allocation; count is stable"
+)]
 pub(crate) fn classify_change(
     file: &Path,
     line: usize,
@@ -204,6 +211,7 @@ pub(crate) fn classify_change(
     all_tests: &[TypeScriptTest],
     workspace_root: Option<&Path>,
     reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
 ) -> Option<Finding> {
     let changed_file = normalized_path(file);
     let owner = owners
@@ -211,8 +219,8 @@ pub(crate) fn classify_change(
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related_candidates =
-        related_test_candidates(owner, all_tests, workspace_root, reexport_index);
-    let related = find_related_tests(owner, all_tests, workspace_root, reexport_index);
+        related_test_candidates(owner, all_tests, workspace_root, reexport_index, alias_map);
+    let related = find_related_tests(owner, all_tests, workspace_root, reexport_index, alias_map);
     let bun_array_buffer_facts = collect_related_bun_array_buffer_facts(&related_candidates);
     let bun_bridge_hints = collect_related_bun_bridge_hints(&bun_array_buffer_facts);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
@@ -235,6 +243,21 @@ pub(crate) fn classify_change(
         } else {
             Vec::new()
         };
+
+    // Path-alias unresolved disclosure (RIPR-SPEC-0099 always-on honesty):
+    // When a test has a non-relative, name-matched import that was NOT credited
+    // as an owner relation, emit the limitation to explain the potential gap.
+    // This fires regardless of `resolve_tsconfig_paths` (always-on disclosure).
+    // The `related` vec is not yet computed at this point; use `related_candidates`
+    // to derive which tests were actually credited.
+    let credited_test_files: std::collections::HashSet<PathBuf> = related_candidates
+        .iter()
+        .map(|c| c.test.file.clone())
+        .collect();
+    let named_limitations_from_alias: Vec<TypeScriptNamedLimitation> =
+        named_limitations_for_alias_unresolved(owner, all_tests, |test| {
+            credited_test_files.contains(&test.file)
+        });
     // Oracle-based limitations fire from oracle-eligible candidates even when
     // there is no static_limit. We always compute them; they are empty when there
     // are no oracle-eligible candidates or no qualifying assertions.
@@ -497,10 +520,13 @@ pub(crate) fn classify_change(
     }
     // Emit additive named limitation evidence lines (RIPR-SPEC-0085 §PR4/PR6).
     // These lines are ADDITIVE — they do not change any existing field value.
+    // `named_limitations_from_alias` fires on the always-on alias-gap disclosure
+    // (RIPR-SPEC-0099): non-relative name-matched imports that were not credited.
     for named_limit in named_limitations_from_static
         .iter()
         .chain(named_limitations_from_oracle.iter())
         .chain(named_limitations_from_ownership.iter())
+        .chain(named_limitations_from_alias.iter())
     {
         evidence.extend(named_limit.evidence_lines());
     }

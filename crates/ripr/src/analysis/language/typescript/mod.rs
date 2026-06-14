@@ -49,6 +49,7 @@ mod static_limit;
 #[cfg(test)]
 mod tests;
 mod tests_extract;
+pub(crate) mod tsconfig;
 mod types;
 
 // Re-export all submodule items unconditionally so that every sibling
@@ -67,6 +68,7 @@ pub(crate) use probe_shape::*;
 pub(crate) use related_tests::*;
 pub(crate) use static_limit::*;
 pub(crate) use tests_extract::*;
+pub(crate) use tsconfig::{TsAliasMap, load_alias_map};
 pub(crate) use types::*;
 
 /// TypeScript / JavaScript preview adapter.
@@ -123,10 +125,21 @@ impl LanguageAdapter for TypeScriptAdapter {
                 all_owners.extend(extract_owners(relative, &source));
             }
         }
+        // Build tsconfig.json alias map when opt-in flag is enabled (RIPR-SPEC-0099).
+        // fail-closed: None when flag is off, when tsconfig is absent, when extends/
+        // references are present, or when any other parse/resolution failure occurs.
+        let alias_map: Option<TsAliasMap> = if options.resolve_tsconfig_paths {
+            load_alias_map(&options.root)
+        } else {
+            None
+        };
+        let alias_map_ref: Option<&TsAliasMap> = alias_map.as_ref();
+
         // Build the single-hop re-export index from all non-test workspace files
         // (RIPR-SPEC-0095). The index enables crediting tests that reach the owner
         // via an explicit `export { N } from './owner'` barrel-file re-export.
-        let reexport_index = ReExportIndex::build(&workspace_files, &options.root, is_test_file);
+        let reexport_index =
+            ReExportIndex::build(&workspace_files, &options.root, alias_map_ref, is_test_file);
 
         // Phase 2: for each accepted changed file, classify each changed
         // line that falls inside an owner.
@@ -180,6 +193,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                     &all_tests,
                     Some(&options.root),
                     &reexport_index,
+                    alias_map_ref,
                 ) {
                     finding.evidence.extend(discovery_evidence.clone());
                     // Inject verify-command evidence derived from the strongest

@@ -172,6 +172,7 @@ fn classify_weak_direct_line(line_text: &str) -> Result<Finding, String> {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())
 }
@@ -735,6 +736,7 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -1559,7 +1561,7 @@ fn find_related_tests_matches_by_call_name() {
             imports_in_file: Vec::new(),
         },
     ];
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alpha");
 }
@@ -1588,7 +1590,7 @@ fn find_related_tests_ignores_object_method_calls_for_function_owners() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1616,8 +1618,8 @@ test("cart total observes receiver", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1653,7 +1655,7 @@ test("cart total through factory stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1682,7 +1684,7 @@ test("cart total through dynamic method stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1712,7 +1714,7 @@ test("mocked cart total stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1739,8 +1741,8 @@ test("static build observes class method", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1776,7 +1778,7 @@ test("shadowed static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1801,8 +1803,8 @@ fn find_related_tests_matches_same_file_class_method_calls() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1838,7 +1840,7 @@ test("namespace static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1867,7 +1869,7 @@ test("mocked static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1894,7 +1896,7 @@ test("unknown class static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -1921,8 +1923,8 @@ test("rate value observes initializer", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1957,7 +1959,7 @@ test("rate value observes namespace initializer", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "rate value observes namespace initializer");
@@ -1996,7 +1998,7 @@ test("string mention stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -2023,7 +2025,7 @@ test("alias import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alias import observes threshold");
@@ -2051,7 +2053,7 @@ test("namespace import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "namespace import observes threshold");
@@ -2089,7 +2091,7 @@ test("type only import", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -2118,7 +2120,7 @@ fn find_related_tests_ignores_call_shaped_string_mentions() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -2160,7 +2162,7 @@ fn find_related_tests_ignores_call_shaped_comment_mentions() {
         },
     ];
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
 }
@@ -2201,7 +2203,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
 "#,
     ));
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
     let relations: Vec<_> = candidates
         .iter()
         .map(|candidate| candidate.relation)
@@ -2221,7 +2223,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
             .all(|candidate| candidate.relation.is_uncertain())
     );
 
-    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
     assert_eq!(related.len(), 3);
     assert!(
         related
@@ -2252,7 +2254,7 @@ fn related_test_name_proximity_ignores_partial_tokens() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(candidates.is_empty());
 }
@@ -2285,6 +2287,7 @@ fn classify_change_uses_heuristic_links_as_weak_uncertain_proximity() -> Result<
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
 
@@ -2336,6 +2339,7 @@ fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
@@ -2409,6 +2413,7 @@ fn typescript_preview_weak_oracle_guidance_names_snapshot_exact_value_shape() ->
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2481,6 +2486,7 @@ fn typescript_preview_weak_oracle_guidance_keeps_broad_error_advisory() -> Resul
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2525,6 +2531,7 @@ fn typescript_preview_weak_oracle_guidance_distinguishes_mock_payload_limits() -
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2583,6 +2590,7 @@ fn typescript_preview_mock_payload_guidance_names_literal_payload_without_repair
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2659,6 +2667,7 @@ fn classify_change_labels_javascript_sources_separately() -> Result<(), String> 
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a JavaScript preview finding".to_string())?;
 
@@ -2724,6 +2733,7 @@ fn classify_change_matches_owner_file_before_line_range() -> Result<(), String> 
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
 
@@ -3445,6 +3455,7 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::Exposed));
@@ -3484,6 +3495,7 @@ fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), S
         &[],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::NoStaticPath));
@@ -3515,6 +3527,7 @@ fn classify_change_returns_none_when_line_is_outside_any_owner() {
         &[],
         None,
         &ReExportIndex::empty(),
+        None,
     );
     assert!(finding.is_none());
 }
@@ -3528,6 +3541,7 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -3553,6 +3567,7 @@ fn analyze_repo_returns_empty_scaffold() -> Result<(), String> {
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Deep,
         include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
     };
     let policy = OraclePolicy::default();
     let result = adapter.analyze_repo(&options, &policy)?;
@@ -3929,6 +3944,7 @@ fn classify_change_surfaces_decorator_indirection_static_limit() -> Result<(), S
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected decorated owner finding".to_string())?;
 
@@ -3978,6 +3994,7 @@ export function discountedTotal(amount: number): number {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected imported-symbol finding".to_string())?;
 
@@ -4017,6 +4034,7 @@ fn classify_change_omits_probe_facts_for_heuristic_only_related_test() -> Result
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected heuristic TypeScript preview finding".to_string())?;
 
@@ -4200,6 +4218,7 @@ fn classify_change_surfaces_mocked_module_static_limit_in_missing_and_evidence()
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(
@@ -4277,6 +4296,7 @@ fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() 
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4359,6 +4379,7 @@ fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4409,6 +4430,7 @@ test("renders summary snapshot", () => {
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4461,6 +4483,7 @@ test("price is in expected range", () => {
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4502,6 +4525,7 @@ fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Resul
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4552,6 +4576,7 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4701,6 +4726,7 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4760,6 +4786,7 @@ fn named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation() 
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4858,15 +4885,20 @@ fn package_local_filter_selects_same_package_test() {
     };
 
     let tests_slice = [test.clone()];
-    let candidates =
-        related_test_candidates(&owner, &tests_slice, Some(&root), &ReExportIndex::empty());
+    let candidates = related_test_candidates(
+        &owner,
+        &tests_slice,
+        Some(&root),
+        &ReExportIndex::empty(),
+        None,
+    );
     // The package-local filter must NOT exclude same-package tests.
     // (candidates may still be empty if body_text has no call — that's tested
     // elsewhere; here we only verify the package filter is not the bottleneck.)
     // Use workspace_root=None to check the unfiltered count equals
     // workspace_root=Some count (filter didn't discard it).
     let candidates_no_filter =
-        related_test_candidates(&owner, &tests_slice, None, &ReExportIndex::empty());
+        related_test_candidates(&owner, &tests_slice, None, &ReExportIndex::empty(), None);
     assert_eq!(
         candidates.len(),
         candidates_no_filter.len(),
@@ -4914,8 +4946,13 @@ fn package_local_filter_rejects_cross_package_test() {
     };
 
     let tests_slice = [test.clone()];
-    let candidates =
-        related_test_candidates(&owner, &tests_slice, Some(&root), &ReExportIndex::empty());
+    let candidates = related_test_candidates(
+        &owner,
+        &tests_slice,
+        Some(&root),
+        &ReExportIndex::empty(),
+        None,
+    );
     assert!(
         candidates.is_empty(),
         "cross-package test must NOT be selected, got {candidates:?}"
@@ -5087,6 +5124,7 @@ fn named_limitation_target_unresolved_emitted_for_cross_package_reference() -> R
         &all_tests,
         Some(&root),
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5135,6 +5173,7 @@ fn named_limitation_target_unresolved_not_emitted_for_same_package() -> Result<(
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5217,6 +5256,7 @@ fn ts_swallowed_console_log_exposed_downgrade() -> Result<(), String> {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5294,6 +5334,7 @@ fn ts_returnvalue_genuinely_observed_control() -> Result<(), String> {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5381,6 +5422,7 @@ fn ts_sibling_assertion_non_owner_prevents_downgrade() -> Result<(), String> {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5445,6 +5487,7 @@ fn ts_field_construction_observed_control() -> Result<(), String> {
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5504,6 +5547,7 @@ fn ts_swallowed_console_log_downgrade_live_extractor() -> Result<(), String> {
         &tests,
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5578,6 +5622,7 @@ fn ts_side_effect_observed_by_mock_expectation_stays_exposed() -> Result<(), Str
         &[test],
         None,
         &ReExportIndex::empty(),
+        None,
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -5591,5 +5636,318 @@ fn ts_side_effect_observed_by_mock_expectation_stays_exposed() -> Result<(), Str
         "expected discriminate==Yes for MockExpectation, got {:?}",
         finding.ripr.reveal.discriminate.state
     );
+    Ok(())
+}
+
+// ── RIPR-SPEC-0099: tsconfig.json path-alias resolution ───────────────────────
+
+/// Build a strong `toBe` assertion for RIPR-SPEC-0099 alias tests.
+fn strong_be_assertion() -> TypeScriptAssertion {
+    TypeScriptAssertion {
+        matcher: "toBe".to_string(),
+        argument_count: 1,
+        line: 3,
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        mock_payload: None,
+        error_payload: None,
+        observed_expression: Some("applyDiscount(100, 10)".to_string()),
+        expected_value_or_variant: Some("90".to_string()),
+        has_dynamic_matcher_arg: false,
+        oracle_confidence: OracleConfidence::High,
+    }
+}
+
+/// RIPR-SPEC-0099 test 1 — POSITIVE (flag ON):
+/// tsconfig baseUrl="." paths={"@/*":["src/*"]}, owner=src/owner.ts,
+/// test imports `applyDiscount` from `@/owner` with strong assertion
+/// → alias resolves to unique file → test linked → `exposed`.
+#[test]
+fn tsconfig_alias_resolution_flag_on_credits_test_as_exposed() -> Result<(), String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-tscfg-pos-{stamp}"));
+    fs::create_dir_all(root.join("src")).map_err(|e| e.to_string())?;
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}"#,
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        root.join("src").join("owner.ts"),
+        "export function applyDiscount(a: number, b: number): number { return a - b; }",
+    )
+    .map_err(|e| e.to_string())?;
+
+    let alias_map = load_alias_map(&root);
+    let alias_map =
+        alias_map.ok_or_else(|| "tsconfig.json should parse with a baseUrl".to_string())?;
+
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owner.ts"),
+        start_line: 1,
+        end_line: 1,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "applyDiscount returns correct value".to_string(),
+        local_name: "applyDiscount returns correct value".to_string(),
+        describe_names: Vec::new(),
+        // Use a relative path so import_source_matches_owner's relative walk works.
+        file: PathBuf::from("src/owner.test.ts"),
+        line: 1,
+        body_text: "const result = applyDiscount(100, 10);\nexpect(result).toBe(90);".to_string(),
+        assertions: vec![strong_be_assertion()],
+        mocks_in_file: Vec::new(),
+        imports_in_file: vec![TypeScriptImport {
+            source: "@/owner".to_string(),
+            imported: Some("applyDiscount".to_string()),
+            local: "applyDiscount".to_string(),
+            namespace: false,
+        }],
+    };
+    let all_owners = [owner];
+    let all_tests = [test];
+
+    // Flag ON and tsconfig present: alias @/owner resolves to src/owner.ts → exposed.
+    // Pass relative paths matching owner.file so the owner-lookup in classify_change
+    // finds the owner (normalized_path must equal owner.file's normalized form).
+    let finding = classify_change(
+        Path::new("src/owner.ts"),
+        1,
+        "return a - b;",
+        &all_owners,
+        &all_tests,
+        Some(&root),
+        &ReExportIndex::empty(),
+        Some(&alias_map),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "flag ON + unique alias resolution: expected Exposed, got {:?}",
+        finding.class
+    );
+    assert_eq!(
+        finding.related_tests.len(),
+        1,
+        "flag ON: expected 1 related test, got {:?}",
+        finding.related_tests
+    );
+    // No disclosure limitation should appear — the import was credited.
+    assert_evidence_lacks(&finding, "typescript_path_alias_unresolved");
+    Ok(())
+}
+
+/// RIPR-SPEC-0099 test 2 — DEFAULT-OFF CONTROL:
+/// Identical setup, alias_map=None (flag OFF) → stays `no_static_path`,
+/// BUT the `typescript_path_alias_unresolved` disclosure limitation IS emitted.
+#[test]
+fn tsconfig_alias_resolution_flag_off_stays_no_static_path_with_disclosure() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owner.ts"),
+        start_line: 1,
+        end_line: 1,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "applyDiscount returns correct value".to_string(),
+        local_name: "applyDiscount returns correct value".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("src/owner.test.ts"),
+        line: 1,
+        body_text: "const result = applyDiscount(100, 10);\nexpect(result).toBe(90);".to_string(),
+        assertions: vec![strong_be_assertion()],
+        mocks_in_file: Vec::new(),
+        imports_in_file: vec![TypeScriptImport {
+            source: "@/owner".to_string(),
+            imported: Some("applyDiscount".to_string()),
+            local: "applyDiscount".to_string(),
+            namespace: false,
+        }],
+    };
+    let all_owners = [owner];
+    let all_tests = [test];
+
+    // Flag OFF (no alias map) → alias cannot resolve → no_static_path.
+    let finding = classify_change(
+        Path::new("src/owner.ts"),
+        1,
+        "return a - b;",
+        &all_owners,
+        &all_tests,
+        None,
+        &ReExportIndex::empty(),
+        None, // flag OFF
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_eq!(
+        finding.class,
+        ExposureClass::NoStaticPath,
+        "flag OFF: expected NoStaticPath (alias not resolved), got {:?}",
+        finding.class
+    );
+    assert!(
+        finding.related_tests.is_empty(),
+        "flag OFF: no test should be credited, got {:?}",
+        finding.related_tests
+    );
+    // The always-on disclosure limitation MUST be present.
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_path_alias_unresolved",
+    );
+    Ok(())
+}
+
+/// RIPR-SPEC-0099 test 3 — AMBIGUOUS FAIL-CLOSED (flag ON):
+/// paths value `["src/*","lib/*"]` (multi-entry) → excluded from alias map
+/// → uncredited, stays `no_static_path`, disclosure limitation IS emitted.
+#[test]
+fn tsconfig_alias_resolution_multi_entry_value_fails_closed() -> Result<(), String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-tscfg-amb-{stamp}"));
+    fs::create_dir_all(root.join("src")).map_err(|e| e.to_string())?;
+    // multi-entry value array → fail-closed, entry excluded from alias map
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*","lib/*"]}}}"#,
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        root.join("src").join("owner.ts"),
+        "export function applyDiscount() {}",
+    )
+    .map_err(|e| e.to_string())?;
+
+    // The map parses (baseUrl is present) but the multi-entry key is excluded.
+    let alias_map =
+        load_alias_map(&root).ok_or_else(|| "tsconfig.json should parse".to_string())?;
+
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owner.ts"),
+        start_line: 1,
+        end_line: 1,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "applyDiscount test".to_string(),
+        local_name: "applyDiscount test".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("src/owner.test.ts"),
+        line: 1,
+        body_text: "const result = applyDiscount();\nexpect(result).toBe(90);".to_string(),
+        assertions: vec![strong_be_assertion()],
+        mocks_in_file: Vec::new(),
+        imports_in_file: vec![TypeScriptImport {
+            source: "@/owner".to_string(),
+            imported: Some("applyDiscount".to_string()),
+            local: "applyDiscount".to_string(),
+            namespace: false,
+        }],
+    };
+    let all_owners = [owner];
+    let all_tests = [test];
+
+    // Flag ON but multi-entry value → alias map has no entry for @/* → fail-closed.
+    let finding = classify_change(
+        Path::new("src/owner.ts"),
+        1,
+        "export function applyDiscount() {}",
+        &all_owners,
+        &all_tests,
+        None,
+        &ReExportIndex::empty(),
+        Some(&alias_map),
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_eq!(
+        finding.class,
+        ExposureClass::NoStaticPath,
+        "ambiguous (multi-entry): expected NoStaticPath (fail-closed), got {:?}",
+        finding.class
+    );
+    // Disclosure limitation must be emitted even when flag ON but alias ambiguous.
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_path_alias_unresolved",
+    );
+    Ok(())
+}
+
+/// RIPR-SPEC-0099 test 4 — NON-MATCH NEGATIVE:
+/// Test imports `cloneDeep` from `lodash` (non-relative, NOT owner name)
+/// → NO `typescript_path_alias_unresolved` limitation emitted.
+#[test]
+fn tsconfig_alias_non_owner_import_emits_no_limitation() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owner.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    // Test only imports `cloneDeep` from lodash — unrelated to the owner name.
+    let test = TypeScriptTest {
+        name: "some unrelated test".to_string(),
+        local_name: "some unrelated test".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("src/other.test.ts"),
+        line: 1,
+        body_text: "const _ = cloneDeep({});\nexpect(_.x).toBe(1);".to_string(),
+        assertions: vec![strong_be_assertion()],
+        mocks_in_file: Vec::new(),
+        imports_in_file: vec![TypeScriptImport {
+            source: "lodash".to_string(),
+            imported: Some("cloneDeep".to_string()),
+            local: "cloneDeep".to_string(),
+            namespace: false,
+        }],
+    };
+    let all_owners = [owner];
+    let all_tests = [test];
+
+    let finding = classify_change(
+        Path::new("src/owner.ts"),
+        1,
+        "return a - b;",
+        &all_owners,
+        &all_tests,
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    // `cloneDeep` != `applyDiscount` → no alias-gap limitation must fire.
+    assert_evidence_lacks(&finding, "typescript_path_alias_unresolved");
     Ok(())
 }

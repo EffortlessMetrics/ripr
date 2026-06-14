@@ -1400,6 +1400,7 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -1486,6 +1487,7 @@ def test_encode_status():\n    assert encode_status('paid')['status'] == 'paid'\
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -2254,6 +2256,7 @@ fn analyze_diff_counts_python_file_but_skips_unreadable_workspace_source() -> Re
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {

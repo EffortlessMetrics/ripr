@@ -8,6 +8,7 @@
 //! - `typescript_table_case_unresolved` — deferred to PR 5 (oracle-hardening detection)
 //! - `typescript_dynamic_assertion_unresolved` — deferred to PR 5
 //! - `typescript_target_unresolved` — LANDED in PR 6 (cross-package ownership detection)
+//! - `typescript_path_alias_unresolved` — LANDED in RIPR-SPEC-0099 (tsconfig path alias gap)
 
 use super::*;
 
@@ -159,6 +160,95 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
             repair_route: "analysis/typescript-cross-package-ownership",
         });
         saw_target_unresolved = true;
+    }
+    limitations
+}
+
+/// Collect `typescript_path_alias_unresolved` limitations from tests whose
+/// non-relative imports plausibly target the owner but could not be resolved.
+///
+/// This is the ALWAYS-ON honesty disclosure per RIPR-SPEC-0099:
+///
+/// Fires when ALL of the following hold for at least one import in a test:
+/// 1. The import source is NON-RELATIVE (does not start with `./` or `../`).
+/// 2. The imported symbol name matches the owner's exported name (name-matched).
+/// 3. The import source did NOT resolve to the owner file (no credit given).
+///
+/// Condition (3) covers both the flag-OFF path (no alias map) AND the flag-ON
+/// but ambiguous path (alias map present but no unique file found).
+///
+/// The limitation is CLASSIFICATION-NEUTRAL: it does NOT flip `no_static_path`
+/// to `exposed`; it only adds disclosure evidence explaining why the path may
+/// be incomplete.  Do NOT emit it for ordinary third-party imports (e.g.
+/// `lodash`, `react`) where the imported name does NOT match the owner name.
+///
+/// `owner_was_credited` is true when the test was already included in
+/// `related` (i.e. resolution succeeded); in that case we must NOT emit the
+/// limitation for the same import (we would be disclosing a gap that isn't
+/// there).
+pub(crate) fn named_limitations_for_alias_unresolved(
+    owner: &TypeScriptOwner,
+    all_tests: &[TypeScriptTest],
+    owner_was_credited: impl Fn(&TypeScriptTest) -> bool,
+) -> Vec<TypeScriptNamedLimitation> {
+    let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
+    let mut saw = false;
+
+    for test in all_tests {
+        if saw {
+            break;
+        }
+        if owner_was_credited(test) {
+            // Already credited — no gap to disclose.
+            continue;
+        }
+        for import in &test.imports_in_file {
+            // Only non-relative specifiers are candidates for alias gap.
+            if import.source.starts_with("./") || import.source.starts_with("../") {
+                continue;
+            }
+            // Name-matched: the imported symbol must match the owner's name.
+            let name_matches = match &import.imported {
+                Some(name) => name == &owner.name || name == "default",
+                None if import.namespace => {
+                    // Namespace import: name match is always possible; accept.
+                    true
+                }
+                None => false,
+            };
+            // Default-import name check: only if the local binding name matches.
+            // For namespace imports, always consider as plausible.
+            let plausible_owner_import = if import.namespace {
+                // `import * as X from '@/module'` — plausible if X.ownerName is called
+                false // namespace imports don't pinpoint a single name — skip
+            } else {
+                name_matches
+            };
+            if !plausible_owner_import {
+                continue;
+            }
+            // This import is name-matched and non-relative and did not credit the owner.
+            let sample_source = format!("{}:{}", normalized_path(&test.file), test.line);
+            limitations.push(TypeScriptNamedLimitation {
+                name: "typescript_path_alias_unresolved",
+                sample_source,
+                why_not_actionable: format!(
+                    "test `{}` imports `{}` from non-relative specifier `{}` \
+                     which plausibly targets owner `{}` in `{}`, but the adapter \
+                     could not resolve the specifier to a unique workspace file \
+                     without a tsconfig.json alias map; enable `[typescript] \
+                     resolve_tsconfig_paths = true` for credit",
+                    test.name,
+                    import.imported.as_deref().unwrap_or(&owner.name),
+                    import.source,
+                    owner.name,
+                    normalized_path(&owner.file),
+                ),
+                repair_route: "analysis/typescript-tsconfig-path-alias-resolution",
+            });
+            saw = true;
+            break;
+        }
     }
     limitations
 }

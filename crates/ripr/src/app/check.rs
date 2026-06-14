@@ -84,7 +84,7 @@ fn run_check(
     config: &RiprConfig,
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
-    let options = options_builder::analysis_options_from_input(&input);
+    let options = options_builder::analysis_options_from_input_and_config(&input, config);
     let analysis = match mode {
         AnalysisMode::Diff => run_analysis_with_oracle_policy(
             &options,

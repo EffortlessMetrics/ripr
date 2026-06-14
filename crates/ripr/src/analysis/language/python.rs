@@ -6697,6 +6697,7 @@ def test_build_user_smoke():
             diff_file: None,
             mode: crate::analysis::AnalysisMode::Draft,
             include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
         };
         let policy = OraclePolicy::default();
         let changed_files = vec![
@@ -6721,6 +6722,7 @@ def test_build_user_smoke():
             diff_file: None,
             mode: crate::analysis::AnalysisMode::Deep,
             include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
         };
         let policy = OraclePolicy::default();
         let result = adapter.analyze_repo(&options, &policy)?;

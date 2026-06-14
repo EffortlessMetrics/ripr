@@ -68,6 +68,12 @@ pub struct AnalysisOptions {
     pub diff_file: Option<PathBuf>,
     pub mode: AnalysisMode,
     pub include_unchanged_tests: bool,
+    /// When `true`, the TypeScript adapter reads `compilerOptions.paths` from
+    /// `tsconfig.json` / `jsconfig.json` and uses alias maps to resolve
+    /// non-relative import specifiers during owner↔test discovery.
+    ///
+    /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
+    pub resolve_tsconfig_paths: bool,
 }
 
 /// Advisory record for one compiled preview-language adapter whose files are
@@ -251,6 +257,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("diff.patch")),
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -267,6 +274,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("diff.patch")),
             mode: AnalysisMode::Instant,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -314,6 +322,7 @@ fn premium_customer_gets_discount() {
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if out.findings.is_empty() {
@@ -416,6 +425,7 @@ fn test_with_predicate() {
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         for finding in &out.findings {
@@ -478,6 +488,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("empty.patch")),
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -490,6 +501,7 @@ index 0000000..1111111 100644
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if repo_out.findings.is_empty() {

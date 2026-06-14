@@ -395,6 +395,14 @@ owner = "product-swarm"
 standalone_reason = "Fail-closed fix for false-exposed TypeScript preview findings: downgrades exposed→weakly_exposed when a strong oracle exists but no assertion's observed_expression flows from the changed sub-expression; fixes console.log/#1235 repro; language_status stays Preview; no schema bump; 4 unit tests (2 downgrade proofs + 2 controls proving no over-correction)."
 
 [[artifact]]
+id = "RIPR-SPEC-0099"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0099-typescript-tsconfig-path-aliases.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Opt-in tsconfig.json path-alias resolution for TypeScript preview: single-hop, fail-closed (exactly-one-file), default OFF; always-on typescript_path_alias_unresolved disclosure for name-matched unresolved aliases; 4 unit tests (POSITIVE/DEFAULT-OFF/AMBIGUOUS/NON-MATCH); no schema bump; language_status stays Preview."
+
+[[artifact]]
 id = "RIPR-ADR-0019"
 kind = "adr"
 path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"
