@@ -5896,3 +5896,26 @@ outputs = [
 metrics = [
   "typescript_oracle_seam_family_honesty",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0105"
+name = "LSP seam-inventory deferral (interactive-path performance)"
+spec = "docs/specs/RIPR-SPEC-0105-lsp-defer-seam-inventory.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::spec_0105_deferred_snapshot_has_no_seams_and_run_status_seams_deferred",
+  "crates/ripr/src/lsp/tests.rs::spec_0105_collect_workspace_status_reports_seams_deferred_not_full",
+  "crates/ripr/src/lsp/tests.rs::spec_0105_non_deferred_snapshot_has_run_status_not_seams_deferred",
+  "crates/ripr/src/lsp/tests.rs::spec_0105_seams_deferred_run_status_value_is_not_full",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/state.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0105-lsp-defer-seam-inventory.md",
+]
+metrics = [
+  "lsp_seam_deferral_honesty",
+]

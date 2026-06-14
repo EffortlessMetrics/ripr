@@ -71,7 +71,23 @@ impl Backend {
         }
     }
 
-    pub(super) async fn refresh_diagnostics(&self) {
+    /// Run a diagnostic refresh.
+    ///
+    /// `defer_seam_inventory` controls whether the expensive full-repo seam
+    /// inventory is included in this refresh:
+    ///
+    /// - `true` (interactive path: `did_open`/`did_save`/`did_close`): only
+    ///   the fast diff-scoped check runs. The snapshot carries complete findings
+    ///   and is marked `seams_deferred` (run_status = `"seams_deferred"`).
+    ///   This typically completes in 33ms–11s instead of 336s cold.
+    ///
+    /// - `false` (explicit `ripr.refreshDiagnostics` command): the full seam
+    ///   inventory also runs, transitioning the snapshot to `full` (or
+    ///   `limited`/`stale`/`cache_limited` per existing rules) with seam
+    ///   diagnostics present.
+    ///
+    /// See RIPR-SPEC-0105 for the design rationale.
+    pub(super) async fn refresh_diagnostics(&self, defer_seam_inventory: bool) {
         let Some(generation) = self.next_refresh_generation() else {
             return;
         };
@@ -90,7 +106,7 @@ impl Backend {
         let started = Instant::now();
         self.log_refresh_started(generation).await;
         let diagnostics = match tokio::task::spawn_blocking(move || {
-            workspace_diagnostics_with_config(&root, &config)
+            workspace_diagnostics_with_config(&root, &config, defer_seam_inventory)
         })
         .await
         {
@@ -524,7 +540,9 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         self.open_document(params);
-        self.refresh_diagnostics().await;
+        // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
+        // Diff-scoped findings are complete; seams run on explicit refresh only.
+        self.refresh_diagnostics(true).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -533,11 +551,14 @@ impl LanguageServer for Backend {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.close_document(params);
-        self.refresh_diagnostics().await;
+        // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
+        self.refresh_diagnostics(true).await;
     }
 
     async fn did_save(&self, _: DidSaveTextDocumentParams) {
-        self.refresh_diagnostics().await;
+        // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
+        // Diff-scoped findings are complete; seams run on explicit refresh only.
+        self.refresh_diagnostics(true).await;
     }
 
     async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
@@ -576,7 +597,10 @@ impl LanguageServer for Backend {
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
         if params.command == REFRESH_COMMAND {
-            self.refresh_diagnostics().await;
+            // Explicit refresh: run the full seam inventory (RIPR-SPEC-0105).
+            // This is the demand path that transitions a seams_deferred snapshot
+            // to full/limited with complete seam evidence.
+            self.refresh_diagnostics(false).await;
             return Ok(None);
         }
         if params.command == COLLECT_CONTEXT_COMMAND {
@@ -814,6 +838,13 @@ fn workspace_status_run_status(snapshot: &AnalysisSnapshot) -> &'static str {
         || snapshot.gap_artifacts.iter().any(|a| a.has_static_limit());
     if has_static_limit {
         return "limited";
+    }
+    // Seam inventory was deferred on this interactive refresh (RIPR-SPEC-0105).
+    // Diff-scoped findings are complete but seam evidence is absent. The
+    // cockpit must NOT present this as "full" — use the disclosed deferral
+    // status so the refresh_command affordance is shown instead.
+    if snapshot.seams_deferred {
+        return "seams_deferred";
     }
     "full"
 }

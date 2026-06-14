@@ -48,12 +48,20 @@ pub(super) struct AnalysisSnapshot {
     pub(super) refresh: RefreshMetadata,
     pub(super) findings: Vec<Finding>,
     /// Classified seam evidence. Empty when `seamDiagnostics` is off
-    /// (the default). Populated lazily on workspace refresh when the
-    /// flag is enabled.
+    /// (the default), or when the seam inventory was deferred on an
+    /// interactive open/save refresh (see RIPR-SPEC-0105). Use
+    /// `seams_deferred` to distinguish "deferred" from "disabled".
     pub(super) classified_seams: Vec<ClassifiedSeam>,
     pub(super) gap_artifacts: Vec<ValidatedGapArtifact>,
     pub(super) gap_artifact_rejections: Vec<GapArtifactRejection>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
+    /// True when the seam inventory pass was intentionally skipped on an
+    /// interactive open/save refresh to avoid the 336s cold-start cost.
+    /// The snapshot carries complete diff-scoped findings but no seam
+    /// evidence. `run_status` will be `"seams_deferred"` in this case.
+    /// Invoking `ripr.refreshDiagnostics` produces a new snapshot with
+    /// `seams_deferred = false` and the full seam inventory.
+    pub(super) seams_deferred: bool,
 }
 
 impl AnalysisSnapshot {
@@ -262,6 +270,7 @@ mod tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
+            seams_deferred: false,
         };
 
         if !snapshot.is_consistent() {
@@ -285,6 +294,7 @@ mod tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
+            seams_deferred: false,
         };
 
         if snapshot.is_consistent() {

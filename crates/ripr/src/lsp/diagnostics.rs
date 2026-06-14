@@ -77,12 +77,25 @@ pub(super) fn workspace_diagnostic_batches_with_config(
     root: &Path,
     config: &LspAnalysisConfig,
 ) -> Result<Vec<DiagnosticBatch>, String> {
-    Ok(workspace_diagnostics_with_config(root, config)?.batches)
+    Ok(workspace_diagnostics_with_config(root, config, false)?.batches)
 }
 
+/// Run workspace diagnostics.
+///
+/// When `defer_seam_inventory` is `true` (the default on interactive
+/// `did_open`/`did_save` refreshes), the expensive full-repo seam inventory
+/// (`inventory_classified_seams_at_with_config`) is skipped and the snapshot
+/// carries `seams_deferred = true` with `run_status = "seams_deferred"`.
+/// Diff-scoped findings are always produced — they are fast and complete.
+///
+/// When `defer_seam_inventory` is `false` (the explicit
+/// `ripr.refreshDiagnostics` path), the seam inventory runs as before and the
+/// snapshot transitions to `full` (or `limited`/`stale`/`cache_limited` per
+/// existing rules) with seam diagnostics present.
 pub(super) fn workspace_diagnostics_with_config(
     root: &Path,
     config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
 ) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
     let output = check_workspace_with_config(input, config.repo_config())
@@ -100,7 +113,11 @@ pub(super) fn workspace_diagnostics_with_config(
     // per-file spam. See RIPR-SPEC-0076 diagnostics policy.
     let gap_artifact_report =
         validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
-    let run_status = snapshot_run_status(&findings, &gap_artifact_report.rejections);
+    let run_status = snapshot_run_status(
+        &findings,
+        &gap_artifact_report.rejections,
+        defer_seam_inventory,
+    );
     let is_full_run = run_status == "full";
 
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
@@ -123,6 +140,14 @@ pub(super) fn workspace_diagnostics_with_config(
     // saved-workspace editor model; explicit LSP options or repo policy can
     // still disable it for quieter or larger workspaces.
     //
+    // Performance: `inventory_classified_seams_at_with_config` walks ALL
+    // production Rust files — 336s cold / 31s warm on this repo — so it
+    // MUST NOT run on the interactive did_open/did_save path. When
+    // `defer_seam_inventory` is true the entire block is skipped and the
+    // snapshot is marked `seams_deferred`. The explicit
+    // `ripr.refreshDiagnostics` command sets `defer_seam_inventory = false`
+    // to compute seams on demand (RIPR-SPEC-0105).
+    //
     // Reliability: a seam-walk failure is downgraded to "no seam
     // diagnostics this refresh", not a hard failure. The opt-in
     // feature must not take down baseline Finding diagnostics if
@@ -133,7 +158,8 @@ pub(super) fn workspace_diagnostics_with_config(
     // not gap-record repair packets — the WARNING/INFORMATION mapping
     // is owned by SeverityConfig. When run is not full, seam WARNINGs
     // downgrade to INFORMATION. The exception is documented here.
-    let classified_seams = if config.enable_seam_diagnostics
+    let classified_seams = if !defer_seam_inventory
+        && config.enable_seam_diagnostics
         && config
             .repo_config()
             .languages()
@@ -216,17 +242,26 @@ pub(super) fn workspace_diagnostics_with_config(
         gap_artifacts: gap_artifact_report.artifacts,
         gap_artifact_rejections: gap_artifact_report.rejections,
         diagnostics_by_uri,
+        seams_deferred: defer_seam_inventory,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
 }
 
-/// Compute the run status from findings and gap-artifact rejections.
-/// This replicates the logic of `backend::workspace_status_run_status` but
-/// operates directly on the raw ingredients so diagnostics.rs does not need
-/// to import from backend.rs (keeping the module boundary clean).
+/// Compute the run status from findings, gap-artifact rejections, and the
+/// seam-deferral flag. This replicates the logic of
+/// `backend::workspace_status_run_status` but operates directly on the raw
+/// ingredients so diagnostics.rs does not need to import from backend.rs
+/// (keeping the module boundary clean).
 ///
-/// Returns `"full"`, `"stale"`, `"cache_limited"`, or `"limited"`.
-fn snapshot_run_status(findings: &[Finding], rejections: &[GapArtifactRejection]) -> &'static str {
+/// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`, or
+/// `"seams_deferred"`. `"seams_deferred"` is returned when
+/// `defer_seam_inventory` is `true` and no other limitation applies; it is
+/// a member of the `limited` family for severity-downgrade policy purposes.
+fn snapshot_run_status(
+    findings: &[Finding],
+    rejections: &[GapArtifactRejection],
+    defer_seam_inventory: bool,
+) -> &'static str {
     if rejections
         .iter()
         .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
@@ -240,7 +275,22 @@ fn snapshot_run_status(findings: &[Finding], rejections: &[GapArtifactRejection]
     if has_static_limit {
         return "limited";
     }
+    if defer_seam_inventory {
+        return "seams_deferred";
+    }
     "full"
+}
+
+/// Test-only re-export of `snapshot_run_status` so RIPR-SPEC-0105 control 4
+/// can verify the limited-policy wiring without going through the full workspace
+/// analysis stack. Gated behind `#[cfg(test)]` so it never leaks to production.
+#[cfg(test)]
+pub(super) fn snapshot_run_status_for_test(
+    findings: &[Finding],
+    rejections: &[GapArtifactRejection],
+    defer_seam_inventory: bool,
+) -> &'static str {
+    snapshot_run_status(findings, rejections, defer_seam_inventory)
 }
 
 fn append_gap_record_diagnostics(
@@ -1603,7 +1653,7 @@ mod diagnostic_policy_tests {
         finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
 
         // Confirm run status is "limited" when finding has a static limit.
-        let run_status = snapshot_run_status(&[finding.clone()], &[]);
+        let run_status = snapshot_run_status(&[finding.clone()], &[], false);
         if run_status != "limited" {
             return Err(format!(
                 "expected run_status=limited for finding with static_limit_kind, got {run_status}"
@@ -1647,7 +1697,7 @@ mod diagnostic_policy_tests {
     fn stale_run_suppresses_gap_record_diagnostics() -> Result<(), String> {
         // StaleArtifact rejection → run_status "stale" → not full → suppress gap records.
         let stale_rejections = vec![GapArtifactRejection::StaleArtifact];
-        let run_status = snapshot_run_status(&[], &stale_rejections);
+        let run_status = snapshot_run_status(&[], &stale_rejections, false);
         if run_status != "stale" {
             return Err(format!(
                 "expected run_status=stale for StaleArtifact rejection, got {run_status}"
@@ -1659,7 +1709,7 @@ mod diagnostic_policy_tests {
 
         // cache_limited rejection → also not full → suppress gap records.
         let cache_rejections = vec![GapArtifactRejection::WrongRoot("other-root".to_string())];
-        let run_status = snapshot_run_status(&[], &cache_rejections);
+        let run_status = snapshot_run_status(&[], &cache_rejections, false);
         if run_status != "cache_limited" {
             return Err(format!(
                 "expected run_status=cache_limited for non-stale rejection, got {run_status}"

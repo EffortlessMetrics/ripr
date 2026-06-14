@@ -84,7 +84,7 @@ completeness check applies. This exception is documented in the code.
 ### Limited / stale run policy
 
 When `snapshot_run_status` returns anything other than `"full"`
-(i.e. `"stale"`, `"cache_limited"`, or `"limited"`):
+(i.e. `"stale"`, `"cache_limited"`, `"limited"`, or `"seams_deferred"`):
 
 - Finding diagnostics that would be WARNING are downgraded to INFORMATION.
 - Seam diagnostics that would be WARNING are downgraded to INFORMATION.
@@ -96,7 +96,10 @@ per-file diagnostic spam.
 `snapshot_run_status` is computed from findings (any `static_limit_kind`
 present → `"limited"`) and gap-artifact rejections
 (`StaleArtifact` → `"stale"`, any other rejection → `"cache_limited"`,
-nothing → `"full"`).
+nothing → `"full"`). The interactive open/save path additionally defers the
+full-repo seam inventory and reports `"seams_deferred"` when no other
+limitation applies; see RIPR-SPEC-0105. `"seams_deferred"` is a member of this
+limited family for the downgrade/suppression policy above.
 
 ## Non-Goals
 

@@ -291,6 +291,7 @@ mod tests {
             gap_artifacts: Vec::<ValidatedGapArtifact>::new(),
             gap_artifact_rejections: Vec::<GapArtifactRejection>::new(),
             diagnostics_by_uri,
+            seams_deferred: false,
         }
     }
 
