@@ -7,9 +7,10 @@
   "measurement_summary": {
     "items_judged": 4,
     "false_exposed_count": 0,
-    "false_actionable_count": 3,
-    "note": "This pass: 0 false_exposed; 3 false_actionable (jinja, anyio, structlog) — each a conservative over-suggestion where an existing test DOES discriminate the change but ripr cannot trace the discriminating oracle to the changed owner through an indirect call. flask is a correct conservative gap (the only discriminating input, an empty-string env var, is genuinely unexercised). COMBINED with starter-judged.json (n=3: tenacity false_actionable, click + six correct): full panel n=7 -> 0/7 false_exposed (the load-bearing safety result holds on every repo) and 4/7 false_actionable, and all four span the full indirect-call family: local-instance binding (tenacity), framework filter-dispatch (jinja), function-result binding + async/non-value oracle (anyio), inline construct-call + cross-file relation miss (structlog). ripr is SAFE (never over-credits) but currently NOISY (over-suggests on idiomatic indirect-call code). NOTE: judging corrected a pre-judgment lead — jinja was expected to be a correct gap but test_round_positive in fact discriminates it, so it is false_actionable. Verify the artifact, not the proxy.",
-    "judged_against": "ripr at main as of 2026-06-13 (post #1206 scale, #1212 learnings)"
+    "false_actionable_count": 2,
+    "note": "This pass: 0 false_exposed; originally 3 false_actionable (jinja, anyio, structlog) -- each a conservative over-suggestion where an existing test DOES discriminate the change but ripr could not trace the discriminating oracle to the owner through an indirect call. flask is a correct conservative gap (its only discriminating input, an empty-string env var, is unexercised). UPDATE 2026-06-14: structlog is RESOLVED -- PR #1228 added a cross-file inline construct-call relation, so ripr now links test_renderers.py::test_invalid_key and reads structlog as exposed/changed_sink_token (a correct exposed, no longer a false_actionable). Remaining false_actionables this pass: 2 (jinja framework filter-dispatch, anyio function-result binding + async oracle -- both documented as defensible limitations). COMBINED with starter-judged.json (n=3: tenacity false_actionable [smoke, contract-consistent per python_broad_boolean_assertion], click + six correct): full panel n=7 -> 0/7 false_exposed and 3/7 false_actionable after #1228 (was 4/7). ripr remains SAFE; precision improved.",
+    "judged_against": "ripr at main as of 2026-06-13 (post #1206 scale, #1212 learnings)",
+    "updated": "2026-06-14 (post #1224 false-exposed fix + #1228 cross-file precision)"
   },
   "limits": [
     "manual judgment of a 4-item scaled set (7 combined with the starter); not a statistically robust rate",
@@ -25,7 +26,9 @@
       "base": "5ef70112a1ff19c05324ff889dd30405b1002044",
       "head": null,
       "diff_path": "fixtures/python-eval-sweep/diffs/jinja.diff",
-      "shape": ["pytest_library"],
+      "shape": [
+        "pytest_library"
+      ],
       "expected_direction": "should_stay_quiet",
       "anchor": {
         "file": "src/jinja2/filters.py",
@@ -59,7 +62,9 @@
       "base": "85f7e8eada1ed4f077e4760f0c3d20d67452dcb8",
       "head": null,
       "diff_path": "fixtures/python-eval-sweep/diffs/anyio.diff",
-      "shape": ["pytest_library"],
+      "shape": [
+        "pytest_library"
+      ],
       "expected_direction": "should_stay_quiet",
       "anchor": {
         "file": "src/anyio/itertools.py",
@@ -93,7 +98,9 @@
       "base": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
       "head": null,
       "diff_path": "fixtures/python-eval-sweep/diffs/flask.diff",
-      "shape": ["pytest_library"],
+      "shape": [
+        "pytest_library"
+      ],
       "expected_direction": "should_gap",
       "anchor": {
         "file": "src/flask/config.py",
@@ -127,7 +134,9 @@
       "base": "025edaf799c6d6d511ab672d14c2ba8e885c4c36",
       "head": null,
       "diff_path": "fixtures/python-eval-sweep/diffs/structlog.diff",
-      "shape": ["pytest_library"],
+      "shape": [
+        "pytest_library"
+      ],
       "expected_direction": "should_stay_quiet",
       "anchor": {
         "file": "src/structlog/processors.py",
@@ -137,14 +146,14 @@
       },
       "expected_classification": "exposed",
       "expected_static_limit_kind": null,
-      "actual_classification": "weakly_exposed",
-      "actual_oracle_alignment": "unknown",
+      "actual_classification": "exposed",
+      "actual_oracle_alignment": "changed_sink_token",
       "labels": {
-        "top_card_useful": false,
-        "false_actionable": true,
+        "top_card_useful": null,
+        "false_actionable": false,
         "false_exposed": false,
         "verify_command_valid": null,
-        "suggested_location_valid": false,
+        "suggested_location_valid": null,
         "packet_boundaries_safe": true,
         "limitation_quality": null
       },
@@ -153,7 +162,7 @@
       "judged_by": "campaign",
       "authority_boundary": "review_advisory_only",
       "repair_packet_ready": false,
-      "reason": "The diff flips `if any(c <= ' ' for c in key)` to `if any(c < ' ' for c in key)`, so a key containing exactly a space character (0x20) is no longer rejected. tests/processors/test_renderers.py:258 TestLogfmtRenderer.test_invalid_key passes `event_dict = {'invalid key': 'somevalue'}` and asserts `pytest.raises(ValueError, match='Invalid key: \"invalid key\"')` on `LogfmtRenderer()(None, None, event_dict)`: under the original `<=`, the space hits the guard and raises; under the mutated `<`, the space (and every other char in the key, all > space) passes, nothing raises, and pytest.raises fails. The change IS discriminated, so ripr should have read exposed and stayed quiet. Instead it read weakly_exposed/unknown/no_strong_oracle and linked the WRONG file by name proximity (tests/processors/test_processors.py, not test_renderers.py), routing a card: FALSE_ACTIONABLE. Root cause: the oracle is an inline construct-call `LogfmtRenderer()(...)` (construct then immediately invoke) in a different test file from the one ripr's relation heuristic reached — inline construct-call plus a cross-file relation miss. Conservative direction: over-suggest, never over-credit."
+      "reason": "RESOLVED by PR #1228. The diff flips `if any(c <= ' ' for c in key)` to `< ' '` in LogfmtRenderer.__call__, so a space-containing key is no longer rejected. tests/processors/test_renderers.py::TestLogfmtRenderer.test_invalid_key asserts `pytest.raises(ValueError, match='Invalid key: \"invalid key\"')` on `LogfmtRenderer()(None, None, {'invalid key': ...})` -- a strong ExactErrorVariant oracle that genuinely discriminates the change. ORIGINALLY ripr read weakly_exposed/no_strong_oracle because its name-proximity relation linked the WRONG file (test_processors.py) via same_stem and never saw the strong oracle: a false_actionable. #1228 added the ConstructCall relation (inline `OwnerClass()(...)` on a __call__ owner, import-gated), which links test_invalid_key; the oracle aligns via the whole-word `key` token (#1224 word-boundary), so ripr now correctly reads exposed/changed_sink_token. Verified on main d8ccb9a2. This is a genuine, contract-honoring exposed flip (a missed STRONG oracle), unlike the tenacity smoke case which stays weakly_exposed by contract."
     },
     {
       "id": "sqlalchemy-getitem-negative-index-boundary",
@@ -161,7 +170,9 @@
       "base": "bfe559a7e4d69e5699c390ac9cafd2a5a2d38078",
       "head": null,
       "diff_path": "fixtures/python-eval-sweep/diffs/sqlalchemy.diff",
-      "shape": ["pytest_library"],
+      "shape": [
+        "pytest_library"
+      ],
       "expected_direction": "should_limit",
       "anchor": {
         "file": null,
